@@ -2,4 +2,5 @@ rootProject.name = 'jlsm'
 
 include 'modules:jlsm-core'
 include 'modules:jlsm-bloom'
+include 'modules:jlsm-wal'
 include 'examples:sample-db'
