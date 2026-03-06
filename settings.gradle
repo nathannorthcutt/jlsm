@@ -1,0 +1,4 @@
+rootProject.name = 'jlsm'
+
+include 'modules:jlsm-core'
+include 'examples:sample-db'

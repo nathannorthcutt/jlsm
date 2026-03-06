@@ -1,0 +1,26 @@
+allprojects {
+    group = 'io.github.nathannorthcutt'
+    version = '0.1.0-SNAPSHOT'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    plugins.withId('java') {
+        java {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(25)
+            }
+        }
+
+        testing {
+            suites {
+                test {
+                    useJUnitJupiter()
+                }
+            }
+        }
+    }
+}
