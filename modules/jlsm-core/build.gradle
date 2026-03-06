@@ -1,3 +1,8 @@
 plugins {
     id 'java-library'
 }
+
+test {
+    // Enable assertions so assert statements in implementation code are exercised
+    jvmArgs '-ea'
+}

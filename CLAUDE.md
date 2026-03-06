@@ -52,6 +52,7 @@ The canonical LSM-Tree pipeline — **write path**: WAL → MemTable → flush t
 - **Java NIO / memory-mapped I/O** — prefer `java.nio` for SSTable and WAL file operations
 - **Off-heap friendliness** — key/value representations should be compatible with `ByteBuffer` / `MemorySegment` (Panama
   FFM API) to support off-heap vector data
+- **Defensive assertions** — use `assert` statements throughout all code (public and private) to document and enforce assumptions; validate all inputs to public methods eagerly with explicit exceptions (`IllegalArgumentException`, `NullPointerException`, etc.) — never trust external callers
 
 ### Expected Module Structure
 
@@ -66,6 +67,17 @@ jlsm-cache/         # Block cache implementations
 ```
 
 Each submodule directory contains its own `build.gradle` and `src/main/java/module-info.java`.
+
+## Test-Driven Development
+
+All implementation work follows a strict TDD cycle:
+
+1. **Write tests first** — before creating any implementation class, write the test class covering the intended behaviour
+2. **Confirm tests fail** — run the tests and verify they fail with a compilation error or assertion failure (not an infrastructure error); a test that passes before the implementation exists is a bad test
+3. **Implement** — write the minimum implementation to make the tests pass
+4. **Verify** — run the tests again and confirm all pass before committing
+
+Never write an implementation class without a preceding failing test. Never skip the failure-confirmation step.
 
 ## Git Workflow
 

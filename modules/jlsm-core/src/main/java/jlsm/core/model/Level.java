@@ -20,6 +20,12 @@ package jlsm.core.model;
  */
 public record Level(int index) {
 
+    public Level {
+        if (index < 0) {
+            throw new IllegalArgumentException("index must be non-negative, got: " + index);
+        }
+    }
+
     /** The topmost level: receives flushed MemTable data and may contain overlapping key ranges. */
     public static final Level L0 = new Level(0);
 
@@ -29,6 +35,7 @@ public record Level(int index) {
      * @return a new {@code Level} with {@code index + 1}
      */
     public Level next() {
+        assert index < Integer.MAX_VALUE : "index overflow";
         return new Level(index + 1);
     }
 }

@@ -1,5 +1,7 @@
 package jlsm.core.model;
 
+import java.util.Objects;
+
 /**
  * A monotonically increasing counter that establishes total ordering over all mutations written to
  * the LSM-Tree.
@@ -17,7 +19,14 @@ package jlsm.core.model;
  *
  * @param value the raw 64-bit counter value; must be non-negative
  */
+
 public record SequenceNumber(long value) implements Comparable<SequenceNumber> {
+
+    public SequenceNumber {
+        if (value < 0) {
+            throw new IllegalArgumentException("value must be non-negative, got: " + value);
+        }
+    }
 
     /** Sentinel value representing the state before any mutation has been written. */
     public static final SequenceNumber ZERO = new SequenceNumber(0L);
@@ -28,6 +37,7 @@ public record SequenceNumber(long value) implements Comparable<SequenceNumber> {
      * @return a new {@code SequenceNumber} with {@code value + 1}
      */
     public SequenceNumber next() {
+        assert value < Long.MAX_VALUE : "sequence number overflow";
         return new SequenceNumber(value + 1);
     }
 
@@ -40,6 +50,7 @@ public record SequenceNumber(long value) implements Comparable<SequenceNumber> {
      */
     @Override
     public int compareTo(SequenceNumber other) {
+        Objects.requireNonNull(other, "other must not be null");
         return Long.compare(this.value, other.value);
     }
 }

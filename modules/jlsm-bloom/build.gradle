@@ -9,4 +9,6 @@ dependencies {
 test {
     // Expose the unexported hash package to the unnamed test module
     jvmArgs '--add-exports', 'jlsm.bloom/jlsm.bloom.hash=ALL-UNNAMED'
+    // Enable assertions so assert statements in implementation code are exercised
+    jvmArgs '-ea'
 }

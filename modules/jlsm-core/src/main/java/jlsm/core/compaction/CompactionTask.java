@@ -4,6 +4,7 @@ import jlsm.core.model.Level;
 import jlsm.core.sstable.SSTableMetadata;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * An immutable description of a planned compaction operation: which SSTables to merge and where the
@@ -32,6 +33,17 @@ public record CompactionTask(
         Level targetLevel
 ) {
     public CompactionTask {
+        Objects.requireNonNull(sourceSSTables, "sourceSSTables must not be null");
+        Objects.requireNonNull(sourceLevel, "sourceLevel must not be null");
+        Objects.requireNonNull(targetLevel, "targetLevel must not be null");
         sourceSSTables = List.copyOf(sourceSSTables);
+        if (sourceSSTables.isEmpty()) {
+            throw new IllegalArgumentException("sourceSSTables must not be empty");
+        }
+        if (targetLevel.index() < sourceLevel.index()) {
+            throw new IllegalArgumentException(
+                    "targetLevel (%d) must be >= sourceLevel (%d)"
+                            .formatted(targetLevel.index(), sourceLevel.index()));
+        }
     }
 }

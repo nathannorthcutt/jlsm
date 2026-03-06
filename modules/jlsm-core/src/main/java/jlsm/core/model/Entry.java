@@ -1,6 +1,7 @@
 package jlsm.core.model;
 
 import java.lang.foreign.MemorySegment;
+import java.util.Objects;
 
 /**
  * Represents a single mutation in the LSM-Tree — either a value insertion or a tombstone deletion.
@@ -43,7 +44,13 @@ public sealed interface Entry permits Entry.Put, Entry.Delete {
      * @param sequenceNumber the write-order stamp assigned by the WAL; must not be null
      */
     record Put(MemorySegment key, MemorySegment value, SequenceNumber sequenceNumber)
-            implements Entry {}
+            implements Entry {
+        public Put {
+            Objects.requireNonNull(key, "key must not be null");
+            Objects.requireNonNull(value, "value must not be null");
+            Objects.requireNonNull(sequenceNumber, "sequenceNumber must not be null");
+        }
+    }
 
     /**
      * A tombstone mutation: marks {@code key} as deleted at the given sequence number. During
@@ -53,5 +60,10 @@ public sealed interface Entry permits Entry.Put, Entry.Delete {
      * @param key            the key being deleted; must not be null
      * @param sequenceNumber the write-order stamp assigned by the WAL; must not be null
      */
-    record Delete(MemorySegment key, SequenceNumber sequenceNumber) implements Entry {}
+    record Delete(MemorySegment key, SequenceNumber sequenceNumber) implements Entry {
+        public Delete {
+            Objects.requireNonNull(key, "key must not be null");
+            Objects.requireNonNull(sequenceNumber, "sequenceNumber must not be null");
+        }
+    }
 }

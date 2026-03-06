@@ -60,6 +60,11 @@ class Murmur3HashTest {
     }
 
     @Test
+    void hash128RejectsNullKey() {
+        assertThrows(NullPointerException.class, () -> Murmur3Hash.hash128(null));
+    }
+
+    @Test
     void distinctKeysProduceDistinctHashes() {
         String[] keys = {"apple", "banana", "cherry", "date", "elderberry"};
         var hashes = new java.util.HashSet<Long>();

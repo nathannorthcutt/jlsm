@@ -5,6 +5,7 @@ import jlsm.core.model.SequenceNumber;
 
 import java.lang.foreign.MemorySegment;
 import java.nio.file.Path;
+import java.util.Objects;
 
 /**
  * Immutable descriptor for an SSTable file, capturing its identity, location, key range, sequence
@@ -44,4 +45,19 @@ public record SSTableMetadata(
         SequenceNumber maxSequence,
         long sizeBytes,
         long entryCount
-) {}
+) {
+    public SSTableMetadata {
+        Objects.requireNonNull(path, "path must not be null");
+        Objects.requireNonNull(level, "level must not be null");
+        Objects.requireNonNull(smallestKey, "smallestKey must not be null");
+        Objects.requireNonNull(largestKey, "largestKey must not be null");
+        Objects.requireNonNull(minSequence, "minSequence must not be null");
+        Objects.requireNonNull(maxSequence, "maxSequence must not be null");
+        if (sizeBytes < 0) {
+            throw new IllegalArgumentException("sizeBytes must be non-negative, got: " + sizeBytes);
+        }
+        if (entryCount < 0) {
+            throw new IllegalArgumentException("entryCount must be non-negative, got: " + entryCount);
+        }
+    }
+}

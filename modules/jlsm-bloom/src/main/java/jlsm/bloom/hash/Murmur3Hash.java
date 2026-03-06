@@ -2,6 +2,7 @@ package jlsm.bloom.hash;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.util.Objects;
 
 /**
  * Pure-Java implementation of MurmurHash3 x64-128, producing a 128-bit hash as two {@code long}
@@ -26,7 +27,9 @@ public final class Murmur3Hash {
      *     64-bit halves of the 128-bit hash output
      */
     public static long[] hash128(MemorySegment key) {
+        Objects.requireNonNull(key, "key must not be null");
         byte[] data = key.toArray(ValueLayout.JAVA_BYTE);
+        assert data != null : "toArray must not return null";
         int length = data.length;
         int nblocks = length >>> 4; // number of 16-byte blocks
 
@@ -105,6 +108,7 @@ public final class Murmur3Hash {
     }
 
     private static long getLongLE(byte[] data, int offset) {
+        assert data != null && offset >= 0 && offset + 7 < data.length : "getLongLE offset out of bounds";
         return ((long) (data[offset]     & 0xff))
              | ((long) (data[offset + 1] & 0xff) <<  8)
              | ((long) (data[offset + 2] & 0xff) << 16)
@@ -116,6 +120,7 @@ public final class Murmur3Hash {
     }
 
     private static long rotl64(long x, int r) {
+        assert r > 0 && r < 64 : "rotation amount must be in [1,63], got " + r;
         return (x << r) | (x >>> (64 - r));
     }
 

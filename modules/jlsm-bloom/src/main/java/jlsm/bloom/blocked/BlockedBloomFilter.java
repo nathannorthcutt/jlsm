@@ -4,6 +4,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteOrder;
+import java.util.Objects;
 import jlsm.bloom.hash.Murmur3Hash;
 import jlsm.core.bloom.BloomFilter;
 
@@ -88,6 +89,10 @@ public final class BlockedBloomFilter implements BloomFilter {
 
     /** Private constructor used during deserialization. */
     private BlockedBloomFilter(int numBlocks, int numHashFunctions, long insertionCount, long[] bits) {
+        assert numBlocks > 0 : "numBlocks must be positive";
+        assert numHashFunctions >= 1 && numHashFunctions <= 30 : "numHashFunctions must be in [1,30]";
+        assert insertionCount >= 0 : "insertionCount must be non-negative";
+        assert bits != null && bits.length == numBlocks * LONGS_PER_BLOCK : "bits array size mismatch";
         this.numBlocks = numBlocks;
         this.numHashFunctions = numHashFunctions;
         this.insertionCount = insertionCount;
@@ -97,17 +102,21 @@ public final class BlockedBloomFilter implements BloomFilter {
     /** {@inheritDoc} */
     @Override
     public void add(MemorySegment key) {
+        Objects.requireNonNull(key, "key must not be null");
         long[] hashes = Murmur3Hash.hash128(key);
+        assert hashes.length == 2 : "hash128 must return exactly 2 longs";
         long h1 = hashes[0];
         // Force h2 odd so it is coprime to the 512-bit block size, ensuring the double-hashing
         // sequence (h1 + i*h2) mod 512 visits all 512 positions before repeating.
         long h2 = hashes[1] | 1L;
 
         int blockIndex = (int) ((h1 & Long.MAX_VALUE) % numBlocks);
+        assert blockIndex >= 0 && blockIndex < numBlocks : "blockIndex out of range";
         int blockBase = blockIndex * LONGS_PER_BLOCK;
 
         for (int i = 0; i < numHashFunctions; i++) {
             int bitPos = (int) ((h1 + (long) i * h2) & 511);
+            assert bitPos >= 0 && bitPos < 512 : "bitPos out of [0,512)";
             bits[blockBase + (bitPos >>> 6)] |= (1L << (bitPos & 63));
         }
         insertionCount++;
@@ -116,16 +125,20 @@ public final class BlockedBloomFilter implements BloomFilter {
     /** {@inheritDoc} */
     @Override
     public boolean mightContain(MemorySegment key) {
+        Objects.requireNonNull(key, "key must not be null");
         long[] hashes = Murmur3Hash.hash128(key);
+        assert hashes.length == 2 : "hash128 must return exactly 2 longs";
         long h1 = hashes[0];
         // Must match the | 1L in add(); see class-level Javadoc for why h2 must be odd.
         long h2 = hashes[1] | 1L;
 
         int blockIndex = (int) ((h1 & Long.MAX_VALUE) % numBlocks);
+        assert blockIndex >= 0 && blockIndex < numBlocks : "blockIndex out of range";
         int blockBase = blockIndex * LONGS_PER_BLOCK;
 
         for (int i = 0; i < numHashFunctions; i++) {
             int bitPos = (int) ((h1 + (long) i * h2) & 511);
+            assert bitPos >= 0 && bitPos < 512 : "bitPos out of [0,512)";
             if ((bits[blockBase + (bitPos >>> 6)] & (1L << (bitPos & 63))) == 0) {
                 return false;
             }
@@ -164,6 +177,8 @@ public final class BlockedBloomFilter implements BloomFilter {
      */
     @Override
     public MemorySegment serialize() {
+        assert numBlocks > 0 : "numBlocks must be positive";
+        assert bits.length == numBlocks * LONGS_PER_BLOCK : "bits array size mismatch";
         long byteSize = 16L + (long) numBlocks * LONGS_PER_BLOCK * Long.BYTES;
         MemorySegment seg = Arena.ofAuto().allocate(byteSize);
         seg.set(ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN), 0, numBlocks);
@@ -183,8 +198,26 @@ public final class BlockedBloomFilter implements BloomFilter {
      */
     public static BloomFilter.Deserializer deserializer() {
         return bytes -> {
+            Objects.requireNonNull(bytes, "bytes must not be null");
+            if (bytes.byteSize() < 16) {
+                throw new IllegalArgumentException(
+                        "serialized bloom filter must be at least 16 bytes, got: " + bytes.byteSize());
+            }
             int numBlocks = bytes.get(ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN), 0);
             int numHashFunctions = bytes.get(ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN), 4);
+            if (numBlocks <= 0) {
+                throw new IllegalArgumentException("numBlocks must be positive, got: " + numBlocks);
+            }
+            if (numHashFunctions < 1 || numHashFunctions > 30) {
+                throw new IllegalArgumentException(
+                        "numHashFunctions must be in [1,30], got: " + numHashFunctions);
+            }
+            long expectedSize = 16L + (long) numBlocks * LONGS_PER_BLOCK * Long.BYTES;
+            if (bytes.byteSize() != expectedSize) {
+                throw new IllegalArgumentException(
+                        "serialized size %d does not match expected %d for numBlocks=%d"
+                                .formatted(bytes.byteSize(), expectedSize, numBlocks));
+            }
             long insertionCount = bytes.get(ValueLayout.JAVA_LONG.withOrder(ByteOrder.BIG_ENDIAN), 8);
             long[] bits = new long[numBlocks * LONGS_PER_BLOCK];
             for (int i = 0; i < bits.length; i++) {

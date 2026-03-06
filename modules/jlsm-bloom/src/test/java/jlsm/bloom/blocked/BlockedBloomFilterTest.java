@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import jlsm.core.bloom.BloomFilter;
 import org.junit.jupiter.api.Test;
@@ -172,5 +173,46 @@ class BlockedBloomFilterTest {
         long byteSize = filter.serialize().byteSize();
         assertEquals(0, (byteSize - 16) % 64,
                 "serialized size invariant broken: size=" + byteSize);
+    }
+
+    // -------------------------------------------------------------------------
+    // Null / invalid input validation
+    // -------------------------------------------------------------------------
+
+    @Test
+    void addRejectsNullKey() {
+        BloomFilter filter = new BlockedBloomFilter(100, 0.01);
+        assertThrows(NullPointerException.class, () -> filter.add(null));
+    }
+
+    @Test
+    void mightContainRejectsNullKey() {
+        BloomFilter filter = new BlockedBloomFilter(100, 0.01);
+        assertThrows(NullPointerException.class, () -> filter.mightContain(null));
+    }
+
+    @Test
+    void deserializerRejectsNullBytes() {
+        assertThrows(NullPointerException.class,
+                () -> BlockedBloomFilter.deserializer().deserialize(null));
+    }
+
+    @Test
+    void deserializerRejectsTooShortBytes() {
+        // Only 8 bytes — not enough for the 16-byte header
+        MemorySegment tooShort = Arena.ofAuto().allocate(8);
+        assertThrows(IllegalArgumentException.class,
+                () -> BlockedBloomFilter.deserializer().deserialize(tooShort));
+    }
+
+    @Test
+    void deserializerRejectsWrongSizeForDeclaredNumBlocks() {
+        // Header declares numBlocks=5 but the segment only has the 16-byte header with no block data
+        MemorySegment badSize = Arena.ofAuto().allocate(16);
+        badSize.set(ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN), 0, 5);
+        badSize.set(ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN), 4, 7);
+        badSize.set(ValueLayout.JAVA_LONG.withOrder(ByteOrder.BIG_ENDIAN), 8, 0L);
+        assertThrows(IllegalArgumentException.class,
+                () -> BlockedBloomFilter.deserializer().deserialize(badSize));
     }
 }
