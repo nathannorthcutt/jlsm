@@ -1,0 +1,12 @@
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    api project(':modules:jlsm-core')
+}
+
+test {
+    // Expose the unexported hash package to the unnamed test module
+    jvmArgs '--add-exports', 'jlsm.bloom/jlsm.bloom.hash=ALL-UNNAMED'
+}
