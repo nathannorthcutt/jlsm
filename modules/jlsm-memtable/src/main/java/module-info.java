@@ -1,5 +1,5 @@
 module jlsm.memtable {
-    requires jlsm.core;
+    requires transitive jlsm.core;
     exports jlsm.memtable;
     // jlsm.memtable.internal is intentionally not exported
 }

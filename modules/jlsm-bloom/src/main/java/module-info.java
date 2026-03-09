@@ -1,4 +1,4 @@
 module jlsm.bloom {
-    requires jlsm.core;
+    requires transitive jlsm.core;
     exports jlsm.bloom.blocked;
 }

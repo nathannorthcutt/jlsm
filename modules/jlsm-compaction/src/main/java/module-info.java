@@ -1,5 +1,5 @@
 module jlsm.compaction {
-    requires jlsm.core;
+    requires transitive jlsm.core;
     requires jlsm.sstable;
     requires jlsm.bloom;
     exports jlsm.compaction;

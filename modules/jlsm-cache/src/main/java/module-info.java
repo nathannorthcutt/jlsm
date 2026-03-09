@@ -1,4 +1,4 @@
 module jlsm.cache {
-    requires jlsm.core;
+    requires transitive jlsm.core;
     exports jlsm.cache;
 }
