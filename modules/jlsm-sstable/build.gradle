@@ -1,0 +1,11 @@
+plugins { id 'java-library' }
+
+dependencies {
+    api project(':modules:jlsm-core')
+    implementation project(':modules:jlsm-bloom')
+}
+
+test {
+    jvmArgs '--add-exports', 'jlsm.sstable/jlsm.sstable.internal=ALL-UNNAMED'
+    jvmArgs '-ea'
+}
