@@ -1,6 +1,7 @@
 package jlsm.sstable;
 
 import jlsm.bloom.blocked.BlockedBloomFilter;
+import jlsm.cache.LruBlockCache;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
@@ -230,6 +231,116 @@ class TrieSSTableReaderTest {
     void lazyMetadataEntryCount() throws IOException {
         try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer())) {
             assertEquals(4L, r.metadata().entryCount());
+        }
+    }
+
+    // ---- Cache-backed reader tests ----
+
+    @Test
+    void withCacheEagerGetExistingEntry() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            Optional<Entry> result = r.get(seg("a"));
+            assertTrue(result.isPresent());
+            assertInstanceOf(Entry.Put.class, result.get());
+            assertEquals(-1L, seg("va").mismatch(((Entry.Put) result.get()).value()));
+        }
+    }
+
+    @Test
+    void withCacheEagerGetMissingKeyReturnsEmpty() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            assertTrue(r.get(seg("z")).isEmpty());
+        }
+    }
+
+    @Test
+    void withCacheLazyGetExistingEntry() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            Optional<Entry> result = r.get(seg("c"));
+            assertTrue(result.isPresent());
+            assertInstanceOf(Entry.Put.class, result.get());
+            assertEquals(-1L, seg("vc").mismatch(((Entry.Put) result.get()).value()));
+        }
+    }
+
+    @Test
+    void withCacheLazyGetMissingKeyReturnsEmpty() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            assertTrue(r.get(seg("z")).isEmpty());
+        }
+    }
+
+    @Test
+    void withCacheLazyGetPopulatesCache() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            assertEquals(0, cache.size());
+            r.get(seg("a"));
+            assertTrue(cache.size() >= 1, "cache should be populated after a get");
+        }
+    }
+
+    @Test
+    void withCacheLazyGetHitDoesNotGrowCache() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            r.get(seg("a"));
+            long sizeAfterFirstGet = cache.size();
+            r.get(seg("a"));
+            assertEquals(sizeAfterFirstGet, cache.size(),
+                    "repeated get for the same key should hit cache and not add a new entry");
+        }
+    }
+
+    @Test
+    void withCacheMultipleDistinctGetsPopulateCacheForEachKey() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            r.get(seg("a"));
+            r.get(seg("c"));
+            assertEquals(2, cache.size(), "each distinct entry offset should occupy a cache slot");
+        }
+    }
+
+    @Test
+    void withCacheLazyScanRangeReturnsCorrectEntries() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            List<Entry> entries = toList(r.scan(seg("b"), seg("d")));
+            assertEquals(2, entries.size());
+            assertEquals(-1L, seg("b").mismatch(entries.get(0).key()));
+            assertEquals(-1L, seg("c").mismatch(entries.get(1).key()));
+        }
+    }
+
+    @Test
+    void withCacheLazyScanRangePopulatesCache() throws IOException {
+        try (var cache = LruBlockCache.builder().capacity(32).build();
+             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+            toList(r.scan(seg("a"), seg("z")));    // scan all 4 keys
+            assertEquals(4, cache.size(), "each entry read during range scan should be cached");
+        }
+    }
+
+    @Test
+    void withNullCacheOpenStillWorks() throws IOException {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer(), null)) {
+            Optional<Entry> result = r.get(seg("d"));
+            assertTrue(result.isPresent());
+            assertEquals(-1L, seg("vd").mismatch(((Entry.Put) result.get()).value()));
+        }
+    }
+
+    @Test
+    void withNullCacheOpenLazyStillWorks() throws IOException {
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), null)) {
+            Optional<Entry> result = r.get(seg("d"));
+            assertTrue(result.isPresent());
+            assertEquals(-1L, seg("vd").mismatch(((Entry.Put) result.get()).value()));
         }
     }
 

@@ -1,6 +1,7 @@
 package jlsm.sstable;
 
 import jlsm.core.bloom.BloomFilter;
+import jlsm.core.cache.BlockCache;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
@@ -48,22 +49,32 @@ public final class TrieSSTableReader implements SSTableReader {
     // Lazy mode: open file channel; eager mode: null
     private final FileChannel lazyChannel;
 
+    // Optional block cache; null means no caching
+    private final BlockCache blockCache;
+
     private volatile boolean closed = false;
 
     private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
-                               long dataEnd, byte[] eagerData, FileChannel lazyChannel) {
+                               long dataEnd, byte[] eagerData, FileChannel lazyChannel,
+                               BlockCache blockCache) {
         this.metadata = metadata;
         this.keyIndex = keyIndex;
         this.bloomFilter = bloomFilter;
         this.dataEnd = dataEnd;
         this.eagerData = eagerData;
         this.lazyChannel = lazyChannel;
+        this.blockCache = blockCache;
     }
 
     // ---- Factory methods ----
 
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer)
             throws IOException {
+        return open(path, bloomDeserializer, null);
+    }
+
+    public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
+                                         BlockCache blockCache) throws IOException {
         Objects.requireNonNull(path, "path must not be null");
         Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
 
@@ -80,7 +91,8 @@ public final class TrieSSTableReader implements SSTableReader {
             byte[] data = readBytes(ch, 0L, dataLen);
             ch.close();
 
-            return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, data, null);
+            return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, data, null,
+                    blockCache);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -89,6 +101,11 @@ public final class TrieSSTableReader implements SSTableReader {
 
     public static TrieSSTableReader openLazy(Path path, BloomFilter.Deserializer bloomDeserializer)
             throws IOException {
+        return openLazy(path, bloomDeserializer, null);
+    }
+
+    public static TrieSSTableReader openLazy(Path path, BloomFilter.Deserializer bloomDeserializer,
+                                              BlockCache blockCache) throws IOException {
         Objects.requireNonNull(path, "path must not be null");
         Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
 
@@ -100,7 +117,8 @@ public final class TrieSSTableReader implements SSTableReader {
             BloomFilter bloom = readBloomFilter(ch, footer, bloomDeserializer);
             SSTableMetadata meta = buildMetadata(path, fileSize, footer, keyIndex);
 
-            return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, null, ch);
+            return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, null, ch,
+                    blockCache);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -168,12 +186,26 @@ public final class TrieSSTableReader implements SSTableReader {
     private byte[] readDataAt(long fileOffset, int maxBytes) throws IOException {
         int len = (int) Math.min(maxBytes, dataEnd - fileOffset);
         if (len <= 0) throw new IOException("file offset out of data range: " + fileOffset);
-        if (eagerData != null) {
-            byte[] buf = new byte[len];
-            System.arraycopy(eagerData, (int) fileOffset, buf, 0, len);
-            return buf;
+
+        if (blockCache != null) {
+            Optional<MemorySegment> hit = blockCache.get(metadata.id(), fileOffset);
+            if (hit.isPresent()) {
+                return hit.get().toArray(ValueLayout.JAVA_BYTE);
+            }
         }
-        return readBytes(lazyChannel, fileOffset, len);
+
+        byte[] data;
+        if (eagerData != null) {
+            data = new byte[len];
+            System.arraycopy(eagerData, (int) fileOffset, data, 0, len);
+        } else {
+            data = readBytes(lazyChannel, fileOffset, len);
+        }
+
+        if (blockCache != null) {
+            blockCache.put(metadata.id(), fileOffset, MemorySegment.ofArray(data));
+        }
+        return data;
     }
 
     /** Returns the full data region (for full scan). */

@@ -3,6 +3,7 @@ plugins { id 'java-library' }
 dependencies {
     api project(':modules:jlsm-core')
     implementation project(':modules:jlsm-bloom')
+    testImplementation project(':modules:jlsm-cache')
 }
 
 test {
