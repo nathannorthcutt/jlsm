@@ -2,6 +2,9 @@ allprojects {
     group = 'io.github.nathannorthcutt'
     version = '0.1.0-SNAPSHOT'
 
+    apply plugin: 'idea'
+    apply plugin: 'eclipse'
+
     repositories {
         mavenCentral()
     }
@@ -12,6 +15,7 @@ subprojects {
         java {
             toolchain {
                 languageVersion = JavaLanguageVersion.of(25)
+                vendor = JvmVendorSpec.AMAZON
             }
         }
 

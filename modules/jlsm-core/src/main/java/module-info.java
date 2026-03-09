@@ -7,4 +7,5 @@ module jlsm.core {
     exports jlsm.core.compaction;
     exports jlsm.core.cache;
     exports jlsm.core.io;
+    exports jlsm.core.tree;
 }

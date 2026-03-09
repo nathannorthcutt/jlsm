@@ -1,0 +1,14 @@
+plugins { id 'java-library' }
+
+dependencies {
+    api project(':modules:jlsm-core')
+
+    testImplementation project(':modules:jlsm-wal')
+    testImplementation project(':modules:jlsm-memtable')
+    testImplementation project(':modules:jlsm-sstable')
+    testImplementation project(':modules:jlsm-bloom')
+}
+
+test {
+    jvmArgs '-ea'
+}
