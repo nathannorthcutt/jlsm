@@ -19,7 +19,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import jlsm.core.model.Entry;
 import jlsm.core.model.SequenceNumber;
 import jlsm.core.wal.WriteAheadLog;
-import jlsm.wal.internal.ArenaBufferPool;
+import jlsm.core.io.ArenaBufferPool;
 import jlsm.wal.internal.SegmentFile;
 import jlsm.wal.internal.WalRecord;
 

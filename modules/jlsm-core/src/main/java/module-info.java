@@ -6,4 +6,5 @@ module jlsm.core {
     exports jlsm.core.bloom;
     exports jlsm.core.compaction;
     exports jlsm.core.cache;
+    exports jlsm.core.io;
 }

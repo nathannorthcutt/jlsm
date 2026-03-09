@@ -1,4 +1,4 @@
-package jlsm.wal.internal;
+package jlsm.core.io;
 
 import java.io.IOException;
 import java.lang.foreign.Arena;
@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Off-heap buffer pool backed by a shared {@link Arena}. Segments are pre-allocated at
- * construction and returned to the pool via {@link #release}. Not exported; for WAL internal use.
+ * construction and returned to the pool via {@link #release}. Shared across WAL and compaction.
  */
 public final class ArenaBufferPool implements AutoCloseable {
 

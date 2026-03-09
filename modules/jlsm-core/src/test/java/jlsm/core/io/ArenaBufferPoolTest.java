@@ -1,4 +1,4 @@
-package jlsm.wal.internal;
+package jlsm.core.io;
 
 import static org.junit.jupiter.api.Assertions.*;
 
