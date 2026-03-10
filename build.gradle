@@ -1,0 +1,100 @@
+allprojects {
+    group = 'io.github.nathannorthcutt'
+    version = '0.1.0-SNAPSHOT'
+
+    apply plugin: 'idea'
+    apply plugin: 'eclipse'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    plugins.withId('java') {
+        java {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(25)
+                vendor = JvmVendorSpec.AMAZON
+            }
+        }
+
+        testing {
+            suites {
+                test {
+                    useJUnitJupiter()
+                }
+            }
+        }
+    }
+}
+
+// ── async-profiler download ────────────────────────────────────────────────
+
+tasks.register('downloadAsyncProfiler') {
+    description = 'Downloads and extracts the latest async-profiler release for the current OS/arch.'
+    group       = 'profiling'
+
+    def profilerDir = layout.buildDirectory.dir('async-profiler').get().asFile
+    outputs.dir(profilerDir)
+    onlyIf { !profilerDir.exists() || profilerDir.listFiles()?.length == 0 }
+
+    doLast {
+        def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+        def osArch = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
+        def isLinux = osName.contains('linux')
+        def isMac   = osName.contains('mac') || osName.contains('darwin')
+
+        if (!isLinux && !isMac) {
+            throw new GradleException(
+                "async-profiler is not supported on this OS: ${System.getProperty('os.name')}. " +
+                "Profiling is only supported on Linux and macOS.")
+        }
+
+        def isArm = osArch.contains('aarch64') || osArch.contains('arm')
+        def platformSuffix = isMac ? 'macos' : (isArm ? 'linux-arm64' : 'linux-x64')
+
+        def conn = new URL('https://api.github.com/repos/async-profiler/async-profiler/releases/latest')
+                .openConnection() as HttpURLConnection
+        conn.setRequestProperty('Accept', 'application/vnd.github+json')
+        conn.setRequestProperty('User-Agent', 'jlsm-gradle-build')
+        conn.connectTimeout = 10_000
+        conn.readTimeout    = 15_000
+
+        if (conn.responseCode in [403, 429]) {
+            def retryAfter = conn.getHeaderField('Retry-After') ?: 'unknown'
+            throw new GradleException(
+                "GitHub API rate-limited (HTTP ${conn.responseCode}, Retry-After: ${retryAfter}). " +
+                "Manually extract an async-profiler release to: ${profilerDir.absolutePath}")
+        }
+
+        def json  = new groovy.json.JsonSlurper().parse(conn.inputStream)
+        def asset = json.assets?.find { it.name ==~ /async-profiler-.*-${platformSuffix}\.tar\.gz/ }
+
+        if (asset == null) {
+            throw new GradleException(
+                "No asset found for '${platformSuffix}'. Available: ${json.assets?.collect { it.name }}")
+        }
+
+        logger.lifecycle("Downloading async-profiler ${json.tag_name} for ${platformSuffix}...")
+        def archive = new File(temporaryDir, asset.name as String)
+        archive.parentFile.mkdirs()
+        new URL(asset.browser_download_url as String).openStream().withCloseable { input ->
+            java.nio.file.Files.copy(input, archive.toPath(),
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+
+        profilerDir.mkdirs()
+        project.copy {
+            from tarTree(archive)
+            into profilerDir
+            eachFile { details ->
+                def parts = details.path.split('/', 2)
+                if (parts.length == 2) { details.path = parts[1] } else { details.exclude() }
+            }
+            includeEmptyDirs = false
+        }
+
+        logger.lifecycle("async-profiler extracted to ${profilerDir.absolutePath}")
+    }
+}

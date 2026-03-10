@@ -1,0 +1,14 @@
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    api project(':modules:jlsm-core')
+}
+
+test {
+    // Expose the unexported internal package to the unnamed test module
+    jvmArgs '--add-exports', 'jlsm.memtable/jlsm.memtable.internal=ALL-UNNAMED'
+    // Enable assertions so assert statements in implementation code are exercised
+    jvmArgs '-ea'
+}

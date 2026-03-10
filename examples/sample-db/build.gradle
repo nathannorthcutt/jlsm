@@ -1,0 +1,12 @@
+plugins {
+    id 'application'
+}
+
+dependencies {
+    implementation project(':modules:jlsm-core')
+}
+
+application {
+    mainModule = 'jlsm.example.db'
+    mainClass = 'jlsm.example.db.Main'
+}
