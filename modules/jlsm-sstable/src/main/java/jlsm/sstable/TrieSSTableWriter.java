@@ -48,6 +48,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
 
     // Bloom filter
     private BloomFilter bloomFilter;
+    private final BloomFilter.Factory bloomFactory;
 
     // Stats
     private long entryCount = 0L;
@@ -63,7 +64,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
     private State state = State.OPEN;
 
     /**
-     * Creates a new writer that will write to {@code outputPath}.
+     * Creates a new writer that will write to {@code outputPath} using a {@link BlockedBloomFilter}
+     * with 1% target false-positive rate.
      *
      * @param id         unique SSTable identifier
      * @param level      LSM level for this SSTable
@@ -71,11 +73,28 @@ public final class TrieSSTableWriter implements SSTableWriter {
      * @throws IOException if the file cannot be opened
      */
     public TrieSSTableWriter(long id, Level level, Path outputPath) throws IOException {
+        this(id, level, outputPath, n -> new BlockedBloomFilter(n, 0.01));
+    }
+
+    /**
+     * Creates a new writer that will write to {@code outputPath} using a custom bloom filter
+     * factory. The factory is invoked at {@link #finish()} time with the actual entry count.
+     *
+     * @param id          unique SSTable identifier
+     * @param level       LSM level for this SSTable
+     * @param outputPath  path to the output file; must not exist
+     * @param bloomFactory factory used to create the bloom filter; must not be null
+     * @throws IOException if the file cannot be opened
+     */
+    public TrieSSTableWriter(long id, Level level, Path outputPath,
+                              BloomFilter.Factory bloomFactory) throws IOException {
         Objects.requireNonNull(level, "level must not be null");
         Objects.requireNonNull(outputPath, "outputPath must not be null");
+        Objects.requireNonNull(bloomFactory, "bloomFactory must not be null");
         this.id = id;
         this.level = level;
         this.outputPath = outputPath;
+        this.bloomFactory = bloomFactory;
         this.channel = FileChannel.open(outputPath,
                 StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE,
@@ -158,7 +177,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
         flushCurrentBlock();
 
         // Build bloom filter
-        bloomFilter = new BlockedBloomFilter((int) Math.max(1, entryCount), 0.01);
+        bloomFilter = bloomFactory.create((int) Math.max(1, entryCount));
         for (MemorySegment key : indexKeys) {
             bloomFilter.add(key);
         }

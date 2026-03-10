@@ -34,11 +34,13 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
     private final BiFunction<Long, Level, Path> pathFn;
     private final long targetBottomFileSizeBytes;
     private final ArenaBufferPool bufferPool;
+    private final jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer;
 
     private SpookyCompactor(Builder builder) {
         this.idSupplier = builder.idSupplier;
         this.pathFn = builder.pathFn;
         this.targetBottomFileSizeBytes = builder.targetBottomFileSizeBytes;
+        this.bloomDeserializer = builder.bloomDeserializer;
         this.bufferPool = ArenaBufferPool.builder()
                 .poolSize(builder.poolSize)
                 .bufferSize(builder.poolBufferSizeBytes)
@@ -140,7 +142,7 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         List<TrieSSTableReader> readers = new ArrayList<>(sources.size());
         try {
             for (SSTableMetadata meta : sources) {
-                readers.add(TrieSSTableReader.open(meta.path(), BlockedBloomFilter.deserializer()));
+                readers.add(TrieSSTableReader.open(meta.path(), bloomDeserializer));
             }
 
             // Build merge iterator
@@ -244,6 +246,8 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         private int poolSize = 4;
         private long poolBufferSizeBytes = 1024 * 1024L;
         private long acquireTimeoutMillis = 30_000L;
+        private jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer =
+                BlockedBloomFilter.deserializer();
 
         public Builder idSupplier(LongSupplier idSupplier) {
             Objects.requireNonNull(idSupplier, "idSupplier must not be null");
@@ -278,6 +282,17 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         public Builder acquireTimeoutMillis(long millis) {
             if (millis <= 0) throw new IllegalArgumentException("acquireTimeoutMillis must be > 0");
             this.acquireTimeoutMillis = millis;
+            return this;
+        }
+
+        /**
+         * Overrides the {@link jlsm.core.bloom.BloomFilter.Deserializer} used to open source
+         * SSTables during compaction. Defaults to {@code BlockedBloomFilter.deserializer()}.
+         * Must match the deserializer used when those SSTables were originally written.
+         */
+        public Builder bloomDeserializer(jlsm.core.bloom.BloomFilter.Deserializer deserializer) {
+            this.bloomDeserializer = Objects.requireNonNull(deserializer,
+                    "bloomDeserializer must not be null");
             return this;
         }
 

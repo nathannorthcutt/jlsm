@@ -59,6 +59,21 @@ public interface BloomFilter {
     MemorySegment serialize();
 
     /**
+     * Factory for constructing a new {@link BloomFilter} sized for an expected number of elements.
+     */
+    @FunctionalInterface
+    interface Factory {
+
+        /**
+         * Creates a new, empty {@link BloomFilter} sized for {@code expectedElements} insertions.
+         *
+         * @param expectedElements the anticipated number of keys that will be added; must be &gt; 0
+         * @return a freshly constructed, empty filter; never null
+         */
+        BloomFilter create(int expectedElements);
+    }
+
+    /**
      * Factory for reconstructing a {@link BloomFilter} from bytes previously produced by
      * {@link BloomFilter#serialize}.
      */

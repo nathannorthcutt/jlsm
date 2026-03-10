@@ -327,6 +327,7 @@ public final class StandardLsmTree implements LsmTree {
         private boolean recoverFromWal = true;
         private List<SSTableReader> existingSSTables = List.of();
         private Compactor compactor;
+        private jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer;
 
         public Builder wal(WriteAheadLog wal) {
             this.wal = Objects.requireNonNull(wal, "wal must not be null");
@@ -386,6 +387,18 @@ public final class StandardLsmTree implements LsmTree {
             return this;
         }
 
+        /**
+         * Overrides the bloom-filter deserializer passed to the default {@link SpookyCompactor}
+         * when no explicit {@link #compactor} is set. Must match the filter used when writing the
+         * SSTables this tree will compact. If not set, defaults to
+         * {@code BlockedBloomFilter.deserializer()}.
+         */
+        public Builder bloomDeserializer(jlsm.core.bloom.BloomFilter.Deserializer deserializer) {
+            this.bloomDeserializer = Objects.requireNonNull(deserializer,
+                    "bloomDeserializer must not be null");
+            return this;
+        }
+
         public StandardLsmTree build() throws IOException {
             Objects.requireNonNull(wal, "wal must not be null");
             Objects.requireNonNull(memTableFactory, "memTableFactory must not be null");
@@ -395,10 +408,13 @@ public final class StandardLsmTree implements LsmTree {
             Objects.requireNonNull(pathFn, "pathFn must not be null");
 
             if (compactor == null) {
-                compactor = SpookyCompactor.builder()
+                SpookyCompactor.Builder compactorBuilder = SpookyCompactor.builder()
                         .idSupplier(idSupplier)
-                        .pathFn(pathFn)
-                        .build();
+                        .pathFn(pathFn);
+                if (bloomDeserializer != null) {
+                    compactorBuilder.bloomDeserializer(bloomDeserializer);
+                }
+                compactor = compactorBuilder.build();
             }
 
             MemTable initialMemTable = memTableFactory.get();
