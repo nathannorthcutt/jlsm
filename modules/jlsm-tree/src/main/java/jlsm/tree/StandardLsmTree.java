@@ -1,9 +1,13 @@
 package jlsm.tree;
 
+import jlsm.compaction.SpookyCompactor;
+import jlsm.core.compaction.CompactionTask;
+import jlsm.core.compaction.Compactor;
 import jlsm.core.memtable.MemTable;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
+import jlsm.core.sstable.SSTableMetadata;
 import jlsm.core.sstable.SSTableReader;
 import jlsm.core.tree.LsmTree;
 import jlsm.core.wal.WriteAheadLog;
@@ -13,10 +17,12 @@ import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
@@ -49,6 +55,7 @@ public final class StandardLsmTree implements LsmTree {
     private final LongSupplier idSupplier;
     private final BiFunction<Long, Level, Path> pathFn;
     private final long flushThresholdBytes;
+    private final Compactor compactor;
 
     /** The MemTable currently accepting writes. Rotated under {@link #writeLock}. */
     private volatile MemTable activeMemTable;
@@ -71,6 +78,7 @@ public final class StandardLsmTree implements LsmTree {
         this.idSupplier = builder.idSupplier;
         this.pathFn = builder.pathFn;
         this.flushThresholdBytes = builder.flushThresholdBytes;
+        this.compactor = builder.compactor;
         this.activeMemTable = initialMemTable;
         this.sstableReaders = existingReaders;
     }
@@ -115,6 +123,54 @@ public final class StandardLsmTree implements LsmTree {
     private void maybeFlush() throws IOException {
         if (activeMemTable.approximateSizeBytes() >= flushThresholdBytes) {
             flush();
+            maybeCompact();
+        }
+    }
+
+    /** Runs one round of compaction if the compactor selects a task. Must hold {@link #writeLock}. */
+    private void maybeCompact() throws IOException {
+        List<List<SSTableMetadata>> levelMetadata = buildLevelMetadata();
+        Optional<CompactionTask> task = compactor.selectCompaction(levelMetadata);
+        if (task.isPresent()) {
+            List<SSTableMetadata> outputs = compactor.compact(task.get());
+            applyCompactionResult(task.get(), outputs);
+        }
+    }
+
+    private List<List<SSTableMetadata>> buildLevelMetadata() {
+        int maxLevel = 0;
+        for (SSTableReader reader : sstableReaders) {
+            maxLevel = Math.max(maxLevel, reader.metadata().level().index());
+        }
+        List<List<SSTableMetadata>> result = new ArrayList<>();
+        for (int i = 0; i <= maxLevel; i++) {
+            result.add(new ArrayList<>());
+        }
+        for (SSTableReader reader : sstableReaders) {
+            result.get(reader.metadata().level().index()).add(reader.metadata());
+        }
+        return result;
+    }
+
+    private void applyCompactionResult(CompactionTask task, List<SSTableMetadata> outputs)
+            throws IOException {
+        Set<Long> sourceIds = new HashSet<>();
+        for (SSTableMetadata m : task.sourceSSTables()) {
+            sourceIds.add(m.id());
+        }
+        List<SSTableReader> toClose = new ArrayList<>();
+        sstableReaders.removeIf(r -> {
+            if (sourceIds.contains(r.metadata().id())) {
+                toClose.add(r);
+                return true;
+            }
+            return false;
+        });
+        for (SSTableMetadata out : outputs) {
+            sstableReaders.add(readerFactory.open(out.path()));
+        }
+        for (SSTableReader r : toClose) {
+            try { r.close(); } catch (IOException ignored) {}
         }
     }
 
@@ -241,6 +297,10 @@ public final class StandardLsmTree implements LsmTree {
             }
         }
 
+        if (compactor instanceof AutoCloseable ac) {
+            try { ac.close(); } catch (Exception ignored) {}
+        }
+
         if (deferred != null) throw deferred;
     }
 
@@ -266,6 +326,7 @@ public final class StandardLsmTree implements LsmTree {
         private long flushThresholdBytes = DEFAULT_FLUSH_THRESHOLD;
         private boolean recoverFromWal = true;
         private List<SSTableReader> existingSSTables = List.of();
+        private Compactor compactor;
 
         public Builder wal(WriteAheadLog wal) {
             this.wal = Objects.requireNonNull(wal, "wal must not be null");
@@ -320,6 +381,11 @@ public final class StandardLsmTree implements LsmTree {
             return this;
         }
 
+        public Builder compactor(Compactor compactor) {
+            this.compactor = Objects.requireNonNull(compactor, "compactor must not be null");
+            return this;
+        }
+
         public StandardLsmTree build() throws IOException {
             Objects.requireNonNull(wal, "wal must not be null");
             Objects.requireNonNull(memTableFactory, "memTableFactory must not be null");
@@ -327,6 +393,13 @@ public final class StandardLsmTree implements LsmTree {
             Objects.requireNonNull(readerFactory, "readerFactory must not be null");
             Objects.requireNonNull(idSupplier, "idSupplier must not be null");
             Objects.requireNonNull(pathFn, "pathFn must not be null");
+
+            if (compactor == null) {
+                compactor = SpookyCompactor.builder()
+                        .idSupplier(idSupplier)
+                        .pathFn(pathFn)
+                        .build();
+            }
 
             MemTable initialMemTable = memTableFactory.get();
 

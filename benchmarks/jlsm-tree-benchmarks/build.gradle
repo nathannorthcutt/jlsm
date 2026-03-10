@@ -12,12 +12,7 @@ dependencies {
 }
 
 jmh {
-    jmhVersion     = '1.37'
-    fork           = 2
-    warmupIterations = 3
-    iterations     = 5
-    timeOnIteration = '1s'
-    warmup          = '1s'
+    jmhVersion = '1.37'
 }
 
 // ── async-profiler integration ─────────────────────────────────────────────

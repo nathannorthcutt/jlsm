@@ -28,13 +28,15 @@ The canonical LSM-Tree pipeline — **write path**: WAL → MemTable → flush t
 ### Expected Module Structure
 
 ```
-jlsm-core/          # Interfaces: Memtable, SSTable, Compaction, WAL, etc. and shared utilities
+jlsm-core/          # Interfaces: MemTable, SSTable, Compaction, WAL, Bloom, Cache, LsmTree, etc. and shared utilities
 jlsm-memtable/      # MemTable implementations (e.g., ConcurrentSkipListMap-backed)
-jlsm-sstable/       # SSTable read/write, block encoding, index structures
-jlsm-wal/           # Write-ahead log implementation
-jlsm-bloom/         # Bloom filter and other probabilistic filters
-jlsm-compaction/    # Compaction strategies (size-tiered, leveled)
-jlsm-cache/         # Block cache implementations
+jlsm-sstable/       # SSTable read/write, block encoding, trie key index
+jlsm-wal/           # Write-ahead log implementations (local mmap, remote single-file-per-record)
+jlsm-bloom/         # Bloom filter implementations (e.g., BlockedBloomFilter with MurmurHash3)
+jlsm-compaction/    # Compaction strategies (size-tiered, leveled, spooky)
+jlsm-cache/         # Block cache implementations (e.g., LRU)
+jlsm-tree/          # High-level LSM tree (StandardLsmTree, TypedLsmTree) wiring all components
+jlsm-indexing/      # (planned) Higher-level index structures built on LSM tree components (e.g., vector, inverted index)
 ```
 
 Each submodule directory contains its own `build.gradle` and `src/main/java/module-info.java`.

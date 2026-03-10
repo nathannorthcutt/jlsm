@@ -1,5 +1,6 @@
 package jlsm.tree;
 
+import jlsm.core.compaction.Compactor;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.memtable.MemTable;
 import jlsm.core.model.Entry;
@@ -147,6 +148,12 @@ public final class TypedStandardLsmTree {
         @SuppressWarnings("unchecked")
         public B existingSSTables(List<SSTableReader> readers) {
             delegateBuilder.existingSSTables(readers);
+            return (B) this;
+        }
+
+        @SuppressWarnings("unchecked")
+        public B compactor(Compactor compactor) {
+            delegateBuilder.compactor(compactor);
             return (B) this;
         }
     }

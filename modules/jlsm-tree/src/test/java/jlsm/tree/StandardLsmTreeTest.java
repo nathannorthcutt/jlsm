@@ -290,4 +290,24 @@ class StandardLsmTreeTest {
                         .idSupplier(idCounter::getAndIncrement)
                         .build());
     }
+
+    @Test
+    void compactionRunsAfterFlushAndAllKeysRemainReadable() throws IOException {
+        // Use a tiny flush threshold so every write triggers a flush and then compaction.
+        // Write enough entries to produce multiple L0 files, which the SpookyCompactor will
+        // bootstrap-compact into L1. After all writes, verify every key is still readable.
+        try (StandardLsmTree tree = openTree(1L)) {
+            int keyCount = 20;
+            for (int i = 0; i < keyCount; i++) {
+                tree.put(seg("key-" + i), seg("val-" + i));
+            }
+
+            for (int i = 0; i < keyCount; i++) {
+                Optional<MemorySegment> result = tree.get(seg("key-" + i));
+                assertTrue(result.isPresent(), "key-" + i + " should be readable after compaction");
+                assertEquals("val-" + i, str(result.get()),
+                        "key-" + i + " should have correct value after compaction");
+            }
+        }
+    }
 }
