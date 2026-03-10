@@ -17,7 +17,8 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
@@ -46,8 +47,8 @@ public final class TrieSSTableReader implements SSTableReader {
     // Eager mode: all data bytes pre-loaded; lazy mode: null
     private final byte[] eagerData;
 
-    // Lazy mode: open file channel; eager mode: null
-    private final FileChannel lazyChannel;
+    // Lazy mode: open channel; eager mode: null
+    private final SeekableByteChannel lazyChannel;
 
     // Optional block cache; null means no caching
     private final BlockCache blockCache;
@@ -55,7 +56,7 @@ public final class TrieSSTableReader implements SSTableReader {
     private volatile boolean closed = false;
 
     private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
-                               long dataEnd, byte[] eagerData, FileChannel lazyChannel,
+                               long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel,
                                BlockCache blockCache) {
         this.metadata = metadata;
         this.keyIndex = keyIndex;
@@ -78,7 +79,7 @@ public final class TrieSSTableReader implements SSTableReader {
         Objects.requireNonNull(path, "path must not be null");
         Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
 
-        FileChannel ch = FileChannel.open(path, StandardOpenOption.READ);
+        SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.READ);
         try {
             long fileSize = ch.size();
             Footer footer = readFooter(ch, fileSize);
@@ -109,7 +110,7 @@ public final class TrieSSTableReader implements SSTableReader {
         Objects.requireNonNull(path, "path must not be null");
         Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
 
-        FileChannel ch = FileChannel.open(path, StandardOpenOption.READ);
+        SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.READ);
         try {
             long fileSize = ch.size();
             Footer footer = readFooter(ch, fileSize);
@@ -219,7 +220,7 @@ public final class TrieSSTableReader implements SSTableReader {
     private record Footer(long idxOffset, long idxLength, long fltOffset, long fltLength,
                            long entryCount) {}
 
-    private static Footer readFooter(FileChannel ch, long fileSize) throws IOException {
+    private static Footer readFooter(SeekableByteChannel ch, long fileSize) throws IOException {
         if (fileSize < SSTableFormat.FOOTER_SIZE) {
             throw new IOException("not a valid SSTable file: too small");
         }
@@ -236,7 +237,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return new Footer(idxOffset, idxLength, fltOffset, fltLength, entryCount);
     }
 
-    private static KeyIndex readKeyIndex(FileChannel ch, Footer footer) throws IOException {
+    private static KeyIndex readKeyIndex(SeekableByteChannel ch, Footer footer) throws IOException {
         byte[] buf = readBytes(ch, footer.idxOffset, (int) footer.idxLength);
         int numKeys = readInt(buf, 0);
         List<MemorySegment> keys = new ArrayList<>(numKeys);
@@ -256,7 +257,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return new KeyIndex(keys, offsets);
     }
 
-    private static BloomFilter readBloomFilter(FileChannel ch, Footer footer,
+    private static BloomFilter readBloomFilter(SeekableByteChannel ch, Footer footer,
                                                 BloomFilter.Deserializer deserializer)
             throws IOException {
         byte[] buf = readBytes(ch, footer.fltOffset, (int) footer.fltLength);
@@ -284,11 +285,12 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Low-level I/O ----
 
-    private static byte[] readBytes(FileChannel ch, long offset, int length) throws IOException {
+    private static byte[] readBytes(SeekableByteChannel ch, long offset, int length) throws IOException {
         if (length == 0) return new byte[0];
         ByteBuffer buf = ByteBuffer.allocate(length);
+        ch.position(offset);
         while (buf.hasRemaining()) {
-            int read = ch.read(buf, offset + buf.position());
+            int read = ch.read(buf);
             if (read < 0) throw new IOException("unexpected EOF at offset " + (offset + buf.position()));
         }
         return buf.array();

@@ -1,0 +1,27 @@
+plugins { id 'java-library' }
+
+dependencies {
+    testImplementation project(':modules:jlsm-core')
+    testImplementation project(':modules:jlsm-bloom')
+    testImplementation project(':modules:jlsm-wal')
+    testImplementation project(':modules:jlsm-memtable')
+    testImplementation project(':modules:jlsm-sstable')
+    testImplementation project(':modules:jlsm-compaction')
+    testImplementation project(':modules:jlsm-cache')
+    testImplementation project(':modules:jlsm-tree')
+    testImplementation project(':modules:jlsm-vector')
+
+    testImplementation 'com.adobe.testing:s3mock:4.11.0'
+    testImplementation 'software.amazon.nio.s3:aws-java-nio-spi-for-s3:2.0.4'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
+    // AWS SDK v2 (used to create the test bucket and configure the S3 client)
+    testImplementation 'software.amazon.awssdk:s3:2.25.0'
+    testImplementation 'software.amazon.awssdk:url-connection-client:2.25.0'
+}
+
+test {
+    useJUnitPlatform()
+    jvmArgs '-ea'
+    systemProperty 'aws.region', 'us-east-1'
+    jvmArgs '--add-modules', 'jdk.incubator.vector'
+}
