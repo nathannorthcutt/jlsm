@@ -12,3 +12,18 @@ test {
     // Enable assertions so assert statements in implementation code are exercised
     jvmArgs '-ea'
 }
+
+eclipse {
+    classpath {
+        file {
+            whenMerged { cp ->
+                cp.entries.findAll {
+                    it instanceof org.gradle.plugins.ide.eclipse.model.SourceFolder &&
+                    it.path.startsWith('src/test')
+                }.each {
+                    it.entryAttributes['add.exports'] = 'jlsm.memtable/jlsm.memtable.internal=ALL-UNNAMED'
+                }
+            }
+        }
+    }
+}

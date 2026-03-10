@@ -13,3 +13,23 @@ dependencies {
 test {
     jvmArgs '-ea'
 }
+
+eclipse {
+    classpath {
+        file {
+            whenMerged { cp ->
+                cp.entries.findAll {
+                    it instanceof org.gradle.plugins.ide.eclipse.model.SourceFolder &&
+                    it.path.startsWith('src/test')
+                }.each {
+                    it.entryAttributes['add.exports'] =
+                        'jlsm.bloom/jlsm.bloom.blocked=ALL-UNNAMED' +
+                        ':jlsm.memtable/jlsm.memtable=ALL-UNNAMED' +
+                        ':jlsm.sstable/jlsm.sstable=ALL-UNNAMED' +
+                        ':jlsm.tree/jlsm.tree=ALL-UNNAMED' +
+                        ':jlsm.wal/jlsm.wal.local=ALL-UNNAMED'
+                }
+            }
+        }
+    }
+}

@@ -35,18 +35,6 @@ subprojects {
             )
         }
 
-        eclipse {
-            classpath {
-                file {
-                    whenMerged { cp ->
-                        cp.entries
-                            .findAll { it instanceof org.gradle.plugins.ide.eclipse.model.SourceFolder
-                                       && it.path.startsWith('src/test') }
-                            .each { it.entryAttributes['module'] = 'true' }
-                    }
-                }
-            }
-        }
     }
 }
 

@@ -25,3 +25,32 @@ test {
     systemProperty 'aws.region', 'us-east-1'
     jvmArgs '--add-modules', 'jdk.incubator.vector'
 }
+
+eclipse {
+    classpath {
+        file {
+            whenMerged { cp ->
+                cp.entries.findAll {
+                    it instanceof org.gradle.plugins.ide.eclipse.model.SourceFolder &&
+                    it.path.startsWith('src/test')
+                }.each {
+                    it.entryAttributes['add.exports'] =
+                        'jlsm.bloom/jlsm.bloom=ALL-UNNAMED' +
+                        ':jlsm.compaction/jlsm.compaction=ALL-UNNAMED' +
+                        ':jlsm.core/jlsm.core.compaction=ALL-UNNAMED' +
+                        ':jlsm.core/jlsm.core.indexing=ALL-UNNAMED' +
+                        ':jlsm.core/jlsm.core.io=ALL-UNNAMED' +
+                        ':jlsm.core/jlsm.core.model=ALL-UNNAMED' +
+                        ':jlsm.core/jlsm.core.sstable=ALL-UNNAMED' +
+                        ':jlsm.core/jlsm.core.tree=ALL-UNNAMED' +
+                        ':jlsm.memtable/jlsm.memtable=ALL-UNNAMED' +
+                        ':jlsm.sstable/jlsm.sstable=ALL-UNNAMED' +
+                        ':jlsm.tree/jlsm.tree=ALL-UNNAMED' +
+                        ':jlsm.vector/jlsm.vector=ALL-UNNAMED' +
+                        ':jlsm.wal/jlsm.wal.remote=ALL-UNNAMED'
+                    it.entryAttributes['add.modules'] = 'jdk.incubator.vector'
+                }
+            }
+        }
+    }
+}
