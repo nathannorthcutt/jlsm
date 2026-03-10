@@ -17,6 +17,7 @@ subprojects {
                 languageVersion = JavaLanguageVersion.of(25)
                 vendor = JvmVendorSpec.AMAZON
             }
+            modularity.inferModulePath = true
         }
 
         testing {
