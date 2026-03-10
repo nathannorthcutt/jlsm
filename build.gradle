@@ -27,6 +27,13 @@ subprojects {
                 }
             }
         }
+
+        tasks.withType(org.gradle.plugins.ide.eclipse.GenerateEclipseClasspath).configureEach {
+            inputs.files(
+                configurations.compileClasspath,
+                configurations.testCompileClasspath
+            )
+        }
     }
 }
 
