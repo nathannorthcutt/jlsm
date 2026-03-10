@@ -4,8 +4,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
@@ -76,14 +76,11 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
                 int n = WalRecord.encode(stamped, buf);
                 Path target = directory.resolve(SegmentFile.toFileName(seq));
 
-                try (FileChannel fc = FileChannel.open(target,
+                try (SeekableByteChannel ch = Files.newByteChannel(target,
                         StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
                     ByteBuffer bb = buf.asByteBuffer().limit(n);
-                    int written = 0;
-                    while (written < n) {
-                        written += fc.write(bb, written);
-                    }
-                    fc.force(false);
+                    while (bb.hasRemaining()) { ch.write(bb); }
+                    if (ch instanceof java.nio.channels.FileChannel fc) fc.force(false);
                 }
                 return new SequenceNumber(seq);
             } finally {
@@ -177,13 +174,14 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
                 long fileSize = java.nio.file.Files.size(path);
                 if (fileSize == 0) return null;
 
-                try (FileChannel fc = FileChannel.open(path, StandardOpenOption.READ)) {
-                    // Use mmap for the read (file is small — one record)
-                    long mapSize = Math.min(fileSize, readBufferSize);
-                    MappedByteBuffer mbb = fc.map(FileChannel.MapMode.READ_ONLY, 0, mapSize);
-                    MemorySegment seg = MemorySegment.ofBuffer(mbb);
+                try (SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.READ)) {
+                    long readSize = Math.min(fileSize, readBufferSize);
+                    ByteBuffer bb = ByteBuffer.allocate((int) readSize);
+                    while (bb.hasRemaining()) { if (ch.read(bb) < 0) break; }
+                    bb.flip();
+                    MemorySegment seg = MemorySegment.ofBuffer(bb);
                     try {
-                        return WalRecord.decode(seg, 0, mapSize);
+                        return WalRecord.decode(seg, 0, bb.limit());
                     } catch (IOException e) {
                         // Partial or corrupt record — skip silently
                         return null;

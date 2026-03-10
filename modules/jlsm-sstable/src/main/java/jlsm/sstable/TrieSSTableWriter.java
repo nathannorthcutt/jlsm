@@ -16,6 +16,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -36,7 +37,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
     private final long id;
     private final Level level;
     private final Path outputPath;
-    private final FileChannel channel;
+    private final SeekableByteChannel channel;
 
     // Data block accumulation
     private DataBlock currentBlock = new DataBlock();
@@ -95,10 +96,9 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.level = level;
         this.outputPath = outputPath;
         this.bloomFactory = bloomFactory;
-        this.channel = FileChannel.open(outputPath,
+        this.channel = Files.newByteChannel(outputPath,
                 StandardOpenOption.CREATE_NEW,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.READ);
+                StandardOpenOption.WRITE);
     }
 
     @Override
@@ -159,7 +159,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
     private void writeBytes(byte[] bytes) throws IOException {
         ByteBuffer buf = ByteBuffer.wrap(bytes);
         while (buf.hasRemaining()) {
-            channel.write(buf, writePosition + buf.position());
+            channel.write(buf);
         }
         writePosition += bytes.length;
     }
@@ -197,8 +197,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
         // Write footer
         writeFooter(indexOffset, indexLength, filterOffset, filterLength);
 
-        // fsync
-        channel.force(true);
+        // fsync if supported (e.g., local FileChannel; skipped for object-storage channels)
+        if (channel instanceof FileChannel fc) fc.force(true);
 
         long sizeBytes = writePosition;
 
