@@ -8,4 +8,5 @@ module jlsm.core {
     exports jlsm.core.cache;
     exports jlsm.core.io;
     exports jlsm.core.tree;
+    exports jlsm.core.indexing;
 }
