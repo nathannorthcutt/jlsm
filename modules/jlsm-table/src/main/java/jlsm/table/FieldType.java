@@ -43,6 +43,22 @@ public sealed interface FieldType
             Objects.requireNonNull(fields, "fields must not be null");
             fields = List.copyOf(fields);
         }
+
+        /**
+         * Creates a {@link JlsmSchema} from this ObjectType's field definitions.
+         *
+         * @param name    the schema name; must not be null
+         * @param version the schema version
+         * @return a new JlsmSchema with this ObjectType's fields
+         */
+        public JlsmSchema toSchema(String name, int version) {
+            Objects.requireNonNull(name, "name must not be null");
+            JlsmSchema.Builder builder = JlsmSchema.builder(name, version);
+            for (FieldDefinition fd : fields) {
+                builder.field(fd.name(), fd.type());
+            }
+            return builder.build();
+        }
     }
 
     // --- Static factory shortcuts ---
