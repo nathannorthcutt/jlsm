@@ -10,18 +10,20 @@ import java.util.Optional;
  * An in-memory write buffer that accumulates recent mutations before they are flushed to an
  * immutable SSTable on disk.
  *
- * <p><b>Pipeline position</b>: Sits between the WAL (which provides durability) and the SSTable
- * layer (which provides sorted, persistent storage). Reads consult the MemTable first, before
- * falling through to SSTable levels, so the MemTable always reflects the most recent state.
+ * <p>
+ * <b>Pipeline position</b>: Sits between the WAL (which provides durability) and the SSTable layer
+ * (which provides sorted, persistent storage). Reads consult the MemTable first, before falling
+ * through to SSTable levels, so the MemTable always reflects the most recent state.
  *
- * <p><b>Key contracts</b>:
+ * <p>
+ * <b>Key contracts</b>:
  * <ul>
- *   <li>Entries are stored and returned in ascending key order for scan operations.</li>
- *   <li>If multiple {@link Entry} values exist for the same key, the one with the highest
- *       {@link jlsm.core.model.SequenceNumber} is authoritative for point lookups.</li>
- *   <li>The threading model is left to implementations; callers should consult implementation
- *       documentation for concurrency guarantees.</li>
- *   <li>No checked exceptions are thrown; this is a pure in-memory structure.</li>
+ * <li>Entries are stored and returned in ascending key order for scan operations.</li>
+ * <li>If multiple {@link Entry} values exist for the same key, the one with the highest
+ * {@link jlsm.core.model.SequenceNumber} is authoritative for point lookups.</li>
+ * <li>The threading model is left to implementations; callers should consult implementation
+ * documentation for concurrency guarantees.</li>
+ * <li>No checked exceptions are thrown; this is a pure in-memory structure.</li>
  * </ul>
  */
 public interface MemTable {
@@ -57,8 +59,8 @@ public interface MemTable {
      * {@code [fromKey, toKey)}, in ascending key order.
      *
      * @param fromKey the inclusive lower bound; must not be null
-     * @param toKey   the exclusive upper bound; must not be null; must be greater than
-     *                {@code fromKey}
+     * @param toKey the exclusive upper bound; must not be null; must be greater than
+     *            {@code fromKey}
      * @return a non-null iterator over matching entries; may be empty
      */
     Iterator<Entry> scan(MemorySegment fromKey, MemorySegment toKey);

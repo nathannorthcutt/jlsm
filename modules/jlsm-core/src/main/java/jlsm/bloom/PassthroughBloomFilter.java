@@ -10,18 +10,21 @@ import java.lang.foreign.MemorySegment;
  * IVF range-scan tables in a vector index, where every SSTable is scanned sequentially by prefix
  * rather than probed by key.
  *
- * <p>Because this filter never produces false negatives and never allocates bit storage, it has
- * zero memory overhead and constant-time operations.
+ * <p>
+ * Because this filter never produces false negatives and never allocates bit storage, it has zero
+ * memory overhead and constant-time operations.
  *
- * <p>The serialized form is a single marker byte {@code [0x00]}. The corresponding
+ * <p>
+ * The serialized form is a single marker byte {@code [0x00]}. The corresponding
  * {@link #deserializer()} reconstructs the singleton instance from any input.
  */
 public final class PassthroughBloomFilter implements BloomFilter {
 
     private static final PassthroughBloomFilter INSTANCE = new PassthroughBloomFilter();
-    private static final MemorySegment SERIALIZED = MemorySegment.ofArray(new byte[]{0x00});
+    private static final MemorySegment SERIALIZED = MemorySegment.ofArray(new byte[]{ 0x00 });
 
-    private PassthroughBloomFilter() {}
+    private PassthroughBloomFilter() {
+    }
 
     /** Returns a {@link BloomFilter.Factory} that always returns this singleton. */
     public static BloomFilter.Factory factory() {

@@ -24,7 +24,8 @@ import jlsm.sstable.TrieSSTableWriter;
 /**
  * SPOOKY compaction strategy (Dayan et al., VLDB 2022).
  *
- * <p>Merges one group of perfectly overlapping files at a time, using the bottom level's file
+ * <p>
+ * Merges one group of perfectly overlapping files at a time, using the bottom level's file
  * boundaries to define groups across all levels. Achieves ~2x lower space amplification than Full
  * Merge and ~2x lower write amplification than Partial Merge simultaneously.
  */
@@ -41,11 +42,9 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         this.pathFn = builder.pathFn;
         this.targetBottomFileSizeBytes = builder.targetBottomFileSizeBytes;
         this.bloomDeserializer = builder.bloomDeserializer;
-        this.bufferPool = ArenaBufferPool.builder()
-                .poolSize(builder.poolSize)
+        this.bufferPool = ArenaBufferPool.builder().poolSize(builder.poolSize)
                 .bufferSize(builder.poolBufferSizeBytes)
-                .acquireTimeoutMillis(builder.acquireTimeoutMillis)
-                .build();
+                .acquireTimeoutMillis(builder.acquireTimeoutMillis).build();
     }
 
     // -------------------------------------------------------------------------
@@ -65,7 +64,8 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
             }
         }
 
-        if (bottomLevelIdx < 0) return Optional.empty();
+        if (bottomLevelIdx < 0)
+            return Optional.empty();
 
         Level bottomLevel = new Level(bottomLevelIdx);
 
@@ -105,7 +105,8 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
             }
         }
 
-        if (bestGroup == null) return Optional.empty();
+        if (bestGroup == null)
+            return Optional.empty();
 
         // sourceLevel = lowest level index among group files
         int minLevelIdx = Integer.MAX_VALUE;
@@ -156,7 +157,10 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
 
         } finally {
             for (TrieSSTableReader r : readers) {
-                try { r.close(); } catch (IOException ignored) {}
+                try {
+                    r.close();
+                } catch (IOException ignored) {
+                }
             }
         }
     }
@@ -213,7 +217,10 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
 
         } catch (IOException | RuntimeException e) {
             if (writer != null) {
-                try { writer.close(); } catch (IOException ignored) {}
+                try {
+                    writer.close();
+                } catch (IOException ignored) {
+                }
                 writer = null;
             }
             throw (e instanceof IOException ioe) ? ioe : new IOException("merge failed", e);
@@ -246,8 +253,8 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         private int poolSize = 4;
         private long poolBufferSizeBytes = 1024 * 1024L;
         private long acquireTimeoutMillis = 30_000L;
-        private jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer =
-                BlockedBloomFilter.deserializer();
+        private jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer = BlockedBloomFilter
+                .deserializer();
 
         public Builder idSupplier(LongSupplier idSupplier) {
             Objects.requireNonNull(idSupplier, "idSupplier must not be null");
@@ -262,33 +269,37 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         }
 
         public Builder targetBottomFileSizeBytes(long bytes) {
-            if (bytes < 1) throw new IllegalArgumentException("targetBottomFileSizeBytes must be >= 1");
+            if (bytes < 1)
+                throw new IllegalArgumentException("targetBottomFileSizeBytes must be >= 1");
             this.targetBottomFileSizeBytes = bytes;
             return this;
         }
 
         public Builder poolSize(int poolSize) {
-            if (poolSize < 1) throw new IllegalArgumentException("poolSize must be >= 1");
+            if (poolSize < 1)
+                throw new IllegalArgumentException("poolSize must be >= 1");
             this.poolSize = poolSize;
             return this;
         }
 
         public Builder poolBufferSizeBytes(long bytes) {
-            if (bytes < 1) throw new IllegalArgumentException("poolBufferSizeBytes must be >= 1");
+            if (bytes < 1)
+                throw new IllegalArgumentException("poolBufferSizeBytes must be >= 1");
             this.poolBufferSizeBytes = bytes;
             return this;
         }
 
         public Builder acquireTimeoutMillis(long millis) {
-            if (millis <= 0) throw new IllegalArgumentException("acquireTimeoutMillis must be > 0");
+            if (millis <= 0)
+                throw new IllegalArgumentException("acquireTimeoutMillis must be > 0");
             this.acquireTimeoutMillis = millis;
             return this;
         }
 
         /**
          * Overrides the {@link jlsm.core.bloom.BloomFilter.Deserializer} used to open source
-         * SSTables during compaction. Defaults to {@code BlockedBloomFilter.deserializer()}.
-         * Must match the deserializer used when those SSTables were originally written.
+         * SSTables during compaction. Defaults to {@code BlockedBloomFilter.deserializer()}. Must
+         * match the deserializer used when those SSTables were originally written.
          */
         public Builder bloomDeserializer(jlsm.core.bloom.BloomFilter.Deserializer deserializer) {
             this.bloomDeserializer = Objects.requireNonNull(deserializer,
@@ -297,8 +308,10 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         }
 
         public SpookyCompactor build() {
-            if (idSupplier == null) throw new IllegalStateException("idSupplier must be configured");
-            if (pathFn == null) throw new IllegalStateException("pathFn must be configured");
+            if (idSupplier == null)
+                throw new IllegalStateException("idSupplier must be configured");
+            if (pathFn == null)
+                throw new IllegalStateException("pathFn must be configured");
             return new SpookyCompactor(this);
         }
     }

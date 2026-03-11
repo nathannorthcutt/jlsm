@@ -24,10 +24,6 @@ class TrieSSTableWriterTest {
         return new Entry.Put(seg(key), seg(value), new SequenceNumber(seq));
     }
 
-    private static Entry.Delete del(String key, long seq) {
-        return new Entry.Delete(seg(key), new SequenceNumber(seq));
-    }
-
     @Test
     void initialEntryCountIsZero(@TempDir Path dir) throws IOException {
         Path out = dir.resolve("test.sst");
@@ -152,5 +148,62 @@ class TrieSSTableWriterTest {
         w.close();
         assertTrue(Files.exists(out));
         assertTrue(Files.size(out) > 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // close() suppressed-exception / partial file cleanup (Violation 4)
+    // These tests verify the shouldDelete branch in close(): a writer in OPEN
+    // state (finish() never called) must delete its partial output file on close().
+    // They complement the existing closeWithoutFinishDeletesFile test.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Verifies that a writer closed without any appends (empty, OPEN state) also deletes its
+     * partial output file. The output file is created in the constructor; even if no data was
+     * written, the partial file must be removed on close() to avoid leaving orphaned zero-byte
+     * files.
+     */
+    @Test
+    void closeWithNoAppendsDeletesPartialFile(@TempDir Path dir) throws IOException {
+        Path out = dir.resolve("empty_close.sst");
+        TrieSSTableWriter w = new TrieSSTableWriter(2L, Level.L0, out);
+        // No appends; close without finish
+        w.close();
+        assertFalse(Files.exists(out),
+                "output file must be deleted on close() when no entries were appended and finish() was never called");
+    }
+
+    /**
+     * Verifies that close() is idempotent: calling it a second time after the first close() must
+     * not throw an exception. This exercises the state machine guard (state == CLOSED early return)
+     * and also confirms the shouldDelete logic is not re-executed.
+     */
+    @Test
+    void doubleCloseWithoutFinishDoesNotThrow(@TempDir Path dir) throws IOException {
+        Path out = dir.resolve("double_close.sst");
+        TrieSSTableWriter w = new TrieSSTableWriter(3L, Level.L0, out);
+        w.append(put("a", "va", 1));
+        w.close(); // first close: OPEN -> CLOSED, file deleted
+        assertFalse(Files.exists(out), "file must be deleted after first close()");
+        // second close must be a no-op
+        assertDoesNotThrow(w::close, "second close() must not throw");
+    }
+
+    /**
+     * Verifies that a writer that was finish()ed and then close()d does NOT delete its output file.
+     * The shouldDelete branch must only fire when state == OPEN at close() time; a FINISHED writer
+     * transitions to CLOSED and must leave the file intact.
+     */
+    @Test
+    void closeAfterFinishPreservesFile(@TempDir Path dir) throws IOException {
+        Path out = dir.resolve("finished_close.sst");
+        TrieSSTableWriter w = new TrieSSTableWriter(4L, Level.L0, out);
+        w.append(put("k", "v", 1));
+        w.finish();
+        w.close();
+        assertTrue(Files.exists(out),
+                "output file must NOT be deleted on close() after finish() was called successfully");
+        assertTrue(Files.size(out) > 0,
+                "output file must have non-zero size after finish() + close()");
     }
 }

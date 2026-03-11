@@ -31,10 +31,12 @@ import java.util.Optional;
 /**
  * Reads an SSTable file written by {@link TrieSSTableWriter}.
  *
- * <p>Two factory methods:
+ * <p>
+ * Two factory methods:
  * <ul>
- *   <li>{@link #open} — eager: loads the entire data region into memory on open</li>
- *   <li>{@link #openLazy} — lazy: loads only footer, key index, bloom filter; reads data on demand</li>
+ * <li>{@link #open} — eager: loads the entire data region into memory on open</li>
+ * <li>{@link #openLazy} — lazy: loads only footer, key index, bloom filter; reads data on
+ * demand</li>
  * </ul>
  */
 public final class TrieSSTableReader implements SSTableReader {
@@ -56,8 +58,8 @@ public final class TrieSSTableReader implements SSTableReader {
     private volatile boolean closed = false;
 
     private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
-                               long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel,
-                               BlockCache blockCache) {
+            long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel,
+            BlockCache blockCache) {
         this.metadata = metadata;
         this.keyIndex = keyIndex;
         this.bloomFilter = bloomFilter;
@@ -75,7 +77,7 @@ public final class TrieSSTableReader implements SSTableReader {
     }
 
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
-                                         BlockCache blockCache) throws IOException {
+            BlockCache blockCache) throws IOException {
         Objects.requireNonNull(path, "path must not be null");
         Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
 
@@ -106,7 +108,7 @@ public final class TrieSSTableReader implements SSTableReader {
     }
 
     public static TrieSSTableReader openLazy(Path path, BloomFilter.Deserializer bloomDeserializer,
-                                              BlockCache blockCache) throws IOException {
+            BlockCache blockCache) throws IOException {
         Objects.requireNonNull(path, "path must not be null");
         Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
 
@@ -170,7 +172,8 @@ public final class TrieSSTableReader implements SSTableReader {
 
     @Override
     public void close() throws IOException {
-        if (closed) return;
+        if (closed)
+            return;
         closed = true;
         if (lazyChannel != null) {
             lazyChannel.close();
@@ -180,13 +183,15 @@ public final class TrieSSTableReader implements SSTableReader {
     // ---- Internal helpers ----
 
     private void checkNotClosed() throws IOException {
-        if (closed) throw new IllegalStateException("reader is closed");
+        if (closed)
+            throw new IllegalStateException("reader is closed");
     }
 
     /** Returns the data at {@code fileOffset}, reading at most {@code maxBytes} bytes. */
     private byte[] readDataAt(long fileOffset, int maxBytes) throws IOException {
         int len = (int) Math.min(maxBytes, dataEnd - fileOffset);
-        if (len <= 0) throw new IOException("file offset out of data range: " + fileOffset);
+        if (len <= 0)
+            throw new IOException("file offset out of data range: " + fileOffset);
 
         if (blockCache != null) {
             Optional<MemorySegment> hit = blockCache.get(metadata.id(), fileOffset);
@@ -211,26 +216,28 @@ public final class TrieSSTableReader implements SSTableReader {
 
     /** Returns the full data region (for full scan). */
     private byte[] getAllData() throws IOException {
-        if (eagerData != null) return eagerData;
+        if (eagerData != null)
+            return eagerData;
         return readBytes(lazyChannel, 0L, (int) dataEnd);
     }
 
     // ---- Footer / index / filter loading ----
 
     private record Footer(long idxOffset, long idxLength, long fltOffset, long fltLength,
-                           long entryCount) {}
+            long entryCount) {
+    }
 
     private static Footer readFooter(SeekableByteChannel ch, long fileSize) throws IOException {
         if (fileSize < SSTableFormat.FOOTER_SIZE) {
             throw new IOException("not a valid SSTable file: too small");
         }
         byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE, SSTableFormat.FOOTER_SIZE);
-        long idxOffset  = readLong(buf, 0);
-        long idxLength  = readLong(buf, 8);
-        long fltOffset  = readLong(buf, 16);
-        long fltLength  = readLong(buf, 24);
+        long idxOffset = readLong(buf, 0);
+        long idxLength = readLong(buf, 8);
+        long fltOffset = readLong(buf, 16);
+        long fltLength = readLong(buf, 24);
         long entryCount = readLong(buf, 32);
-        long magic      = readLong(buf, 40);
+        long magic = readLong(buf, 40);
         if (magic != SSTableFormat.MAGIC) {
             throw new IOException("not a valid SSTable file: bad magic " + Long.toHexString(magic));
         }
@@ -258,67 +265,66 @@ public final class TrieSSTableReader implements SSTableReader {
     }
 
     private static BloomFilter readBloomFilter(SeekableByteChannel ch, Footer footer,
-                                                BloomFilter.Deserializer deserializer)
-            throws IOException {
+            BloomFilter.Deserializer deserializer) throws IOException {
         byte[] buf = readBytes(ch, footer.fltOffset, (int) footer.fltLength);
         // Use an Arena-allocated segment to satisfy the alignment constraints of the deserializer
         // (BlockedBloomFilter uses JAVA_INT/JAVA_LONG without withByteAlignment(1)).
-        MemorySegment seg = Arena.ofAuto().allocate(buf.length, 8);
-        MemorySegment.copy(MemorySegment.ofArray(buf), 0, seg, 0, buf.length);
-        return deserializer.deserialize(seg);
+        try (Arena arena = Arena.ofShared()) {
+            MemorySegment seg = arena.allocate(buf.length, 8);
+            MemorySegment.copy(MemorySegment.ofArray(buf), 0, seg, 0, buf.length);
+            return deserializer.deserialize(seg);
+        }
     }
 
     private static SSTableMetadata buildMetadata(Path path, long fileSize, Footer footer,
-                                                  KeyIndex keyIndex) {
+            KeyIndex keyIndex) {
         MemorySegment smallestKey = null;
         MemorySegment largestKey = null;
         Iterator<KeyIndex.Entry> it = keyIndex.iterator();
         while (it.hasNext()) {
             KeyIndex.Entry e = it.next();
-            if (smallestKey == null) smallestKey = e.key();
+            if (smallestKey == null)
+                smallestKey = e.key();
             largestKey = e.key();
         }
         assert smallestKey != null : "key index must not be empty when building metadata";
-        return new SSTableMetadata(0L, path, Level.L0, smallestKey, largestKey,
-                SequenceNumber.ZERO, SequenceNumber.ZERO, fileSize, footer.entryCount);
+        return new SSTableMetadata(0L, path, Level.L0, smallestKey, largestKey, SequenceNumber.ZERO,
+                SequenceNumber.ZERO, fileSize, footer.entryCount);
     }
 
     // ---- Low-level I/O ----
 
-    private static byte[] readBytes(SeekableByteChannel ch, long offset, int length) throws IOException {
-        if (length == 0) return new byte[0];
+    private static byte[] readBytes(SeekableByteChannel ch, long offset, int length)
+            throws IOException {
+        if (length == 0)
+            return new byte[0];
         ByteBuffer buf = ByteBuffer.allocate(length);
         ch.position(offset);
         while (buf.hasRemaining()) {
             int read = ch.read(buf);
-            if (read < 0) throw new IOException("unexpected EOF at offset " + (offset + buf.position()));
+            if (read < 0)
+                throw new IOException("unexpected EOF at offset " + (offset + buf.position()));
         }
         return buf.array();
     }
 
     private static int readInt(byte[] buf, int off) {
-        return ((buf[off]     & 0xFF) << 24)
-             | ((buf[off + 1] & 0xFF) << 16)
-             | ((buf[off + 2] & 0xFF) << 8)
-             |  (buf[off + 3] & 0xFF);
+        return ((buf[off] & 0xFF) << 24) | ((buf[off + 1] & 0xFF) << 16)
+                | ((buf[off + 2] & 0xFF) << 8) | (buf[off + 3] & 0xFF);
     }
 
     private static long readLong(byte[] buf, int off) {
-        return ((long)(buf[off]     & 0xFF) << 56)
-             | ((long)(buf[off + 1] & 0xFF) << 48)
-             | ((long)(buf[off + 2] & 0xFF) << 40)
-             | ((long)(buf[off + 3] & 0xFF) << 32)
-             | ((long)(buf[off + 4] & 0xFF) << 24)
-             | ((long)(buf[off + 5] & 0xFF) << 16)
-             | ((long)(buf[off + 6] & 0xFF) << 8)
-             |  (long)(buf[off + 7] & 0xFF);
+        return ((long) (buf[off] & 0xFF) << 56) | ((long) (buf[off + 1] & 0xFF) << 48)
+                | ((long) (buf[off + 2] & 0xFF) << 40) | ((long) (buf[off + 3] & 0xFF) << 32)
+                | ((long) (buf[off + 4] & 0xFF) << 24) | ((long) (buf[off + 5] & 0xFF) << 16)
+                | ((long) (buf[off + 6] & 0xFF) << 8) | (long) (buf[off + 7] & 0xFF);
     }
 
     // ---- Iterators ----
 
     /**
-     * Iterates entries by parsing the raw data region linearly (block by block).
-     * Parses: [int count][entry...][int count][entry...]... until offset reaches dataEnd.
+     * Iterates entries by parsing the raw data region linearly (block by block). Parses: [int
+     * count][entry...][int count][entry...]... until offset reaches dataEnd.
      */
     private static final class DataRegionIterator implements Iterator<Entry> {
         private final byte[] data;
@@ -341,7 +347,8 @@ public final class TrieSSTableReader implements SSTableReader {
                     next = blockEntries.get(entryIdx++);
                     return;
                 }
-                if (offset >= dataEnd) return;
+                if (offset >= dataEnd)
+                    return;
                 // Parse next block
                 int count = readInt(data, offset);
                 offset += 4;
@@ -355,19 +362,23 @@ public final class TrieSSTableReader implements SSTableReader {
             }
         }
 
-        @Override public boolean hasNext() { return next != null; }
-        @Override public Entry next() {
-            if (next == null) throw new NoSuchElementException();
+        @Override
+        public boolean hasNext() {
+            return next != null;
+        }
+
+        @Override
+        public Entry next() {
+            if (next == null)
+                throw new NoSuchElementException();
             Entry result = next;
             advance();
             return result;
         }
 
         private static int readInt(byte[] buf, int off) {
-            return ((buf[off]     & 0xFF) << 24)
-                 | ((buf[off + 1] & 0xFF) << 16)
-                 | ((buf[off + 2] & 0xFF) << 8)
-                 |  (buf[off + 3] & 0xFF);
+            return ((buf[off] & 0xFF) << 24) | ((buf[off + 1] & 0xFF) << 16)
+                    | ((buf[off + 2] & 0xFF) << 8) | (buf[off + 3] & 0xFF);
         }
     }
 
@@ -385,7 +396,8 @@ public final class TrieSSTableReader implements SSTableReader {
 
         private void advance() {
             next = null;
-            if (!indexIter.hasNext()) return;
+            if (!indexIter.hasNext())
+                return;
             KeyIndex.Entry ie = indexIter.next();
             try {
                 byte[] buf = readDataAt(ie.fileOffset(), SSTableFormat.DEFAULT_BLOCK_SIZE);
@@ -395,9 +407,15 @@ public final class TrieSSTableReader implements SSTableReader {
             }
         }
 
-        @Override public boolean hasNext() { return next != null; }
-        @Override public Entry next() {
-            if (next == null) throw new NoSuchElementException();
+        @Override
+        public boolean hasNext() {
+            return next != null;
+        }
+
+        @Override
+        public Entry next() {
+            if (next == null)
+                throw new NoSuchElementException();
             Entry result = next;
             advance();
             return result;

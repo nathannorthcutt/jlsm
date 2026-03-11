@@ -14,21 +14,25 @@ import java.util.PriorityQueue;
 /**
  * N-way merge iterator that deduplicates by logical key.
  *
- * <p>Heap ordering: key ASC (unsigned lexicographic), seqNum DESC for equal keys — the entry with
- * the highest sequence number for any given key surfaces first. After polling the winner, all
- * stale versions of the same logical key from other sources are drained and discarded so that each
+ * <p>
+ * Heap ordering: key ASC (unsigned lexicographic), seqNum DESC for equal keys — the entry with the
+ * highest sequence number for any given key surfaces first. After polling the winner, all stale
+ * versions of the same logical key from other sources are drained and discarded so that each
  * logical key appears exactly once in the output.
  *
- * <p>Optionally bounded to a half-open range {@code [from, to)}: entries outside the range are
- * skipped during iteration.
+ * <p>
+ * Optionally bounded to a half-open range {@code [from, to)}: entries outside the range are skipped
+ * during iteration.
  */
 public final class MergeIterator implements Iterator<Entry> {
 
-    private record HeapEntry(Entry entry, Iterator<Entry> source) {}
+    private record HeapEntry(Entry entry, Iterator<Entry> source) {
+    }
 
     private static final Comparator<HeapEntry> HEAP_ORDER = (x, y) -> {
         int keyCmp = compareUnsigned(x.entry().key(), y.entry().key());
-        if (keyCmp != 0) return keyCmp;
+        if (keyCmp != 0)
+            return keyCmp;
         // Same key: higher seqNum comes first (DESC)
         return Long.compare(y.entry().sequenceNumber().value(), x.entry().sequenceNumber().value());
     };
@@ -37,7 +41,7 @@ public final class MergeIterator implements Iterator<Entry> {
     // Optional upper bound (exclusive); null means unbounded
     private final MemorySegment to;
 
-    private Entry nextEntry;  // pre-fetched next result, or null if not yet fetched / exhausted
+    private Entry nextEntry; // pre-fetched next result, or null if not yet fetched / exhausted
     private boolean fetched = false;
 
     /**
@@ -53,10 +57,9 @@ public final class MergeIterator implements Iterator<Entry> {
      * Creates a range-bounded merge iterator.
      *
      * @param sources list of pre-sorted entry iterators; must not be null
-     * @param from    inclusive lower bound (entries below this key are skipped), or null for
-     *                unbounded
-     * @param to      exclusive upper bound (entries at or above this key are excluded), or null for
-     *                unbounded
+     * @param from inclusive lower bound (entries below this key are skipped), or null for unbounded
+     * @param to exclusive upper bound (entries at or above this key are excluded), or null for
+     *            unbounded
      */
     public MergeIterator(List<Iterator<Entry>> sources, MemorySegment from, MemorySegment to) {
         Objects.requireNonNull(sources, "sources must not be null");
@@ -70,8 +73,8 @@ public final class MergeIterator implements Iterator<Entry> {
     }
 
     /**
-     * Advances a source iterator, offering its next in-range entry to the heap.
-     * Entries below {@code lowerBound} are skipped.
+     * Advances a source iterator, offering its next in-range entry to the heap. Entries below
+     * {@code lowerBound} are skipped.
      */
     private void advanceSource(Iterator<Entry> src, MemorySegment lowerBound) {
         while (src.hasNext()) {
@@ -96,14 +99,17 @@ public final class MergeIterator implements Iterator<Entry> {
 
     @Override
     public boolean hasNext() {
-        if (!fetched) prefetch();
+        if (!fetched)
+            prefetch();
         return nextEntry != null;
     }
 
     @Override
     public Entry next() {
-        if (!fetched) prefetch();
-        if (nextEntry == null) throw new NoSuchElementException();
+        if (!fetched)
+            prefetch();
+        if (nextEntry == null)
+            throw new NoSuchElementException();
         fetched = false;
         Entry result = nextEntry;
         nextEntry = null;
@@ -114,7 +120,8 @@ public final class MergeIterator implements Iterator<Entry> {
         fetched = true;
         nextEntry = null;
 
-        if (heap.isEmpty()) return;
+        if (heap.isEmpty())
+            return;
 
         HeapEntry min = heap.poll();
         advanceSource(min.source());
@@ -137,13 +144,16 @@ public final class MergeIterator implements Iterator<Entry> {
         assert b != null : "b must not be null";
 
         long mismatch = a.mismatch(b);
-        if (mismatch == -1L) return 0;
+        if (mismatch == -1L)
+            return 0;
 
         long lenA = a.byteSize();
         long lenB = b.byteSize();
 
-        if (mismatch == lenA) return -1; // a is prefix of b → a < b
-        if (mismatch == lenB) return 1;  // b is prefix of a → a > b
+        if (mismatch == lenA)
+            return -1; // a is prefix of b → a < b
+        if (mismatch == lenB)
+            return 1; // b is prefix of a → a > b
 
         byte ba = a.get(ValueLayout.JAVA_BYTE, mismatch);
         byte bb = b.get(ValueLayout.JAVA_BYTE, mismatch);

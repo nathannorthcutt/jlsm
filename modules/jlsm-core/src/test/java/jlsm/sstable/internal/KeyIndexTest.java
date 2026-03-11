@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -149,5 +150,165 @@ class KeyIndexTest {
         assertEquals(2, result.size());
         assertEquals(-1L, low.mismatch(result.get(0)));
         assertEquals(-1L, high.mismatch(result.get(1)));
+    }
+
+    // -------------------------------------------------------------------------
+    // Iterative DFS stress tests (Violation 1)
+    // These tests exercise traversal depth that would cause StackOverflowError
+    // under an unbounded recursive DFS implementation.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Builds a trie where every key shares a very long common prefix, forcing the traversal to
+     * descend 5000 trie nodes deep before reaching any leaf. A recursive DFS with no depth limit
+     * would overflow the stack; an iterative DFS must handle this without error.
+     */
+    @Test
+    void deepTrieIterationDoesNotOverflow() {
+        // All keys share a 5000-byte prefix followed by a single distinguishing byte.
+        // This forces 5001 levels of trie depth per key.
+        int prefixLen = 5000;
+        byte[] prefix = new byte[prefixLen];
+        Arrays.fill(prefix, (byte) 'a');
+
+        int numKeys = 3;
+        List<MemorySegment> keys = new ArrayList<>(numKeys);
+        List<Long> offsets = new ArrayList<>(numKeys);
+        for (int i = 0; i < numKeys; i++) {
+            byte[] key = Arrays.copyOf(prefix, prefixLen + 1);
+            key[prefixLen] = (byte) ('a' + i);
+            keys.add(MemorySegment.ofArray(key));
+            offsets.add((long) (i * 100));
+        }
+
+        KeyIndex idx = new KeyIndex(keys, offsets);
+
+        // iterator() must complete without StackOverflowError
+        List<KeyIndex.Entry> entries = new ArrayList<>();
+        assertDoesNotThrow(() -> idx.iterator().forEachRemaining(entries::add),
+                "iterator() must not overflow the stack on a deeply nested trie");
+        assertEquals(numKeys, entries.size(),
+                "all entries must be returned from a deeply nested trie");
+    }
+
+    /**
+     * Verifies that iterator() returns all 200 entries in sorted (lexicographic) order for a
+     * moderately large trie with many distinct keys sharing partial common prefixes.
+     */
+    @Test
+    void largeTrieIterationReturnsSortedEntries() {
+        int numEntries = 200;
+        List<MemorySegment> keys = new ArrayList<>(numEntries);
+        List<Long> offsets = new ArrayList<>(numEntries);
+
+        // Keys: "key-000" through "key-199". These share the prefix "key-" and have
+        // variable digit suffixes, creating a moderately complex trie structure.
+        for (int i = 0; i < numEntries; i++) {
+            String keyStr = String.format("key-%03d", i);
+            keys.add(segOf(keyStr));
+            offsets.add((long) i);
+        }
+
+        KeyIndex idx = new KeyIndex(keys, offsets);
+
+        List<KeyIndex.Entry> result = new ArrayList<>();
+        idx.iterator().forEachRemaining(result::add);
+
+        assertEquals(numEntries, result.size(),
+                "iterator must return all " + numEntries + " entries");
+
+        // Verify strictly ascending lexicographic order
+        for (int i = 1; i < result.size(); i++) {
+            byte[] prev = result.get(i - 1).key().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
+            byte[] curr = result.get(i).key().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
+            assertTrue(KeyIndex.compareUnsigned(prev, curr) < 0,
+                    "entry " + i + " must be strictly greater than entry " + (i - 1));
+        }
+
+        // Verify offsets match the original parallel list
+        for (int i = 0; i < result.size(); i++) {
+            String expectedKey = String.format("key-%03d", i);
+            byte[] expectedBytes = expectedKey.getBytes();
+            assertEquals(-1L, MemorySegment.ofArray(expectedBytes).mismatch(result.get(i).key()),
+                    "entry " + i + " key must match expected key " + expectedKey);
+            assertEquals((long) i, result.get(i).fileOffset(),
+                    "entry " + i + " offset must match expected offset");
+        }
+    }
+
+    /**
+     * Verifies that rangeIterator() correctly filters entries from a large trie (200 entries),
+     * returning only those within the specified [from, to) range.
+     */
+    @Test
+    void largeTrieRangeIteratorFiltersCorrectly() {
+        int numEntries = 200;
+        List<MemorySegment> keys = new ArrayList<>(numEntries);
+        List<Long> offsets = new ArrayList<>(numEntries);
+
+        for (int i = 0; i < numEntries; i++) {
+            String keyStr = String.format("key-%03d", i);
+            keys.add(segOf(keyStr));
+            offsets.add((long) i);
+        }
+
+        KeyIndex idx = new KeyIndex(keys, offsets);
+
+        // Range ["key-050", "key-100") should return entries 50 through 99 inclusive.
+        MemorySegment from = segOf("key-050");
+        MemorySegment to = segOf("key-100");
+
+        List<KeyIndex.Entry> result = new ArrayList<>();
+        idx.rangeIterator(from, to).forEachRemaining(result::add);
+
+        assertEquals(50, result.size(), "range [key-050, key-100) must return exactly 50 entries");
+
+        // First entry must be "key-050"
+        assertEquals(-1L, from.mismatch(result.get(0).key()), "first entry must be key-050");
+
+        // Last entry must be "key-099"
+        MemorySegment expectedLast = segOf("key-099");
+        assertEquals(-1L, expectedLast.mismatch(result.get(result.size() - 1).key()),
+                "last entry must be key-099");
+
+        // All returned entries must be within range
+        for (KeyIndex.Entry e : result) {
+            byte[] keyBytes = e.key().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
+            byte[] fromBytes = from.toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
+            byte[] toBytes = to.toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
+            assertTrue(KeyIndex.compareUnsigned(keyBytes, fromBytes) >= 0,
+                    "entry must be >= from bound");
+            assertTrue(KeyIndex.compareUnsigned(keyBytes, toBytes) < 0, "entry must be < to bound");
+        }
+    }
+
+    /**
+     * Builds an extreme trie with a single key 10,000 bytes long (one 'a' character repeated). This
+     * creates a trie with a 10,000-node chain, far exceeding typical JVM default stack depth. An
+     * iterative DFS must handle this; a recursive DFS with even moderate key lengths will
+     * StackOverflow.
+     */
+    @Test
+    void extremelyDeepSingleKeyLookupAndIteration() {
+        int keyLen = 10_000;
+        byte[] keyBytes = new byte[keyLen];
+        Arrays.fill(keyBytes, (byte) 'x');
+        MemorySegment key = MemorySegment.ofArray(keyBytes);
+
+        KeyIndex idx = new KeyIndex(List.of(key), List.of(99L));
+
+        // lookup must not overflow
+        assertDoesNotThrow(() -> {
+            long offset = idx.lookup(key).orElseThrow();
+            assertEquals(99L, offset);
+        }, "lookup() must not overflow on a 10,000-byte key");
+
+        // iterator must not overflow
+        assertDoesNotThrow(() -> {
+            List<KeyIndex.Entry> entries = new ArrayList<>();
+            idx.iterator().forEachRemaining(entries::add);
+            assertEquals(1, entries.size());
+            assertEquals(-1L, key.mismatch(entries.get(0).key()));
+        }, "iterator() must not overflow on a 10,000-byte key");
     }
 }

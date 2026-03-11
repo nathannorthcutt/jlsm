@@ -30,17 +30,19 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * Standard LSM-Tree implementation that composes a WAL, MemTable, SSTableWriter, and
- * SSTableReader.
+ * Standard LSM-Tree implementation that composes a WAL, MemTable, SSTableWriter, and SSTableReader.
  *
- * <p><b>Write path</b>: every mutation is first appended to the WAL (assigned a sequence number),
- * then applied to the active MemTable. When {@code approximateSizeBytes() >= flushThresholdBytes},
- * the MemTable is rotated and flushed to an L0 SSTable.
+ * <p>
+ * <b>Write path</b>: every mutation is first appended to the WAL (assigned a sequence number), then
+ * applied to the active MemTable. When {@code approximateSizeBytes() >= flushThresholdBytes}, the
+ * MemTable is rotated and flushed to an L0 SSTable.
  *
- * <p><b>Read path</b>: the active MemTable is checked first, then each SSTable reader in
- * newest-first order (index 0 = most recently flushed).
+ * <p>
+ * <b>Read path</b>: the active MemTable is checked first, then each SSTable reader in newest-first
+ * order (index 0 = most recently flushed).
  *
- * <p><b>Threading</b>: writes and flushes are serialised by a single {@link ReentrantLock}; reads
+ * <p>
+ * <b>Threading</b>: writes and flushes are serialised by a single {@link ReentrantLock}; reads
  * ({@link #get}, {@link #scan}) are lock-free because {@link CopyOnWriteArrayList} provides a
  * consistent snapshot of the SSTable reader list.
  */
@@ -70,7 +72,7 @@ public final class StandardLsmTree implements LsmTree {
     private volatile boolean closed = false;
 
     private StandardLsmTree(Builder builder, MemTable initialMemTable,
-                             CopyOnWriteArrayList<SSTableReader> existingReaders) {
+            CopyOnWriteArrayList<SSTableReader> existingReaders) {
         this.wal = builder.wal;
         this.memTableFactory = builder.memTableFactory;
         this.writerFactory = builder.writerFactory;
@@ -119,7 +121,9 @@ public final class StandardLsmTree implements LsmTree {
         }
     }
 
-    /** Flushes if the active MemTable has grown past the threshold. Must hold {@link #writeLock}. */
+    /**
+     * Flushes if the active MemTable has grown past the threshold. Must hold {@link #writeLock}.
+     */
     private void maybeFlush() throws IOException {
         if (activeMemTable.approximateSizeBytes() >= flushThresholdBytes) {
             flush();
@@ -127,7 +131,9 @@ public final class StandardLsmTree implements LsmTree {
         }
     }
 
-    /** Runs one round of compaction if the compactor selects a task. Must hold {@link #writeLock}. */
+    /**
+     * Runs one round of compaction if the compactor selects a task. Must hold {@link #writeLock}.
+     */
     private void maybeCompact() throws IOException {
         List<List<SSTableMetadata>> levelMetadata = buildLevelMetadata();
         Optional<CompactionTask> task = compactor.selectCompaction(levelMetadata);
@@ -170,7 +176,10 @@ public final class StandardLsmTree implements LsmTree {
             sstableReaders.add(readerFactory.open(out.path()));
         }
         for (SSTableReader r : toClose) {
-            try { r.close(); } catch (IOException ignored) {}
+            try {
+                r.close();
+            } catch (IOException ignored) {
+            }
         }
     }
 
@@ -179,7 +188,8 @@ public final class StandardLsmTree implements LsmTree {
      * {@link #writeLock}.
      */
     private void flush() throws IOException {
-        if (activeMemTable.isEmpty()) return;
+        if (activeMemTable.isEmpty())
+            return;
 
         MemTable immutable = activeMemTable;
         activeMemTable = memTableFactory.get();
@@ -270,7 +280,7 @@ public final class StandardLsmTree implements LsmTree {
     private static Optional<MemorySegment> mapEntry(Entry entry) {
         return switch (entry) {
             case Entry.Put put -> Optional.of(put.value());
-            case Entry.Delete ignored -> Optional.empty();
+            case Entry.Delete _ -> Optional.empty();
         };
     }
 
@@ -293,19 +303,25 @@ public final class StandardLsmTree implements LsmTree {
             try {
                 reader.close();
             } catch (IOException e) {
-                if (deferred == null) deferred = e;
+                if (deferred == null)
+                    deferred = e;
             }
         }
 
         if (compactor instanceof AutoCloseable ac) {
-            try { ac.close(); } catch (Exception ignored) {}
+            try {
+                ac.close();
+            } catch (Exception ignored) {
+            }
         }
 
-        if (deferred != null) throw deferred;
+        if (deferred != null)
+            throw deferred;
     }
 
     private void checkNotClosed() {
-        if (closed) throw new IllegalStateException("LsmTree is closed");
+        if (closed)
+            throw new IllegalStateException("LsmTree is closed");
     }
 
     // -----------------------------------------------------------------------
@@ -409,8 +425,7 @@ public final class StandardLsmTree implements LsmTree {
 
             if (compactor == null) {
                 SpookyCompactor.Builder compactorBuilder = SpookyCompactor.builder()
-                        .idSupplier(idSupplier)
-                        .pathFn(pathFn);
+                        .idSupplier(idSupplier).pathFn(pathFn);
                 if (bloomDeserializer != null) {
                     compactorBuilder.bloomDeserializer(bloomDeserializer);
                 }

@@ -12,16 +12,18 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * An LRU block cache backed by a {@link LinkedHashMap} with access-order eviction.
  *
- * <p>All operations are serialised through a single {@link ReentrantLock}. A
- * {@code ReadWriteLock} cannot be used here because {@link LinkedHashMap#get} with
- * {@code accessOrder=true} modifies internal ordering and is therefore a write-equivalent
- * operation.
+ * <p>
+ * All operations are serialised through a single {@link ReentrantLock}. A {@code ReadWriteLock}
+ * cannot be used here because {@link LinkedHashMap#get} with {@code accessOrder=true} modifies
+ * internal ordering and is therefore a write-equivalent operation.
  *
- * <p>Obtain instances via {@link #builder()}.
+ * <p>
+ * Obtain instances via {@link #builder()}.
  */
 public final class LruBlockCache implements BlockCache {
 
-    private record CacheKey(long sstableId, long blockOffset) {}
+    private record CacheKey(long sstableId, long blockOffset) {
+    }
 
     private final long capacity;
     private final ReentrantLock lock;
@@ -43,7 +45,8 @@ public final class LruBlockCache implements BlockCache {
     @Override
     public Optional<MemorySegment> get(long sstableId, long blockOffset) {
         if (blockOffset < 0) {
-            throw new IllegalArgumentException("blockOffset must be non-negative, got: " + blockOffset);
+            throw new IllegalArgumentException(
+                    "blockOffset must be non-negative, got: " + blockOffset);
         }
         lock.lock();
         try {
@@ -56,7 +59,8 @@ public final class LruBlockCache implements BlockCache {
     @Override
     public void put(long sstableId, long blockOffset, MemorySegment block) {
         if (blockOffset < 0) {
-            throw new IllegalArgumentException("blockOffset must be non-negative, got: " + blockOffset);
+            throw new IllegalArgumentException(
+                    "blockOffset must be non-negative, got: " + blockOffset);
         }
         Objects.requireNonNull(block, "block must not be null");
         lock.lock();
@@ -109,7 +113,8 @@ public final class LruBlockCache implements BlockCache {
     public static final class Builder {
         private long capacity = -1;
 
-        private Builder() {}
+        private Builder() {
+        }
 
         public Builder capacity(long capacity) {
             this.capacity = capacity;

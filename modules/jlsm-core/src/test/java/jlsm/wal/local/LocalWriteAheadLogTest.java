@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -25,7 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class LocalWriteAheadLogTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private static MemorySegment seg(String s) {
         byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
@@ -67,8 +67,10 @@ class LocalWriteAheadLogTest {
     @Test
     void appendPutReturnsIncreasingSequenceNumbers() throws IOException {
         try (var wal = LocalWriteAheadLog.builder().directory(dir).build()) {
-            SequenceNumber s1 = wal.append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
-            SequenceNumber s2 = wal.append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
+            SequenceNumber s1 = wal
+                    .append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
+            SequenceNumber s2 = wal
+                    .append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
             assertTrue(s2.value() > s1.value());
         }
     }
@@ -124,7 +126,8 @@ class LocalWriteAheadLogTest {
     void replayFromSkipsEarlierEntries() throws IOException {
         try (var wal = LocalWriteAheadLog.builder().directory(dir).build()) {
             wal.append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
-            SequenceNumber second = wal.append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
+            SequenceNumber second = wal
+                    .append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
             wal.append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
 
             Iterator<Entry> it = wal.replay(second);
@@ -167,7 +170,8 @@ class LocalWriteAheadLogTest {
     void lastSequenceNumberReflectsLastAppend() throws IOException {
         try (var wal = LocalWriteAheadLog.builder().directory(dir).build()) {
             wal.append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
-            SequenceNumber last = wal.append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
+            SequenceNumber last = wal
+                    .append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
             assertEquals(last, wal.lastSequenceNumber());
         }
     }
@@ -185,7 +189,8 @@ class LocalWriteAheadLogTest {
         }
 
         try (var wal = LocalWriteAheadLog.builder().directory(dir).build()) {
-            SequenceNumber next = wal.append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
+            SequenceNumber next = wal
+                    .append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
             assertTrue(next.value() > lastBeforeClose.value(),
                     "sequence number after reopen must exceed last before close");
         }
@@ -208,13 +213,12 @@ class LocalWriteAheadLogTest {
     @Test
     void partialLastRecordIsSkippedOnReopen(@TempDir Path tempDir) throws IOException {
         long segSize = 4096; // small segment for this test
-        SequenceNumber written;
         Path segFile;
-        try (var wal = LocalWriteAheadLog.builder().directory(tempDir).segmentSize(segSize).build()) {
-            written = wal.append(new Entry.Put(seg("good"), seg("record"), SequenceNumber.ZERO));
+        try (var wal = LocalWriteAheadLog.builder().directory(tempDir).segmentSize(segSize)
+                .build()) {
+            wal.append(new Entry.Put(seg("good"), seg("record"), SequenceNumber.ZERO));
             // Find the segment file to corrupt
-            segFile = Files.list(tempDir)
-                    .filter(p -> p.getFileName().toString().startsWith("wal-"))
+            segFile = Files.list(tempDir).filter(p -> p.getFileName().toString().startsWith("wal-"))
                     .findFirst().orElseThrow();
         }
 
@@ -226,11 +230,13 @@ class LocalWriteAheadLogTest {
         corrupted[content.length] = (byte) 0x00;
         corrupted[content.length + 1] = (byte) 0x00;
         corrupted[content.length + 2] = (byte) 0x01;
-        corrupted[content.length + 3] = (byte) 0x00; // frameContentLen = 256, but only 16 bytes follow
+        corrupted[content.length + 3] = (byte) 0x00; // frameContentLen = 256, but only 16 bytes
+                                                     // follow
         Files.write(segFile, corrupted);
 
         // Reopen should skip the partial record
-        try (var wal = LocalWriteAheadLog.builder().directory(tempDir).segmentSize(segSize).build()) {
+        try (var wal = LocalWriteAheadLog.builder().directory(tempDir).segmentSize(segSize)
+                .build()) {
             List<Entry> entries = new ArrayList<>();
             wal.replay(SequenceNumber.ZERO).forEachRemaining(entries::add);
             // Should only see the one good record
@@ -246,15 +252,14 @@ class LocalWriteAheadLogTest {
     void appendPastSegmentCapacityCreatesNewSegmentFile() throws IOException {
         // Very small segment so rollover happens quickly
         long segSize = 256;
-        try (var wal = LocalWriteAheadLog.builder()
-                .directory(dir).segmentSize(segSize)
-                .bufferSize(1024)
-                .build()) {
+        try (var wal = LocalWriteAheadLog.builder().directory(dir).segmentSize(segSize)
+                .bufferSize(1024).build()) {
             // Write enough entries to force a rollover
             for (int i = 0; i < 20; i++) {
                 wal.append(new Entry.Put(seg("key-" + i), seg("value-" + i), SequenceNumber.ZERO));
             }
-            long walFileCount = Files.list(dir).filter(p -> p.getFileName().toString().startsWith("wal-")).count();
+            long walFileCount = Files.list(dir)
+                    .filter(p -> p.getFileName().toString().startsWith("wal-")).count();
             assertTrue(walFileCount > 1, "expected multiple segment files after rollover");
         }
     }
@@ -263,10 +268,8 @@ class LocalWriteAheadLogTest {
     void replayAcrossMultipleSegments() throws IOException {
         long segSize = 256;
         int count = 20;
-        try (var wal = LocalWriteAheadLog.builder()
-                .directory(dir).segmentSize(segSize)
-                .bufferSize(1024)
-                .build()) {
+        try (var wal = LocalWriteAheadLog.builder().directory(dir).segmentSize(segSize)
+                .bufferSize(1024).build()) {
             for (int i = 0; i < count; i++) {
                 wal.append(new Entry.Put(seg("k" + i), seg("v" + i), SequenceNumber.ZERO));
             }
@@ -285,21 +288,21 @@ class LocalWriteAheadLogTest {
     void truncateBeforeDeletesObsoleteSegments() throws IOException {
         long segSize = 256;
         List<SequenceNumber> seqs = new ArrayList<>();
-        try (var wal = LocalWriteAheadLog.builder()
-                .directory(dir).segmentSize(segSize)
-                .bufferSize(1024)
-                .build()) {
+        try (var wal = LocalWriteAheadLog.builder().directory(dir).segmentSize(segSize)
+                .bufferSize(1024).build()) {
             for (int i = 0; i < 20; i++) {
                 seqs.add(wal.append(new Entry.Put(seg("k" + i), seg("v"), SequenceNumber.ZERO)));
             }
-            long beforeTruncate = Files.list(dir).filter(p -> p.getFileName().toString().startsWith("wal-")).count();
+            long beforeTruncate = Files.list(dir)
+                    .filter(p -> p.getFileName().toString().startsWith("wal-")).count();
             assertTrue(beforeTruncate > 1);
 
             // Truncate before the last sequence number
             SequenceNumber upTo = seqs.get(seqs.size() - 1);
             wal.truncateBefore(upTo);
 
-            long afterTruncate = Files.list(dir).filter(p -> p.getFileName().toString().startsWith("wal-")).count();
+            long afterTruncate = Files.list(dir)
+                    .filter(p -> p.getFileName().toString().startsWith("wal-")).count();
             assertTrue(afterTruncate < beforeTruncate, "some segments should have been deleted");
 
             // Remaining entries still readable
@@ -320,6 +323,71 @@ class LocalWriteAheadLogTest {
     // Concurrent appends
     // -------------------------------------------------------------------------
 
+    // -------------------------------------------------------------------------
+    // close() resource cleanup (Violation 3)
+    // These tests verify that close() leaves WAL segment files intact and
+    // readable after normal shutdown, serving as regression guards for the
+    // deferred-exception pattern in close().
+    // -------------------------------------------------------------------------
+
+    /**
+     * Verifies that after normal close(), the WAL segment file(s) remain present on disk. If
+     * close() silently swallowed an exception and failed to flush or sync, the file might be
+     * truncated or absent. The deferred-exception fix ensures both channel and memory-mapped
+     * segment are released even if one throws.
+     */
+    @Test
+    void closeAfterAppendsLeavesSegmentFilesOnDisk(@TempDir Path walDir) throws IOException {
+        try (var wal = LocalWriteAheadLog.builder().directory(walDir).build()) {
+            wal.append(new Entry.Put(seg("key1"), seg("value1"), SequenceNumber.ZERO));
+            wal.append(new Entry.Put(seg("key2"), seg("value2"), SequenceNumber.ZERO));
+            wal.append(new Entry.Delete(seg("key3"), SequenceNumber.ZERO));
+        } // close() called here
+
+        long segFileCount = Files.list(walDir)
+                .filter(p -> p.getFileName().toString().startsWith("wal-")).count();
+        assertTrue(segFileCount >= 1,
+                "at least one WAL segment file must remain on disk after close()");
+    }
+
+    /**
+     * Verifies that a WAL reopened after normal close() can replay all entries that were appended
+     * before close(). This confirms that close() did not silently discard buffered or uncommitted
+     * data, which would be a symptom of a botched multi-resource close.
+     */
+    @Test
+    void closeFlushesAllEntriesReadableOnReopen(@TempDir Path walDir) throws IOException {
+        final int numEntries = 10;
+        try (var wal = LocalWriteAheadLog.builder().directory(walDir).build()) {
+            for (int i = 0; i < numEntries; i++) {
+                wal.append(new Entry.Put(seg("k" + i), seg("v" + i), SequenceNumber.ZERO));
+            }
+        } // close() called here
+
+        // Reopen and verify all entries are still present
+        try (var wal = LocalWriteAheadLog.builder().directory(walDir).build()) {
+            List<Entry> replayed = new ArrayList<>();
+            wal.replay(SequenceNumber.ZERO).forEachRemaining(replayed::add);
+            assertEquals(numEntries, replayed.size(), "all " + numEntries
+                    + " entries written before close() must be readable on reopen; "
+                    + "a botched close() that suppressed an fsync exception would lose data");
+        }
+    }
+
+    /**
+     * Verifies that close() does not throw an exception under normal conditions (no forced
+     * failures). This is the baseline case for the deferred-exception pattern: when neither force()
+     * nor channel.close() fails, close() must complete silently.
+     */
+    @Test
+    void closeDoesNotThrowUnderNormalConditions(@TempDir Path walDir) throws IOException {
+        var wal = LocalWriteAheadLog.builder().directory(walDir).build();
+        wal.append(new Entry.Put(seg("key"), seg("val"), SequenceNumber.ZERO));
+        // Must not throw
+        assertDoesNotThrow(wal::close,
+                "close() must not throw when both force() and channel.close() succeed");
+    }
+
     @Test
     void concurrentAppendsProduceUniqueSequenceNumbers() throws Exception {
         int threads = 4;
@@ -337,8 +405,8 @@ class LocalWriteAheadLogTest {
                     try {
                         start.await();
                         for (int i = 0; i < appendsPerThread; i++) {
-                            SequenceNumber seq = wal.append(
-                                    new Entry.Put(seg("t" + tid + "k" + i), seg("v"), SequenceNumber.ZERO));
+                            SequenceNumber seq = wal.append(new Entry.Put(seg("t" + tid + "k" + i),
+                                    seg("v"), SequenceNumber.ZERO));
                             allSeqs.add(seq);
                         }
                     } catch (Exception e) {
@@ -349,7 +417,8 @@ class LocalWriteAheadLogTest {
             }
 
             start.countDown();
-            for (Future<?> f : futures) f.get();
+            for (Future<?> f : futures)
+                f.get();
             pool.shutdown();
         }
 

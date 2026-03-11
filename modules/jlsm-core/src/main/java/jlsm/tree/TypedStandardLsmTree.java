@@ -26,12 +26,13 @@ import java.util.function.Supplier;
  * one per key type.
  *
  * <ul>
- *   <li>{@link StringKeyed} — UTF-8 String keys
- *   <li>{@link LongKeyed} — {@code long} keys (sign-bit-flipped big-endian for correct ordering)
- *   <li>{@link SegmentKeyed} — raw {@link MemorySegment} keys
+ * <li>{@link StringKeyed} — UTF-8 String keys
+ * <li>{@link LongKeyed} — {@code long} keys (sign-bit-flipped big-endian for correct ordering)
+ * <li>{@link SegmentKeyed} — raw {@link MemorySegment} keys
  * </ul>
  *
- * <p>Obtain instances via the factory methods {@link #stringKeyedBuilder()},
+ * <p>
+ * Obtain instances via the factory methods {@link #stringKeyedBuilder()},
  * {@link #longKeyedBuilder()}, and {@link #segmentKeyedBuilder()}.
  */
 public final class TypedStandardLsmTree {
@@ -44,17 +45,24 @@ public final class TypedStandardLsmTree {
     // Factory methods
     // -----------------------------------------------------------------------
 
-    /** Returns a builder for a {@link TypedLsmTree.StringKeyed} backed by a {@link StandardLsmTree}. */
+    /**
+     * Returns a builder for a {@link TypedLsmTree.StringKeyed} backed by a {@link StandardLsmTree}.
+     */
     public static <V> StringKeyed.Builder<V> stringKeyedBuilder() {
         return new StringKeyed.Builder<>();
     }
 
-    /** Returns a builder for a {@link TypedLsmTree.LongKeyed} backed by a {@link StandardLsmTree}. */
+    /**
+     * Returns a builder for a {@link TypedLsmTree.LongKeyed} backed by a {@link StandardLsmTree}.
+     */
     public static <V> LongKeyed.Builder<V> longKeyedBuilder() {
         return new LongKeyed.Builder<>();
     }
 
-    /** Returns a builder for a {@link TypedLsmTree.SegmentKeyed} backed by a {@link StandardLsmTree}. */
+    /**
+     * Returns a builder for a {@link TypedLsmTree.SegmentKeyed} backed by a
+     * {@link StandardLsmTree}.
+     */
     public static <V> SegmentKeyed.Builder<V> segmentKeyedBuilder() {
         return new SegmentKeyed.Builder<>();
     }
@@ -72,8 +80,9 @@ public final class TypedStandardLsmTree {
      * Encodes a {@code long} key as 8 big-endian bytes with the sign bit flipped so that
      * byte-lexicographic order matches numeric order.
      *
-     * <p>{@link Long#MIN_VALUE} → {@code 0x00…00} (smallest),
-     * {@link Long#MAX_VALUE} → {@code 0xFF…FF} (largest).
+     * <p>
+     * {@link Long#MIN_VALUE} → {@code 0x00…00} (smallest), {@link Long#MAX_VALUE} → {@code 0xFF…FF}
+     * (largest).
      */
     private static MemorySegment encodeLong(long key) {
         long unsigned = key ^ Long.MIN_VALUE;
@@ -240,8 +249,8 @@ public final class TypedStandardLsmTree {
     // -----------------------------------------------------------------------
 
     /**
-     * A {@link TypedLsmTree.LongKeyed} that delegates to a {@link StandardLsmTree} and encodes
-     * keys as sign-bit-flipped big-endian 8 bytes for correct numeric ordering.
+     * A {@link TypedLsmTree.LongKeyed} that delegates to a {@link StandardLsmTree} and encodes keys
+     * as sign-bit-flipped big-endian 8 bytes for correct numeric ordering.
      *
      * @param <V> the value type
      */

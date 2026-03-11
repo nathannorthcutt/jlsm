@@ -12,10 +12,11 @@ import java.util.Optional;
  * A typed LSM-Tree interface sealed to three key-type variants: {@link StringKeyed},
  * {@link LongKeyed}, and {@link SegmentKeyed}.
  *
- * <p>This interface intentionally does <em>not</em> extend {@link LsmTree}: {@link LsmTree}
- * declares {@code get(MemorySegment) → Optional<MemorySegment>}, which conflicts with
- * {@link SegmentKeyed}'s {@code get(MemorySegment) → Optional<V>} (methods may not differ only by
- * return type). Each sub-interface defines its own strongly-typed operations.
+ * <p>
+ * This interface intentionally does <em>not</em> extend {@link LsmTree}: {@link LsmTree} declares
+ * {@code get(MemorySegment) → Optional<MemorySegment>}, which conflicts with {@link SegmentKeyed}'s
+ * {@code get(MemorySegment) → Optional<V>} (methods may not differ only by return type). Each
+ * sub-interface defines its own strongly-typed operations.
  *
  * @param <V> the value type
  */
@@ -49,7 +50,7 @@ public sealed interface TypedLsmTree<V> extends Closeable
         /**
          * Associates {@code key} with {@code value}, replacing any prior value or tombstone.
          *
-         * @param key   the key; must not be null
+         * @param key the key; must not be null
          * @param value the value; must not be null
          * @throws IOException if the WAL cannot be written to
          */
@@ -76,7 +77,7 @@ public sealed interface TypedLsmTree<V> extends Closeable
          * Returns an iterator over entries in the half-open range {@code [from, to)}, ascending.
          *
          * @param from inclusive lower bound; must not be null
-         * @param to   exclusive upper bound; must not be null and greater than {@code from}
+         * @param to exclusive upper bound; must not be null and greater than {@code from}
          * @return a non-null iterator
          * @throws IOException if the scan cannot be initialised
          */
@@ -90,8 +91,10 @@ public sealed interface TypedLsmTree<V> extends Closeable
     /**
      * A {@link TypedLsmTree} whose keys are {@code long} primitives.
      *
-     * <p>Keys are encoded as sign-bit-flipped big-endian 8 bytes so that byte-lexicographic order
-     * matches numeric order ({@link Long#MIN_VALUE} sorts first, {@link Long#MAX_VALUE} sorts last).
+     * <p>
+     * Keys are encoded as sign-bit-flipped big-endian 8 bytes so that byte-lexicographic order
+     * matches numeric order ({@link Long#MIN_VALUE} sorts first, {@link Long#MAX_VALUE} sorts
+     * last).
      *
      * @param <V> the value type
      */
@@ -100,7 +103,7 @@ public sealed interface TypedLsmTree<V> extends Closeable
         /**
          * Associates {@code key} with {@code value}, replacing any prior value or tombstone.
          *
-         * @param key   the key
+         * @param key the key
          * @param value the value; must not be null
          * @throws IOException if the WAL cannot be written to
          */
@@ -124,11 +127,11 @@ public sealed interface TypedLsmTree<V> extends Closeable
         Optional<V> get(long key) throws IOException;
 
         /**
-         * Returns an iterator over entries in the half-open range {@code [from, to)}, ascending
-         * in numeric order.
+         * Returns an iterator over entries in the half-open range {@code [from, to)}, ascending in
+         * numeric order.
          *
          * @param from inclusive lower bound
-         * @param to   exclusive upper bound; must be greater than {@code from}
+         * @param to exclusive upper bound; must be greater than {@code from}
          * @return a non-null iterator
          * @throws IOException if the scan cannot be initialised
          */
@@ -150,7 +153,7 @@ public sealed interface TypedLsmTree<V> extends Closeable
         /**
          * Associates {@code key} with {@code value}, replacing any prior value or tombstone.
          *
-         * @param key   the key; must not be null
+         * @param key the key; must not be null
          * @param value the value; must not be null
          * @throws IOException if the WAL cannot be written to
          */
@@ -174,11 +177,11 @@ public sealed interface TypedLsmTree<V> extends Closeable
         Optional<V> get(MemorySegment key) throws IOException;
 
         /**
-         * Returns an iterator over entries in the half-open range {@code [from, to)}, ascending
-         * by byte-lexicographic key order.
+         * Returns an iterator over entries in the half-open range {@code [from, to)}, ascending by
+         * byte-lexicographic key order.
          *
          * @param from inclusive lower bound; must not be null
-         * @param to   exclusive upper bound; must not be null and greater than {@code from}
+         * @param to exclusive upper bound; must not be null and greater than {@code from}
          * @return a non-null iterator
          * @throws IOException if the scan cannot be initialised
          */

@@ -18,16 +18,8 @@ class CompactionTaskTest {
 
     private static SSTableMetadata dummyMeta() {
         MemorySegment key = Arena.ofAuto().allocate(1);
-        return new SSTableMetadata(
-                1L,
-                Path.of("/tmp/test.sst"),
-                L0,
-                key,
-                key,
-                SequenceNumber.ZERO,
-                SequenceNumber.ZERO,
-                0L,
-                0L);
+        return new SSTableMetadata(1L, Path.of("/tmp/test.sst"), L0, key, key, SequenceNumber.ZERO,
+                SequenceNumber.ZERO, 0L, 0L);
     }
 
     @Test
@@ -37,12 +29,14 @@ class CompactionTaskTest {
 
     @Test
     void nullSourceLevelRejected() {
-        assertThrows(NullPointerException.class, () -> new CompactionTask(List.of(dummyMeta()), null, L1));
+        assertThrows(NullPointerException.class,
+                () -> new CompactionTask(List.of(dummyMeta()), null, L1));
     }
 
     @Test
     void nullTargetLevelRejected() {
-        assertThrows(NullPointerException.class, () -> new CompactionTask(List.of(dummyMeta()), L0, null));
+        assertThrows(NullPointerException.class,
+                () -> new CompactionTask(List.of(dummyMeta()), L0, null));
     }
 
     @Test

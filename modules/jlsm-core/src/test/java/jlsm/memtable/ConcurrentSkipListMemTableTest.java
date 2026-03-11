@@ -31,10 +31,6 @@ class ConcurrentSkipListMemTableTest {
         return MemorySegment.ofArray(s.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static MemorySegment seg(byte... bytes) {
-        return MemorySegment.ofArray(bytes);
-    }
-
     private static Entry.Put put(String key, String value, long seqNum) {
         return new Entry.Put(seg(key), seg(value), new SequenceNumber(seqNum));
     }
@@ -223,11 +219,16 @@ class ConcurrentSkipListMemTableTest {
         table.apply(put("a", "a2", 2L));
         List<Entry> entries = drain(table.scan());
         assertEquals(5, entries.size());
-        assertTrue(keyEquals(entries.get(0), "a")); assertEquals(2L, entries.get(0).sequenceNumber().value());
-        assertTrue(keyEquals(entries.get(1), "a")); assertEquals(1L, entries.get(1).sequenceNumber().value());
-        assertTrue(keyEquals(entries.get(2), "b")); assertEquals(1L, entries.get(2).sequenceNumber().value());
-        assertTrue(keyEquals(entries.get(3), "c")); assertEquals(3L, entries.get(3).sequenceNumber().value());
-        assertTrue(keyEquals(entries.get(4), "c")); assertEquals(1L, entries.get(4).sequenceNumber().value());
+        assertTrue(keyEquals(entries.get(0), "a"));
+        assertEquals(2L, entries.get(0).sequenceNumber().value());
+        assertTrue(keyEquals(entries.get(1), "a"));
+        assertEquals(1L, entries.get(1).sequenceNumber().value());
+        assertTrue(keyEquals(entries.get(2), "b"));
+        assertEquals(1L, entries.get(2).sequenceNumber().value());
+        assertTrue(keyEquals(entries.get(3), "c"));
+        assertEquals(3L, entries.get(3).sequenceNumber().value());
+        assertTrue(keyEquals(entries.get(4), "c"));
+        assertEquals(1L, entries.get(4).sequenceNumber().value());
     }
 
     @Test

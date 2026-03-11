@@ -3,7 +3,6 @@ package jlsm.indexing;
 import jlsm.bloom.blocked.BlockedBloomFilter;
 import jlsm.core.indexing.InvertedIndex;
 import jlsm.core.io.MemorySerializer;
-import jlsm.core.model.Level;
 import jlsm.core.tree.LsmTree;
 import jlsm.memtable.ConcurrentSkipListMemTable;
 import jlsm.sstable.TrieSSTableReader;
@@ -18,7 +17,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -38,18 +36,6 @@ class LsmInvertedIndexTest {
     // -----------------------------------------------------------------------
     // Serializer helpers
     // -----------------------------------------------------------------------
-
-    private static final MemorySerializer<String> STRING_SERIALIZER = new MemorySerializer<>() {
-        @Override
-        public MemorySegment serialize(String value) {
-            return MemorySegment.ofArray(value.getBytes(StandardCharsets.UTF_8));
-        }
-
-        @Override
-        public String deserialize(MemorySegment segment) {
-            return new String(segment.toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
-        }
-    };
 
     private static final MemorySerializer<Long> LONG_DOC_ID_SERIALIZER = new MemorySerializer<>() {
         @Override
@@ -82,12 +68,13 @@ class LsmInvertedIndexTest {
         return StandardLsmTree.builder()
                 .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
-                .sstableWriterFactory((SSTableWriterFactory) (id, level, path) -> new TrieSSTableWriter(id, level, path))
-                .sstableReaderFactory((SSTableReaderFactory) path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .sstableWriterFactory((SSTableWriterFactory) (id, level,
+                        path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory((SSTableReaderFactory) path -> TrieSSTableReader.open(path,
+                        BlockedBloomFilter.deserializer()))
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .memTableFlushThresholdBytes(flushThreshold)
-                .build();
+                .memTableFlushThresholdBytes(flushThreshold).build();
     }
 
     private static <D> List<D> drain(Iterator<D> it) {
@@ -103,8 +90,7 @@ class LsmInvertedIndexTest {
     @Test
     void stringTermed_indexThenLookupReturnsDocId() throws IOException {
         try (InvertedIndex.StringTermed<Long> index = LsmInvertedIndex.<Long>stringTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             index.index(1L, List.of("hello"));
             List<Long> results = drain(index.lookup("hello"));
@@ -115,8 +101,7 @@ class LsmInvertedIndexTest {
     @Test
     void stringTermed_lookupMissingTermReturnsEmpty() throws IOException {
         try (InvertedIndex.StringTermed<Long> index = LsmInvertedIndex.<Long>stringTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             List<Long> results = drain(index.lookup("nonexistent"));
             assertTrue(results.isEmpty());
@@ -126,8 +111,7 @@ class LsmInvertedIndexTest {
     @Test
     void stringTermed_removeDocRemovesFromPostings() throws IOException {
         try (InvertedIndex.StringTermed<Long> index = LsmInvertedIndex.<Long>stringTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             index.index(1L, List.of("foo"));
             index.remove(1L, List.of("foo"));
@@ -139,8 +123,7 @@ class LsmInvertedIndexTest {
     @Test
     void stringTermed_multipleDocsForSameTerm() throws IOException {
         try (InvertedIndex.StringTermed<Long> index = LsmInvertedIndex.<Long>stringTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             index.index(1L, List.of("cat"));
             index.index(2L, List.of("cat"));
@@ -154,8 +137,7 @@ class LsmInvertedIndexTest {
     @Test
     void stringTermed_multipleTermsForSameDoc() throws IOException {
         try (InvertedIndex.StringTermed<Long> index = LsmInvertedIndex.<Long>stringTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             index.index(42L, List.of("apple", "banana", "cherry"));
             assertEquals(List.of(42L), drain(index.lookup("apple")));
@@ -168,9 +150,7 @@ class LsmInvertedIndexTest {
     void stringTermed_lookupAfterFlush() throws IOException {
         // tiny flush threshold forces a flush mid-index
         try (InvertedIndex.StringTermed<Long> index = LsmInvertedIndex.<Long>stringTermedBuilder()
-                .lsmTree(buildTree(1L))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .build()) {
+                .lsmTree(buildTree(1L)).docIdSerializer(LONG_DOC_ID_SERIALIZER).build()) {
             index.index(10L, List.of("flush-test"));
             index.index(20L, List.of("flush-test"));
             List<Long> results = drain(index.lookup("flush-test"));
@@ -181,32 +161,26 @@ class LsmInvertedIndexTest {
 
     @Test
     void stringTermed_builderRequiresLsmTree() {
-        assertThrows(NullPointerException.class, () ->
-                LsmInvertedIndex.<Long>stringTermedBuilder()
-                        .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> LsmInvertedIndex.<Long>stringTermedBuilder()
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).build());
     }
 
     @Test
     void stringTermed_builderRequiresDocIdSerializer() throws IOException {
-        assertThrows(NullPointerException.class, () ->
-                LsmInvertedIndex.<Long>stringTermedBuilder()
-                        .lsmTree(buildTree(Long.MAX_VALUE))
-                        .build());
+        assertThrows(NullPointerException.class, () -> LsmInvertedIndex.<Long>stringTermedBuilder()
+                .lsmTree(buildTree(Long.MAX_VALUE)).build());
     }
 
     @Test
     void stringTermed_builderNullLsmTreeThrowsAtSetTime() {
-        assertThrows(NullPointerException.class, () ->
-                LsmInvertedIndex.<Long>stringTermedBuilder()
-                        .lsmTree(null));
+        assertThrows(NullPointerException.class,
+                () -> LsmInvertedIndex.<Long>stringTermedBuilder().lsmTree(null));
     }
 
     @Test
     void stringTermed_builderNullDocIdSerializerThrowsAtSetTime() {
-        assertThrows(NullPointerException.class, () ->
-                LsmInvertedIndex.<Long>stringTermedBuilder()
-                        .docIdSerializer(null));
+        assertThrows(NullPointerException.class,
+                () -> LsmInvertedIndex.<Long>stringTermedBuilder().docIdSerializer(null));
     }
 
     // -----------------------------------------------------------------------
@@ -216,8 +190,7 @@ class LsmInvertedIndexTest {
     @Test
     void longTermed_indexThenLookupReturnsDocId() throws IOException {
         try (InvertedIndex.LongTermed<Long> index = LsmInvertedIndex.<Long>longTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             index.index(1L, List.of(42L));
             List<Long> results = drain(index.lookup(42L));
@@ -228,8 +201,7 @@ class LsmInvertedIndexTest {
     @Test
     void longTermed_numericTermsSortCorrectly() throws IOException {
         try (InvertedIndex.LongTermed<Long> index = LsmInvertedIndex.<Long>longTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             index.index(10L, List.of(-5L));
             index.index(20L, List.of(5L));
@@ -244,8 +216,7 @@ class LsmInvertedIndexTest {
     @Test
     void longTermed_extremeTermValuesRoundTrip() throws IOException {
         try (InvertedIndex.LongTermed<Long> index = LsmInvertedIndex.<Long>longTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             index.index(1L, List.of(Long.MIN_VALUE));
             index.index(2L, List.of(Long.MAX_VALUE));
@@ -257,8 +228,7 @@ class LsmInvertedIndexTest {
     @Test
     void longTermed_lookupMissingTermReturnsEmpty() throws IOException {
         try (InvertedIndex.LongTermed<Long> index = LsmInvertedIndex.<Long>longTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             List<Long> results = drain(index.lookup(999L));
             assertTrue(results.isEmpty());
@@ -273,8 +243,7 @@ class LsmInvertedIndexTest {
     void segmentTermed_indexThenLookupReturnsDocId() throws IOException {
         MemorySegment term = MemorySegment.ofArray("raw-term".getBytes(StandardCharsets.UTF_8));
         try (InvertedIndex.SegmentTermed<Long> index = LsmInvertedIndex.<Long>segmentTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             index.index(7L, List.of(term));
             List<Long> results = drain(index.lookup(term));
@@ -286,8 +255,7 @@ class LsmInvertedIndexTest {
     void segmentTermed_lookupMissingTermReturnsEmpty() throws IOException {
         MemorySegment term = MemorySegment.ofArray("absent".getBytes(StandardCharsets.UTF_8));
         try (InvertedIndex.SegmentTermed<Long> index = LsmInvertedIndex.<Long>segmentTermedBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .build()) {
             List<Long> results = drain(index.lookup(term));
             assertTrue(results.isEmpty());

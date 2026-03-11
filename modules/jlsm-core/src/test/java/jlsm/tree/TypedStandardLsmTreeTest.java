@@ -3,7 +3,6 @@ package jlsm.tree;
 import jlsm.bloom.blocked.BlockedBloomFilter;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.model.Entry;
-import jlsm.core.model.Level;
 import jlsm.core.tree.TypedLsmTree;
 import jlsm.memtable.ConcurrentSkipListMemTable;
 import jlsm.sstable.TrieSSTableReader;
@@ -15,7 +14,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -53,42 +51,45 @@ class TypedStandardLsmTreeTest {
     // Tree factory helpers
     // -----------------------------------------------------------------------
 
-    private TypedLsmTree.StringKeyed<String> openStringKeyed(long flushThresholdBytes) throws IOException {
+    private TypedLsmTree.StringKeyed<String> openStringKeyed(long flushThresholdBytes)
+            throws IOException {
         return TypedStandardLsmTree.<String>stringKeyedBuilder()
                 .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
                 .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .memTableFlushThresholdBytes(flushThresholdBytes)
-                .valueSerializer(STRING_SERIALIZER)
+                .memTableFlushThresholdBytes(flushThresholdBytes).valueSerializer(STRING_SERIALIZER)
                 .build();
     }
 
-    private TypedLsmTree.LongKeyed<String> openLongKeyed(long flushThresholdBytes) throws IOException {
+    private TypedLsmTree.LongKeyed<String> openLongKeyed(long flushThresholdBytes)
+            throws IOException {
         return TypedStandardLsmTree.<String>longKeyedBuilder()
                 .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
                 .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .memTableFlushThresholdBytes(flushThresholdBytes)
-                .valueSerializer(STRING_SERIALIZER)
+                .memTableFlushThresholdBytes(flushThresholdBytes).valueSerializer(STRING_SERIALIZER)
                 .build();
     }
 
-    private TypedLsmTree.SegmentKeyed<String> openSegmentKeyed(long flushThresholdBytes) throws IOException {
+    private TypedLsmTree.SegmentKeyed<String> openSegmentKeyed(long flushThresholdBytes)
+            throws IOException {
         return TypedStandardLsmTree.<String>segmentKeyedBuilder()
                 .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
                 .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .memTableFlushThresholdBytes(flushThresholdBytes)
-                .valueSerializer(STRING_SERIALIZER)
+                .memTableFlushThresholdBytes(flushThresholdBytes).valueSerializer(STRING_SERIALIZER)
                 .build();
     }
 
@@ -203,93 +204,90 @@ class TypedStandardLsmTreeTest {
 
     @Test
     void stringKeyed_builderRequiresWal() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>stringKeyedBuilder()
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .valueSerializer(STRING_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>stringKeyedBuilder().memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst"))
+                .valueSerializer(STRING_SERIALIZER).build());
     }
 
     @Test
     void stringKeyed_builderRequiresMemTableFactory() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>stringKeyedBuilder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .valueSerializer(STRING_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>stringKeyedBuilder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst"))
+                .valueSerializer(STRING_SERIALIZER).build());
     }
 
     @Test
     void stringKeyed_builderRequiresSstableWriterFactory() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>stringKeyedBuilder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .valueSerializer(STRING_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>stringKeyedBuilder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst"))
+                .valueSerializer(STRING_SERIALIZER).build());
     }
 
     @Test
     void stringKeyed_builderRequiresSstableReaderFactory() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>stringKeyedBuilder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .valueSerializer(STRING_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>stringKeyedBuilder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst"))
+                .valueSerializer(STRING_SERIALIZER).build());
     }
 
     @Test
     void stringKeyed_builderRequiresIdSupplier() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>stringKeyedBuilder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .valueSerializer(STRING_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>stringKeyedBuilder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .pathFn((id, level) -> tempDir.resolve("sst.sst"))
+                .valueSerializer(STRING_SERIALIZER).build());
     }
 
     @Test
     void stringKeyed_builderRequiresPathFn() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>stringKeyedBuilder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .valueSerializer(STRING_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>stringKeyedBuilder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement).valueSerializer(STRING_SERIALIZER).build());
     }
 
     @Test
     void stringKeyed_builderRequiresValueSerializer() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>stringKeyedBuilder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>stringKeyedBuilder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst")).build());
     }
 
     // -----------------------------------------------------------------------
@@ -372,28 +370,27 @@ class TypedStandardLsmTreeTest {
 
     @Test
     void longKeyed_builderRequiresWal() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>longKeyedBuilder()
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .valueSerializer(STRING_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>longKeyedBuilder().memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst"))
+                .valueSerializer(STRING_SERIALIZER).build());
     }
 
     @Test
     void longKeyed_builderRequiresValueSerializer() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>longKeyedBuilder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>longKeyedBuilder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst")).build());
     }
 
     // -----------------------------------------------------------------------
@@ -462,27 +459,26 @@ class TypedStandardLsmTreeTest {
 
     @Test
     void segmentKeyed_builderRequiresWal() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>segmentKeyedBuilder()
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .valueSerializer(STRING_SERIALIZER)
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>segmentKeyedBuilder().memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst"))
+                .valueSerializer(STRING_SERIALIZER).build());
     }
 
     @Test
     void segmentKeyed_builderRequiresValueSerializer() {
-        assertThrows(NullPointerException.class, () ->
-                TypedStandardLsmTree.<String>segmentKeyedBuilder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .build());
+        assertThrows(NullPointerException.class, () -> TypedStandardLsmTree
+                .<String>segmentKeyedBuilder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst")).build());
     }
 }

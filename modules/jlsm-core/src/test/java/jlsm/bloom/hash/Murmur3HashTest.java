@@ -41,7 +41,7 @@ class Murmur3HashTest {
 
     @Test
     void singleByteKeyDoesNotThrow() {
-        MemorySegment key = segment(new byte[]{42});
+        MemorySegment key = segment(new byte[]{ 42 });
         long[] result = assertDoesNotThrow(() -> Murmur3Hash.hash128(key));
         assertNotNull(result);
         assertEquals(2, result.length);
@@ -66,12 +66,13 @@ class Murmur3HashTest {
 
     @Test
     void distinctKeysProduceDistinctHashes() {
-        String[] keys = {"apple", "banana", "cherry", "date", "elderberry"};
+        String[] keys = { "apple", "banana", "cherry", "date", "elderberry" };
         var hashes = new java.util.HashSet<Long>();
         for (String k : keys) {
             long[] h = Murmur3Hash.hash128(segment(k));
             hashes.add(h[0]);
         }
-        assertEquals(keys.length, hashes.size(), "expected no collisions on h1 for distinct short keys");
+        assertEquals(keys.length, hashes.size(),
+                "expected no collisions on h1 for distinct short keys");
     }
 }

@@ -43,17 +43,15 @@ class CompositeKeyTest {
     @Test
     void higherSeqNumSortsBeforeLowerSeqNumForSameLogicalKey() {
         CompositeKey higher = key("foo", 100L);
-        CompositeKey lower  = key("foo", 50L);
-        assertTrue(CMP.compare(higher, lower) < 0,
-                "higher seqnum should sort BEFORE lower seqnum");
+        CompositeKey lower = key("foo", 50L);
+        assertTrue(CMP.compare(higher, lower) < 0, "higher seqnum should sort BEFORE lower seqnum");
     }
 
     @Test
     void lowerSeqNumSortsAfterHigherSeqNumForSameLogicalKey() {
         CompositeKey higher = key("foo", 100L);
-        CompositeKey lower  = key("foo", 50L);
-        assertTrue(CMP.compare(lower, higher) > 0,
-                "lower seqnum should sort AFTER higher seqnum");
+        CompositeKey lower = key("foo", 50L);
+        assertTrue(CMP.compare(lower, higher) > 0, "lower seqnum should sort AFTER higher seqnum");
     }
 
     // -----------------------------------------------------------------------
@@ -71,14 +69,13 @@ class CompositeKeyTest {
     @Test
     void shorterKeyWithSamePrefixSortsBeforeLongerKey() {
         CompositeKey shorter = key("ab", 1L);
-        CompositeKey longer  = key("abc", 1L);
-        assertTrue(CMP.compare(shorter, longer) < 0,
-                "'ab' should sort before 'abc'");
+        CompositeKey longer = key("abc", 1L);
+        assertTrue(CMP.compare(shorter, longer) < 0, "'ab' should sort before 'abc'");
     }
 
     @Test
     void emptyKeySortsBeforeAnyNonEmptyKey() {
-        CompositeKey empty    = new CompositeKey(seg(new byte[0]), new SequenceNumber(1L));
+        CompositeKey empty = new CompositeKey(seg(new byte[0]), new SequenceNumber(1L));
         CompositeKey nonEmpty = key("a", 1L);
         assertTrue(CMP.compare(empty, nonEmpty) < 0,
                 "empty key should sort before any non-empty key");
@@ -88,18 +85,15 @@ class CompositeKeyTest {
     void unsignedByteOrdering_0xFF_greaterThan_0x01() {
         CompositeKey ff = new CompositeKey(seg((byte) 0xFF), new SequenceNumber(1L));
         CompositeKey one = new CompositeKey(seg((byte) 0x01), new SequenceNumber(1L));
-        assertTrue(CMP.compare(ff, one) > 0,
-                "0xFF should sort after 0x01 (unsigned comparison)");
-        assertTrue(CMP.compare(one, ff) < 0,
-                "0x01 should sort before 0xFF (unsigned comparison)");
+        assertTrue(CMP.compare(ff, one) > 0, "0xFF should sort after 0x01 (unsigned comparison)");
+        assertTrue(CMP.compare(one, ff) < 0, "0x01 should sort before 0xFF (unsigned comparison)");
     }
 
     @Test
     void unsignedByteOrdering_0x80_greaterThan_0x7F() {
         CompositeKey high = new CompositeKey(seg((byte) 0x80), new SequenceNumber(1L));
-        CompositeKey low  = new CompositeKey(seg((byte) 0x7F), new SequenceNumber(1L));
-        assertTrue(CMP.compare(high, low) > 0,
-                "0x80 should sort after 0x7F (unsigned comparison)");
+        CompositeKey low = new CompositeKey(seg((byte) 0x7F), new SequenceNumber(1L));
+        assertTrue(CMP.compare(high, low) > 0, "0x80 should sort after 0x7F (unsigned comparison)");
     }
 
     // -----------------------------------------------------------------------
@@ -109,7 +103,7 @@ class CompositeKeyTest {
     @Test
     void maxSeqNumProbeSortsBeforeAllRealEntriesForSameKey() {
         CompositeKey probe = new CompositeKey(seg("k"), new SequenceNumber(Long.MAX_VALUE));
-        CompositeKey real  = new CompositeKey(seg("k"), new SequenceNumber(999L));
+        CompositeKey real = new CompositeKey(seg("k"), new SequenceNumber(999L));
         assertTrue(CMP.compare(probe, real) < 0,
                 "Long.MAX_VALUE probe should sort BEFORE a real entry for the same key");
     }

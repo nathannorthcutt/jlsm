@@ -33,8 +33,7 @@ class SpookyCompactorCompactTest {
     @BeforeEach
     void setUp() {
         idCounter = new AtomicLong(100L);
-        compactor = SpookyCompactor.builder()
-                .idSupplier(idCounter::getAndIncrement)
+        compactor = SpookyCompactor.builder().idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
                 .build();
     }
@@ -75,7 +74,8 @@ class SpookyCompactorCompactTest {
         long id = idCounter.getAndIncrement();
         Path path = tempDir.resolve("src-" + id + ".sst");
         try (TrieSSTableWriter w = new TrieSSTableWriter(id, level, path)) {
-            for (Entry e : entries) w.append(e);
+            for (Entry e : entries)
+                w.append(e);
             return w.finish();
         }
     }
@@ -85,7 +85,8 @@ class SpookyCompactorCompactTest {
                 BlockedBloomFilter.deserializer())) {
             Iterator<Entry> it = r.scan();
             List<Entry> result = new ArrayList<>();
-            while (it.hasNext()) result.add(it.next());
+            while (it.hasNext())
+                result.add(it.next());
             return result;
         }
     }
@@ -163,44 +164,55 @@ class SpookyCompactorCompactTest {
 
     @Test
     void tombstonePreservedOnNonBottomLevel() throws IOException {
-        // Source levels span 0-1; target is 1 (non-bottom when max level in sources is 1 but we're not at bottom)
+        // Source levels span 0-1; target is 1 (non-bottom when max level in sources is 1 but we're
+        // not at bottom)
         // Actually: isBottomLevel = (targetLevel == maxLevelIndex of sourceSSTables)
         // If target is L1 and sources are L0 only → target IS the bottom relative to sources
-        // Let's use: source at L0, target at L1, but another file at L2 must exist for L1 to be non-bottom
+        // Let's use: source at L0, target at L1, but another file at L2 must exist for L1 to be
+        // non-bottom
         // Simplest: use L0→L1 compaction with sources only at L0 and target at L1;
-        //   isBottomLevel = targetLevel.index() == maxLevelIndexAmongSources(L0=0) → 1 != 0 → NOT bottom
+        // isBottomLevel = targetLevel.index() == maxLevelIndexAmongSources(L0=0) → 1 != 0 → NOT
+        // bottom
         // Wait, re-reading the plan:
-        //   isBottomLevel = (task.targetLevel().index() == maxLevelIndex(task.sourceSSTables()))
-        //   maxLevelIndex of sources all at L0 → 0; targetLevel = L1 → 1 != 0 → non-bottom
+        // isBottomLevel = (task.targetLevel().index() == maxLevelIndex(task.sourceSSTables()))
+        // maxLevelIndex of sources all at L0 → 0; targetLevel = L1 → 1 != 0 → non-bottom
         // Actually wait, that doesn't make sense either.
-        // The plan says: "isBottomLevel = (task.targetLevel().index() == maxLevelIndex(task.sourceSSTables()))"
+        // The plan says: "isBottomLevel = (task.targetLevel().index() ==
+        // maxLevelIndex(task.sourceSSTables()))"
         // maxLevelIndex of sources = max level among all source files
         // If sources are {L0, L1} files and target is L1 → maxLevelIndex=1, targetLevel=1 → bottom
         // If sources are {L0} files and target is L1 → maxLevelIndex=0, targetLevel=1 → not bottom
         // Hmm, that's backwards from what I'd expect. Let me re-read.
         //
-        // Actually re-reading: "isBottomLevel = (task.targetLevel().index() == maxLevelIndex(task.sourceSSTables()))"
-        // means: we're compacting to the bottom when the target level IS the max level in the sources.
+        // Actually re-reading: "isBottomLevel = (task.targetLevel().index() ==
+        // maxLevelIndex(task.sourceSSTables()))"
+        // means: we're compacting to the bottom when the target level IS the max level in the
+        // sources.
         // But that doesn't apply when we're compacting L0+L1 → L1 where L1 is already the bottom.
-        // I think the intended meaning is: is the TARGET the bottom-most level we have in the system?
-        // The sources span from sourceLevel to targetLevel, and if target == max(source levels) then
+        // I think the intended meaning is: is the TARGET the bottom-most level we have in the
+        // system?
+        // The sources span from sourceLevel to targetLevel, and if target == max(source levels)
+        // then
         // we're landing at the bottom.
         //
         // Let me use: sources = {L1 file, L2 file}, target = L2 → bottom
-        // and for non-bottom: sources = {L0 file, L1 file}, target = L1; maxSourceLevel=1, targetLevel=1 → bottom again
+        // and for non-bottom: sources = {L0 file, L1 file}, target = L1; maxSourceLevel=1,
+        // targetLevel=1 → bottom again
         // Hmm let me re-think.
         // "isBottomLevel = (task.targetLevel().index() == maxLevelIndex(task.sourceSSTables()))"
         // If sources have L0 and L1 files, maxLevelIndex = 1, target = L1 → 1 == 1 → bottom
         // If sources have L0 only, maxLevelIndex = 0, target = L1 → 1 != 0 → NOT bottom
         //
         // So for a non-bottom compaction: sources = {L0 file}, target = L1 → tombstone preserved
-        // For a bottom compaction: sources = {L0 file, L1 file} or target == max source level → tombstone dropped
+        // For a bottom compaction: sources = {L0 file, L1 file} or target == max source level →
+        // tombstone dropped
 
         SSTableMetadata src = writeSSTable(Level.L0,
                 new Entry.Delete(key("gone"), new SequenceNumber(5)),
                 new Entry.Put(key("z"), val("keep"), new SequenceNumber(6)));
 
-        // target L1, sources only at L0 → maxLevelIndex(sources)=0, target=1 → NOT bottom → preserve tombstone
+        // target L1, sources only at L0 → maxLevelIndex(sources)=0, target=1 → NOT bottom →
+        // preserve tombstone
         CompactionTask task = new CompactionTask(List.of(src), Level.L0, new Level(1));
         List<SSTableMetadata> out = compactor.compact(task);
 
@@ -255,10 +267,8 @@ class SpookyCompactorCompactTest {
     @Test
     void idsFromSupplier() throws IOException {
         AtomicLong idGen = new AtomicLong(999L);
-        SpookyCompactor c = SpookyCompactor.builder()
-                .idSupplier(idGen::getAndIncrement)
-                .pathFn((id, level) -> tempDir.resolve("out-" + id + ".sst"))
-                .build();
+        SpookyCompactor c = SpookyCompactor.builder().idSupplier(idGen::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("out-" + id + ".sst")).build();
 
         SSTableMetadata src = writeSSTable(Level.L0,
                 new Entry.Put(key("a"), val("1"), new SequenceNumber(1)));
@@ -276,10 +286,8 @@ class SpookyCompactorCompactTest {
     @Test
     void pathsFromPathFn() throws IOException {
         Path expectedPath = tempDir.resolve("custom-output.sst");
-        SpookyCompactor c = SpookyCompactor.builder()
-                .idSupplier(() -> 42L)
-                .pathFn((id, level) -> expectedPath)
-                .build();
+        SpookyCompactor c = SpookyCompactor.builder().idSupplier(() -> 42L)
+                .pathFn((id, level) -> expectedPath).build();
 
         SSTableMetadata src = writeSSTable(Level.L0,
                 new Entry.Put(key("a"), val("1"), new SequenceNumber(1)));
@@ -298,8 +306,7 @@ class SpookyCompactorCompactTest {
     @Test
     void outputFileSplitting() throws IOException {
         // Set a tiny target size to force splitting
-        SpookyCompactor c = SpookyCompactor.builder()
-                .idSupplier(idCounter::getAndIncrement)
+        SpookyCompactor c = SpookyCompactor.builder().idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("split-" + id + ".sst"))
                 .targetBottomFileSizeBytes(1L) // force a new file after every entry
                 .build();
@@ -330,13 +337,13 @@ class SpookyCompactorCompactTest {
 
     @Test
     void partialOutputDeletedOnException() throws IOException {
-        // Create a compactor that will fail: use a pathFn that points to a directory (write will fail)
+        // Create a compactor that will fail: use a pathFn that points to a directory (write will
+        // fail)
         AtomicLong idGen2 = new AtomicLong(500L);
         Path badPath = tempDir.resolve("not-a-file");
         Files.createDirectory(badPath); // create a directory where we expect a file → open fails
 
-        SpookyCompactor c = SpookyCompactor.builder()
-                .idSupplier(idGen2::getAndIncrement)
+        SpookyCompactor c = SpookyCompactor.builder().idSupplier(idGen2::getAndIncrement)
                 .pathFn((id, level) -> badPath) // always returns a directory path
                 .build();
 

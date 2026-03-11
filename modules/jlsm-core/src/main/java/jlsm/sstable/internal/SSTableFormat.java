@@ -3,7 +3,9 @@ package jlsm.sstable.internal;
 /**
  * Constants describing the SSTable binary file format.
  *
- * <p>File layout:
+ * <p>
+ * File layout:
+ *
  * <pre>
  *   [Data Block 0 ... N]
  *   [Key Index          ]
@@ -12,6 +14,7 @@ package jlsm.sstable.internal;
  * </pre>
  *
  * Footer layout (big-endian, 48 bytes):
+ *
  * <pre>
  *   [long idxOffset   ]  8 bytes — file offset of Key Index section
  *   [long idxLength   ]  8 bytes — byte length of Key Index section
@@ -32,5 +35,6 @@ public final class SSTableFormat {
     /** Target data block size in bytes; new block starts when current exceeds this threshold. */
     public static final int DEFAULT_BLOCK_SIZE = 4096;
 
-    private SSTableFormat() {}
+    private SSTableFormat() {
+    }
 }

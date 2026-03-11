@@ -8,7 +8,8 @@ import java.nio.file.Path;
 /**
  * Factory that opens an existing SSTable file for reading.
  *
- * <p>Each invocation opens the file at {@code path} and returns a ready-to-use reader.
+ * <p>
+ * Each invocation opens the file at {@code path} and returns a ready-to-use reader.
  */
 @FunctionalInterface
 public interface SSTableReaderFactory {

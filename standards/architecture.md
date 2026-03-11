@@ -1,6 +1,6 @@
 ## Architecture
 
-The library is organized as a Gradle multi-project build where each subproject is a distinct JPMS module. Modules should have minimal dependencies on each other; prefer defining interfaces in `jlsm-core` and providing implementations in focused submodules.
+The library is organized as a Gradle multi-project build where each subproject is a distinct JPMS module. All interfaces and implementations live in `jlsm-core`; higher-level modules (`jlsm-indexing`, `jlsm-vector`) depend only on `jlsm-core` and add domain-specific index structures on top.
 
 ### Core LSM-Tree Components
 
@@ -17,26 +17,34 @@ The canonical LSM-Tree pipeline — **write path**: WAL → MemTable → flush t
 
 ### Key Design Principles
 
-- **Interfaces in core, implementations in submodules** — `jlsm-core` defines the contracts; submodules provide pluggable implementations
+- **Interfaces and implementations in jlsm-core** — all contracts and their implementations live in `jlsm-core`; higher-level modules (`jlsm-indexing`, `jlsm-vector`) depend only on `jlsm-core`
 - **No external runtime dependencies** — this is a pure library; avoid pulling in third-party frameworks
 - **Designed for composition** — consumers wire components together; the library does not mandate a single configuration
 - **Java NIO / memory-mapped I/O** — prefer `java.nio` for SSTable and WAL file operations
-- **Off-heap friendliness** — key/value representations should be compatible with `ByteBuffer` / `MemorySegment` (Panama
-  FFM API) to support off-heap vector data
-- **Defensive assertions** — use `assert` statements throughout all code (public and private) to document and enforce assumptions; validate all inputs to public methods eagerly with explicit exceptions (`IllegalArgumentException`, `NullPointerException`, etc.) — never trust external callers
+- **Off-heap friendliness** — key/value representations should be compatible with `ByteBuffer` / `MemorySegment` (Panama FFM API) to support off-heap vector data
 
-### Expected Module Structure
+#### Remote/Network-Backed File Store Support
+- Use `java.nio.file.Path` + `SeekableByteChannel` (Java NIO FileSystem SPI) for all I/O — this allows S3, GCS, and other remote filesystems to be plugged in via third-party NIO providers
+- Avoid `FileChannel`-only features (e.g., `mmap`, `force()`) in code paths that must be remote-compatible; use conditional dispatch (`if (ch instanceof FileChannel fc)`) to apply local-only optimizations
+- Remote-compatible WAL: the one-file-per-record pattern (`RemoteWriteAheadLog`) is preferred for backends that do not support seek/overwrite semantics
+
+#### Off-Heap Memory via ArenaBufferPool
+- Allocate buffers via `ArenaBufferPool` (backed by `Arena.ofShared()`) wherever segments are needed in hot paths (WAL appends, compaction merges, SSTable reads/writes)
+- Avoid `MemorySegment.ofArray()` and `Arena.ofAuto()` in hot paths — these allocate heap or unconstrained off-heap memory that bypasses the pool and breaks externally configured memory budgets
+- The pool enforces a fixed upper bound on off-heap memory; all callers must `acquire()` before use and `release()` in a `finally` block
+
+### Module Structure
 
 ```
-jlsm-core/          # Interfaces: MemTable, SSTable, Compaction, WAL, Bloom, Cache, LsmTree, etc. and shared utilities
-jlsm-memtable/      # MemTable implementations (e.g., ConcurrentSkipListMap-backed)
-jlsm-sstable/       # SSTable read/write, block encoding, trie key index
-jlsm-wal/           # Write-ahead log implementations (local mmap, remote single-file-per-record)
-jlsm-bloom/         # Bloom filter implementations (e.g., BlockedBloomFilter with MurmurHash3)
-jlsm-compaction/    # Compaction strategies (size-tiered, leveled, spooky)
-jlsm-cache/         # Block cache implementations (e.g., LRU)
-jlsm-tree/          # High-level LSM tree (StandardLsmTree, TypedLsmTree) wiring all components
-jlsm-indexing/      # (planned) Higher-level index structures built on LSM tree components (e.g., vector, inverted index)
+jlsm-core/          # ALL interfaces AND all implementations (bloom, wal, memtable,
+                    #   sstable, compaction, cache, tree) + shared utilities
+                    #   Internal packages (not exported): jlsm.bloom.hash,
+                    #   jlsm.wal.internal, jlsm.memtable.internal, jlsm.sstable.internal,
+                    #   jlsm.compaction.internal, jlsm.tree.internal
+jlsm-indexing/      # Higher-level index structures: inverted index (LsmInvertedIndex)
+jlsm-vector/        # Vector index: IvfFlat, Hnsw backed by LSM tree; uses jdk.incubator.vector
+tests/
+  jlsm-remote-integration/  # Integration tests against remote (S3) backends
 ```
 
-Each submodule directory contains its own `build.gradle` and `src/main/java/module-info.java`.
+Each module directory contains its own `build.gradle` and `src/main/java/module-info.java`.

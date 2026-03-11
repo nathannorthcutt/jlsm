@@ -28,13 +28,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 
 @standards/architecture.md
+@standards/coding-guidelines.md
 @standards/testing.md
+@standards/code-quality.md
 
 ## Git Workflow
 
 - **Never commit directly to `main`** — all work must be done on a feature branch
 - **Branch naming** — use kebab-case names that describe the work (e.g., `add-bloom-filter`, `fix-wal-recovery`)
 - **Starting work** — if currently on `main`, ask whether there is an existing branch to switch to or gather enough context to create an appropriate branch before proceeding
-- **Finishing work** — when work is complete, open a PR with a summary of changes and request a review before merging to `main`
-- **Never merge your own PRs** — do not merge a pull request that you opened, regardless of approval status, CI result, or any other signal; only merge when explicitly instructed to do so
 - **Do not check PR status proactively** — do not poll or report on CI checks, review status, or merge readiness unless the user directly asks

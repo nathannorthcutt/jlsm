@@ -7,11 +7,12 @@ import java.util.Collection;
 import java.util.Iterator;
 
 /**
- * A probabilistic-membership-free inverted index that maps terms to sets of document IDs
- * (postings lists), enabling full-text search and column-property lookups.
+ * A probabilistic-membership-free inverted index that maps terms to sets of document IDs (postings
+ * lists), enabling full-text search and column-property lookups.
  *
- * <p>The term type is fixed by each sub-interface; the document ID type {@code D} is a
- * parameter of the concrete variant.
+ * <p>
+ * The term type is fixed by each sub-interface; the document ID type {@code D} is a parameter of
+ * the concrete variant.
  *
  * @param <D> the document ID type
  */
@@ -99,7 +100,8 @@ public sealed interface InvertedIndex<D> extends Closeable
          * Removes the association between {@code docId} and each term in {@code terms}.
          *
          * @param docId the document ID to remove; must not be null
-         * @param terms the segment terms to disassociate from the document; must not be null or empty
+         * @param terms the segment terms to disassociate from the document; must not be null or
+         *            empty
          * @throws IOException if the underlying store cannot be written to
          */
         void remove(D docId, Collection<MemorySegment> terms) throws IOException;

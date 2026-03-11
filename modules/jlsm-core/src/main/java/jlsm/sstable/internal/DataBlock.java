@@ -3,13 +3,14 @@ package jlsm.sstable.internal;
 import jlsm.core.model.Entry;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * A mutable buffer that accumulates encoded entries for a single data block.
  *
- * <p>Block on-disk format:
+ * <p>
+ * Block on-disk format:
+ *
  * <pre>
  *   [int  count  ]  4 bytes — number of entries in this block
  *   [entry 0 ... ]  variable
@@ -81,9 +82,7 @@ public final class DataBlock {
     }
 
     private static int readInt(byte[] buf, int off) {
-        return ((buf[off] & 0xFF) << 24)
-             | ((buf[off + 1] & 0xFF) << 16)
-             | ((buf[off + 2] & 0xFF) << 8)
-             |  (buf[off + 3] & 0xFF);
+        return ((buf[off] & 0xFF) << 24) | ((buf[off + 1] & 0xFF) << 16)
+                | ((buf[off + 2] & 0xFF) << 8) | (buf[off + 3] & 0xFF);
     }
 }

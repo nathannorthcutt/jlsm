@@ -44,8 +44,10 @@ class WalRecordTest {
         assertInstanceOf(Entry.Put.class, decoded);
         Entry.Put put = (Entry.Put) decoded;
         assertEquals(42L, put.sequenceNumber().value());
-        assertArrayEquals(key.toArray(ValueLayout.JAVA_BYTE), put.key().toArray(ValueLayout.JAVA_BYTE));
-        assertArrayEquals(value.toArray(ValueLayout.JAVA_BYTE), put.value().toArray(ValueLayout.JAVA_BYTE));
+        assertArrayEquals(key.toArray(ValueLayout.JAVA_BYTE),
+                put.key().toArray(ValueLayout.JAVA_BYTE));
+        assertArrayEquals(value.toArray(ValueLayout.JAVA_BYTE),
+                put.value().toArray(ValueLayout.JAVA_BYTE));
     }
 
     // -------------------------------------------------------------------------
@@ -67,7 +69,8 @@ class WalRecordTest {
         assertInstanceOf(Entry.Delete.class, decoded);
         Entry.Delete del = (Entry.Delete) decoded;
         assertEquals(99L, del.sequenceNumber().value());
-        assertArrayEquals(key.toArray(ValueLayout.JAVA_BYTE), del.key().toArray(ValueLayout.JAVA_BYTE));
+        assertArrayEquals(key.toArray(ValueLayout.JAVA_BYTE),
+                del.key().toArray(ValueLayout.JAVA_BYTE));
     }
 
     // -------------------------------------------------------------------------

@@ -39,9 +39,9 @@ import java.util.concurrent.atomic.AtomicLong;
 public class StandardLsmTreeBenchmark {
 
     private static final int KEY_COUNT = 1024;
-    private static final int KEY_MASK  = KEY_COUNT - 1;
+    private static final int KEY_MASK = KEY_COUNT - 1;
 
-    @Param({"1024", "5120", "10240"})
+    @Param({ "1024", "5120", "10240" })
     public int valueSizeBytes;
 
     private StandardLsmTree tree;
@@ -53,27 +53,22 @@ public class StandardLsmTreeBenchmark {
 
     @Setup(Level.Trial)
     public void setup() throws IOException {
-        tempDir   = Files.createTempDirectory("jlsm-tree-bench-");
+        tempDir = Files.createTempDirectory("jlsm-tree-bench-");
         idCounter = new AtomicLong(0);
 
         Path walDir = tempDir.resolve("wal");
         Files.createDirectories(walDir);
 
         tree = StandardLsmTree.builder()
-            .wal(LocalWriteAheadLog.builder()
-                    .directory(walDir)
-                    .segmentSize(4L * 1024 * 1024)
-                    .build())
-            .memTableFactory(ConcurrentSkipListMemTable::new)
-            .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-            .sstableReaderFactory(path ->
-                    TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-            .idSupplier(idCounter::getAndIncrement)
-            .pathFn((id, level) ->
-                    tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-            .memTableFlushThresholdBytes(256L * 1024)
-            .recoverFromWal(false)
-            .build();
+                .wal(LocalWriteAheadLog.builder().directory(walDir).segmentSize(4L * 1024 * 1024)
+                        .build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
+                .memTableFlushThresholdBytes(256L * 1024).recoverFromWal(false).build();
 
         // Pre-generate keys
         keys = new MemorySegment[KEY_COUNT];
@@ -92,13 +87,14 @@ public class StandardLsmTreeBenchmark {
 
     @TearDown(Level.Trial)
     public void tearDown() throws IOException {
-        if (tree != null) tree.close();
+        if (tree != null)
+            tree.close();
         deleteRecursively(tempDir);
     }
 
     @Benchmark
     public void mixedWorkload() throws IOException {
-        int op  = opIndex % 10;
+        int op = opIndex % 10;
         int idx = opIndex & KEY_MASK;
         opIndex++;
 
@@ -116,10 +112,14 @@ public class StandardLsmTreeBenchmark {
 
     /** Recursively deletes a directory tree. */
     private static void deleteRecursively(Path root) throws IOException {
-        if (root == null || !Files.exists(root)) return;
+        if (root == null || !Files.exists(root))
+            return;
         try (var walk = Files.walk(root)) {
             walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try { Files.deleteIfExists(p); } catch (IOException ignored) {}
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
+                }
             });
         }
     }
