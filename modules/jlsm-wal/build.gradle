@@ -1,8 +1,0 @@
-plugins { id 'java-library' }
-
-dependencies { api project(':modules:jlsm-core') }
-
-test {
-    jvmArgs '--add-exports', 'jlsm.wal/jlsm.wal.internal=ALL-UNNAMED'
-    jvmArgs '-ea'
-}

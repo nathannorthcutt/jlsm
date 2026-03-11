@@ -2,14 +2,10 @@ plugins { id 'java-library' }
 
 dependencies {
     api project(':modules:jlsm-core')
-
-    testImplementation project(':modules:jlsm-tree')
-    testImplementation project(':modules:jlsm-wal')
-    testImplementation project(':modules:jlsm-memtable')
-    testImplementation project(':modules:jlsm-sstable')
-    testImplementation project(':modules:jlsm-bloom')
 }
 
 test {
     jvmArgs '-ea'
 }
+// No eclipse block needed: jlsm.indexing requires transitive jlsm.core,
+// which exports all needed packages. JDT resolves them without add.exports.

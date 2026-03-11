@@ -2,12 +2,6 @@ plugins { id 'java-library' }
 
 dependencies {
     api project(':modules:jlsm-core')
-
-    testImplementation project(':modules:jlsm-tree')
-    testImplementation project(':modules:jlsm-wal')
-    testImplementation project(':modules:jlsm-memtable')
-    testImplementation project(':modules:jlsm-sstable')
-    testImplementation project(':modules:jlsm-bloom')
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -17,4 +11,18 @@ tasks.withType(JavaCompile).configureEach {
 test {
     jvmArgs '--add-modules', 'jdk.incubator.vector'
     jvmArgs '-ea'
+}
+
+eclipse {
+    classpath {
+        file {
+            whenMerged { cp ->
+                cp.entries.findAll {
+                    it instanceof org.gradle.plugins.ide.eclipse.model.SourceFolder
+                }.each {
+                    it.entryAttributes['add.modules'] = 'jdk.incubator.vector'
+                }
+            }
+        }
+    }
 }
