@@ -59,7 +59,7 @@ class BlockedBloomFilterTest {
     // -------------------------------------------------------------------------
 
     @ParameterizedTest
-    @ValueSource(ints = {100, 1000, 10000})
+    @ValueSource(ints = { 100, 1000, 10000 })
     void noFalseNegatives(int n) {
         BloomFilter filter = new BlockedBloomFilter(n, 0.01);
         for (int i = 0; i < n; i++) {
@@ -171,8 +171,7 @@ class BlockedBloomFilterTest {
         // Size must be 16 + numBlocks*64; so (byteSize - 16) % 64 == 0
         BlockedBloomFilter filter = new BlockedBloomFilter(1000, 0.01);
         long byteSize = filter.serialize().byteSize();
-        assertEquals(0, (byteSize - 16) % 64,
-                "serialized size invariant broken: size=" + byteSize);
+        assertEquals(0, (byteSize - 16) % 64, "serialized size invariant broken: size=" + byteSize);
     }
 
     // -------------------------------------------------------------------------
@@ -207,7 +206,8 @@ class BlockedBloomFilterTest {
 
     @Test
     void deserializerRejectsWrongSizeForDeclaredNumBlocks() {
-        // Header declares numBlocks=5 but the segment only has the 16-byte header with no block data
+        // Header declares numBlocks=5 but the segment only has the 16-byte header with no block
+        // data
         MemorySegment badSize = Arena.ofAuto().allocate(16);
         badSize.set(ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN), 0, 5);
         badSize.set(ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN), 4, 7);

@@ -26,12 +26,14 @@ import jlsm.wal.internal.WalRecord;
 /**
  * WAL implementation for network/object storage backends.
  *
- * <p>Each {@link #append} writes exactly one record into a brand-new immutable segment file named
+ * <p>
+ * Each {@link #append} writes exactly one record into a brand-new immutable segment file named
  * {@code wal-{seqnum:016d}.log}. Files are written once via a single positioned write and never
  * modified afterwards. No mmap is used for writes.
  *
- * <p>Recovery is O(1): the highest sequence number is inferred from the lexicographically largest
- * file name — no record scanning required.
+ * <p>
+ * Recovery is O(1): the highest sequence number is inferred from the lexicographically largest file
+ * name — no record scanning required.
  */
 public final class RemoteWriteAheadLog implements WriteAheadLog {
 
@@ -79,8 +81,11 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
                 try (SeekableByteChannel ch = Files.newByteChannel(target,
                         StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
                     ByteBuffer bb = buf.asByteBuffer().limit(n);
-                    while (bb.hasRemaining()) { ch.write(bb); }
-                    if (ch instanceof java.nio.channels.FileChannel fc) fc.force(false);
+                    while (bb.hasRemaining()) {
+                        ch.write(bb);
+                    }
+                    if (ch instanceof java.nio.channels.FileChannel fc)
+                        fc.force(false);
                 }
                 return new SequenceNumber(seq);
             } finally {
@@ -96,13 +101,15 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
         Objects.requireNonNull(from, "from must not be null");
 
         List<Path> all = SegmentFile.listSorted(directory);
-        if (all.isEmpty()) return Collections.emptyIterator();
+        if (all.isEmpty())
+            return Collections.emptyIterator();
 
         // Filter to files with encoded seqnum >= from.value()
         List<Path> filtered = new ArrayList<>();
         for (Path p : all) {
             long seqNum = SegmentFile.parseNumber(p.getFileName().toString());
-            if (seqNum >= from.value()) filtered.add(p);
+            if (seqNum >= from.value())
+                filtered.add(p);
         }
 
         return new ReplayIterator(filtered, readBufferSize);
@@ -124,7 +131,8 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
     @Override
     public SequenceNumber lastSequenceNumber() throws IOException {
         long next = nextSequence.get();
-        if (next <= 1L) return SequenceNumber.ZERO;
+        if (next <= 1L)
+            return SequenceNumber.ZERO;
         return new SequenceNumber(next - 1L);
     }
 
@@ -172,12 +180,16 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
         private Entry readRecord(Path path) {
             try {
                 long fileSize = java.nio.file.Files.size(path);
-                if (fileSize == 0) return null;
+                if (fileSize == 0)
+                    return null;
 
                 try (SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.READ)) {
                     long readSize = Math.min(fileSize, readBufferSize);
                     ByteBuffer bb = ByteBuffer.allocate((int) readSize);
-                    while (bb.hasRemaining()) { if (ch.read(bb) < 0) break; }
+                    while (bb.hasRemaining()) {
+                        if (ch.read(bb) < 0)
+                            break;
+                    }
                     bb.flip();
                     MemorySegment seg = MemorySegment.ofBuffer(bb);
                     try {
@@ -199,7 +211,8 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
 
         @Override
         public Entry next() {
-            if (next == null) throw new NoSuchElementException();
+            if (next == null)
+                throw new NoSuchElementException();
             Entry result = next;
             advance();
             return result;
@@ -228,25 +241,29 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
         }
 
         public Builder readBufferSize(long readBufferSize) {
-            if (readBufferSize < 1) throw new IllegalArgumentException("readBufferSize must be >= 1");
+            if (readBufferSize < 1)
+                throw new IllegalArgumentException("readBufferSize must be >= 1");
             this.readBufferSize = readBufferSize;
             return this;
         }
 
         public Builder poolSize(int poolSize) {
-            if (poolSize < 1) throw new IllegalArgumentException("poolSize must be >= 1");
+            if (poolSize < 1)
+                throw new IllegalArgumentException("poolSize must be >= 1");
             this.poolSize = poolSize;
             return this;
         }
 
         public Builder bufferSize(long bufferSize) {
-            if (bufferSize < 1) throw new IllegalArgumentException("bufferSize must be >= 1");
+            if (bufferSize < 1)
+                throw new IllegalArgumentException("bufferSize must be >= 1");
             this.bufferSize = bufferSize;
             return this;
         }
 
         public Builder acquireTimeoutMillis(long millis) {
-            if (millis <= 0) throw new IllegalArgumentException("acquireTimeoutMillis must be > 0");
+            if (millis <= 0)
+                throw new IllegalArgumentException("acquireTimeoutMillis must be > 0");
             this.acquireTimeoutMillis = millis;
             return this;
         }
@@ -264,11 +281,8 @@ public final class RemoteWriteAheadLog implements WriteAheadLog {
                 initialNext = maxSeq + 1L;
             }
 
-            ArenaBufferPool pool = ArenaBufferPool.builder()
-                    .poolSize(poolSize)
-                    .bufferSize(bufferSize)
-                    .acquireTimeoutMillis(acquireTimeoutMillis)
-                    .build();
+            ArenaBufferPool pool = ArenaBufferPool.builder().poolSize(poolSize)
+                    .bufferSize(bufferSize).acquireTimeoutMillis(acquireTimeoutMillis).build();
             return new RemoteWriteAheadLog(directory, readBufferSize, pool, initialNext);
         }
     }

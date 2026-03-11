@@ -13,14 +13,14 @@ class LruBlockCacheTest {
 
     @Test
     void zeroCapacityRejected() {
-        assertThrows(IllegalArgumentException.class, () ->
-                LruBlockCache.builder().capacity(0).build());
+        assertThrows(IllegalArgumentException.class,
+                () -> LruBlockCache.builder().capacity(0).build());
     }
 
     @Test
     void negativeCapacityRejected() {
-        assertThrows(IllegalArgumentException.class, () ->
-                LruBlockCache.builder().capacity(-1).build());
+        assertThrows(IllegalArgumentException.class,
+                () -> LruBlockCache.builder().capacity(-1).build());
     }
 
     // --- get / put ---
@@ -35,7 +35,7 @@ class LruBlockCacheTest {
     @Test
     void putThenGetReturnsBlock() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            var block = MemorySegment.ofArray(new byte[]{1, 2, 3});
+            var block = MemorySegment.ofArray(new byte[]{ 1, 2, 3 });
             cache.put(1L, 0L, block);
             assertEquals(block, cache.get(1L, 0L).orElseThrow());
         }
@@ -44,7 +44,7 @@ class LruBlockCacheTest {
     @Test
     void getWrongSstableIdMisses() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{1}));
+            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             assertTrue(cache.get(2L, 0L).isEmpty());
         }
     }
@@ -52,7 +52,7 @@ class LruBlockCacheTest {
     @Test
     void getWrongOffsetMisses() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{1}));
+            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             assertTrue(cache.get(1L, 1L).isEmpty());
         }
     }
@@ -60,8 +60,8 @@ class LruBlockCacheTest {
     @Test
     void putOverwritesExistingEntry() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            var first  = MemorySegment.ofArray(new byte[]{1});
-            var second = MemorySegment.ofArray(new byte[]{2});
+            var first = MemorySegment.ofArray(new byte[]{ 1 });
+            var second = MemorySegment.ofArray(new byte[]{ 2 });
             cache.put(1L, 0L, first);
             cache.put(1L, 0L, second);
             assertEquals(second, cache.get(1L, 0L).orElseThrow());
@@ -80,7 +80,7 @@ class LruBlockCacheTest {
     @Test
     void sizeIncreasesAfterPut() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{1}));
+            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             assertEquals(1, cache.size());
         }
     }
@@ -88,8 +88,8 @@ class LruBlockCacheTest {
     @Test
     void sizeDecreasesAfterEvict() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{1}));
-            cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{2}));
+            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
+            cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{ 2 }));
             cache.evict(1L);
             assertTrue(cache.size() < 2);
         }
@@ -114,8 +114,8 @@ class LruBlockCacheTest {
     @Test
     void negativeOffsetInPutRejected() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            assertThrows(IllegalArgumentException.class, () ->
-                    cache.put(1L, -1L, MemorySegment.ofArray(new byte[]{1})));
+            assertThrows(IllegalArgumentException.class,
+                    () -> cache.put(1L, -1L, MemorySegment.ofArray(new byte[]{ 1 })));
         }
     }
 
@@ -132,12 +132,12 @@ class LruBlockCacheTest {
     void lruEntryEvictedWhenAtCapacity() {
         // capacity=2; insert A, B, then C → A must be gone
         try (var cache = LruBlockCache.builder().capacity(2).build()) {
-            var a = MemorySegment.ofArray(new byte[]{1});
-            var b = MemorySegment.ofArray(new byte[]{2});
-            var c = MemorySegment.ofArray(new byte[]{3});
+            var a = MemorySegment.ofArray(new byte[]{ 1 });
+            var b = MemorySegment.ofArray(new byte[]{ 2 });
+            var c = MemorySegment.ofArray(new byte[]{ 3 });
             cache.put(1L, 0L, a);
             cache.put(1L, 1L, b);
-            cache.put(1L, 2L, c);   // triggers eviction of LRU entry (offset 0)
+            cache.put(1L, 2L, c); // triggers eviction of LRU entry (offset 0)
             assertTrue(cache.get(1L, 0L).isEmpty(), "LRU entry should have been evicted");
         }
     }
@@ -146,15 +146,15 @@ class LruBlockCacheTest {
     void recentlyAccessedEntryNotEvicted() {
         // capacity=2; insert A, B, access A (makes B LRU), insert C → B evicted, A survives
         try (var cache = LruBlockCache.builder().capacity(2).build()) {
-            var a = MemorySegment.ofArray(new byte[]{1});
-            var b = MemorySegment.ofArray(new byte[]{2});
-            var c = MemorySegment.ofArray(new byte[]{3});
+            var a = MemorySegment.ofArray(new byte[]{ 1 });
+            var b = MemorySegment.ofArray(new byte[]{ 2 });
+            var c = MemorySegment.ofArray(new byte[]{ 3 });
             cache.put(1L, 0L, a);
             cache.put(1L, 1L, b);
-            cache.get(1L, 0L);      // promote A to MRU
-            cache.put(1L, 2L, c);   // triggers eviction of LRU entry (offset 1)
+            cache.get(1L, 0L); // promote A to MRU
+            cache.put(1L, 2L, c); // triggers eviction of LRU entry (offset 1)
             assertTrue(cache.get(1L, 0L).isPresent(), "recently accessed entry should survive");
-            assertTrue(cache.get(1L, 1L).isEmpty(),   "LRU entry should have been evicted");
+            assertTrue(cache.get(1L, 1L).isEmpty(), "LRU entry should have been evicted");
         }
     }
 
@@ -162,7 +162,7 @@ class LruBlockCacheTest {
     void sizeStaysAtCapacityAfterLruEviction() {
         try (var cache = LruBlockCache.builder().capacity(3).build()) {
             for (int i = 0; i < 5; i++) {
-                cache.put(1L, i, MemorySegment.ofArray(new byte[]{(byte) i}));
+                cache.put(1L, i, MemorySegment.ofArray(new byte[]{ (byte) i }));
             }
             assertEquals(3, cache.size());
         }
@@ -173,9 +173,9 @@ class LruBlockCacheTest {
     @Test
     void evictRemovesAllBlocksForSstable() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{1}));
-            cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{2}));
-            cache.put(1L, 2L, MemorySegment.ofArray(new byte[]{3}));
+            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
+            cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{ 2 }));
+            cache.put(1L, 2L, MemorySegment.ofArray(new byte[]{ 3 }));
             cache.evict(1L);
             assertEquals(0, cache.size());
         }
@@ -184,8 +184,8 @@ class LruBlockCacheTest {
     @Test
     void evictDoesNotAffectOtherSstables() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{1}));
-            cache.put(2L, 0L, MemorySegment.ofArray(new byte[]{2}));
+            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
+            cache.put(2L, 0L, MemorySegment.ofArray(new byte[]{ 2 }));
             cache.evict(1L);
             assertTrue(cache.get(2L, 0L).isPresent());
         }
@@ -194,7 +194,7 @@ class LruBlockCacheTest {
     @Test
     void evictNonexistentSstableIsNoOp() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{1}));
+            cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             assertDoesNotThrow(() -> cache.evict(99L));
             assertEquals(1, cache.size());
         }
@@ -206,8 +206,11 @@ class LruBlockCacheTest {
     void getOrLoadCallsLoaderOnMiss() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
             var callCount = new AtomicInteger(0);
-            var block = MemorySegment.ofArray(new byte[]{42});
-            cache.getOrLoad(1L, 0L, () -> { callCount.incrementAndGet(); return block; });
+            var block = MemorySegment.ofArray(new byte[]{ 42 });
+            cache.getOrLoad(1L, 0L, () -> {
+                callCount.incrementAndGet();
+                return block;
+            });
             assertEquals(1, callCount.get());
         }
     }
@@ -215,10 +218,13 @@ class LruBlockCacheTest {
     @Test
     void getOrLoadDoesNotCallLoaderOnHit() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            var block = MemorySegment.ofArray(new byte[]{42});
+            var block = MemorySegment.ofArray(new byte[]{ 42 });
             cache.put(1L, 0L, block);
             var callCount = new AtomicInteger(0);
-            cache.getOrLoad(1L, 0L, () -> { callCount.incrementAndGet(); return block; });
+            cache.getOrLoad(1L, 0L, () -> {
+                callCount.incrementAndGet();
+                return block;
+            });
             assertEquals(0, callCount.get());
         }
     }
@@ -226,7 +232,7 @@ class LruBlockCacheTest {
     @Test
     void getOrLoadCachesLoadedBlock() {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
-            var block = MemorySegment.ofArray(new byte[]{42});
+            var block = MemorySegment.ofArray(new byte[]{ 42 });
             cache.getOrLoad(1L, 0L, () -> block);
             assertTrue(cache.get(1L, 0L).isPresent());
         }
@@ -243,8 +249,8 @@ class LruBlockCacheTest {
     @Test
     void closeClearsCache() {
         var cache = LruBlockCache.builder().capacity(10).build();
-        cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{1}));
-        cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{2}));
+        cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
+        cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{ 2 }));
         cache.close();
         assertEquals(0, cache.size());
     }

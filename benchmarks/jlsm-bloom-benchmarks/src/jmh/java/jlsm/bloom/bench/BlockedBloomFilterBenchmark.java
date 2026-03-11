@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 @Fork(2)
 public class BlockedBloomFilterBenchmark {
 
-    @Param({"10000", "100000", "1000000"})
+    @Param({ "10000", "100000", "1000000" })
     public int insertionCount;
 
     private BlockedBloomFilter filter;
@@ -45,7 +45,7 @@ public class BlockedBloomFilterBenchmark {
         missKeys = new MemorySegment[capacity];
 
         for (int i = 0; i < capacity; i++) {
-            hitKeys[i]  = segmentOf("hit-"  + i);
+            hitKeys[i] = segmentOf("hit-" + i);
             missKeys[i] = segmentOf("miss-" + i);
         }
         for (int i = 0; i < insertionCount; i++) {

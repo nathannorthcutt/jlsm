@@ -2,7 +2,6 @@ package jlsm.remote;
 
 import jlsm.bloom.PassthroughBloomFilter;
 import jlsm.core.model.Entry;
-import jlsm.core.model.Level;
 import jlsm.memtable.ConcurrentSkipListMemTable;
 import jlsm.sstable.TrieSSTableReader;
 import jlsm.sstable.TrieSSTableWriter;
@@ -26,9 +25,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Integration tests for {@link StandardLsmTree} with all storage components backed by S3.
- * Uses {@link PassthroughBloomFilter} to avoid alignment issues with the deserialized bloom
- * filter; uses eager {@link TrieSSTableReader#open} to avoid lazy-channel thread-safety concerns.
+ * Integration tests for {@link StandardLsmTree} with all storage components backed by S3. Uses
+ * {@link PassthroughBloomFilter} to avoid alignment issues with the deserialized bloom filter; uses
+ * eager {@link TrieSSTableReader#open} to avoid lazy-channel thread-safety concerns.
  */
 @ExtendWith(S3Fixture.class)
 class StandardLsmTreeS3Test {
@@ -57,18 +56,16 @@ class StandardLsmTreeS3Test {
     }
 
     private StandardLsmTree openTree(long flushThresholdBytes) throws IOException {
-        return StandardLsmTree.builder()
-                .wal(RemoteWriteAheadLog.builder().directory(dir).build())
+        return StandardLsmTree.builder().wal(RemoteWriteAheadLog.builder().directory(dir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
-                .sstableWriterFactory((id, level, path) ->
-                        new TrieSSTableWriter(id, level, path, PassthroughBloomFilter.factory()))
-                .sstableReaderFactory(path ->
-                        TrieSSTableReader.open(path, PassthroughBloomFilter.deserializer()))
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path,
+                        PassthroughBloomFilter.factory()))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, PassthroughBloomFilter.deserializer()))
                 .bloomDeserializer(PassthroughBloomFilter.deserializer())
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> dir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .memTableFlushThresholdBytes(flushThresholdBytes)
-                .build();
+                .memTableFlushThresholdBytes(flushThresholdBytes).build();
     }
 
     // ---- basic put/get ----
@@ -130,7 +127,7 @@ class StandardLsmTreeS3Test {
     @Test
     void deleteTombstoneHidesOlderSSTableValue() throws IOException {
         try (StandardLsmTree tree = openTree(1L)) {
-            tree.put(seg("key"), seg("value"));  // triggers flush
+            tree.put(seg("key"), seg("value")); // triggers flush
             tree.delete(seg("key"));
             assertFalse(tree.get(seg("key")).isPresent(),
                     "deleted key must return empty even when SSTable has a Put");
@@ -149,15 +146,14 @@ class StandardLsmTreeS3Test {
         try (StandardLsmTree tree = StandardLsmTree.builder()
                 .wal(RemoteWriteAheadLog.builder().directory(dir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
-                .sstableWriterFactory((id, level, path) ->
-                        new TrieSSTableWriter(id, level, path, PassthroughBloomFilter.factory()))
-                .sstableReaderFactory(path ->
-                        TrieSSTableReader.open(path, PassthroughBloomFilter.deserializer()))
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path,
+                        PassthroughBloomFilter.factory()))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, PassthroughBloomFilter.deserializer()))
                 .bloomDeserializer(PassthroughBloomFilter.deserializer())
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> dir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .recoverFromWal(true)
-                .build()) {
+                .recoverFromWal(true).build()) {
 
             Optional<MemorySegment> result = tree.get(seg("persistent"));
             assertTrue(result.isPresent(), "Data written before close must survive WAL recovery");
@@ -210,8 +206,9 @@ class StandardLsmTreeS3Test {
                 tree.put(seg("key-" + i), seg("value-" + i));
             }
             long elapsed = System.currentTimeMillis() - start;
-            System.out.printf("[S3 LsmTree latency] %d writes (with flushes) in %d ms (%.1f ms/op)%n",
-                    count, elapsed, (double) elapsed / count);
+            System.out.printf(
+                    "[S3 LsmTree latency] %d writes (with flushes) in %d ms (%.1f ms/op)%n", count,
+                    elapsed, (double) elapsed / count);
         }
     }
 }

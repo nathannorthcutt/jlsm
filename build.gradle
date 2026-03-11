@@ -1,3 +1,7 @@
+plugins {
+    id 'com.diffplug.spotless' version '6.25.0' apply false
+}
+
 allprojects {
     group = 'io.github.nathannorthcutt'
     version = '0.1.0-SNAPSHOT'
@@ -33,6 +37,23 @@ subprojects {
                 configurations.compileClasspath,
                 configurations.testCompileClasspath
             )
+        }
+
+        // Spotless — formatting
+        apply plugin: 'com.diffplug.spotless'
+        spotless {
+            java {
+                eclipse('4.32').configFile(rootProject.file('config/eclipse/eclipse-formatter.xml'))
+                trimTrailingWhitespace()
+                endWithNewline()
+            }
+        }
+
+        // Checkstyle — naming and semantic rules
+        apply plugin: 'checkstyle'
+        checkstyle {
+            toolVersion = '10.21.4'
+            configFile  = rootProject.file('config/checkstyle/checkstyle.xml')
         }
 
     }

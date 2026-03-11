@@ -17,22 +17,23 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * A thread-safe {@link MemTable} backed by a {@link ConcurrentSkipListMap}.
  *
- * <p>Each entry is stored under a {@link CompositeKey} that combines the logical key with its
- * sequence number. The {@link KeyComparator} orders entries ascending by logical key, and
- * descending by sequence number within the same logical key, so the most recent version always
- * appears first.
+ * <p>
+ * Each entry is stored under a {@link CompositeKey} that combines the logical key with its sequence
+ * number. The {@link KeyComparator} orders entries ascending by logical key, and descending by
+ * sequence number within the same logical key, so the most recent version always appears first.
  *
- * <p><b>Threading</b>: {@link ConcurrentSkipListMap} provides thread-safe concurrent reads and
- * writes. Iterators are weakly consistent and may miss concurrent updates, which is acceptable for
- * a MemTable.
+ * <p>
+ * <b>Threading</b>: {@link ConcurrentSkipListMap} provides thread-safe concurrent reads and writes.
+ * Iterators are weakly consistent and may miss concurrent updates, which is acceptable for a
+ * MemTable.
  */
 public final class ConcurrentSkipListMemTable implements MemTable {
 
     /** Sentinel sequence number used as a probe in point lookups and range scans. */
     private static final SequenceNumber PROBE_SEQ = new SequenceNumber(Long.MAX_VALUE);
 
-    private final ConcurrentSkipListMap<CompositeKey, Entry> map =
-            new ConcurrentSkipListMap<>(new KeyComparator());
+    private final ConcurrentSkipListMap<CompositeKey, Entry> map = new ConcurrentSkipListMap<>(
+            new KeyComparator());
 
     private final AtomicLong sizeBytes = new AtomicLong(0L);
 
@@ -45,7 +46,7 @@ public final class ConcurrentSkipListMemTable implements MemTable {
 
         // Accumulate size estimate
         long delta = switch (entry) {
-            case Entry.Put p    -> p.key().byteSize() + p.value().byteSize() + Long.BYTES;
+            case Entry.Put p -> p.key().byteSize() + p.value().byteSize() + Long.BYTES;
             case Entry.Delete d -> d.key().byteSize() + Long.BYTES;
         };
         sizeBytes.addAndGet(delta);

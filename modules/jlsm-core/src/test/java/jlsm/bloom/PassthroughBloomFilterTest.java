@@ -4,7 +4,6 @@ import jlsm.core.bloom.BloomFilter;
 import org.junit.jupiter.api.Test;
 
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -62,7 +61,7 @@ class PassthroughBloomFilterTest {
 
     @Test
     void deserializerReturnsSingleton() {
-        MemorySegment bytes = MemorySegment.ofArray(new byte[]{0x00});
+        MemorySegment bytes = MemorySegment.ofArray(new byte[]{ 0x00 });
         BloomFilter a = PassthroughBloomFilter.deserializer().deserialize(bytes);
         BloomFilter b = PassthroughBloomFilter.deserializer().deserialize(bytes);
         assertSame(a, b);

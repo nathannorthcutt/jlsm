@@ -33,13 +33,14 @@ public final class WalRecord {
     private static final int MIN_FRAME_CONTENT = 17;
 
     // Use byte alignment (1) so reads/writes work at any offset regardless of native alignment.
-    private static final ValueLayout.OfInt INT_BE =
-            ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN).withByteAlignment(1);
-    private static final ValueLayout.OfLong LONG_BE =
-            ValueLayout.JAVA_LONG.withOrder(ByteOrder.BIG_ENDIAN).withByteAlignment(1);
+    private static final ValueLayout.OfInt INT_BE = ValueLayout.JAVA_INT
+            .withOrder(ByteOrder.BIG_ENDIAN).withByteAlignment(1);
+    private static final ValueLayout.OfLong LONG_BE = ValueLayout.JAVA_LONG
+            .withOrder(ByteOrder.BIG_ENDIAN).withByteAlignment(1);
     private static final ValueLayout.OfByte BYTE_LAYOUT = ValueLayout.JAVA_BYTE;
 
-    private WalRecord() {}
+    private WalRecord() {
+    }
 
     /**
      * Encodes {@code entry} into {@code dst} starting at offset 0.
@@ -60,7 +61,7 @@ public final class WalRecord {
                 type = TYPE_PUT;
                 value = put.value();
             }
-            case Entry.Delete ignored -> {
+            case Entry.Delete _ -> {
                 type = TYPE_DELETE;
                 value = null;
             }
@@ -171,15 +172,16 @@ public final class WalRecord {
         int storedCrc = src.get(INT_BE, pos);
         int computedCrc = computeCrc(src, crcStart, pos - crcStart);
         if (storedCrc != computedCrc) {
-            throw new IOException(
-                    "CRC mismatch: stored=0x%08x, computed=0x%08x".formatted(storedCrc, computedCrc));
+            throw new IOException("CRC mismatch: stored=0x%08x, computed=0x%08x"
+                    .formatted(storedCrc, computedCrc));
         }
 
         SequenceNumber seqNumber = new SequenceNumber(seqNum);
         MemorySegment keySegment = MemorySegment.ofArray(keyBytes);
 
         return switch (type) {
-            case TYPE_PUT -> new Entry.Put(keySegment, MemorySegment.ofArray(valBytes != null ? valBytes : new byte[0]), seqNumber);
+            case TYPE_PUT -> new Entry.Put(keySegment,
+                    MemorySegment.ofArray(valBytes != null ? valBytes : new byte[0]), seqNumber);
             case TYPE_DELETE -> new Entry.Delete(keySegment, seqNumber);
             default -> throw new IOException("unknown WAL record type: 0x%02x".formatted(type));
         };

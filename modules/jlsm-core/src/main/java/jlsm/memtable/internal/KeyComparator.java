@@ -5,11 +5,12 @@ import java.lang.foreign.ValueLayout;
 import java.util.Comparator;
 
 /**
- * Orders {@link CompositeKey} instances for use in a {@link java.util.concurrent.ConcurrentSkipListMap}:
+ * Orders {@link CompositeKey} instances for use in a
+ * {@link java.util.concurrent.ConcurrentSkipListMap}:
  * <ol>
- *   <li>Logical key ascending — unsigned lexicographic byte order.</li>
- *   <li>Sequence number descending within the same logical key — higher sequence number sorts first,
- *       so the most recent version of a key is always the first map entry for that key.</li>
+ * <li>Logical key ascending — unsigned lexicographic byte order.</li>
+ * <li>Sequence number descending within the same logical key — higher sequence number sorts first,
+ * so the most recent version of a key is always the first map entry for that key.</li>
  * </ol>
  */
 public final class KeyComparator implements Comparator<CompositeKey> {

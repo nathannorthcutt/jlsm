@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.lang.foreign.MemorySegment;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import jlsm.core.compaction.CompactionTask;
@@ -20,10 +19,8 @@ class SpookyCompactorSelectionTest {
 
     @BeforeEach
     void setUp() {
-        compactor = SpookyCompactor.builder()
-                .idSupplier(() -> 1L)
-                .pathFn((id, level) -> Path.of("/tmp/sst-" + id + ".sst"))
-                .build();
+        compactor = SpookyCompactor.builder().idSupplier(() -> 1L)
+                .pathFn((id, level) -> Path.of("/tmp/sst-" + id + ".sst")).build();
     }
 
     private static MemorySegment key(String s) {
@@ -34,9 +31,9 @@ class SpookyCompactorSelectionTest {
         return meta(smallest, largest, sizeBytes, Level.L0);
     }
 
-    private static SSTableMetadata meta(String smallest, String largest, long sizeBytes, Level level) {
-        return new SSTableMetadata(0L, Path.of("/tmp/fake.sst"), level,
-                key(smallest), key(largest),
+    private static SSTableMetadata meta(String smallest, String largest, long sizeBytes,
+            Level level) {
+        return new SSTableMetadata(0L, Path.of("/tmp/fake.sst"), level, key(smallest), key(largest),
                 SequenceNumber.ZERO, SequenceNumber.ZERO, sizeBytes, 1L);
     }
 
@@ -71,9 +68,7 @@ class SpookyCompactorSelectionTest {
 
     @Test
     void l0OnlyBootstrapTask() {
-        List<SSTableMetadata> l0 = List.of(
-                meta("a", "c", 100),
-                meta("d", "f", 100));
+        List<SSTableMetadata> l0 = List.of(meta("a", "c", 100), meta("d", "f", 100));
         Optional<CompactionTask> result = compactor.selectCompaction(List.of(l0));
         assertTrue(result.isPresent());
         CompactionTask task = result.get();
@@ -100,8 +95,7 @@ class SpookyCompactorSelectionTest {
     @Test
     void l1FilesNoOverlapWithUpperLevelsReturnsEmpty() {
         List<SSTableMetadata> l0 = List.of(meta("a", "b", 100, Level.L0));
-        List<SSTableMetadata> l1 = List.of(
-                meta("d", "f", 200, new Level(1)),
+        List<SSTableMetadata> l1 = List.of(meta("d", "f", 200, new Level(1)),
                 meta("g", "h", 200, new Level(1)));
         // L1 is bottom, no upper-level files overlap either L1 file
         Optional<CompactionTask> result = compactor.selectCompaction(List.of(l0, l1));
@@ -114,10 +108,8 @@ class SpookyCompactorSelectionTest {
 
     @Test
     void l0OverlappingL1ReturnsBestGroup() {
-        List<SSTableMetadata> l0 = List.of(
-                meta("c", "e", 300, Level.L0));   // overlaps L1 file [b,f]
-        List<SSTableMetadata> l1 = List.of(
-                meta("a", "b", 50, new Level(1)),  // no overlap with l0
+        List<SSTableMetadata> l0 = List.of(meta("c", "e", 300, Level.L0)); // overlaps L1 file [b,f]
+        List<SSTableMetadata> l1 = List.of(meta("a", "b", 50, new Level(1)), // no overlap with l0
                 meta("b", "f", 100, new Level(1)), // overlaps l0
                 meta("g", "z", 50, new Level(1))); // no overlap with l0
         Optional<CompactionTask> result = compactor.selectCompaction(List.of(l0, l1));
@@ -137,8 +129,7 @@ class SpookyCompactorSelectionTest {
     void threeLevelCorrectGroupAndSourceLevel() {
         List<SSTableMetadata> l0 = List.of(meta("b", "d", 400, Level.L0));
         List<SSTableMetadata> l1 = List.of(meta("a", "e", 200, new Level(1)));
-        List<SSTableMetadata> l2 = List.of(
-                meta("a", "z", 100, new Level(2)));  // bottom file
+        List<SSTableMetadata> l2 = List.of(meta("a", "z", 100, new Level(2))); // bottom file
         // Bottom is L2. File [a,z] overlaps L1 file [a,e] and L0 file [b,d].
         Optional<CompactionTask> result = compactor.selectCompaction(List.of(l0, l1, l2));
         assertTrue(result.isPresent());
@@ -167,17 +158,13 @@ class SpookyCompactorSelectionTest {
 
     @Test
     void builderRequiresIdSupplier() {
-        assertThrows(IllegalStateException.class, () ->
-                SpookyCompactor.builder()
-                        .pathFn((id, level) -> Path.of("/tmp/x"))
-                        .build());
+        assertThrows(IllegalStateException.class,
+                () -> SpookyCompactor.builder().pathFn((id, level) -> Path.of("/tmp/x")).build());
     }
 
     @Test
     void builderRequiresPathFn() {
-        assertThrows(IllegalStateException.class, () ->
-                SpookyCompactor.builder()
-                        .idSupplier(() -> 1L)
-                        .build());
+        assertThrows(IllegalStateException.class,
+                () -> SpookyCompactor.builder().idSupplier(() -> 1L).build());
     }
 }

@@ -31,10 +31,10 @@ import jlsm.wal.internal.WalRecord;
 /**
  * WAL implementation for local filesystems using memory-mapped I/O.
  *
- * <p>Each segment file is pre-allocated to {@code segmentSize} bytes and mapped READ_WRITE.
- * Records are appended at {@code writePosition} and forced to disk after every write.
- * When a segment is full the file is truncated to the valid write position and a new segment
- * is created.
+ * <p>
+ * Each segment file is pre-allocated to {@code segmentSize} bytes and mapped READ_WRITE. Records
+ * are appended at {@code writePosition} and forced to disk after every write. When a segment is
+ * full the file is truncated to the valid write position and a new segment is created.
  */
 public final class LocalWriteAheadLog implements WriteAheadLog {
 
@@ -96,12 +96,13 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
 
             long[] scanResult = scanSegment(segPath);
             long firstSeq = scanResult[0]; // -1 if empty
-            long lastSeq = scanResult[1];  // -1 if empty
+            long lastSeq = scanResult[1]; // -1 if empty
             int validBytes = (int) scanResult[2];
 
             if (firstSeq >= 0) {
                 segmentIndex.put(segNum, firstSeq);
-                if (lastSeq > lastValidSeq) lastValidSeq = lastSeq;
+                if (lastSeq > lastValidSeq)
+                    lastValidSeq = lastSeq;
             }
 
             boolean isLast = segPath.equals(segments.get(segments.size() - 1));
@@ -109,8 +110,8 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
                 activeSegmentNumber = segNum;
                 // Open the last segment for writing; ensure it is at segmentSize
                 ensureSegmentSize(segPath);
-                activeChannel = FileChannel.open(segPath,
-                        StandardOpenOption.READ, StandardOpenOption.WRITE);
+                activeChannel = FileChannel.open(segPath, StandardOpenOption.READ,
+                        StandardOpenOption.WRITE);
                 mappedBuffer = activeChannel.map(FileChannel.MapMode.READ_WRITE, 0, segmentSize);
                 writePosition = validBytes;
             }
@@ -120,12 +121,13 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
     }
 
     /**
-     * Scans a segment file and returns {firstSeq, lastSeq, validByteCount}.
-     * firstSeq/lastSeq = -1 if no valid records found.
+     * Scans a segment file and returns {firstSeq, lastSeq, validByteCount}. firstSeq/lastSeq = -1
+     * if no valid records found.
      */
     private long[] scanSegment(Path segPath) throws IOException {
         long fileSize = Files.size(segPath);
-        if (fileSize == 0) return new long[]{-1, -1, 0};
+        if (fileSize == 0)
+            return new long[]{ -1, -1, 0 };
 
         long mapSize = Math.min(fileSize, segmentSize);
         long firstSeq = -1L;
@@ -144,11 +146,14 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
                     // CRC mismatch on partially-written record — stop here
                     break;
                 }
-                if (entry == null) break;
+                if (entry == null)
+                    break;
 
                 long seqVal = entry.sequenceNumber().value();
-                if (firstSeq < 0) firstSeq = seqVal;
-                if (seqVal > lastSeq) lastSeq = seqVal;
+                if (firstSeq < 0)
+                    firstSeq = seqVal;
+                if (seqVal > lastSeq)
+                    lastSeq = seqVal;
 
                 // Advance by frame size: 4 (frame length field) + frameContentLen
                 int frameContentLen = readFrameContentLen(seg, pos);
@@ -157,11 +162,11 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
             }
         }
 
-        return new long[]{firstSeq, lastSeq, validBytes};
+        return new long[]{ firstSeq, lastSeq, validBytes };
     }
 
-    private static final ValueLayout.OfInt INT_BE_UNALIGNED =
-            ValueLayout.JAVA_INT.withOrder(java.nio.ByteOrder.BIG_ENDIAN).withByteAlignment(1);
+    private static final ValueLayout.OfInt INT_BE_UNALIGNED = ValueLayout.JAVA_INT
+            .withOrder(java.nio.ByteOrder.BIG_ENDIAN).withByteAlignment(1);
 
     private int readFrameContentLen(MemorySegment seg, long pos) {
         return seg.get(INT_BE_UNALIGNED, pos);
@@ -179,8 +184,8 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
     private void openNewSegment(long segNum) throws IOException {
         Path path = directory.resolve(SegmentFile.toFileName(segNum));
         // Pre-allocate
-        try (FileChannel fc = FileChannel.open(path,
-                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+        try (FileChannel fc = FileChannel.open(path, StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE)) {
             fc.write(ByteBuffer.allocate(1), segmentSize - 1);
         }
         activeChannel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE);
@@ -259,7 +264,8 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
         Objects.requireNonNull(from, "from must not be null");
 
         List<Path> allSegments = SegmentFile.listSorted(directory);
-        if (allSegments.isEmpty()) return Collections.emptyIterator();
+        if (allSegments.isEmpty())
+            return Collections.emptyIterator();
 
         // Find the first segment to include: last segment whose firstSeq <= from,
         // or the very first segment if all firstSeqs > from.
@@ -270,7 +276,8 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
     private List<Path> segmentsForReplay(List<Path> allSegments, SequenceNumber from) {
         indexLock.readLock().lock();
         try {
-            if (segmentIndex.isEmpty()) return new ArrayList<>(allSegments);
+            if (segmentIndex.isEmpty())
+                return new ArrayList<>(allSegments);
 
             // Find the start: last segment number with firstSeq <= from.value()
             // Since segmentIndex maps segNum -> firstSeq, iterate to find the floor by value.
@@ -290,7 +297,8 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
             List<Path> result = new ArrayList<>();
             for (Path p : allSegments) {
                 long segNum = SegmentFile.parseNumber(p.getFileName().toString());
-                if (segNum >= finalStart) result.add(p);
+                if (segNum >= finalStart)
+                    result.add(p);
             }
             return result;
         } finally {
@@ -328,26 +336,42 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
     @Override
     public SequenceNumber lastSequenceNumber() throws IOException {
         long next = nextSequence.get();
-        if (next <= 1L) return SequenceNumber.ZERO;
+        if (next <= 1L)
+            return SequenceNumber.ZERO;
         return new SequenceNumber(next - 1L);
     }
 
     @Override
     public void close() throws IOException {
         writeLock.lock();
+        IOException deferred = null;
         try {
             if (mappedBuffer != null) {
-                mappedBuffer.force();
+                try {
+                    mappedBuffer.force();
+                } catch (UncheckedIOException e) {
+                    deferred = e.getCause() != null ? e.getCause() : new IOException(e);
+                }
                 mappedBuffer = null;
             }
             if (activeChannel != null) {
-                activeChannel.close();
+                try {
+                    activeChannel.close();
+                } catch (IOException e) {
+                    if (deferred != null) {
+                        deferred.addSuppressed(e);
+                    } else {
+                        deferred = e;
+                    }
+                }
                 activeChannel = null;
             }
         } finally {
             writeLock.unlock();
         }
         bufferPool.close();
+        if (deferred != null)
+            throw deferred;
     }
 
     // -------------------------------------------------------------------------
@@ -377,9 +401,11 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
             next = null;
             while (next == null) {
                 if (currentSeg == null) {
-                    if (segIdx >= segments.size()) return;
+                    if (segIdx >= segments.size())
+                        return;
                     loadSegment(segments.get(segIdx++));
-                    if (currentSeg == null) continue;
+                    if (currentSeg == null)
+                        continue;
                 }
                 Entry candidate = readNext();
                 if (candidate == null) {
@@ -396,7 +422,8 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
         private void loadSegment(Path path) {
             try {
                 long fileSize = Files.size(path);
-                if (fileSize == 0) return;
+                if (fileSize == 0)
+                    return;
                 long mapSize = Math.min(fileSize, segmentSize);
                 FileChannel fc = FileChannel.open(path, StandardOpenOption.READ);
                 MappedByteBuffer mbb = fc.map(FileChannel.MapMode.READ_ONLY, 0, mapSize);
@@ -418,7 +445,8 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
                     // CRC mismatch — treat as end of valid data in this segment
                     return null;
                 }
-                if (entry == null) return null;
+                if (entry == null)
+                    return null;
 
                 int frameContentLen = currentSeg.get(INT_BE_UNALIGNED, segPos);
                 segPos += 4L + frameContentLen;
@@ -434,7 +462,8 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
 
         @Override
         public Entry next() {
-            if (next == null) throw new NoSuchElementException();
+            if (next == null)
+                throw new NoSuchElementException();
             Entry result = next;
             advance();
             return result;
@@ -464,37 +493,38 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
 
         public Builder segmentSize(long segmentSize) {
             if (segmentSize <= 0) {
-                throw new IllegalArgumentException("segmentSize must be positive, got: " + segmentSize);
+                throw new IllegalArgumentException(
+                        "segmentSize must be positive, got: " + segmentSize);
             }
             this.segmentSize = segmentSize;
             return this;
         }
 
         public Builder poolSize(int poolSize) {
-            if (poolSize < 1) throw new IllegalArgumentException("poolSize must be >= 1");
+            if (poolSize < 1)
+                throw new IllegalArgumentException("poolSize must be >= 1");
             this.poolSize = poolSize;
             return this;
         }
 
         public Builder bufferSize(long bufferSize) {
-            if (bufferSize < 1) throw new IllegalArgumentException("bufferSize must be >= 1");
+            if (bufferSize < 1)
+                throw new IllegalArgumentException("bufferSize must be >= 1");
             this.bufferSize = bufferSize;
             return this;
         }
 
         public Builder acquireTimeoutMillis(long millis) {
-            if (millis <= 0) throw new IllegalArgumentException("acquireTimeoutMillis must be > 0");
+            if (millis <= 0)
+                throw new IllegalArgumentException("acquireTimeoutMillis must be > 0");
             this.acquireTimeoutMillis = millis;
             return this;
         }
 
         public LocalWriteAheadLog build() throws IOException {
             Objects.requireNonNull(directory, "directory must not be null");
-            ArenaBufferPool pool = ArenaBufferPool.builder()
-                    .poolSize(poolSize)
-                    .bufferSize(bufferSize)
-                    .acquireTimeoutMillis(acquireTimeoutMillis)
-                    .build();
+            ArenaBufferPool pool = ArenaBufferPool.builder().poolSize(poolSize)
+                    .bufferSize(bufferSize).acquireTimeoutMillis(acquireTimeoutMillis).build();
             return new LocalWriteAheadLog(directory, segmentSize, pool);
         }
     }

@@ -4,12 +4,13 @@ import jlsm.core.model.Entry;
 import jlsm.core.model.SequenceNumber;
 
 import java.lang.foreign.MemorySegment;
-import java.nio.ByteOrder;
 
 /**
  * Encodes and decodes {@link Entry} instances to/from a compact big-endian binary format.
  *
- * <p>Entry encoding:
+ * <p>
+ * Entry encoding:
+ *
  * <pre>
  *   [byte  type   ]  1 byte  — 0=PUT, 1=DELETE
  *   [int   keyLen ]  4 bytes — big-endian
@@ -26,7 +27,8 @@ public final class EntryCodec {
     private static final byte TYPE_PUT = 0;
     private static final byte TYPE_DELETE = 1;
 
-    private EntryCodec() {}
+    private EntryCodec() {
+    }
 
     /** Returns the encoded byte length for {@code entry} without allocating. */
     public static int encodedSize(Entry entry) {
@@ -34,7 +36,7 @@ public final class EntryCodec {
         int keyLen = (int) entry.key().byteSize();
         int valLen = switch (entry) {
             case Entry.Put put -> (int) put.value().byteSize();
-            case Entry.Delete ignored -> 0;
+            case Entry.Delete _ -> 0;
         };
         return 1 + 4 + keyLen + 8 + 4 + valLen;
     }
@@ -60,7 +62,7 @@ public final class EntryCodec {
                 type = TYPE_PUT;
                 valBytes = put.value().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
             }
-            case Entry.Delete ignored -> {
+            case Entry.Delete _ -> {
                 type = TYPE_DELETE;
                 valBytes = new byte[0];
             }
@@ -108,7 +110,7 @@ public final class EntryCodec {
     /**
      * Decodes one {@link Entry} from {@code buf} starting at {@code offset}.
      *
-     * @param buf    source byte array
+     * @param buf source byte array
      * @param offset start position within buf
      * @return decoded entry
      */
@@ -147,20 +149,14 @@ public final class EntryCodec {
     }
 
     private static int readInt(byte[] buf, int off) {
-        return ((buf[off] & 0xFF) << 24)
-             | ((buf[off + 1] & 0xFF) << 16)
-             | ((buf[off + 2] & 0xFF) << 8)
-             |  (buf[off + 3] & 0xFF);
+        return ((buf[off] & 0xFF) << 24) | ((buf[off + 1] & 0xFF) << 16)
+                | ((buf[off + 2] & 0xFF) << 8) | (buf[off + 3] & 0xFF);
     }
 
     private static long readLong(byte[] buf, int off) {
-        return ((long)(buf[off]     & 0xFF) << 56)
-             | ((long)(buf[off + 1] & 0xFF) << 48)
-             | ((long)(buf[off + 2] & 0xFF) << 40)
-             | ((long)(buf[off + 3] & 0xFF) << 32)
-             | ((long)(buf[off + 4] & 0xFF) << 24)
-             | ((long)(buf[off + 5] & 0xFF) << 16)
-             | ((long)(buf[off + 6] & 0xFF) << 8)
-             |  (long)(buf[off + 7] & 0xFF);
+        return ((long) (buf[off] & 0xFF) << 56) | ((long) (buf[off + 1] & 0xFF) << 48)
+                | ((long) (buf[off + 2] & 0xFF) << 40) | ((long) (buf[off + 3] & 0xFF) << 32)
+                | ((long) (buf[off + 4] & 0xFF) << 24) | ((long) (buf[off + 5] & 0xFF) << 16)
+                | ((long) (buf[off + 6] & 0xFF) << 8) | (long) (buf[off + 7] & 0xFF);
     }
 }

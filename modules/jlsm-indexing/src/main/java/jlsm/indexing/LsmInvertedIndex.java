@@ -19,24 +19,27 @@ import java.util.Objects;
  * one per term type.
  *
  * <ul>
- *   <li>{@link StringTermed} — UTF-8 String terms
- *   <li>{@link LongTermed} — {@code long} terms (sign-bit-flipped big-endian for correct ordering)
- *   <li>{@link SegmentTermed} — raw {@link MemorySegment} terms
+ * <li>{@link StringTermed} — UTF-8 String terms
+ * <li>{@link LongTermed} — {@code long} terms (sign-bit-flipped big-endian for correct ordering)
+ * <li>{@link SegmentTermed} — raw {@link MemorySegment} terms
  * </ul>
  *
- * <p>Obtain instances via the factory methods {@link #stringTermedBuilder()},
+ * <p>
+ * Obtain instances via the factory methods {@link #stringTermedBuilder()},
  * {@link #longTermedBuilder()}, and {@link #segmentTermedBuilder()}.
  *
  * <h2>Composite key encoding</h2>
+ *
  * <pre>
  *   [4-byte big-endian term length][term bytes][doc-id bytes]
  * </pre>
+ *
  * All postings for the same term sort contiguously. A range scan for a term uses:
  * <ul>
- *   <li>{@code scanStart = [termLen_be4][termBytes]} — sorts before all composite keys for this term
- *       because a prefix key sorts before any longer key with the same prefix under unsigned lex order
- *   <li>{@code scanEnd = incrementPrefix(scanStart)} — the lexicographic successor of the prefix;
- *       {@code null} on overflow → fall back to unbounded scan + prefix check in {@link DocIdIterator}
+ * <li>{@code scanStart = [termLen_be4][termBytes]} — sorts before all composite keys for this term
+ * because a prefix key sorts before any longer key with the same prefix under unsigned lex order
+ * <li>{@code scanEnd = incrementPrefix(scanStart)} — the lexicographic successor of the prefix;
+ * {@code null} on overflow → fall back to unbounded scan + prefix check in {@link DocIdIterator}
  * </ul>
  */
 public final class LsmInvertedIndex {
@@ -69,8 +72,8 @@ public final class LsmInvertedIndex {
     // -----------------------------------------------------------------------
 
     /**
-     * Builds the 4-byte big-endian prefix {@code [termLen | termBytes]}.
-     * This sorts before all composite keys for this term.
+     * Builds the 4-byte big-endian prefix {@code [termLen | termBytes]}. This sorts before all
+     * composite keys for this term.
      */
     static byte[] buildPrefix(byte[] termBytes) {
         assert termBytes != null : "termBytes must not be null";
@@ -156,8 +159,8 @@ public final class LsmInvertedIndex {
     // -----------------------------------------------------------------------
 
     /**
-     * Iterates over document IDs from an LSM scan iterator, prefix-checking each composite key
-     * and skipping tombstones.
+     * Iterates over document IDs from an LSM scan iterator, prefix-checking each composite key and
+     * skipping tombstones.
      *
      * @param <D> the document ID type
      */
@@ -167,9 +170,9 @@ public final class LsmInvertedIndex {
         private final byte[] termPrefix;
         private final MemorySerializer<D> docIdSerializer;
         private D next;
-        private boolean done;
 
-        DocIdIterator(Iterator<Entry> delegate, byte[] termPrefix, MemorySerializer<D> docIdSerializer) {
+        DocIdIterator(Iterator<Entry> delegate, byte[] termPrefix,
+                MemorySerializer<D> docIdSerializer) {
             assert delegate != null : "delegate must not be null";
             assert termPrefix != null : "termPrefix must not be null";
             assert docIdSerializer != null : "docIdSerializer must not be null";
@@ -186,7 +189,6 @@ public final class LsmInvertedIndex {
                 // Check prefix match
                 MemorySegment key = entry.key();
                 if (!hasPrefix(key, termPrefix)) {
-                    done = true;
                     return;
                 }
                 // Skip tombstones
@@ -201,7 +203,6 @@ public final class LsmInvertedIndex {
                 next = docIdSerializer.deserialize(docIdSegment);
                 return;
             }
-            done = true;
         }
 
         private static boolean hasPrefix(MemorySegment key, byte[] prefix) {
@@ -237,8 +238,8 @@ public final class LsmInvertedIndex {
     // -----------------------------------------------------------------------
 
     /**
-     * An {@link InvertedIndex.StringTermed} that delegates to an {@link LsmTree} and encodes
-     * terms as UTF-8 bytes within a composite key.
+     * An {@link InvertedIndex.StringTermed} that delegates to an {@link LsmTree} and encodes terms
+     * as UTF-8 bytes within a composite key.
      *
      * @param <D> the document ID type
      */
@@ -322,8 +323,8 @@ public final class LsmInvertedIndex {
     // -----------------------------------------------------------------------
 
     /**
-     * An {@link InvertedIndex.LongTermed} that delegates to an {@link LsmTree} and encodes
-     * terms as sign-bit-flipped big-endian 8 bytes within a composite key.
+     * An {@link InvertedIndex.LongTermed} that delegates to an {@link LsmTree} and encodes terms as
+     * sign-bit-flipped big-endian 8 bytes within a composite key.
      *
      * @param <D> the document ID type
      */
@@ -402,8 +403,8 @@ public final class LsmInvertedIndex {
     // -----------------------------------------------------------------------
 
     /**
-     * An {@link InvertedIndex.SegmentTermed} that delegates to an {@link LsmTree} and uses
-     * raw {@link MemorySegment} bytes as terms within a composite key.
+     * An {@link InvertedIndex.SegmentTermed} that delegates to an {@link LsmTree} and uses raw
+     * {@link MemorySegment} bytes as terms within a composite key.
      *
      * @param <D> the document ID type
      */

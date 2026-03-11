@@ -10,21 +10,23 @@ import java.util.Iterator;
 /**
  * Durable append-only log that provides crash recovery for mutations not yet flushed to SSTables.
  *
- * <p><b>Pipeline position</b>: Every write to the MemTable is first recorded in the WAL. On
- * restart, the WAL is replayed via {@link #replay} to reconstruct in-flight MemTable state before
- * the store is made available for new operations.
+ * <p>
+ * <b>Pipeline position</b>: Every write to the MemTable is first recorded in the WAL. On restart,
+ * the WAL is replayed via {@link #replay} to reconstruct in-flight MemTable state before the store
+ * is made available for new operations.
  *
- * <p><b>Key contracts</b>:
+ * <p>
+ * <b>Key contracts</b>:
  * <ul>
- *   <li>{@link #append} must persist the entry to durable storage (e.g., {@code fsync}) before
- *       returning the assigned {@link SequenceNumber}; the MemTable must not be updated until this
- *       call succeeds.</li>
- *   <li>Sequence numbers assigned by {@link #append} are strictly increasing and survive restarts;
- *       implementations must persist the last-used sequence number.</li>
- *   <li>{@link #truncateBefore} removes log records no longer needed for recovery (i.e., all
- *       mutations up to and including the flushed MemTable's max sequence number).</li>
- *   <li>The threading model is implementation-defined; typical implementations serialize appends
- *       with a lock or channel.</li>
+ * <li>{@link #append} must persist the entry to durable storage (e.g., {@code fsync}) before
+ * returning the assigned {@link SequenceNumber}; the MemTable must not be updated until this call
+ * succeeds.</li>
+ * <li>Sequence numbers assigned by {@link #append} are strictly increasing and survive restarts;
+ * implementations must persist the last-used sequence number.</li>
+ * <li>{@link #truncateBefore} removes log records no longer needed for recovery (i.e., all
+ * mutations up to and including the flushed MemTable's max sequence number).</li>
+ * <li>The threading model is implementation-defined; typical implementations serialize appends with
+ * a lock or channel.</li>
  * </ul>
  */
 public interface WriteAheadLog extends Closeable {
@@ -45,7 +47,7 @@ public interface WriteAheadLog extends Closeable {
      * MemTable.
      *
      * @param from the inclusive lower bound for replay; pass {@link SequenceNumber#ZERO} to replay
-     *             all entries; must not be null
+     *            all entries; must not be null
      * @return a non-null iterator over matching entries; {@link Iterator#next()} may throw
      *         {@link java.io.UncheckedIOException} if a read error occurs during iteration
      * @throws IOException if the log cannot be opened or its header cannot be read
@@ -72,8 +74,8 @@ public interface WriteAheadLog extends Closeable {
     SequenceNumber lastSequenceNumber() throws IOException;
 
     /**
-     * Releases all resources held by this WAL, including any open file handles. Pending writes
-     * that have not been synced may be lost.
+     * Releases all resources held by this WAL, including any open file handles. Pending writes that
+     * have not been synced may be lost.
      *
      * @throws IOException if an I/O error occurs while releasing resources
      */

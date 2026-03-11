@@ -16,38 +16,38 @@ class ArenaBufferPoolTest {
 
     @Test
     void rejectsZeroPoolSize() {
-        assertThrows(IllegalArgumentException.class,
-                () -> ArenaBufferPool.builder().poolSize(0).bufferSize(64).acquireTimeoutMillis(1000).build());
+        assertThrows(IllegalArgumentException.class, () -> ArenaBufferPool.builder().poolSize(0)
+                .bufferSize(64).acquireTimeoutMillis(1000).build());
     }
 
     @Test
     void rejectsNegativePoolSize() {
-        assertThrows(IllegalArgumentException.class,
-                () -> ArenaBufferPool.builder().poolSize(-1).bufferSize(64).acquireTimeoutMillis(1000).build());
+        assertThrows(IllegalArgumentException.class, () -> ArenaBufferPool.builder().poolSize(-1)
+                .bufferSize(64).acquireTimeoutMillis(1000).build());
     }
 
     @Test
     void rejectsZeroBufferSize() {
-        assertThrows(IllegalArgumentException.class,
-                () -> ArenaBufferPool.builder().poolSize(2).bufferSize(0).acquireTimeoutMillis(1000).build());
+        assertThrows(IllegalArgumentException.class, () -> ArenaBufferPool.builder().poolSize(2)
+                .bufferSize(0).acquireTimeoutMillis(1000).build());
     }
 
     @Test
     void rejectsNegativeBufferSize() {
-        assertThrows(IllegalArgumentException.class,
-                () -> ArenaBufferPool.builder().poolSize(2).bufferSize(-1).acquireTimeoutMillis(1000).build());
+        assertThrows(IllegalArgumentException.class, () -> ArenaBufferPool.builder().poolSize(2)
+                .bufferSize(-1).acquireTimeoutMillis(1000).build());
     }
 
     @Test
     void rejectsZeroTimeout() {
-        assertThrows(IllegalArgumentException.class,
-                () -> ArenaBufferPool.builder().poolSize(2).bufferSize(64).acquireTimeoutMillis(0).build());
+        assertThrows(IllegalArgumentException.class, () -> ArenaBufferPool.builder().poolSize(2)
+                .bufferSize(64).acquireTimeoutMillis(0).build());
     }
 
     @Test
     void rejectsNegativeTimeout() {
-        assertThrows(IllegalArgumentException.class,
-                () -> ArenaBufferPool.builder().poolSize(2).bufferSize(64).acquireTimeoutMillis(-1).build());
+        assertThrows(IllegalArgumentException.class, () -> ArenaBufferPool.builder().poolSize(2)
+                .bufferSize(64).acquireTimeoutMillis(-1).build());
     }
 
     // -------------------------------------------------------------------------
@@ -56,7 +56,8 @@ class ArenaBufferPoolTest {
 
     @Test
     void acquireReturnsSegmentOfDeclaredSize() throws IOException {
-        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(128).acquireTimeoutMillis(1000).build()) {
+        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(128)
+                .acquireTimeoutMillis(1000).build()) {
             MemorySegment seg = pool.acquire();
             assertEquals(128, seg.byteSize());
             pool.release(seg);
@@ -65,7 +66,8 @@ class ArenaBufferPoolTest {
 
     @Test
     void exhaustedPoolThrowsIOException() {
-        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64).acquireTimeoutMillis(10).build()) {
+        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64)
+                .acquireTimeoutMillis(10).build()) {
             MemorySegment first = pool.acquire();
             // Pool is now empty; second acquire should time out
             assertThrows(IOException.class, pool::acquire);
@@ -77,7 +79,8 @@ class ArenaBufferPoolTest {
 
     @Test
     void releaseAndReacquireReturnsUsableSegment() throws IOException {
-        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64).acquireTimeoutMillis(1000).build()) {
+        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64)
+                .acquireTimeoutMillis(1000).build()) {
             MemorySegment seg = pool.acquire();
             seg.set(java.lang.foreign.ValueLayout.JAVA_BYTE, 0, (byte) 42);
             pool.release(seg);
@@ -92,7 +95,8 @@ class ArenaBufferPoolTest {
     @Test
     void acquireAllPoolSizeBuffersSimultaneously() throws IOException {
         int poolSize = 4;
-        try (var pool = ArenaBufferPool.builder().poolSize(poolSize).bufferSize(64).acquireTimeoutMillis(1000).build()) {
+        try (var pool = ArenaBufferPool.builder().poolSize(poolSize).bufferSize(64)
+                .acquireTimeoutMillis(1000).build()) {
             List<MemorySegment> acquired = new ArrayList<>();
             for (int i = 0; i < poolSize; i++) {
                 acquired.add(pool.acquire());
@@ -106,7 +110,8 @@ class ArenaBufferPoolTest {
 
     @Test
     void releaseNullThrowsNPE() {
-        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64).acquireTimeoutMillis(1000).build()) {
+        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64)
+                .acquireTimeoutMillis(1000).build()) {
             assertThrows(NullPointerException.class, () -> pool.release(null));
         }
     }
@@ -117,17 +122,20 @@ class ArenaBufferPoolTest {
 
     @Test
     void closeInvalidatesArena() throws IOException {
-        ArenaBufferPool pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64).acquireTimeoutMillis(1000).build();
+        ArenaBufferPool pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64)
+                .acquireTimeoutMillis(1000).build();
         MemorySegment seg = pool.acquire();
         pool.release(seg);
         pool.close();
         // After close, the arena is invalid; accessing the segment should fail
-        assertThrows(Exception.class, () -> seg.set(java.lang.foreign.ValueLayout.JAVA_BYTE, 0, (byte) 1));
+        assertThrows(Exception.class,
+                () -> seg.set(java.lang.foreign.ValueLayout.JAVA_BYTE, 0, (byte) 1));
     }
 
     @Test
     void closeIsIdempotent() throws IOException {
-        var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64).acquireTimeoutMillis(1000).build();
+        var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64).acquireTimeoutMillis(1000)
+                .build();
         pool.close();
         // Should not throw
         assertDoesNotThrow(pool::close);

@@ -8,8 +8,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Off-heap buffer pool backed by a shared {@link Arena}. Segments are pre-allocated at
- * construction and returned to the pool via {@link #release}. Shared across WAL and compaction.
+ * Off-heap buffer pool backed by a shared {@link Arena}. Segments are pre-allocated at construction
+ * and returned to the pool via {@link #release}. Shared across WAL and compaction.
  */
 public final class ArenaBufferPool implements AutoCloseable {
 
@@ -107,9 +107,12 @@ public final class ArenaBufferPool implements AutoCloseable {
         }
 
         public ArenaBufferPool build() {
-            if (poolSize < 1) throw new IllegalStateException("poolSize must be configured");
-            if (bufferSize < 1) throw new IllegalStateException("bufferSize must be configured");
-            if (acquireTimeoutMillis <= 0) throw new IllegalStateException("acquireTimeoutMillis must be configured");
+            if (poolSize < 1)
+                throw new IllegalStateException("poolSize must be configured");
+            if (bufferSize < 1)
+                throw new IllegalStateException("bufferSize must be configured");
+            if (acquireTimeoutMillis <= 0)
+                throw new IllegalStateException("acquireTimeoutMillis must be configured");
             return new ArenaBufferPool(poolSize, bufferSize, acquireTimeoutMillis);
         }
     }

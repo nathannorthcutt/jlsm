@@ -6,15 +6,18 @@ import java.util.Objects;
  * A monotonically increasing counter that establishes total ordering over all mutations written to
  * the LSM-Tree.
  *
- * <p><b>Pipeline position</b>: Assigned by the WAL on each {@code append}, stored in every
+ * <p>
+ * <b>Pipeline position</b>: Assigned by the WAL on each {@code append}, stored in every
  * {@link Entry}, and used by the Compactor to determine which version of a key survives a merge.
  *
- * <p><b>Key contracts</b>:
+ * <p>
+ * <b>Key contracts</b>:
  * <ul>
- *   <li>Sequence numbers are strictly increasing; the WAL must never reuse a number across restarts.</li>
- *   <li>{@link #ZERO} is a sentinel representing "before any write"; it is never assigned to a real
- *       entry.</li>
- *   <li>The {@link #compareTo} total order is consistent with the underlying {@code long} value.</li>
+ * <li>Sequence numbers are strictly increasing; the WAL must never reuse a number across
+ * restarts.</li>
+ * <li>{@link #ZERO} is a sentinel representing "before any write"; it is never assigned to a real
+ * entry.</li>
+ * <li>The {@link #compareTo} total order is consistent with the underlying {@code long} value.</li>
  * </ul>
  *
  * @param value the raw 64-bit counter value; must be non-negative

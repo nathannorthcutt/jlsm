@@ -12,19 +12,21 @@ import java.util.Optional;
  * Read-only view of an immutable SSTable file. Instances are typically long-lived and shared across
  * many concurrent reads within a single process.
  *
- * <p><b>Pipeline position</b>: Consulted during the read path after the MemTable returns no result.
+ * <p>
+ * <b>Pipeline position</b>: Consulted during the read path after the MemTable returns no result.
  * SSTable levels are searched from newest (L0) to oldest (Ln); the first matching entry wins.
  *
- * <p><b>Key contracts</b>:
+ * <p>
+ * <b>Key contracts</b>:
  * <ul>
- *   <li>The underlying file is opened when the reader is created and closed by {@link #close}.</li>
- *   <li>Scan iterators produce entries in ascending key order. Where multiple entries share a key
- *       (possible in L0), they appear in descending sequence-number order (most recent first).</li>
- *   <li>{@link Iterator#next()} wraps any underlying {@link IOException} as
- *       {@link java.io.UncheckedIOException} in implementations, since {@code Iterator} cannot
- *       declare checked exceptions.</li>
- *   <li>The threading model is implementation-defined; callers should assume reads are safe to
- *       perform concurrently unless documented otherwise.</li>
+ * <li>The underlying file is opened when the reader is created and closed by {@link #close}.</li>
+ * <li>Scan iterators produce entries in ascending key order. Where multiple entries share a key
+ * (possible in L0), they appear in descending sequence-number order (most recent first).</li>
+ * <li>{@link Iterator#next()} wraps any underlying {@link IOException} as
+ * {@link java.io.UncheckedIOException} in implementations, since {@code Iterator} cannot declare
+ * checked exceptions.</li>
+ * <li>The threading model is implementation-defined; callers should assume reads are safe to
+ * perform concurrently unless documented otherwise.</li>
  * </ul>
  */
 public interface SSTableReader extends Closeable {
@@ -61,8 +63,8 @@ public interface SSTableReader extends Closeable {
      * {@code [fromKey, toKey)}, in ascending key order.
      *
      * @param fromKey the inclusive lower bound; must not be null
-     * @param toKey   the exclusive upper bound; must not be null and must be greater than
-     *                {@code fromKey}
+     * @param toKey the exclusive upper bound; must not be null and must be greater than
+     *            {@code fromKey}
      * @return a non-null iterator over matching entries; {@link Iterator#next()} may throw
      *         {@link java.io.UncheckedIOException} if a read error occurs
      * @throws IOException if the scan cannot be initialized

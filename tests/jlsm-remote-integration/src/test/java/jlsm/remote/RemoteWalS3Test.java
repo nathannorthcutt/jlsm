@@ -20,8 +20,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Integration tests for {@link RemoteWriteAheadLog} running against an in-process S3Proxy.
- * Mirrors the functional tests in the unit test suite but uses S3-backed paths.
+ * Integration tests for {@link RemoteWriteAheadLog} running against an in-process S3Proxy. Mirrors
+ * the functional tests in the unit test suite but uses S3-backed paths.
  */
 @ExtendWith(S3Fixture.class)
 class RemoteWalS3Test {
@@ -108,7 +108,8 @@ class RemoteWalS3Test {
     void replayFromSkipsEarlierEntries() throws IOException {
         try (var w = wal()) {
             w.append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
-            SequenceNumber second = w.append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
+            SequenceNumber second = w
+                    .append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
             w.append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
 
             Iterator<Entry> it = w.replay(second);
@@ -148,7 +149,8 @@ class RemoteWalS3Test {
     void lastSequenceNumberReflectsLastAppend() throws IOException {
         try (var w = wal()) {
             w.append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
-            SequenceNumber last = w.append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
+            SequenceNumber last = w
+                    .append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
             assertEquals(last, w.lastSequenceNumber());
         }
     }
@@ -164,7 +166,8 @@ class RemoteWalS3Test {
         }
 
         try (var w = wal()) {
-            SequenceNumber next = w.append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
+            SequenceNumber next = w
+                    .append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
             assertTrue(next.value() > lastBeforeClose.value());
         }
     }
@@ -221,8 +224,8 @@ class RemoteWalS3Test {
                 w.append(new Entry.Put(seg("k" + i), seg("value-" + i), SequenceNumber.ZERO));
             }
             long elapsed = System.currentTimeMillis() - start;
-            System.out.printf("[S3 WAL latency] %d appends in %d ms (%.1f ms/op)%n",
-                    count, elapsed, (double) elapsed / count);
+            System.out.printf("[S3 WAL latency] %d appends in %d ms (%.1f ms/op)%n", count, elapsed,
+                    (double) elapsed / count);
         }
         // Assert nothing — this is informational output only
     }

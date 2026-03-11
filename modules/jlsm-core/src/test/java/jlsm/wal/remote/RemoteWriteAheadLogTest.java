@@ -24,7 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class RemoteWriteAheadLogTest {
 
-    @TempDir Path dir;
+    @TempDir
+    Path dir;
 
     private static MemorySegment seg(String s) {
         byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
@@ -54,8 +55,10 @@ class RemoteWriteAheadLogTest {
     @Test
     void appendPutReturnsIncreasingSequenceNumbers() throws IOException {
         try (var wal = RemoteWriteAheadLog.builder().directory(dir).build()) {
-            SequenceNumber s1 = wal.append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
-            SequenceNumber s2 = wal.append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
+            SequenceNumber s1 = wal
+                    .append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
+            SequenceNumber s2 = wal
+                    .append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
             assertTrue(s2.value() > s1.value());
         }
     }
@@ -67,7 +70,8 @@ class RemoteWriteAheadLogTest {
             for (int i = 0; i < count; i++) {
                 wal.append(new Entry.Put(seg("k" + i), seg("v" + i), SequenceNumber.ZERO));
             }
-            long walFiles = Files.list(dir).filter(p -> p.getFileName().toString().startsWith("wal-")).count();
+            long walFiles = Files.list(dir)
+                    .filter(p -> p.getFileName().toString().startsWith("wal-")).count();
             assertEquals(count, walFiles, "each append must create exactly one file");
         }
     }
@@ -123,7 +127,8 @@ class RemoteWriteAheadLogTest {
     void replayFromSkipsEarlierEntries() throws IOException {
         try (var wal = RemoteWriteAheadLog.builder().directory(dir).build()) {
             wal.append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
-            SequenceNumber second = wal.append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
+            SequenceNumber second = wal
+                    .append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
             wal.append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
 
             Iterator<Entry> it = wal.replay(second);
@@ -166,7 +171,8 @@ class RemoteWriteAheadLogTest {
     void lastSequenceNumberReflectsLastAppend() throws IOException {
         try (var wal = RemoteWriteAheadLog.builder().directory(dir).build()) {
             wal.append(new Entry.Put(seg("k1"), seg("v1"), SequenceNumber.ZERO));
-            SequenceNumber last = wal.append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
+            SequenceNumber last = wal
+                    .append(new Entry.Put(seg("k2"), seg("v2"), SequenceNumber.ZERO));
             assertEquals(last, wal.lastSequenceNumber());
         }
     }
@@ -184,7 +190,8 @@ class RemoteWriteAheadLogTest {
         }
 
         try (var wal = RemoteWriteAheadLog.builder().directory(dir).build()) {
-            SequenceNumber next = wal.append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
+            SequenceNumber next = wal
+                    .append(new Entry.Put(seg("k3"), seg("v3"), SequenceNumber.ZERO));
             assertTrue(next.value() > lastBeforeClose.value());
         }
     }
@@ -218,10 +225,10 @@ class RemoteWriteAheadLogTest {
             SequenceNumber upTo = seqs.get(3); // delete files with seqnum < seqs[3]
             wal.truncateBefore(upTo);
 
-            long remaining = Files.list(dir).filter(p -> p.getFileName().toString().startsWith("wal-")).count();
+            long remaining = Files.list(dir)
+                    .filter(p -> p.getFileName().toString().startsWith("wal-")).count();
             // Files with seqnum >= upTo.value() should remain
-            assertEquals(seqs.size() - 3, remaining,
-                    "files with seqnum < upTo should be deleted");
+            assertEquals(seqs.size() - 3, remaining, "files with seqnum < upTo should be deleted");
         }
     }
 
@@ -237,7 +244,8 @@ class RemoteWriteAheadLogTest {
         List<SequenceNumber> seqs = new ArrayList<>();
         try (var wal = RemoteWriteAheadLog.builder().directory(dir).build()) {
             for (int i = 0; i < 5; i++) {
-                seqs.add(wal.append(new Entry.Put(seg("k" + i), seg("v" + i), SequenceNumber.ZERO)));
+                seqs.add(
+                        wal.append(new Entry.Put(seg("k" + i), seg("v" + i), SequenceNumber.ZERO)));
             }
             SequenceNumber upTo = seqs.get(2);
             wal.truncateBefore(upTo);
@@ -259,11 +267,8 @@ class RemoteWriteAheadLogTest {
         int appendsPerThread = 50;
         CopyOnWriteArrayList<SequenceNumber> allSeqs = new CopyOnWriteArrayList<>();
 
-        try (var wal = RemoteWriteAheadLog.builder()
-                .directory(dir)
-                .poolSize(threads)
-                .bufferSize(4096)
-                .build()) {
+        try (var wal = RemoteWriteAheadLog.builder().directory(dir).poolSize(threads)
+                .bufferSize(4096).build()) {
             ExecutorService pool = Executors.newFixedThreadPool(threads);
             CountDownLatch start = new CountDownLatch(1);
             List<Future<?>> futures = new ArrayList<>();
@@ -274,8 +279,8 @@ class RemoteWriteAheadLogTest {
                     try {
                         start.await();
                         for (int i = 0; i < appendsPerThread; i++) {
-                            SequenceNumber seq = wal.append(
-                                    new Entry.Put(seg("t" + tid + "k" + i), seg("v"), SequenceNumber.ZERO));
+                            SequenceNumber seq = wal.append(new Entry.Put(seg("t" + tid + "k" + i),
+                                    seg("v"), SequenceNumber.ZERO));
                             allSeqs.add(seq);
                         }
                     } catch (Exception e) {
@@ -286,7 +291,8 @@ class RemoteWriteAheadLogTest {
             }
 
             start.countDown();
-            for (Future<?> f : futures) f.get();
+            for (Future<?> f : futures)
+                f.get();
             pool.shutdown();
         }
 
@@ -296,7 +302,8 @@ class RemoteWriteAheadLogTest {
         assertEquals(expected, distinct, "duplicate sequence numbers detected");
 
         // Each append creates exactly one file
-        long fileCount = Files.list(dir).filter(p -> p.getFileName().toString().startsWith("wal-")).count();
+        long fileCount = Files.list(dir).filter(p -> p.getFileName().toString().startsWith("wal-"))
+                .count();
         assertEquals(expected, fileCount, "each append should create exactly one file");
     }
 }

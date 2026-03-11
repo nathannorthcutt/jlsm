@@ -3,7 +3,6 @@ package jlsm.compaction.internal;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.nio.file.Path;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
@@ -21,9 +20,8 @@ class KeyRangeUtilTest {
     }
 
     private static SSTableMetadata meta(String smallest, String largest) {
-        return new SSTableMetadata(0L, Path.of("/tmp/fake.sst"), Level.L0,
-                seg(smallest), seg(largest),
-                SequenceNumber.ZERO, SequenceNumber.ZERO, 100L, 1L);
+        return new SSTableMetadata(0L, Path.of("/tmp/fake.sst"), Level.L0, seg(smallest),
+                seg(largest), SequenceNumber.ZERO, SequenceNumber.ZERO, 100L, 1L);
     }
 
     // -------------------------------------------------------------------------
@@ -68,8 +66,8 @@ class KeyRangeUtilTest {
     @Test
     void compareUnsignedHighByteValues() {
         // 0xFF > 0x01 as unsigned
-        MemorySegment a = seg(new byte[]{(byte) 0xFF});
-        MemorySegment b = seg(new byte[]{(byte) 0x01});
+        MemorySegment a = seg(new byte[]{ (byte) 0xFF });
+        MemorySegment b = seg(new byte[]{ (byte) 0x01 });
         assertTrue(KeyRangeUtil.compareUnsigned(a, b) > 0);
     }
 

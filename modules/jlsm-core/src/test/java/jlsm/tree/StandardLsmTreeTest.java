@@ -2,7 +2,6 @@ package jlsm.tree;
 
 import jlsm.bloom.blocked.BlockedBloomFilter;
 import jlsm.core.model.Entry;
-import jlsm.core.model.Level;
 import jlsm.memtable.ConcurrentSkipListMemTable;
 import jlsm.sstable.TrieSSTableReader;
 import jlsm.sstable.TrieSSTableWriter;
@@ -39,11 +38,11 @@ class StandardLsmTreeTest {
                 .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
                 .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .memTableFlushThresholdBytes(flushThresholdBytes)
-                .build();
+                .memTableFlushThresholdBytes(flushThresholdBytes).build();
     }
 
     private static MemorySegment seg(String s) {
@@ -158,9 +157,7 @@ class StandardLsmTreeTest {
             tree.put(seg("b"), seg("B"));
 
             List<Entry> entries = drain(tree.scan());
-            List<String> keys = entries.stream()
-                    .map(e -> str(e.key()))
-                    .toList();
+            List<String> keys = entries.stream().map(e -> str(e.key())).toList();
 
             // All three keys must appear in order; exact split between MemTable and SSTable varies
             assertTrue(keys.containsAll(List.of("a", "b", "c")));
@@ -185,7 +182,8 @@ class StandardLsmTreeTest {
             tree.delete(seg("key"));
 
             Optional<MemorySegment> result = tree.get(seg("key"));
-            assertFalse(result.isPresent(), "Deleted key must return empty even when SSTable has a Put");
+            assertFalse(result.isPresent(),
+                    "Deleted key must return empty even when SSTable has a Put");
         }
     }
 
@@ -203,11 +201,11 @@ class StandardLsmTreeTest {
                 .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
                 .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .recoverFromWal(true)
-                .build()) {
+                .recoverFromWal(true).build()) {
 
             Optional<MemorySegment> result = tree.get(seg("persistent"));
             assertTrue(result.isPresent(), "Data written before close must survive WAL recovery");
@@ -221,74 +219,67 @@ class StandardLsmTreeTest {
 
     @Test
     void builderRequiresWal() {
-        assertThrows(NullPointerException.class, () ->
-                StandardLsmTree.builder()
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .build());
+        assertThrows(NullPointerException.class, () -> StandardLsmTree.builder()
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst")).build());
     }
 
     @Test
     void builderRequiresMemTableFactory() {
-        assertThrows(NullPointerException.class, () ->
-                StandardLsmTree.builder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .build());
+        assertThrows(NullPointerException.class, () -> StandardLsmTree.builder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst")).build());
     }
 
     @Test
     void builderRequiresSstableWriterFactory() {
-        assertThrows(NullPointerException.class, () ->
-                StandardLsmTree.builder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .build());
+        assertThrows(NullPointerException.class, () -> StandardLsmTree.builder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst")).build());
     }
 
     @Test
     void builderRequiresSstableReaderFactory() {
-        assertThrows(NullPointerException.class, () ->
-                StandardLsmTree.builder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .build());
+        assertThrows(NullPointerException.class, () -> StandardLsmTree.builder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir.resolve("sst.sst")).build());
     }
 
     @Test
     void builderRequiresIdSupplier() {
-        assertThrows(NullPointerException.class, () ->
-                StandardLsmTree.builder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .pathFn((id, level) -> tempDir.resolve("sst.sst"))
-                        .build());
+        assertThrows(NullPointerException.class, () -> StandardLsmTree.builder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .pathFn((id, level) -> tempDir.resolve("sst.sst")).build());
     }
 
     @Test
     void builderRequiresPathFn() {
-        assertThrows(NullPointerException.class, () ->
-                StandardLsmTree.builder()
-                        .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
-                        .memTableFactory(ConcurrentSkipListMemTable::new)
-                        .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
-                        .sstableReaderFactory(path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
-                        .idSupplier(idCounter::getAndIncrement)
-                        .build());
+        assertThrows(NullPointerException.class, () -> StandardLsmTree.builder()
+                .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableWriterFactory((id, level, path) -> new TrieSSTableWriter(id, level, path))
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer()))
+                .idSupplier(idCounter::getAndIncrement).build());
     }
 
     @Test

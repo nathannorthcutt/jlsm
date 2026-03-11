@@ -55,14 +55,16 @@ class TrieSSTableReaderTest {
 
     @Test
     void eagerMetadataEntryCount() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertEquals(4L, r.metadata().entryCount());
         }
     }
 
     @Test
     void eagerMetadataSmallestLargestKey() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             SSTableMetadata meta = r.metadata();
             assertEquals(-1L, seg("a").mismatch(meta.smallestKey()));
             assertEquals(-1L, seg("d").mismatch(meta.largestKey()));
@@ -71,14 +73,16 @@ class TrieSSTableReaderTest {
 
     @Test
     void eagerMetadataFileSize() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertTrue(r.metadata().sizeBytes() > 0);
         }
     }
 
     @Test
     void eagerGetExistingPutEntry() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             Optional<Entry> result = r.get(seg("a"));
             assertTrue(result.isPresent());
             assertInstanceOf(Entry.Put.class, result.get());
@@ -88,14 +92,16 @@ class TrieSSTableReaderTest {
 
     @Test
     void eagerGetMissingKeyReturnsEmpty() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertTrue(r.get(seg("z")).isEmpty());
         }
     }
 
     @Test
     void eagerGetDeleteEntry() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             Optional<Entry> result = r.get(seg("b"));
             assertTrue(result.isPresent());
             assertInstanceOf(Entry.Delete.class, result.get());
@@ -104,7 +110,8 @@ class TrieSSTableReaderTest {
 
     @Test
     void eagerScanReturnsAllInOrder() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             List<Entry> entries = toList(r.scan());
             assertEquals(4, entries.size());
             assertEquals(-1L, seg("a").mismatch(entries.get(0).key()));
@@ -116,7 +123,8 @@ class TrieSSTableReaderTest {
 
     @Test
     void eagerScanRangeInclusiveLowerExclusiveUpper() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             List<Entry> entries = toList(r.scan(seg("b"), seg("d")));
             assertEquals(2, entries.size());
             assertEquals(-1L, seg("b").mismatch(entries.get(0).key()));
@@ -126,7 +134,8 @@ class TrieSSTableReaderTest {
 
     @Test
     void eagerScanRangeEmptyReturnsNoEntries() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             List<Entry> entries = toList(r.scan(seg("e"), seg("z")));
             assertTrue(entries.isEmpty());
         }
@@ -152,21 +161,24 @@ class TrieSSTableReaderTest {
 
     @Test
     void eagerScanNullFromThrows() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertThrows(NullPointerException.class, () -> r.scan(null, seg("z")));
         }
     }
 
     @Test
     void eagerScanNullToThrows() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertThrows(NullPointerException.class, () -> r.scan(seg("a"), null));
         }
     }
 
     @Test
     void eagerGetNullThrows() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertThrows(NullPointerException.class, () -> r.get(null));
         }
     }
@@ -174,7 +186,8 @@ class TrieSSTableReaderTest {
     @Test
     void eagerGetMissingKeyBloomMiss() throws IOException {
         // Key "zzz" not in the file; bloom filter will definitely miss
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertTrue(r.get(seg("zzz")).isEmpty());
         }
     }
@@ -183,7 +196,8 @@ class TrieSSTableReaderTest {
 
     @Test
     void lazyGetExistingPutEntry() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                BlockedBloomFilter.deserializer())) {
             Optional<Entry> result = r.get(seg("a"));
             assertTrue(result.isPresent());
             assertInstanceOf(Entry.Put.class, result.get());
@@ -193,14 +207,16 @@ class TrieSSTableReaderTest {
 
     @Test
     void lazyGetMissingKeyReturnsEmpty() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertTrue(r.get(seg("z")).isEmpty());
         }
     }
 
     @Test
     void lazyGetDeleteEntry() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                BlockedBloomFilter.deserializer())) {
             Optional<Entry> result = r.get(seg("b"));
             assertTrue(result.isPresent());
             assertInstanceOf(Entry.Delete.class, result.get());
@@ -209,7 +225,8 @@ class TrieSSTableReaderTest {
 
     @Test
     void lazyScanReturnsAllInOrder() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                BlockedBloomFilter.deserializer())) {
             List<Entry> entries = toList(r.scan());
             assertEquals(4, entries.size());
             assertEquals(-1L, seg("a").mismatch(entries.get(0).key()));
@@ -219,7 +236,8 @@ class TrieSSTableReaderTest {
 
     @Test
     void lazyScanRangeInclusiveLowerExclusiveUpper() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                BlockedBloomFilter.deserializer())) {
             List<Entry> entries = toList(r.scan(seg("b"), seg("d")));
             assertEquals(2, entries.size());
             assertEquals(-1L, seg("b").mismatch(entries.get(0).key()));
@@ -229,7 +247,8 @@ class TrieSSTableReaderTest {
 
     @Test
     void lazyMetadataEntryCount() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer())) {
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                BlockedBloomFilter.deserializer())) {
             assertEquals(4L, r.metadata().entryCount());
         }
     }
@@ -239,7 +258,8 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheEagerGetExistingEntry() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+                TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
             Optional<Entry> result = r.get(seg("a"));
             assertTrue(result.isPresent());
             assertInstanceOf(Entry.Put.class, result.get());
@@ -250,7 +270,8 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheEagerGetMissingKeyReturnsEmpty() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+                TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
             assertTrue(r.get(seg("z")).isEmpty());
         }
     }
@@ -258,7 +279,8 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheLazyGetExistingEntry() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+                TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
             Optional<Entry> result = r.get(seg("c"));
             assertTrue(result.isPresent());
             assertInstanceOf(Entry.Put.class, result.get());
@@ -269,7 +291,8 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheLazyGetMissingKeyReturnsEmpty() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+                TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
             assertTrue(r.get(seg("z")).isEmpty());
         }
     }
@@ -277,7 +300,8 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheLazyGetPopulatesCache() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+                TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
             assertEquals(0, cache.size());
             r.get(seg("a"));
             assertTrue(cache.size() >= 1, "cache should be populated after a get");
@@ -287,7 +311,8 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheLazyGetHitDoesNotGrowCache() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+                TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
             r.get(seg("a"));
             long sizeAfterFirstGet = cache.size();
             r.get(seg("a"));
@@ -299,7 +324,8 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheMultipleDistinctGetsPopulateCacheForEachKey() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+                TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
             r.get(seg("a"));
             r.get(seg("c"));
             assertEquals(2, cache.size(), "each distinct entry offset should occupy a cache slot");
@@ -309,7 +335,8 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheLazyScanRangeReturnsCorrectEntries() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
+                TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
             List<Entry> entries = toList(r.scan(seg("b"), seg("d")));
             assertEquals(2, entries.size());
             assertEquals(-1L, seg("b").mismatch(entries.get(0).key()));
@@ -320,15 +347,17 @@ class TrieSSTableReaderTest {
     @Test
     void withCacheLazyScanRangePopulatesCache() throws IOException {
         try (var cache = LruBlockCache.builder().capacity(32).build();
-             TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), cache)) {
-            toList(r.scan(seg("a"), seg("z")));    // scan all 4 keys
+                TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                        BlockedBloomFilter.deserializer(), cache)) {
+            toList(r.scan(seg("a"), seg("z"))); // scan all 4 keys
             assertEquals(4, cache.size(), "each entry read during range scan should be cached");
         }
     }
 
     @Test
     void withNullCacheOpenStillWorks() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath, BlockedBloomFilter.deserializer(), null)) {
+        try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer(), null)) {
             Optional<Entry> result = r.get(seg("d"));
             assertTrue(result.isPresent());
             assertEquals(-1L, seg("vd").mismatch(((Entry.Put) result.get()).value()));
@@ -337,7 +366,8 @@ class TrieSSTableReaderTest {
 
     @Test
     void withNullCacheOpenLazyStillWorks() throws IOException {
-        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath, BlockedBloomFilter.deserializer(), null)) {
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
+                BlockedBloomFilter.deserializer(), null)) {
             Optional<Entry> result = r.get(seg("d"));
             assertTrue(result.isPresent());
             assertEquals(-1L, seg("vd").mismatch(((Entry.Put) result.get()).value()));
@@ -348,5 +378,93 @@ class TrieSSTableReaderTest {
         List<Entry> result = new ArrayList<>();
         it.forEachRemaining(result::add);
         return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Bloom filter Arena regression tests (Violation 2)
+    // These tests verify that readBloomFilter() correctly deserializes the
+    // BlockedBloomFilter regardless of which Arena strategy is used internally.
+    // A bug in Arena.ofAuto() vs Arena.ofShared() alignment would corrupt the
+    // deserialized bloom filter, causing false negatives on known-present keys.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Verifies that the bloom filter deserialized during eager open() correctly identifies all keys
+     * that were inserted during write. A misaligned MemorySegment in readBloomFilter() would
+     * corrupt the filter, causing get() to return empty for a key that actually exists in the
+     * SSTable.
+     */
+    @Test
+    void eagerOpenBloomFilterCorrectlyDeserializedForAllWrittenKeys() throws IOException {
+        Path p = dir.resolve("bloom_eager.sst");
+        List<String> writtenKeys = List.of("apple", "banana", "cherry", "date", "elderberry");
+        try (TrieSSTableWriter w = new TrieSSTableWriter(10L, Level.L0, p)) {
+            for (String key : writtenKeys) {
+                w.append(put(key, "value-" + key, writtenKeys.indexOf(key) + 1L));
+            }
+            w.finish();
+        }
+
+        try (TrieSSTableReader r = TrieSSTableReader.open(p, BlockedBloomFilter.deserializer())) {
+            for (String key : writtenKeys) {
+                Optional<Entry> result = r.get(seg(key));
+                assertTrue(result.isPresent(), "get() must return entry for key '" + key
+                        + "'; bloom filter corruption would cause a false negative");
+            }
+        }
+    }
+
+    /**
+     * Verifies that the bloom filter deserialized during lazy openLazy() correctly identifies all
+     * keys that were inserted during write. Same corruption concern as the eager path — both call
+     * readBloomFilter() which allocates a MemorySegment.
+     */
+    @Test
+    void lazyOpenBloomFilterCorrectlyDeserializedForAllWrittenKeys() throws IOException {
+        Path p = dir.resolve("bloom_lazy.sst");
+        List<String> writtenKeys = List.of("fig", "grape", "honeydew", "kiwi", "lemon");
+        try (TrieSSTableWriter w = new TrieSSTableWriter(11L, Level.L0, p)) {
+            for (String key : writtenKeys) {
+                w.append(put(key, "value-" + key, writtenKeys.indexOf(key) + 1L));
+            }
+            w.finish();
+        }
+
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(p,
+                BlockedBloomFilter.deserializer())) {
+            for (String key : writtenKeys) {
+                Optional<Entry> result = r.get(seg(key));
+                assertTrue(result.isPresent(), "get() must return entry for key '" + key
+                        + "'; bloom filter corruption in lazy mode would cause a false negative");
+            }
+        }
+    }
+
+    /**
+     * Verifies that a key definitely absent from the SSTable is NOT returned by get(), confirming
+     * the bloom filter was deserialized in a functional state. If the bloom filter were entirely
+     * zeroed by an alignment bug it would report mightContain=false for every key (including
+     * present ones), breaking all reads.
+     */
+    @Test
+    void bloomFilterAfterDeserializationRejectsDefinitelyAbsentKey() throws IOException {
+        Path p = dir.resolve("bloom_absent.sst");
+        // Write a large set so the bloom filter has many bits set and is non-trivially correct.
+        try (TrieSSTableWriter w = new TrieSSTableWriter(12L, Level.L0, p)) {
+            for (int i = 0; i < 50; i++) {
+                w.append(put(String.format("present-key-%03d", i), "v", i + 1L));
+            }
+            w.finish();
+        }
+
+        // A key that was never written must not appear in the SSTable.
+        // This test will fail if the bloom filter is corrupted to always return
+        // mightContain=true AND the key index also returns a match (shouldn't happen,
+        // but we guard the contract: get() must return empty for a key not written).
+        try (TrieSSTableReader r = TrieSSTableReader.open(p, BlockedBloomFilter.deserializer())) {
+            Optional<Entry> result = r.get(seg("definitely-not-present-zzzzzz"));
+            assertTrue(result.isEmpty(),
+                    "get() must return empty for a key that was never written");
+        }
     }
 }

@@ -27,12 +27,15 @@ import java.util.Objects;
 /**
  * Writes entries to a new SSTable file using a trie-based key index.
  *
- * <p>State machine: {@code OPEN → FINISHED → CLOSED} and {@code OPEN → CLOSED}.
- * Calling {@link #close()} without {@link #finish()} deletes the partial file.
+ * <p>
+ * State machine: {@code OPEN → FINISHED → CLOSED} and {@code OPEN → CLOSED}. Calling
+ * {@link #close()} without {@link #finish()} deletes the partial file.
  */
 public final class TrieSSTableWriter implements SSTableWriter {
 
-    private enum State { OPEN, FINISHED, CLOSED }
+    private enum State {
+        OPEN, FINISHED, CLOSED
+    }
 
     private final long id;
     private final Level level;
@@ -68,8 +71,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
      * Creates a new writer that will write to {@code outputPath} using a {@link BlockedBloomFilter}
      * with 1% target false-positive rate.
      *
-     * @param id         unique SSTable identifier
-     * @param level      LSM level for this SSTable
+     * @param id unique SSTable identifier
+     * @param level LSM level for this SSTable
      * @param outputPath path to the output file; must not exist
      * @throws IOException if the file cannot be opened
      */
@@ -81,14 +84,14 @@ public final class TrieSSTableWriter implements SSTableWriter {
      * Creates a new writer that will write to {@code outputPath} using a custom bloom filter
      * factory. The factory is invoked at {@link #finish()} time with the actual entry count.
      *
-     * @param id          unique SSTable identifier
-     * @param level       LSM level for this SSTable
-     * @param outputPath  path to the output file; must not exist
+     * @param id unique SSTable identifier
+     * @param level LSM level for this SSTable
+     * @param outputPath path to the output file; must not exist
      * @param bloomFactory factory used to create the bloom filter; must not be null
      * @throws IOException if the file cannot be opened
      */
     public TrieSSTableWriter(long id, Level level, Path outputPath,
-                              BloomFilter.Factory bloomFactory) throws IOException {
+            BloomFilter.Factory bloomFactory) throws IOException {
         Objects.requireNonNull(level, "level must not be null");
         Objects.requireNonNull(outputPath, "outputPath must not be null");
         Objects.requireNonNull(bloomFactory, "bloomFactory must not be null");
@@ -96,8 +99,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.level = level;
         this.outputPath = outputPath;
         this.bloomFactory = bloomFactory;
-        this.channel = Files.newByteChannel(outputPath,
-                StandardOpenOption.CREATE_NEW,
+        this.channel = Files.newByteChannel(outputPath, StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE);
     }
 
@@ -134,11 +136,14 @@ public final class TrieSSTableWriter implements SSTableWriter {
 
         // Update stats
         SequenceNumber seq = entry.sequenceNumber();
-        if (smallestKey == null) smallestKey = MemorySegment.ofArray(keyBytes.clone());
+        if (smallestKey == null)
+            smallestKey = MemorySegment.ofArray(keyBytes.clone());
         largestKey = MemorySegment.ofArray(keyBytes.clone());
 
-        if (minSequence == null || seq.compareTo(minSequence) < 0) minSequence = seq;
-        if (maxSequence == null || seq.compareTo(maxSequence) > 0) maxSequence = seq;
+        if (minSequence == null || seq.compareTo(minSequence) < 0)
+            minSequence = seq;
+        if (maxSequence == null || seq.compareTo(maxSequence) > 0)
+            maxSequence = seq;
 
         lastKeyBytes = keyBytes;
         entryCount++;
@@ -150,7 +155,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
     }
 
     private void flushCurrentBlock() throws IOException {
-        if (currentBlock.count() == 0) return;
+        if (currentBlock.count() == 0)
+            return;
         byte[] blockBytes = currentBlock.serialize();
         writeBytes(blockBytes);
         currentBlock = new DataBlock();
@@ -198,14 +204,15 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeFooter(indexOffset, indexLength, filterOffset, filterLength);
 
         // fsync if supported (e.g., local FileChannel; skipped for object-storage channels)
-        if (channel instanceof FileChannel fc) fc.force(true);
+        if (channel instanceof FileChannel fc)
+            fc.force(true);
 
         long sizeBytes = writePosition;
 
         state = State.FINISHED;
 
-        return new SSTableMetadata(id, outputPath, level, smallestKey, largestKey,
-                minSequence, maxSequence, sizeBytes, entryCount);
+        return new SSTableMetadata(id, outputPath, level, smallestKey, largestKey, minSequence,
+                maxSequence, sizeBytes, entryCount);
     }
 
     private void writeKeyIndex() throws IOException {
@@ -246,8 +253,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeBytes(buf);
     }
 
-    private void writeFooter(long idxOffset, long idxLength,
-                              long fltOffset, long fltLength) throws IOException {
+    private void writeFooter(long idxOffset, long idxLength, long fltOffset, long fltLength)
+            throws IOException {
         byte[] buf = new byte[SSTableFormat.FOOTER_SIZE];
         int off = 0;
         off = writeLong(buf, off, idxOffset);
@@ -283,23 +290,38 @@ public final class TrieSSTableWriter implements SSTableWriter {
 
     @Override
     public void close() throws IOException {
-        if (state == State.CLOSED) return;
+        if (state == State.CLOSED)
+            return;
         boolean shouldDelete = (state == State.OPEN);
         state = State.CLOSED;
+        IOException channelEx = null;
         try {
             channel.close();
+        } catch (IOException e) {
+            channelEx = e;
         } finally {
             if (shouldDelete) {
-                try { Files.deleteIfExists(outputPath); } catch (IOException ignored) {}
+                try {
+                    Files.deleteIfExists(outputPath);
+                } catch (IOException deleteEx) {
+                    if (channelEx != null) {
+                        channelEx.addSuppressed(deleteEx);
+                    } else {
+                        channelEx = deleteEx;
+                    }
+                }
             }
         }
+        if (channelEx != null)
+            throw channelEx;
     }
 
     private static int compareUnsigned(byte[] a, byte[] b) {
         int len = Math.min(a.length, b.length);
         for (int i = 0; i < len; i++) {
             int cmp = Byte.compareUnsigned(a[i], b[i]);
-            if (cmp != 0) return cmp;
+            if (cmp != 0)
+                return cmp;
         }
         return Integer.compare(a.length, b.length);
     }

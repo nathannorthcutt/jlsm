@@ -34,7 +34,8 @@ class MergeIteratorTest {
 
     private static List<Entry> drain(MergeIterator it) {
         List<Entry> result = new ArrayList<>();
-        while (it.hasNext()) result.add(it.next());
+        while (it.hasNext())
+            result.add(it.next());
         return result;
     }
 
@@ -85,9 +86,8 @@ class MergeIteratorTest {
 
     @Test
     void twoNonOverlappingSources() {
-        MergeIterator it = new MergeIterator(List.of(
-                iter(put("a", 1), put("c", 2)),
-                iter(put("b", 3), put("d", 4))));
+        MergeIterator it = new MergeIterator(
+                List.of(iter(put("a", 1), put("c", 2)), iter(put("b", 3), put("d", 4))));
         List<Entry> result = drain(it);
         assertEquals(4, result.size());
         assertEquals("a", keyStr(result.get(0)));
@@ -102,10 +102,8 @@ class MergeIteratorTest {
 
     @Test
     void equalKeyHighestSeqNumFirst() {
-        MergeIterator it = new MergeIterator(List.of(
-                iter(put("k", 1)),
-                iter(put("k", 5)),
-                iter(put("k", 3))));
+        MergeIterator it = new MergeIterator(
+                List.of(iter(put("k", 1)), iter(put("k", 5)), iter(put("k", 3))));
         List<Entry> result = drain(it);
         assertEquals(3, result.size());
         assertEquals(5L, result.get(0).sequenceNumber().value());
@@ -119,8 +117,7 @@ class MergeIteratorTest {
 
     @Test
     void nWayMergeGloballySorted() {
-        MergeIterator it = new MergeIterator(List.of(
-                iter(put("a", 1), put("d", 4), put("g", 7)),
+        MergeIterator it = new MergeIterator(List.of(iter(put("a", 1), put("d", 4), put("g", 7)),
                 iter(put("b", 2), put("e", 5), put("h", 8)),
                 iter(put("c", 3), put("f", 6), put("i", 9))));
         List<Entry> result = drain(it);
@@ -136,8 +133,7 @@ class MergeIteratorTest {
 
     @Test
     void tombstonesYielded() {
-        MergeIterator it = new MergeIterator(List.of(
-                iter(del("k", 10), put("z", 1))));
+        MergeIterator it = new MergeIterator(List.of(iter(del("k", 10), put("z", 1))));
         List<Entry> result = drain(it);
         assertEquals(2, result.size());
         assertInstanceOf(Entry.Delete.class, result.get(0));

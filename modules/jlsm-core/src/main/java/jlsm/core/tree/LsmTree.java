@@ -11,19 +11,21 @@ import java.util.Optional;
 /**
  * Top-level contract for an LSM-Tree store.
  *
- * <p><b>Write path</b>: WAL → MemTable → SSTable flush (when MemTable exceeds threshold).
- * <b>Read path</b>: MemTable (newest) → SSTable levels (L0 newest-first).
+ * <p>
+ * <b>Write path</b>: WAL → MemTable → SSTable flush (when MemTable exceeds threshold). <b>Read
+ * path</b>: MemTable (newest) → SSTable levels (L0 newest-first).
  *
- * <p><b>Key contracts</b>:
+ * <p>
+ * <b>Key contracts</b>:
  * <ul>
- *   <li>{@link #put} and {@link #delete} are durable: the WAL is synced before the MemTable is
- *       updated.</li>
- *   <li>{@link #get} returns the most recent value for a key; a deleted key returns
- *       {@link Optional#empty()}.</li>
- *   <li>{@link #scan} iterates entries in ascending key order, yielding one entry per logical key
- *       (the most recent version). Tombstones ({@link Entry.Delete}) are included so that callers
- *       can distinguish "key was deleted" from "key was never written".</li>
- *   <li>All operations may throw {@link IOException} because they interact with durable storage.</li>
+ * <li>{@link #put} and {@link #delete} are durable: the WAL is synced before the MemTable is
+ * updated.</li>
+ * <li>{@link #get} returns the most recent value for a key; a deleted key returns
+ * {@link Optional#empty()}.</li>
+ * <li>{@link #scan} iterates entries in ascending key order, yielding one entry per logical key
+ * (the most recent version). Tombstones ({@link Entry.Delete}) are included so that callers can
+ * distinguish "key was deleted" from "key was never written".</li>
+ * <li>All operations may throw {@link IOException} because they interact with durable storage.</li>
  * </ul>
  */
 public interface LsmTree extends Closeable {
@@ -31,7 +33,7 @@ public interface LsmTree extends Closeable {
     /**
      * Associates {@code key} with {@code value}, replacing any prior value or tombstone.
      *
-     * @param key   the key to write; must not be null
+     * @param key the key to write; must not be null
      * @param value the value to associate with the key; must not be null
      * @throws IOException if the WAL cannot be written to
      */
@@ -72,7 +74,7 @@ public interface LsmTree extends Closeable {
      * {@code [from, to)}, in ascending key order.
      *
      * @param from the inclusive lower bound; must not be null
-     * @param to   the exclusive upper bound; must not be null and must be greater than {@code from}
+     * @param to the exclusive upper bound; must not be null and must be greater than {@code from}
      * @return a non-null iterator over matching entries in ascending key order
      * @throws IOException if the scan cannot be initialised
      */

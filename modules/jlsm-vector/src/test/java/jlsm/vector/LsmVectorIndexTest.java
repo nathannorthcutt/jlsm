@@ -4,7 +4,6 @@ import jlsm.bloom.PassthroughBloomFilter;
 import jlsm.core.indexing.SimilarityFunction;
 import jlsm.core.indexing.VectorIndex;
 import jlsm.core.io.MemorySerializer;
-import jlsm.core.model.Level;
 import jlsm.core.tree.LsmTree;
 import jlsm.memtable.ConcurrentSkipListMemTable;
 import jlsm.sstable.TrieSSTableReader;
@@ -52,7 +51,8 @@ class LsmVectorIndexTest {
         public Long deserialize(MemorySegment segment) {
             byte[] bytes = segment.toArray(ValueLayout.JAVA_BYTE);
             long v = 0L;
-            for (byte b : bytes) v = (v << 8) | (b & 0xFFL);
+            for (byte b : bytes)
+                v = (v << 8) | (b & 0xFFL);
             return v;
         }
     };
@@ -65,15 +65,15 @@ class LsmVectorIndexTest {
         return StandardLsmTree.builder()
                 .wal(LocalWriteAheadLog.builder().directory(tempDir).build())
                 .memTableFactory(ConcurrentSkipListMemTable::new)
-                .sstableWriterFactory((SSTableWriterFactory) (id, level, path) ->
-                        new TrieSSTableWriter(id, level, path, PassthroughBloomFilter.factory()))
-                .sstableReaderFactory((SSTableReaderFactory) path ->
-                        TrieSSTableReader.open(path, PassthroughBloomFilter.deserializer()))
+                .sstableWriterFactory(
+                        (SSTableWriterFactory) (id, level, path) -> new TrieSSTableWriter(id, level,
+                                path, PassthroughBloomFilter.factory()))
+                .sstableReaderFactory((SSTableReaderFactory) path -> TrieSSTableReader.open(path,
+                        PassthroughBloomFilter.deserializer()))
                 .bloomDeserializer(PassthroughBloomFilter.deserializer())
                 .idSupplier(idCounter::getAndIncrement)
                 .pathFn((id, level) -> tempDir.resolve("sst-" + id + "-L" + level.index() + ".sst"))
-                .memTableFlushThresholdBytes(flushThreshold)
-                .build();
+                .memTableFlushThresholdBytes(flushThreshold).build();
     }
 
     // -----------------------------------------------------------------------
@@ -83,14 +83,12 @@ class LsmVectorIndexTest {
     @Test
     void ivfFlat_indexThenSearchReturnsExactMatch() throws IOException {
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.COSINE)
-                .build()) {
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.COSINE).build()) {
 
-            index.index(1L, new float[]{1.0f, 0.0f});
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 0.0f}, 1);
+            index.index(1L, new float[]{ 1.0f, 0.0f });
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    1);
 
             assertEquals(1, results.size());
             assertEquals(1L, results.get(0).docId());
@@ -101,17 +99,15 @@ class LsmVectorIndexTest {
     @Test
     void ivfFlat_searchReturnsTopKNearest() throws IOException {
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.COSINE)
-                .numClusters(10)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.COSINE).numClusters(10)
                 .build()) {
 
             for (long i = 0; i < 5; i++) {
-                index.index(i, new float[]{(float) i, 1.0f});
+                index.index(i, new float[]{ (float) i, 1.0f });
             }
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 1.0f}, 3);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 1.0f },
+                    3);
 
             assertEquals(3, results.size());
         }
@@ -120,18 +116,16 @@ class LsmVectorIndexTest {
     @Test
     void ivfFlat_resultsOrderedByDescendingScore() throws IOException {
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.COSINE)
-                .numClusters(10)
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.COSINE).numClusters(10)
                 .build()) {
 
-            index.index(1L, new float[]{1.0f, 0.0f});
-            index.index(2L, new float[]{0.0f, 1.0f});
-            index.index(3L, new float[]{-1.0f, 0.0f});
+            index.index(1L, new float[]{ 1.0f, 0.0f });
+            index.index(2L, new float[]{ 0.0f, 1.0f });
+            index.index(3L, new float[]{ -1.0f, 0.0f });
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 0.0f}, 3);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    3);
 
             assertEquals(3, results.size());
             for (int i = 0; i < results.size() - 1; i++) {
@@ -144,18 +138,16 @@ class LsmVectorIndexTest {
     @Test
     void ivfFlat_removeDocExcludedFromSearch() throws IOException {
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.COSINE)
-                .build()) {
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.COSINE).build()) {
 
-            index.index(1L, new float[]{1.0f, 0.0f});
-            index.index(2L, new float[]{0.9f, 0.1f});
+            index.index(1L, new float[]{ 1.0f, 0.0f });
+            index.index(2L, new float[]{ 0.9f, 0.1f });
 
             index.remove(2L);
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 0.0f}, 10);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    10);
             assertEquals(1, results.size());
             assertEquals(1L, results.get(0).docId());
         }
@@ -164,14 +156,12 @@ class LsmVectorIndexTest {
     @Test
     void ivfFlat_euclideanSimilarity() throws IOException {
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.EUCLIDEAN)
-                .build()) {
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.EUCLIDEAN).build()) {
 
-            index.index(1L, new float[]{1.0f, 0.0f});
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 0.0f}, 1);
+            index.index(1L, new float[]{ 1.0f, 0.0f });
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    1);
 
             assertEquals(1, results.size());
             assertEquals(0.0f, results.get(0).score(), 0.001f);
@@ -181,14 +171,12 @@ class LsmVectorIndexTest {
     @Test
     void ivfFlat_dotProductSimilarity() throws IOException {
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                .build()) {
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.DOT_PRODUCT).build()) {
 
-            index.index(1L, new float[]{2.0f, 3.0f});
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 1.0f}, 1);
+            index.index(1L, new float[]{ 2.0f, 3.0f });
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 1.0f },
+                    1);
 
             assertEquals(1, results.size());
             assertEquals(5.0f, results.get(0).score(), 0.001f);
@@ -199,58 +187,45 @@ class LsmVectorIndexTest {
     void ivfFlat_searchAfterFlush() throws IOException {
         // tiny flush threshold forces flush during indexing
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(buildTree(1L))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.COSINE)
-                .build()) {
+                .lsmTree(buildTree(1L)).docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(2)
+                .similarityFunction(SimilarityFunction.COSINE).build()) {
 
-            index.index(1L, new float[]{1.0f, 0.0f});
-            index.index(2L, new float[]{0.0f, 1.0f});
+            index.index(1L, new float[]{ 1.0f, 0.0f });
+            index.index(2L, new float[]{ 0.0f, 1.0f });
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 0.0f}, 10);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    10);
             assertEquals(2, results.size());
         }
     }
 
     @Test
     void ivfFlat_builderRequiresLsmTree() {
-        assertThrows(NullPointerException.class, () ->
-                LsmVectorIndex.<Long>ivfFlatBuilder()
-                        .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                        .dimensions(2)
-                        .similarityFunction(SimilarityFunction.COSINE)
-                        .build());
+        assertThrows(NullPointerException.class,
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                        .dimensions(2).similarityFunction(SimilarityFunction.COSINE).build());
     }
 
     @Test
     void ivfFlat_builderRequiresDocIdSerializer() throws IOException {
-        assertThrows(NullPointerException.class, () ->
-                LsmVectorIndex.<Long>ivfFlatBuilder()
-                        .lsmTree(buildTree(Long.MAX_VALUE))
-                        .dimensions(2)
-                        .similarityFunction(SimilarityFunction.COSINE)
-                        .build());
+        assertThrows(NullPointerException.class,
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(buildTree(Long.MAX_VALUE))
+                        .dimensions(2).similarityFunction(SimilarityFunction.COSINE).build());
     }
 
     @Test
     void ivfFlat_builderRequiresDimensions() throws IOException {
-        assertThrows(IllegalArgumentException.class, () ->
-                LsmVectorIndex.<Long>ivfFlatBuilder()
-                        .lsmTree(buildTree(Long.MAX_VALUE))
+        assertThrows(IllegalArgumentException.class,
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(buildTree(Long.MAX_VALUE))
                         .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                        .similarityFunction(SimilarityFunction.COSINE)
-                        .build());
+                        .similarityFunction(SimilarityFunction.COSINE).build());
     }
 
     @Test
     void ivfFlat_builderRequiresSimilarityFunction() throws IOException {
-        assertThrows(NullPointerException.class, () ->
-                LsmVectorIndex.<Long>ivfFlatBuilder()
-                        .lsmTree(buildTree(Long.MAX_VALUE))
-                        .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                        .dimensions(2)
-                        .build());
+        assertThrows(NullPointerException.class,
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(buildTree(Long.MAX_VALUE))
+                        .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(2).build());
     }
 
     @Test
@@ -270,14 +245,12 @@ class LsmVectorIndexTest {
     @Test
     void hnsw_indexThenSearchReturnsExactMatch() throws IOException {
         try (VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.COSINE)
-                .build()) {
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.COSINE).build()) {
 
-            index.index(1L, new float[]{1.0f, 0.0f});
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 0.0f}, 1);
+            index.index(1L, new float[]{ 1.0f, 0.0f });
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    1);
 
             assertEquals(1, results.size());
             assertEquals(1L, results.get(0).docId());
@@ -288,19 +261,15 @@ class LsmVectorIndexTest {
     @Test
     void hnsw_searchTopK() throws IOException {
         try (VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.COSINE)
-                .M(4)
-                .efConstruction(10)
-                .efSearch(10)
-                .build()) {
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.COSINE).maxConnections(4)
+                .efConstruction(10).efSearch(10).build()) {
 
             for (long i = 1; i <= 5; i++) {
-                index.index(i, new float[]{(float) i, 1.0f});
+                index.index(i, new float[]{ (float) i, 1.0f });
             }
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 1.0f}, 3);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 1.0f },
+                    3);
 
             assertEquals(3, results.size());
             // Scores should be in descending order
@@ -313,19 +282,17 @@ class LsmVectorIndexTest {
     @Test
     void hnsw_removeDocExcludedFromSearch() throws IOException {
         try (VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE))
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2)
-                .similarityFunction(SimilarityFunction.COSINE)
-                .build()) {
+                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .dimensions(2).similarityFunction(SimilarityFunction.COSINE).build()) {
 
-            index.index(1L, new float[]{1.0f, 0.0f});
-            index.index(2L, new float[]{0.9f, 0.1f});
-            index.index(3L, new float[]{0.5f, 0.5f});
+            index.index(1L, new float[]{ 1.0f, 0.0f });
+            index.index(2L, new float[]{ 0.9f, 0.1f });
+            index.index(3L, new float[]{ 0.5f, 0.5f });
 
             index.remove(2L);
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{1.0f, 0.0f}, 10);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    10);
             boolean containsRemoved = results.stream().anyMatch(r -> r.docId().equals(2L));
             assertFalse(containsRemoved, "removed doc should not appear in search results");
         }
@@ -334,35 +301,24 @@ class LsmVectorIndexTest {
     @Test
     void hnsw_builderRequiresFields() throws IOException {
         // lsmTree required
-        assertThrows(NullPointerException.class, () ->
-                LsmVectorIndex.<Long>hnswBuilder()
-                        .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                        .dimensions(2)
-                        .similarityFunction(SimilarityFunction.COSINE)
-                        .build());
+        assertThrows(NullPointerException.class,
+                () -> LsmVectorIndex.<Long>hnswBuilder().docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                        .dimensions(2).similarityFunction(SimilarityFunction.COSINE).build());
 
         // docIdSerializer required
-        assertThrows(NullPointerException.class, () ->
-                LsmVectorIndex.<Long>hnswBuilder()
-                        .lsmTree(buildTree(Long.MAX_VALUE))
-                        .dimensions(2)
-                        .similarityFunction(SimilarityFunction.COSINE)
-                        .build());
+        assertThrows(NullPointerException.class,
+                () -> LsmVectorIndex.<Long>hnswBuilder().lsmTree(buildTree(Long.MAX_VALUE))
+                        .dimensions(2).similarityFunction(SimilarityFunction.COSINE).build());
 
         // dimensions required
-        assertThrows(IllegalArgumentException.class, () ->
-                LsmVectorIndex.<Long>hnswBuilder()
-                        .lsmTree(buildTree(Long.MAX_VALUE))
+        assertThrows(IllegalArgumentException.class,
+                () -> LsmVectorIndex.<Long>hnswBuilder().lsmTree(buildTree(Long.MAX_VALUE))
                         .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                        .similarityFunction(SimilarityFunction.COSINE)
-                        .build());
+                        .similarityFunction(SimilarityFunction.COSINE).build());
 
         // similarityFunction required
-        assertThrows(NullPointerException.class, () ->
-                LsmVectorIndex.<Long>hnswBuilder()
-                        .lsmTree(buildTree(Long.MAX_VALUE))
-                        .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                        .dimensions(2)
-                        .build());
+        assertThrows(NullPointerException.class,
+                () -> LsmVectorIndex.<Long>hnswBuilder().lsmTree(buildTree(Long.MAX_VALUE))
+                        .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(2).build());
     }
 }

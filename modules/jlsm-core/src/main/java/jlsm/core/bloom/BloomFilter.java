@@ -6,20 +6,21 @@ import java.lang.foreign.MemorySegment;
  * A probabilistic membership filter that quickly determines whether a key <em>might</em> exist in
  * an SSTable, avoiding unnecessary disk reads for missing keys.
  *
- * <p><b>Pipeline position</b>: Consulted during the read path before performing a random I/O into
- * an SSTable. A negative result ({@code mightContain} returns {@code false}) guarantees the key is
+ * <p>
+ * <b>Pipeline position</b>: Consulted during the read path before performing a random I/O into an
+ * SSTable. A negative result ({@code mightContain} returns {@code false}) guarantees the key is
  * absent; a positive result means the key <em>probably</em> exists but may be a false positive.
  *
- * <p><b>Key contracts</b>:
+ * <p>
+ * <b>Key contracts</b>:
  * <ul>
- *   <li>{@link #add} is called once per key during SSTable construction; the filter is then
- *       serialized and embedded in the SSTable footer via {@link #serialize}.</li>
- *   <li>{@link #mightContain} never returns a false negative — if the key was added, this method
- *       always returns {@code true}.</li>
- *   <li>No checked exceptions are thrown; filters are in-memory structures.</li>
- *   <li>Implementations are not required to be thread-safe during construction ({@link #add}
- *       phase); once serialized and deserialized for reads, thread-safety depends on the
- *       implementation.</li>
+ * <li>{@link #add} is called once per key during SSTable construction; the filter is then
+ * serialized and embedded in the SSTable footer via {@link #serialize}.</li>
+ * <li>{@link #mightContain} never returns a false negative — if the key was added, this method
+ * always returns {@code true}.</li>
+ * <li>No checked exceptions are thrown; filters are in-memory structures.</li>
+ * <li>Implementations are not required to be thread-safe during construction ({@link #add} phase);
+ * once serialized and deserialized for reads, thread-safety depends on the implementation.</li>
  * </ul>
  */
 public interface BloomFilter {

@@ -4,18 +4,11 @@ import jlsm.core.model.Entry;
 import jlsm.core.model.SequenceNumber;
 import org.junit.jupiter.api.Test;
 
-import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class EntryCodecTest {
-
-    private static MemorySegment seg(byte... bytes) {
-        return MemorySegment.ofArray(bytes);
-    }
 
     private static MemorySegment segOf(String s) {
         return MemorySegment.ofArray(s.getBytes());

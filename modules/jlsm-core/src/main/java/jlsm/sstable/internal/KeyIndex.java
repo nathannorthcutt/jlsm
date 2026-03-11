@@ -2,8 +2,10 @@ package jlsm.sstable.internal;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -13,24 +15,28 @@ import java.util.Optional;
  * An in-memory trie (prefix tree) mapping keys to absolute file offsets. Built from a sorted flat
  * list of (key, offset) pairs and provides O(|key|) point lookup and in-order iteration.
  *
- * <p>The trie uses sparse children (sorted {@code edges[]} + parallel {@code children[]}) for
- * space efficiency with binary search on edges at each node.
+ * <p>
+ * The trie uses sparse children (sorted {@code edges[]} + parallel {@code children[]}) for space
+ * efficiency with binary search on edges at each node.
  */
 public final class KeyIndex {
 
     /** A key-offset pair produced during iteration. */
-    public record Entry(MemorySegment key, long fileOffset) {}
+    public record Entry(MemorySegment key, long fileOffset) {
+    }
 
     // --- Trie node types ---
 
-    private sealed interface TrieNode permits Inner, Leaf {}
+    private sealed interface TrieNode permits Inner, Leaf {
+    }
 
-    private record Leaf(long fileOffset) implements TrieNode {}
+    private record Leaf(long fileOffset) implements TrieNode {
+    }
 
     private static final class Inner implements TrieNode {
-        byte[] edges;        // sorted (unsigned) byte values of outgoing edges
+        byte[] edges; // sorted (unsigned) byte values of outgoing edges
         TrieNode[] children; // parallel with edges
-        long fileOffset;     // -1L if this node is not terminal
+        long fileOffset; // -1L if this node is not terminal
 
         Inner() {
             this.edges = new byte[0];
@@ -68,9 +74,12 @@ public final class KeyIndex {
             while (lo <= hi) {
                 int mid = (lo + hi) >>> 1;
                 int midVal = edges[mid] & 0xFF;
-                if (midVal == unsignedB) return mid;
-                if (midVal < unsignedB) lo = mid + 1;
-                else hi = mid - 1;
+                if (midVal == unsignedB)
+                    return mid;
+                if (midVal < unsignedB)
+                    lo = mid + 1;
+                else
+                    hi = mid - 1;
             }
             return -(lo + 1);
         }
@@ -81,7 +90,7 @@ public final class KeyIndex {
     /**
      * Constructs a {@code KeyIndex} from parallel sorted lists of keys and file offsets.
      *
-     * @param keys    sorted list of unique keys; must not be null
+     * @param keys sorted list of unique keys; must not be null
      * @param offsets parallel list of file offsets; same size as keys
      */
     public KeyIndex(List<MemorySegment> keys, List<Long> offsets) {
@@ -153,20 +162,23 @@ public final class KeyIndex {
         Inner current = root;
         for (int d = 0; d < bytes.length - 1; d++) {
             TrieNode child = current.get(bytes[d]);
-            if (child == null) return Optional.empty();
+            if (child == null)
+                return Optional.empty();
             switch (child) {
-                case Leaf ignored -> { return Optional.empty(); }
+                case Leaf _ -> {
+                    return Optional.empty();
+                }
                 case Inner inner -> current = inner;
             }
         }
 
         TrieNode last = current.get(bytes[bytes.length - 1]);
-        if (last == null) return Optional.empty();
+        if (last == null)
+            return Optional.empty();
         return switch (last) {
             case Leaf leaf -> Optional.of(leaf.fileOffset());
-            case Inner inner -> inner.fileOffset >= 0
-                    ? Optional.of(inner.fileOffset)
-                    : Optional.empty();
+            case Inner inner ->
+                inner.fileOffset >= 0 ? Optional.of(inner.fileOffset) : Optional.empty();
         };
     }
 
@@ -181,7 +193,7 @@ public final class KeyIndex {
      * Returns an iterator over entries whose keys fall in {@code [from, to)}.
      *
      * @param from inclusive lower bound; must not be null
-     * @param to   exclusive upper bound; must not be null
+     * @param to exclusive upper bound; must not be null
      */
     public Iterator<Entry> rangeIterator(MemorySegment from, MemorySegment to) {
         Objects.requireNonNull(from, "from must not be null");
@@ -193,39 +205,62 @@ public final class KeyIndex {
         return result.iterator();
     }
 
-    /** DFS in sorted edge order, collecting entries in [fromKey, toKey). */
-    private static void dfs(TrieNode node, byte[] prefix, List<Entry> result,
-                             byte[] fromKey, byte[] toKey) {
-        switch (node) {
-            case Leaf leaf -> {
-                if (inRange(prefix, fromKey, toKey)) {
-                    result.add(new Entry(MemorySegment.ofArray(prefix), leaf.fileOffset()));
-                }
-            }
-            case Inner inner -> {
-                // Check terminal
-                if (inner.fileOffset >= 0 && inRange(prefix, fromKey, toKey)) {
-                    result.add(new Entry(MemorySegment.ofArray(prefix), inner.fileOffset));
-                }
-                // Visit children in sorted (unsigned) edge order
-                for (int i = 0; i < inner.edges.length; i++) {
-                    byte[] childPrefix = Arrays.copyOf(prefix, prefix.length + 1);
-                    childPrefix[prefix.length] = inner.edges[i];
+    /** Typed stack frame for the iterative DFS. */
+    private record Frame(TrieNode node, byte[] prefix) {
+    }
 
-                    // Prune: if childPrefix >= toKey, all descendants will also be >= toKey
-                    if (toKey != null && compareUnsigned(childPrefix, toKey) >= 0) {
-                        break; // edges are sorted, so no need to continue
+    /**
+     * DFS in sorted edge order, collecting entries in [fromKey, toKey). Iterative implementation.
+     */
+    private static void dfs(TrieNode startNode, byte[] startPrefix, List<Entry> result,
+            byte[] fromKey, byte[] toKey) {
+        Deque<Frame> stack = new ArrayDeque<>();
+        stack.push(new Frame(startNode, startPrefix));
+
+        while (!stack.isEmpty()) {
+            Frame frame = stack.pop();
+            TrieNode node = frame.node();
+            byte[] prefix = frame.prefix();
+
+            switch (node) {
+                case Leaf leaf -> {
+                    if (inRange(prefix, fromKey, toKey)) {
+                        result.add(new Entry(MemorySegment.ofArray(prefix), leaf.fileOffset()));
                     }
-
-                    dfs(inner.children[i], childPrefix, result, fromKey, toKey);
+                }
+                case Inner inner -> {
+                    // Check terminal
+                    if (inner.fileOffset >= 0 && inRange(prefix, fromKey, toKey)) {
+                        result.add(new Entry(MemorySegment.ofArray(prefix), inner.fileOffset));
+                    }
+                    // Push children in REVERSE order so leftmost child is processed first (LIFO).
+                    // Determine the last index to push: find the rightmost edge where childPrefix
+                    // is still < toKey (edges are sorted ascending, so prune from the right).
+                    int lastValid = inner.edges.length - 1;
+                    if (toKey != null) {
+                        while (lastValid >= 0) {
+                            byte[] childPrefix = Arrays.copyOf(prefix, prefix.length + 1);
+                            childPrefix[prefix.length] = inner.edges[lastValid];
+                            if (compareUnsigned(childPrefix, toKey) < 0)
+                                break;
+                            lastValid--;
+                        }
+                    }
+                    for (int i = lastValid; i >= 0; i--) {
+                        byte[] childPrefix = Arrays.copyOf(prefix, prefix.length + 1);
+                        childPrefix[prefix.length] = inner.edges[i];
+                        stack.push(new Frame(inner.children[i], childPrefix));
+                    }
                 }
             }
         }
     }
 
     private static boolean inRange(byte[] key, byte[] fromKey, byte[] toKey) {
-        if (fromKey != null && compareUnsigned(key, fromKey) < 0) return false;
-        if (toKey != null && compareUnsigned(key, toKey) >= 0) return false;
+        if (fromKey != null && compareUnsigned(key, fromKey) < 0)
+            return false;
+        if (toKey != null && compareUnsigned(key, toKey) >= 0)
+            return false;
         return true;
     }
 
@@ -233,7 +268,8 @@ public final class KeyIndex {
         int len = Math.min(a.length, b.length);
         for (int i = 0; i < len; i++) {
             int cmp = Byte.compareUnsigned(a[i], b[i]);
-            if (cmp != 0) return cmp;
+            if (cmp != 0)
+                return cmp;
         }
         return Integer.compare(a.length, b.length);
     }
