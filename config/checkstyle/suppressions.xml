@@ -9,4 +9,9 @@
     -->
     <suppress checks="MethodName"      files="Test\.java$"/>
     <suppress checks="AvoidStarImport" files="Test\.java$"/>
+    <!--
+      FieldType.boolean_() uses a trailing underscore to avoid collision with the
+      Java keyword 'boolean'. This is an intentional API design choice.
+    -->
+    <suppress checks="MethodName" files="FieldType\.java$"/>
 </suppressions>

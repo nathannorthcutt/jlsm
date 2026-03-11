@@ -1,0 +1,15 @@
+plugins { id 'java-library' }
+
+dependencies {
+    api project(':modules:jlsm-core')
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['--add-modules', 'jdk.incubator.vector']
+}
+
+test {
+    jvmArgs '--add-exports', 'jlsm.table/jlsm.table.internal=ALL-UNNAMED'
+    jvmArgs '--add-modules', 'jdk.incubator.vector'
+    jvmArgs '-ea'
+}
