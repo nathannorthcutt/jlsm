@@ -4,7 +4,7 @@ plugins {
 }
 
 dependencies {
-    implementation project(':modules:jlsm-bloom')
+    implementation project(':modules:jlsm-core')
 }
 
 jmh {

@@ -4,11 +4,7 @@ plugins {
 }
 
 dependencies {
-    implementation project(':modules:jlsm-tree')
-    implementation project(':modules:jlsm-memtable')
-    implementation project(':modules:jlsm-sstable')
-    implementation project(':modules:jlsm-wal')
-    implementation project(':modules:jlsm-bloom')
+    implementation project(':modules:jlsm-core')
 }
 
 jmh {

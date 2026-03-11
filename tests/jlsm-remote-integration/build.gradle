@@ -2,19 +2,11 @@ plugins { id 'java-library' }
 
 dependencies {
     testImplementation project(':modules:jlsm-core')
-    testImplementation project(':modules:jlsm-bloom')
-    testImplementation project(':modules:jlsm-wal')
-    testImplementation project(':modules:jlsm-memtable')
-    testImplementation project(':modules:jlsm-sstable')
-    testImplementation project(':modules:jlsm-compaction')
-    testImplementation project(':modules:jlsm-cache')
-    testImplementation project(':modules:jlsm-tree')
+    testImplementation project(':modules:jlsm-indexing')
     testImplementation project(':modules:jlsm-vector')
-
     testImplementation 'com.adobe.testing:s3mock:4.11.0'
     testImplementation 'software.amazon.nio.s3:aws-java-nio-spi-for-s3:2.0.4'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
-    // AWS SDK v2 (used to create the test bucket and configure the S3 client)
     testImplementation 'software.amazon.awssdk:s3:2.25.0'
     testImplementation 'software.amazon.awssdk:url-connection-client:2.25.0'
 }
@@ -25,32 +17,4 @@ test {
     systemProperty 'aws.region', 'us-east-1'
     jvmArgs '--add-modules', 'jdk.incubator.vector'
 }
-
-eclipse {
-    classpath {
-        file {
-            whenMerged { cp ->
-                cp.entries.findAll {
-                    it instanceof org.gradle.plugins.ide.eclipse.model.SourceFolder &&
-                    it.path.startsWith('src/test')
-                }.each {
-                    it.entryAttributes['add.exports'] =
-                        'jlsm.bloom/jlsm.bloom=ALL-UNNAMED' +
-                        ':jlsm.compaction/jlsm.compaction=ALL-UNNAMED' +
-                        ':jlsm.core/jlsm.core.compaction=ALL-UNNAMED' +
-                        ':jlsm.core/jlsm.core.indexing=ALL-UNNAMED' +
-                        ':jlsm.core/jlsm.core.io=ALL-UNNAMED' +
-                        ':jlsm.core/jlsm.core.model=ALL-UNNAMED' +
-                        ':jlsm.core/jlsm.core.sstable=ALL-UNNAMED' +
-                        ':jlsm.core/jlsm.core.tree=ALL-UNNAMED' +
-                        ':jlsm.memtable/jlsm.memtable=ALL-UNNAMED' +
-                        ':jlsm.sstable/jlsm.sstable=ALL-UNNAMED' +
-                        ':jlsm.tree/jlsm.tree=ALL-UNNAMED' +
-                        ':jlsm.vector/jlsm.vector=ALL-UNNAMED' +
-                        ':jlsm.wal/jlsm.wal.remote=ALL-UNNAMED'
-                    it.entryAttributes['add.modules'] = 'jdk.incubator.vector'
-                }
-            }
-        }
-    }
-}
+// No eclipse block: all needed packages are exported by jlsm.core.

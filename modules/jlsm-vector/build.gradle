@@ -2,12 +2,6 @@ plugins { id 'java-library' }
 
 dependencies {
     api project(':modules:jlsm-core')
-
-    testImplementation project(':modules:jlsm-tree')
-    testImplementation project(':modules:jlsm-wal')
-    testImplementation project(':modules:jlsm-memtable')
-    testImplementation project(':modules:jlsm-sstable')
-    testImplementation project(':modules:jlsm-bloom')
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -24,15 +18,8 @@ eclipse {
         file {
             whenMerged { cp ->
                 cp.entries.findAll {
-                    it instanceof org.gradle.plugins.ide.eclipse.model.SourceFolder &&
-                    it.path.startsWith('src/test')
+                    it instanceof org.gradle.plugins.ide.eclipse.model.SourceFolder
                 }.each {
-                    it.entryAttributes['add.exports'] =
-                        'jlsm.bloom/jlsm.bloom=ALL-UNNAMED' +
-                        ':jlsm.memtable/jlsm.memtable=ALL-UNNAMED' +
-                        ':jlsm.sstable/jlsm.sstable=ALL-UNNAMED' +
-                        ':jlsm.tree/jlsm.tree=ALL-UNNAMED' +
-                        ':jlsm.wal/jlsm.wal.local=ALL-UNNAMED'
                     it.entryAttributes['add.modules'] = 'jdk.incubator.vector'
                 }
             }

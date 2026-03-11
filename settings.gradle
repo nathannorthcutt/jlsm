@@ -1,13 +1,6 @@
 rootProject.name = 'jlsm'
 
 include 'modules:jlsm-core'
-include 'modules:jlsm-bloom'
-include 'modules:jlsm-wal'
-include 'modules:jlsm-memtable'
-include 'modules:jlsm-sstable'
-include 'modules:jlsm-compaction'
-include 'modules:jlsm-cache'
-include 'modules:jlsm-tree'
 include 'modules:jlsm-indexing'
 include 'modules:jlsm-vector'
 include 'tests:jlsm-remote-integration'
