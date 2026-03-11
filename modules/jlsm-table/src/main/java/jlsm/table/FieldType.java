@@ -47,7 +47,7 @@ public sealed interface FieldType
         /**
          * Creates a {@link JlsmSchema} from this ObjectType's field definitions.
          *
-         * @param name    the schema name; must not be null
+         * @param name the schema name; must not be null
          * @param version the schema version
          * @return a new JlsmSchema with this ObjectType's fields
          */

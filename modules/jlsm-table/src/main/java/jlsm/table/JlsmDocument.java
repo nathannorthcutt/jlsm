@@ -11,6 +11,21 @@ import java.util.Objects;
  */
 public final class JlsmDocument {
 
+    static {
+        jlsm.table.internal.DocumentAccess
+                .setAccessor(new jlsm.table.internal.DocumentAccess.Accessor() {
+                    @Override
+                    public Object[] values(JlsmDocument doc) {
+                        return doc.values();
+                    }
+
+                    @Override
+                    public JlsmDocument create(jlsm.table.JlsmSchema schema, Object[] values) {
+                        return new JlsmDocument(schema, values);
+                    }
+                });
+    }
+
     private final JlsmSchema schema;
     private final Object[] values;
 
@@ -35,11 +50,11 @@ public final class JlsmDocument {
      * Fields not mentioned in {@code nameValuePairs} default to {@code null}. Each value is
      * validated against the declared field type; {@code null} is always accepted (absent field).
      *
-     * @param schema         the schema describing valid fields; must not be null
+     * @param schema the schema describing valid fields; must not be null
      * @param nameValuePairs alternating {@code String name, Object value} pairs
      * @return a new JlsmDocument
      * @throws IllegalArgumentException if a field name is unknown, type is mismatched, or pairs
-     *                                  length is odd
+     *             length is odd
      */
     public static JlsmDocument of(JlsmSchema schema, Object... nameValuePairs) {
         Objects.requireNonNull(schema, "schema must not be null");
@@ -175,7 +190,7 @@ public final class JlsmDocument {
 
     /** Serializes this document to a compact JSON string. */
     public String toJson() {
-        throw new UnsupportedOperationException("JSON support not yet implemented");
+        return new jlsm.table.internal.JsonWriter().write(this, 0);
     }
 
     /**
@@ -184,18 +199,18 @@ public final class JlsmDocument {
      * @param pretty {@code true} for pretty-printed output
      */
     public String toJson(boolean pretty) {
-        throw new UnsupportedOperationException("JSON support not yet implemented");
+        return new jlsm.table.internal.JsonWriter().write(this, pretty ? 2 : 0);
     }
 
     /**
      * Deserializes a JSON string into a {@link JlsmDocument} conforming to the given schema.
      *
-     * @param json   the JSON string; must not be null
+     * @param json the JSON string; must not be null
      * @param schema the target schema; must not be null
      * @return a new JlsmDocument
      */
     public static JlsmDocument fromJson(String json, JlsmSchema schema) {
-        throw new UnsupportedOperationException("JSON support not yet implemented");
+        return new jlsm.table.internal.JsonParser().parse(json, schema);
     }
 
     /** Serializes this document to a YAML string. */
@@ -206,7 +221,7 @@ public final class JlsmDocument {
     /**
      * Deserializes a YAML string into a {@link JlsmDocument} conforming to the given schema.
      *
-     * @param yaml   the YAML string; must not be null
+     * @param yaml the YAML string; must not be null
      * @param schema the target schema; must not be null
      * @return a new JlsmDocument
      */
@@ -245,8 +260,8 @@ public final class JlsmDocument {
      * Validates that {@code value} is compatible with {@code type}.
      *
      * @param fieldName the field name (for error messages)
-     * @param type      the declared field type
-     * @param value     the non-null value to check
+     * @param type the declared field type
+     * @param value the non-null value to check
      * @throws IllegalArgumentException if the value type does not match
      */
     private static void validateType(String fieldName, FieldType type, Object value) {

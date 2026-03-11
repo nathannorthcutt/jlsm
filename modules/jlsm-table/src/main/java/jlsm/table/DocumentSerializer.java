@@ -112,7 +112,7 @@ public final class DocumentSerializer {
             final int boolCount = countBoolFields(fields);
 
             // Header size: 2 (version) + 2 (fieldCount) + ceil(fieldCount/8) (null mask)
-            //              + (boolCount > 0 ? ceil(boolCount/8) : 0) (bool mask)
+            // + (boolCount > 0 ? ceil(boolCount/8) : 0) (bool mask)
             final int nullMaskBytes = (fieldCount + 7) / 8;
             final int boolMaskBytes = boolCount > 0 ? (boolCount + 7) / 8 : 0;
             final int headerSize = 2 + 2 + nullMaskBytes + boolMaskBytes;
@@ -426,8 +426,8 @@ public final class DocumentSerializer {
                 for (int j = 0; j < simdElems; j++) {
                     floats[j] = (Float) arr[i + j];
                 }
-                final ByteVector bv = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, floats, 0)
-                        .reinterpretAsBytes();
+                final ByteVector bv = FloatVector
+                        .fromArray(FloatVector.SPECIES_PREFERRED, floats, 0).reinterpretAsBytes();
                 bv.rearrange(BSWAP32).intoArray(c.buf, c.pos);
                 c.pos += simdLen;
                 i += simdElems;
@@ -449,9 +449,8 @@ public final class DocumentSerializer {
                 for (int j = 0; j < simdElems; j++) {
                     doubles[j] = (Double) arr[i + j];
                 }
-                final ByteVector bv =
-                        DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, doubles, 0)
-                                .reinterpretAsBytes();
+                final ByteVector bv = DoubleVector
+                        .fromArray(DoubleVector.SPECIES_PREFERRED, doubles, 0).reinterpretAsBytes();
                 bv.rearrange(BSWAP64).intoArray(c.buf, c.pos);
                 c.pos += simdLen;
                 i += simdElems;
@@ -507,8 +506,8 @@ public final class DocumentSerializer {
                     cursor.pos += 8;
                     yield v;
                 }
-                case BOOLEAN -> throw new AssertionError(
-                        "BOOLEAN should be handled via bool bitmask");
+                case BOOLEAN ->
+                    throw new AssertionError("BOOLEAN should be handled via bool bitmask");
                 case TIMESTAMP -> {
                     final long v = readLongBE(buf, cursor.pos);
                     cursor.pos += 8;
@@ -588,10 +587,8 @@ public final class DocumentSerializer {
         int i = 0;
         if (count >= simdElems && simdLen >= 4) {
             while (i + simdElems <= count) {
-                ByteVector.fromArray(BYTE_SPECIES, buf, cursor.pos)
-                        .rearrange(BSWAP32)
-                        .reinterpretAsInts()
-                        .intoArray(tmp, 0);
+                ByteVector.fromArray(BYTE_SPECIES, buf, cursor.pos).rearrange(BSWAP32)
+                        .reinterpretAsInts().intoArray(tmp, 0);
                 for (int j = 0; j < simdElems; j++) {
                     result[i + j] = tmp[j];
                 }
@@ -614,10 +611,8 @@ public final class DocumentSerializer {
         int i = 0;
         if (count >= simdElems && simdLen >= 8) {
             while (i + simdElems <= count) {
-                ByteVector.fromArray(BYTE_SPECIES, buf, cursor.pos)
-                        .rearrange(BSWAP64)
-                        .reinterpretAsLongs()
-                        .intoArray(tmp, 0);
+                ByteVector.fromArray(BYTE_SPECIES, buf, cursor.pos).rearrange(BSWAP64)
+                        .reinterpretAsLongs().intoArray(tmp, 0);
                 for (int j = 0; j < simdElems; j++) {
                     result[i + j] = tmp[j];
                 }
@@ -640,10 +635,8 @@ public final class DocumentSerializer {
         int i = 0;
         if (count >= simdElems && simdLen >= 4) {
             while (i + simdElems <= count) {
-                ByteVector.fromArray(BYTE_SPECIES, buf, cursor.pos)
-                        .rearrange(BSWAP32)
-                        .reinterpretAsFloats()
-                        .intoArray(tmp, 0);
+                ByteVector.fromArray(BYTE_SPECIES, buf, cursor.pos).rearrange(BSWAP32)
+                        .reinterpretAsFloats().intoArray(tmp, 0);
                 for (int j = 0; j < simdElems; j++) {
                     result[i + j] = tmp[j];
                 }
@@ -666,10 +659,8 @@ public final class DocumentSerializer {
         int i = 0;
         if (count >= simdElems && simdLen >= 8) {
             while (i + simdElems <= count) {
-                ByteVector.fromArray(BYTE_SPECIES, buf, cursor.pos)
-                        .rearrange(BSWAP64)
-                        .reinterpretAsDoubles()
-                        .intoArray(tmp, 0);
+                ByteVector.fromArray(BYTE_SPECIES, buf, cursor.pos).rearrange(BSWAP64)
+                        .reinterpretAsDoubles().intoArray(tmp, 0);
                 for (int j = 0; j < simdElems; j++) {
                     result[i + j] = tmp[j];
                 }
@@ -809,10 +800,8 @@ public final class DocumentSerializer {
     }
 
     private static int readIntBE(byte[] buf, int offset) {
-        return ((buf[offset] & 0xFF) << 24)
-                | ((buf[offset + 1] & 0xFF) << 16)
-                | ((buf[offset + 2] & 0xFF) << 8)
-                | (buf[offset + 3] & 0xFF);
+        return ((buf[offset] & 0xFF) << 24) | ((buf[offset + 1] & 0xFF) << 16)
+                | ((buf[offset + 2] & 0xFF) << 8) | (buf[offset + 3] & 0xFF);
     }
 
     private static void writeLongBE(byte[] buf, int offset, long value) {
@@ -827,14 +816,10 @@ public final class DocumentSerializer {
     }
 
     private static long readLongBE(byte[] buf, int offset) {
-        return ((long) (buf[offset] & 0xFF) << 56)
-                | ((long) (buf[offset + 1] & 0xFF) << 48)
-                | ((long) (buf[offset + 2] & 0xFF) << 40)
-                | ((long) (buf[offset + 3] & 0xFF) << 32)
-                | ((long) (buf[offset + 4] & 0xFF) << 24)
-                | ((long) (buf[offset + 5] & 0xFF) << 16)
-                | ((long) (buf[offset + 6] & 0xFF) << 8)
-                | ((long) (buf[offset + 7] & 0xFF));
+        return ((long) (buf[offset] & 0xFF) << 56) | ((long) (buf[offset + 1] & 0xFF) << 48)
+                | ((long) (buf[offset + 2] & 0xFF) << 40) | ((long) (buf[offset + 3] & 0xFF) << 32)
+                | ((long) (buf[offset + 4] & 0xFF) << 24) | ((long) (buf[offset + 5] & 0xFF) << 16)
+                | ((long) (buf[offset + 6] & 0xFF) << 8) | ((long) (buf[offset + 7] & 0xFF));
     }
 
     // =========================================================================
