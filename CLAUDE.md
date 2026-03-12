@@ -1,40 +1,34 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
+`jlsm` is a pure Java 25 modular library implementing LSM-Tree components. Composable —
+consumers use individual components to build key-value stores, vector indices, etc.
 
-`jlsm` is a pure Java 25 modular library implementing LSM-Tree (Log-Structured Merge-Tree) components. It is designed to be composable — consumers can use individual components to build higher-level products such as key-value stores and vector database indices.
+Modules: `jlsm-core` (interfaces + implementations), `jlsm-indexing`, `jlsm-vector`.
 
 ## Technology Stack
-
-- **Java 25** — uses modern language features; target Java version is 25
-- **JPMS** — all modules declare `module-info.java`; keep inter-module dependencies explicit and minimal
-- **Gradle** (Groovy DSL, `build.gradle`) — multi-project build
+- **Java 25** — use modern language features; target version is 25
+- **JPMS** — all modules declare `module-info.java`; keep inter-module dependencies minimal
+- **Gradle** (Groovy DSL) — multi-project build
 
 ## Build Commands
-
 ```bash
-./gradlew build          # Compile + test + assemble all modules
-./gradlew test           # Run all tests
-./gradlew check          # Run all verification (tests, linting, etc.)
-./gradlew :module:test   # Run tests for a specific submodule
-
-# Run a single test class
-./gradlew :module:test --tests "com.example.SomeTest"
-
-# Run a single test method
+./gradlew build                  # Compile + test + assemble all modules
+./gradlew test                   # Run all tests
+./gradlew :module:test           # Run tests for a specific submodule
 ./gradlew :module:test --tests "com.example.SomeTest.methodName"
 ```
 
-@standards/architecture.md
-@standards/coding-guidelines.md
-@standards/testing.md
-@standards/code-quality.md
-
 ## Git Workflow
+- Never merge a PR you opened — only merge when explicitly instructed
+- Never commit directly to `main` — all work on a feature branch
+- Branch naming: kebab-case describing the work (e.g. `add-bloom-filter`)
 
-- **Never commit directly to `main`** — all work must be done on a feature branch
-- **Branch naming** — use kebab-case names that describe the work (e.g., `add-bloom-filter`, `fix-wal-recovery`)
-- **Starting work** — if currently on `main`, ask whether there is an existing branch to switch to or gather enough context to create an appropriate branch before proceeding
-- **Do not check PR status proactively** — do not poll or report on CI checks, review status, or merge readiness unless the user directly asks
+## Feature Development
+`.feature/<slug>/` — on-demand only. Profile: `.feature/project-config.md`
+Quick: `/quick "<description>"` — Full: `/feature "<description>"`
+Resume: `/feature-resume "<slug>"` — Status: `/feature-status "<slug>"`
+
+## Knowledge Base & Decisions
+`.kb/<topic>/<category>/<subject>.md` and `.decisions/<slug>/adr.md` — on-demand only.
+Commands: `/research` `/architect` `/kb-lookup` `/adr-review`
