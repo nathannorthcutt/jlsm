@@ -38,5 +38,3 @@ tests/
 ```
 
 Each module directory contains its own `build.gradle` and `src/main/java/module-info.java`.
-
-> **I/O internals** (ArenaBufferPool usage, remote filesystem SPI, WAL patterns for remote backends) are documented in `standards/io-internals.md` — load that file when working on WAL, SSTable, compaction, or any remote-backend code.
