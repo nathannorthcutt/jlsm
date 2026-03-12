@@ -85,9 +85,8 @@ public final class YamlParser {
 
             // If indent is greater than expected, it's a formatting error at this level
             if (indent > expectedIndent) {
-                throw new IllegalArgumentException(
-                        "Unexpected indent at line " + (lineRef[0] + 1) + ": expected " + expectedIndent
-                                + " spaces but got " + indent);
+                throw new IllegalArgumentException("Unexpected indent at line " + (lineRef[0] + 1)
+                        + ": expected " + expectedIndent + " spaces but got " + indent);
             }
 
             // Parse key: value
@@ -119,8 +118,8 @@ public final class YamlParser {
     }
 
     /**
-     * Parses the value for a field, which may be inline (after the colon) or in subsequent
-     * indented lines (for objects and arrays).
+     * Parses the value for a field, which may be inline (after the colon) or in subsequent indented
+     * lines (for objects and arrays).
      */
     private Object parseFieldValue(List<String> lines, int[] lineRef, int mappingIndent,
             String afterColon, FieldDefinition fd) {
@@ -133,18 +132,16 @@ public final class YamlParser {
         return switch (fd.type()) {
             case FieldType.Primitive p -> {
                 if (valuePart.isEmpty()) {
-                    throw new IllegalArgumentException(
-                            "Expected value for primitive field '" + fd.name()
-                                    + "' at line " + lineRef[0]);
+                    throw new IllegalArgumentException("Expected value for primitive field '"
+                            + fd.name() + "' at line " + lineRef[0]);
                 }
                 yield parsePrimitiveValue(valuePart, p, fd.name());
             }
             case FieldType.ArrayType at -> {
                 // Value should be empty (array items follow on next lines)
                 if (!valuePart.isEmpty() && !"null".equals(valuePart)) {
-                    throw new IllegalArgumentException(
-                            "Expected block sequence for array field '" + fd.name()
-                                    + "' at line " + lineRef[0]);
+                    throw new IllegalArgumentException("Expected block sequence for array field '"
+                            + fd.name() + "' at line " + lineRef[0]);
                 }
                 if ("null".equals(valuePart)) {
                     yield null;

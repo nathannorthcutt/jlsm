@@ -7,32 +7,19 @@ class YamlRoundTripTest {
 
     @Test
     void roundTrip_allPrimitiveTypes() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("s", FieldType.Primitive.STRING)
-                .field("i8", FieldType.Primitive.INT8)
-                .field("i16", FieldType.Primitive.INT16)
-                .field("i32", FieldType.Primitive.INT32)
-                .field("i64", FieldType.Primitive.INT64)
-                .field("f16", FieldType.Primitive.FLOAT16)
-                .field("f32", FieldType.Primitive.FLOAT32)
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
+                .field("i8", FieldType.Primitive.INT8).field("i16", FieldType.Primitive.INT16)
+                .field("i32", FieldType.Primitive.INT32).field("i64", FieldType.Primitive.INT64)
+                .field("f16", FieldType.Primitive.FLOAT16).field("f32", FieldType.Primitive.FLOAT32)
                 .field("f64", FieldType.Primitive.FLOAT64)
                 .field("bool", FieldType.Primitive.BOOLEAN)
-                .field("ts", FieldType.Primitive.TIMESTAMP)
-                .build();
+                .field("ts", FieldType.Primitive.TIMESTAMP).build();
 
         final short f16bits = Float16.fromFloat(1.5f);
 
-        JlsmDocument doc = JlsmDocument.of(schema,
-                "s", "hello",
-                "i8", (byte) 7,
-                "i16", (short) 300,
-                "i32", 42,
-                "i64", 100L,
-                "f16", f16bits,
-                "f32", 1.5f,
-                "f64", 2.718281828,
-                "bool", true,
-                "ts", 1700000000000L);
+        JlsmDocument doc = JlsmDocument.of(schema, "s", "hello", "i8", (byte) 7, "i16", (short) 300,
+                "i32", 42, "i64", 100L, "f16", f16bits, "f32", 1.5f, "f64", 2.718281828, "bool",
+                true, "ts", 1700000000000L);
 
         String yaml = doc.toYaml();
         JlsmDocument out = JlsmDocument.fromYaml(yaml, schema);
@@ -51,10 +38,8 @@ class YamlRoundTripTest {
 
     @Test
     void roundTrip_nestedObject() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("name", FieldType.Primitive.STRING)
-                .objectField("addr", inner -> inner
-                        .field("city", FieldType.Primitive.STRING)
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
+                .objectField("addr", inner -> inner.field("city", FieldType.Primitive.STRING)
                         .field("zip", FieldType.Primitive.INT32))
                 .build();
 
@@ -74,8 +59,7 @@ class YamlRoundTripTest {
     @Test
     void roundTrip_array() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("nums", FieldType.arrayOf(FieldType.Primitive.INT32))
-                .build();
+                .field("nums", FieldType.arrayOf(FieldType.Primitive.INT32)).build();
 
         JlsmDocument doc = JlsmDocument.of(schema, "nums", new Object[]{ 1, 2, 3, 4, 5 });
 
@@ -87,10 +71,8 @@ class YamlRoundTripTest {
 
     @Test
     void roundTrip_nullField() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("name", FieldType.Primitive.STRING)
-                .field("age", FieldType.Primitive.INT32)
-                .build();
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
+                .field("age", FieldType.Primitive.INT32).build();
 
         JlsmDocument doc = JlsmDocument.of(schema, "name", null, "age", 25);
 
@@ -103,20 +85,17 @@ class YamlRoundTripTest {
 
     @Test
     void fromYaml_badIndent_throws() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("name", FieldType.Primitive.STRING)
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
                 .build();
 
         // Malformed: unexpected extra indent on a top-level field
         String badYaml = "  name: Alice";
-        assertThrows(IllegalArgumentException.class,
-                () -> JlsmDocument.fromYaml(badYaml, schema));
+        assertThrows(IllegalArgumentException.class, () -> JlsmDocument.fromYaml(badYaml, schema));
     }
 
     @Test
     void roundTrip_stringWithSpecialChars() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("msg", FieldType.Primitive.STRING)
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("msg", FieldType.Primitive.STRING)
                 .build();
 
         String original = "contains: colon and #hash";
@@ -129,8 +108,7 @@ class YamlRoundTripTest {
 
     @Test
     void roundTrip_emptyString() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("s", FieldType.Primitive.STRING)
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
                 .build();
 
         JlsmDocument doc = JlsmDocument.of(schema, "s", "");
@@ -143,8 +121,7 @@ class YamlRoundTripTest {
     @Test
     void roundTrip_stringArray() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("tags", FieldType.arrayOf(FieldType.Primitive.STRING))
-                .build();
+                .field("tags", FieldType.arrayOf(FieldType.Primitive.STRING)).build();
 
         JlsmDocument doc = JlsmDocument.of(schema, "tags", new Object[]{ "a", "b", "c" });
         String yaml = doc.toYaml();
@@ -155,8 +132,7 @@ class YamlRoundTripTest {
 
     @Test
     void roundTrip_nonFiniteFloat_becomesNull() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("f", FieldType.Primitive.FLOAT32)
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("f", FieldType.Primitive.FLOAT32)
                 .build();
 
         JlsmDocument doc = JlsmDocument.of(schema, "f", Float.NaN);

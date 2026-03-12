@@ -105,7 +105,8 @@ public final class YamlWriter {
         }
     }
 
-    private void writeArray(FieldType.ArrayType at, Object[] elements, StringBuilder sb, int depth) {
+    private void writeArray(FieldType.ArrayType at, Object[] elements, StringBuilder sb,
+            int depth) {
         assert at != null : "at must not be null";
         assert elements != null : "elements must not be null";
         assert sb != null : "sb must not be null";
@@ -118,7 +119,8 @@ public final class YamlWriter {
         }
     }
 
-    private void writeArrayElement(FieldType elementType, Object value, StringBuilder sb, int depth) {
+    private void writeArrayElement(FieldType elementType, Object value, StringBuilder sb,
+            int depth) {
         assert sb != null : "sb must not be null";
 
         if (value == null) {
@@ -194,15 +196,12 @@ public final class YamlWriter {
         }
 
         // YAML keywords
-        if ("true".equals(s) || "false".equals(s) || "null".equals(s)
-                || "True".equals(s) || "False".equals(s) || "Null".equals(s)
-                || "TRUE".equals(s) || "FALSE".equals(s) || "NULL".equals(s)
-                || "yes".equals(s) || "no".equals(s)
-                || "Yes".equals(s) || "No".equals(s)
-                || "YES".equals(s) || "NO".equals(s)
-                || "on".equals(s) || "off".equals(s)
-                || "On".equals(s) || "Off".equals(s)
-                || "ON".equals(s) || "OFF".equals(s)) {
+        if ("true".equals(s) || "false".equals(s) || "null".equals(s) || "True".equals(s)
+                || "False".equals(s) || "Null".equals(s) || "TRUE".equals(s) || "FALSE".equals(s)
+                || "NULL".equals(s) || "yes".equals(s) || "no".equals(s) || "Yes".equals(s)
+                || "No".equals(s) || "YES".equals(s) || "NO".equals(s) || "on".equals(s)
+                || "off".equals(s) || "On".equals(s) || "Off".equals(s) || "ON".equals(s)
+                || "OFF".equals(s)) {
             return true;
         }
 
