@@ -21,7 +21,6 @@ public final class Float16 {
     private static final int HALF_EXP_MAX = 31; // all ones = infinity/NaN
 
     // Single-precision constants
-    private static final int FLOAT_SIGN_MASK = 0x80000000;
     private static final int FLOAT_EXP_MASK = 0x7F800000;
     private static final int FLOAT_MANTISSA_MASK = 0x007FFFFF;
     private static final int FLOAT_EXP_BIAS = 127;

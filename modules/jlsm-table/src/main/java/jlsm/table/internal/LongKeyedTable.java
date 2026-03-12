@@ -26,7 +26,6 @@ public final class LongKeyedTable implements JlsmTable.LongKeyed {
 
     private final TypedLsmTree.LongKeyed<JlsmDocument> tree;
     private final MemorySerializer<JlsmDocument> codec;
-    private final JlsmSchema schema;
 
     /**
      * Constructs a new LongKeyedTable.
@@ -41,7 +40,6 @@ public final class LongKeyedTable implements JlsmTable.LongKeyed {
         assert codec != null : "codec must not be null";
         this.tree = tree;
         this.codec = codec;
-        this.schema = schema;
     }
 
     @Override

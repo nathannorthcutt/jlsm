@@ -284,9 +284,8 @@ public final class JlsmDocument {
                     case TIMESTAMP -> expect(fieldName, value, Long.class, "TIMESTAMP");
                 }
             }
-            case FieldType.ArrayType ignored -> expect(fieldName, value, Object[].class, "ARRAY");
-            case FieldType.ObjectType ignored ->
-                expect(fieldName, value, JlsmDocument.class, "OBJECT");
+            case FieldType.ArrayType _ -> expect(fieldName, value, Object[].class, "ARRAY");
+            case FieldType.ObjectType _ -> expect(fieldName, value, JlsmDocument.class, "OBJECT");
         }
     }
 

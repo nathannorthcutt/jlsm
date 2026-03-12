@@ -89,8 +89,7 @@ public final class JsonWriter {
         switch (type) {
             case FieldType.Primitive p -> writePrimitive(p, value, sb, indent, depth);
             case FieldType.ArrayType at -> writeArray(at, (Object[]) value, sb, indent, depth);
-            case FieldType.ObjectType ignored ->
-                writeDocument((JlsmDocument) value, sb, indent, depth);
+            case FieldType.ObjectType _ -> writeDocument((JlsmDocument) value, sb, indent, depth);
         }
     }
 

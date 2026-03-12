@@ -26,7 +26,6 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
 
     private final TypedLsmTree.StringKeyed<JlsmDocument> tree;
     private final MemorySerializer<JlsmDocument> codec;
-    private final JlsmSchema schema;
 
     /**
      * Constructs a new StringKeyedTable.
@@ -41,7 +40,6 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
         assert codec != null : "codec must not be null";
         this.tree = tree;
         this.codec = codec;
-        this.schema = schema;
     }
 
     @Override

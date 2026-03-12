@@ -75,7 +75,7 @@ public final class YamlWriter {
         switch (type) {
             case FieldType.Primitive p -> writePrimitive(p, value, sb);
             case FieldType.ArrayType at -> writeArray(at, (Object[]) value, sb, depth);
-            case FieldType.ObjectType ignored -> {
+            case FieldType.ObjectType _ -> {
                 sb.append('\n');
                 writeDocument((JlsmDocument) value, sb, depth + 1);
             }
@@ -130,9 +130,9 @@ public final class YamlWriter {
 
         switch (elementType) {
             case FieldType.Primitive p -> writePrimitive(p, value, sb);
-            case FieldType.ArrayType ignored ->
+            case FieldType.ArrayType _ ->
                 throw new UnsupportedOperationException("Nested arrays not supported in YAML");
-            case FieldType.ObjectType ignored -> {
+            case FieldType.ObjectType _ -> {
                 sb.append('\n');
                 writeDocument((JlsmDocument) value, sb, depth + 1);
             }

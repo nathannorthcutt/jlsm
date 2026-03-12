@@ -53,7 +53,6 @@ public final class DocumentSerializer {
     // =========================================================================
 
     /** SIMD species for byte-level operations (used for byte-swap shuffles). */
-    @SuppressWarnings("unchecked")
     private static final VectorSpecies<Byte> BYTE_SPECIES = ByteVector.SPECIES_PREFERRED;
 
     /** Byte-swap shuffle for INT32 / FLOAT32 (4-byte elements). */
@@ -149,7 +148,7 @@ public final class DocumentSerializer {
             final Cursor cursor = new Cursor(buf, 0);
 
             // Read header
-            final int writeVersion = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
+            final int _ = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
             final int writeFieldCount = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
 
             final List<FieldDefinition> currentFields = schema.fields();
