@@ -23,16 +23,6 @@ The canonical LSM-Tree pipeline — **write path**: WAL → MemTable → flush t
 - **Java NIO / memory-mapped I/O** — prefer `java.nio` for SSTable and WAL file operations
 - **Off-heap friendliness** — key/value representations should be compatible with `ByteBuffer` / `MemorySegment` (Panama FFM API) to support off-heap vector data
 
-#### Remote/Network-Backed File Store Support
-- Use `java.nio.file.Path` + `SeekableByteChannel` (Java NIO FileSystem SPI) for all I/O — this allows S3, GCS, and other remote filesystems to be plugged in via third-party NIO providers
-- Avoid `FileChannel`-only features (e.g., `mmap`, `force()`) in code paths that must be remote-compatible; use conditional dispatch (`if (ch instanceof FileChannel fc)`) to apply local-only optimizations
-- Remote-compatible WAL: the one-file-per-record pattern (`RemoteWriteAheadLog`) is preferred for backends that do not support seek/overwrite semantics
-
-#### Off-Heap Memory via ArenaBufferPool
-- Allocate buffers via `ArenaBufferPool` (backed by `Arena.ofShared()`) wherever segments are needed in hot paths (WAL appends, compaction merges, SSTable reads/writes)
-- Avoid `MemorySegment.ofArray()` and `Arena.ofAuto()` in hot paths — these allocate heap or unconstrained off-heap memory that bypasses the pool and breaks externally configured memory budgets
-- The pool enforces a fixed upper bound on off-heap memory; all callers must `acquire()` before use and `release()` in a `finally` block
-
 ### Module Structure
 
 ```
@@ -48,3 +38,5 @@ tests/
 ```
 
 Each module directory contains its own `build.gradle` and `src/main/java/module-info.java`.
+
+> **I/O internals** (ArenaBufferPool usage, remote filesystem SPI, WAL patterns for remote backends) are documented in `standards/io-internals.md` — load that file when working on WAL, SSTable, compaction, or any remote-backend code.

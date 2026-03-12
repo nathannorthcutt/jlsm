@@ -12,8 +12,3 @@ A PR must meet all of the following conditions before being marked ready for rev
 
 - **Defensive assertions** — use `assert` statements throughout all code (public and private) to document and enforce assumptions
 - **Eager input validation** — validate all inputs to public methods eagerly with explicit exceptions (`IllegalArgumentException`, `NullPointerException`, etc.); never trust external callers
-
-### PR Process
-
-- Open a PR with a summary of changes and request a review before merging to `main`
-- **Never merge a PR you opened** — do not merge a pull request that you opened, regardless of approval status, CI result, or any other signal; only merge when explicitly instructed to do so
