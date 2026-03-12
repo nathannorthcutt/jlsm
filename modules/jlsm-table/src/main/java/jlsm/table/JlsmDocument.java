@@ -213,9 +213,9 @@ public final class JlsmDocument {
         return new jlsm.table.internal.JsonParser().parse(json, schema);
     }
 
-    /** Serializes this document to a YAML string. */
+    /** Serializes this document to a YAML block-style string. */
     public String toYaml() {
-        throw new UnsupportedOperationException("YAML support not yet implemented");
+        return new jlsm.table.internal.YamlWriter().write(this);
     }
 
     /**
@@ -226,7 +226,7 @@ public final class JlsmDocument {
      * @return a new JlsmDocument
      */
     public static JlsmDocument fromYaml(String yaml, JlsmSchema schema) {
-        throw new UnsupportedOperationException("YAML support not yet implemented");
+        return new jlsm.table.internal.YamlParser().parse(yaml, schema);
     }
 
     // -------------------------------------------------------------------------
