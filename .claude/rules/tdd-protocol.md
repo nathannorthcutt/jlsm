@@ -45,6 +45,9 @@ No command re-does completed work without explicit user confirmation.
 
 ## cycle-log.md is append-only
   No agent may edit or delete existing entries.
+  Tail-read rule: read only the last 30 lines unless the command explicitly
+  needs full history (PR draft, feature-complete archival). Most operations
+  only need the most recent entry of a specific type — scan from the tail.
 
 ## Tests are the specification
   No agent except the Test Writer may modify test files.

@@ -1,9 +1,10 @@
-# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing]
+# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing] [--escalation]
 
 Writes failing tests from work-plan contracts and brief acceptance criteria.
 Idempotent — if testing is complete for the current cycle, reports and stops.
 With --unit, scopes to a single work unit. With --add-missing, adds tests for
-cases found by the Refactor Agent.
+cases found by the Refactor Agent. With --escalation, reviews a specific test
+flagged by the Code Writer as having a contract conflict.
 
 ---
 
@@ -44,7 +45,43 @@ Display opening header with unit if applicable:
 
 Determine the current TDD cycle number from the TDD Cycle Tracker.
 
-**Without --add-missing:**
+**Without --add-missing or --escalation:**
+
+First, check status.md substage for `contract-revised`. Also check cycle-log.md
+for a recent `contract-revised` entry.
+
+If a contract revision is pending: the Work Planner has revised a contract and
+its stub. Tests may now be misaligned with the updated contract.
+- Say: "Contract revised by Work Planner — re-verifying tests against updated contract."
+- Read the most recent `contract-revised` entry from cycle-log.md to understand
+  what changed
+- Read the revised contract section from work-plan.md
+- Read the affected test file(s)
+- If any test assertions no longer match the revised contract: update the tests
+  to align with the new contract. Run them to confirm they fail for the right
+  reason (not-implemented, not wrong-assertion).
+- If tests already match: no changes needed.
+- Append `tests-reverified` to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — tests-reverified
+**Agent:** 🧪 Test Writer
+**Cycle:** <n>
+**Contract:** <construct name>
+**Tests changed:** <list of changed tests, or "none — already aligned">
+---
+```
+- Set status.md substage back to `complete` (testing is done).
+- Display:
+```
+🧪 TEST WRITER · <slug> · contract re-verified
+───────────────────────────────────────────────
+Contract: <construct name>
+Tests changed: <list or "none — already aligned">
+
+Re-run implementation:
+  /feature-implement "<slug>"<  --unit WU-<n>>
+```
+Stop.
 
 If Testing status for the current cycle is `complete` (for this unit if --unit provided):
 ```
@@ -53,10 +90,11 @@ If Testing status for the current cycle is `complete` (for this unit if --unit p
 Tests are already written for cycle <n><  · WU-<n>>.
 Test plan: .feature/<slug>/test-plan.md
 All tests verified failing.
-Next: /feature-implement "<slug>"
-Run /feature-resume "<slug>" to see full status.
+
+  Type: continue  to proceed to implementation  ·  or: stop
 ```
-Stop.
+If "continue": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "stop": display `Next: /feature-implement "<slug>"` and stop.
 
 If Testing is `in-progress`:
 - Check which test files already exist
@@ -69,6 +107,12 @@ If Testing is `in-progress`:
 Find the most recent `missing-tests-found` entry in cycle-log.md.
 If none exists: "No missing tests have been reported. Nothing to add."
 If found: load only the listed missing test cases and proceed directly to Step 3.
+
+**With --escalation:**
+
+Read the most recent `code-escalation` entry in cycle-log.md.
+If none exists: "No escalation has been logged. Nothing to review." Stop.
+If found: proceed to the Escalation Review section below.
 
 **If Testing is `not-started`:**
 - Verify `.feature/<slug>/work-plan.md` exists. If not: "Run /feature-plan first."
@@ -155,6 +199,126 @@ Capture the full test runner output.
 
 ---
 
+## Escalation Review (--escalation only)
+
+Entered when the Code Writer escalates a contract conflict via `--escalation`.
+
+### Step E1 — Load the escalation
+
+Read the most recent `code-escalation` entry from cycle-log.md. Extract:
+- The test name and file
+- What the test expects
+- The constraint from the work plan
+- The conflict description
+- The escalation count (N of 3)
+
+Read the test file and the relevant contract section from work-plan.md.
+
+### Step E2 — Diagnose
+
+Determine which of three cases applies:
+
+1. **Test is wrong** — the test asserts something not implied by the contract.
+   Fix the test to match the contract. Run it to confirm it fails for the right
+   reason (not-implemented, not wrong-assertion).
+
+2. **Test is right, contract is ambiguous** — the contract can be read multiple
+   ways. Clarify the test (add a comment explaining intent) and adjust the
+   assertion if needed. The Code Writer will re-read the test on next run.
+
+3. **Contract itself is wrong** — the work plan constraint contradicts the brief
+   or an ADR, or is internally inconsistent. The Test Writer cannot fix this.
+   Escalate to the Work Planner — see Step E3.
+
+For cases 1 and 2, after fixing:
+
+Append `test-escalation-resolved` to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — test-escalation-resolved
+**Agent:** 🧪 Test Writer
+**Cycle:** <n>
+**Test:** `<test name>` in `<file>`
+**Diagnosis:** <test was wrong | contract was ambiguous>
+**Fix:** <what changed>
+**Escalation count:** <N> of 3
+---
+```
+
+Update status.md substage → `escalation-resolved`.
+
+Display:
+```
+🧪 TEST WRITER · escalation resolved · <slug>
+───────────────────────────────────────────────
+Test: <test name>
+Diagnosis: <test was wrong | contract was ambiguous>
+Fix: <what changed>
+
+Re-run implementation:
+  /feature-implement "<slug>"<  --unit WU-<n>>
+```
+Stop.
+
+### Step E3 — Escalate to Work Planner
+
+Before escalating, check the escalation counter.
+
+Read cycle-log.md and count `test-to-planner-escalation` entries for the same
+contract/construct.
+
+**3rd escalation on the same contract:** hard stop. Do NOT escalate to the
+Work Planner again. Instead:
+```
+🛑  ESCALATION LIMIT · Test Writer → Manual Resolution
+───────────────────────────────────────────────
+The same contract issue has been escalated 3 times without resolution.
+Contract: <construct name>
+Work plan section: <reference>
+
+Automatic resolution is not working. Please review the conflict manually:
+  1. Check the contract in work-plan.md
+  2. Check the acceptance criteria in brief.md
+  3. Check any governing ADRs
+  4. Fix the work plan, then re-run /feature-test "<slug>"
+
+If the brief itself is wrong, revisit /feature "<slug>".
+```
+Update status.md substage → `escalation-limit-reached`. Stop.
+
+**Under the limit:** proceed with escalation.
+
+Append `test-to-planner-escalation` to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — test-to-planner-escalation
+**Agent:** 🧪 Test Writer
+**Cycle:** <n>
+**Contract:** <construct name>
+**Work plan section:** <reference>
+**Conflict:** <what the contract says vs. what it should say>
+**Brief reference:** <acceptance criterion that contradicts the contract>
+**Escalation count:** <N> of 3
+---
+```
+
+Update status.md substage → `escalated-to-work-planner`.
+
+Display:
+```
+⚠️  ESCALATION · Test Writer → Work Planner  (<N>/3)
+───────────────────────────────────────────────
+Contract conflict — the work plan constraint cannot satisfy the brief.
+Contract: <construct name>
+Problem: <paragraph>
+Brief reference: <acceptance criterion>
+
+The Work Planner needs to revise this contract. Run:
+  /feature-plan "<slug>"
+Then re-run the test → implement cycle for this construct.
+```
+Stop.
+
+---
+
 ## Step 5 — Write test-plan.md and log
 
 Write `.feature/<slug>/test-plan.md` (or append cycle section if it exists):
@@ -202,12 +366,12 @@ Display:
 Tests written and verified failing. Cycle <n><  · WU-<n>>.
 
 ───────────────────────────────────────────────
-  ↵  continue to implementation  ·  or type: stop
+  Type: continue  ·  or: stop
 ───────────────────────────────────────────────
 ```
 
-If the user presses Enter or says yes: invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
-If the user types stop or no:
+If "continue": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "stop":
 ```
 When you're ready:
   /feature-implement "<slug>"<  --unit WU-<n>>

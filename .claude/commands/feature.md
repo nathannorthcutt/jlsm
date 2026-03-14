@@ -16,10 +16,12 @@ brief.md, and initialises status.md as the restart checkpoint.
      ───────────────────────────────────────────────
      Scoping is already complete for '<slug>'.
      Brief: .feature/<slug>/brief.md
-     Next: /feature-domains "<slug>"
-     Run /feature-resume "<slug>" to see full status.
+
+       Type: continue  to proceed to domain analysis  ·  or: stop
      ```
-     Stop unless the user says "redo" or "update brief".
+     If "continue": invoke /feature-domains "<slug>" as a sub-agent immediately.
+     If "stop": display `Next: /feature-domains "<slug>"` and stop.
+     Stop if the user says "redo" or "update brief" — proceed with re-scoping.
    - If stage is `scoping` and substage is `in-progress`:
      Display the opening header, then say "Scoping was in progress — resuming
      from last checkpoint." Re-display the last saved brief draft if it exists
@@ -211,14 +213,42 @@ Brief written to .feature/<slug>/brief.md
 
 Take a moment to review the brief before continuing — domain analysis builds
 directly on it and fixing scope issues now is much cheaper than later.
+```
 
+### Step 5a — Feature branch
+
+Read `branch_naming` from `.feature/project-config.md`.
+
+**If `branch_naming: none` or project-config.md does not exist:** skip this step.
+
+**If a branch naming convention is defined:**
+
+Expand the convention by substituting `<slug>` with the feature slug.
+Check the current git branch (`git branch --show-current`). If already on a
+branch that matches the convention, skip silently — branch already created.
+
+Display:
+```
+── Feature branch ──────────────────────────────
+  Suggested branch: <expanded branch name>
+
+  Type: create  to checkout a new branch now  ·  or: skip
+```
+
+If "create": run `git checkout -b <branch-name>`. Display the result.
+If the branch already exists locally, run `git checkout <branch-name>` instead.
+If "skip": continue without creating a branch.
+
+### Step 5b — Continue
+
+```
 ───────────────────────────────────────────────
-  ↵  continue to domain analysis  ·  or type: stop
+  Type: continue  ·  or: stop
 ───────────────────────────────────────────────
 ```
 
-If the user presses Enter or says yes: invoke /feature-domains "<slug>" as a sub-agent immediately.
-If the user types stop or no:
+If "continue": invoke /feature-domains "<slug>" as a sub-agent immediately.
+If "stop":
 ```
 When you're ready:
   /feature-domains "<slug>"

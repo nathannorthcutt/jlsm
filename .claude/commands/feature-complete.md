@@ -39,9 +39,9 @@ This is fine if:
   - The PR has already merged
   - You intentionally skipped stages (e.g. no refactor needed for small changes)
 
-  ↵  proceed  ·  or type: stop
+  Type: continue  ·  or: stop
 ```
-Wait for explicit yes before continuing.
+Wait for explicit confirmation before continuing.
 
 ---
 
@@ -75,7 +75,7 @@ If any are untracked or have uncommitted changes:
 
 Archive them anyway? Their content will be lost from git history if you proceed
 without committing.
-  ↵  archive anyway  ·  or type: stop
+  Type: continue  to archive anyway  ·  or: stop
 ```
 Wait for response.
 

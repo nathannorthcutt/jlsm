@@ -32,7 +32,7 @@ You do not implement. You do not research. You evaluate, deliberate, and documen
 ## Pre-flight guard
 Before anything else, check that .decisions/CLAUDE.md exists.
 If it does not exist, stop and tell the user:
-  "The decisions directory has not been initialised. Run /setup first, then retry."
+  "The decisions directory has not been initialised. Run /setup-vallorcine first, then retry."
 
 ## Slash commands
 Start a new decision: /architect "<problem statement>"

@@ -95,11 +95,11 @@ Options:
   1. Continue as /quick — I'll keep it tight and flag scope creep if I find it
   2. Switch to /feature — run /feature "<description>" for the full pipeline
 
-  ↵  continue as /quick  ·  or type: feature
+  Type: continue  to stay as /quick  ·  or: feature
 ───────────────────────────────────────────────
 ```
 
-If the user presses Enter: continue as /quick, note the signals in status.md and proceed with
+If "continue": continue as /quick, note the signals in status.md and proceed with
 heightened scope vigilance (see Step 3).
 
 **4+ signals:** Hard redirect. The description is clearly feature-scale:
@@ -273,9 +273,9 @@ Display:
 Tests I'll write:
   1. test_<n> — <scenario>
   2. test_<n> — <scenario>
-  ↵  write these tests  ·  or type: changes
+  Type: continue  ·  or: describe changes
 ```
-Write on Enter or after a brief pause with no response.
+Write on "continue" or immediately if the user provides changes.
 
 Run the test suite. Confirm all new tests fail.
 Update status.md: Testing cycle 1 → `complete`, substage → "tests verified failing".
@@ -287,10 +287,10 @@ Display:
 <n> tests written and verified failing.
 
 ───────────────────────────────────────────────
-↵  continue to implementation  ·  or type: stop
+  Type: continue  ·  or: stop
 ───────────────────────────────────────────────
 ```
-If the user presses Enter or says yes: proceed to Step 5.
+If "continue": proceed to Step 5.
 
 ---
 
@@ -312,10 +312,10 @@ Display:
 All tests passing.
 
 ───────────────────────────────────────────────
-↵  continue to refactor  ·  or type: stop
+  Type: continue  ·  or: stop
 ───────────────────────────────────────────────
 ```
-If the user presses Enter or says yes: proceed to Step 6.
+If "continue": proceed to Step 6.
 
 ---
 
@@ -354,7 +354,7 @@ Changes:
 Note: this touched <area> which may be worth a full /feature pass later.
 
 ───────────────────────────────────────────────
-  ↵  skip PR draft  ·  or type: pr
+  Type: pr  to draft a PR now  ·  or: skip
   (run /feature-pr "<quick-slug>" any time)
 ───────────────────────────────────────────────
 ```

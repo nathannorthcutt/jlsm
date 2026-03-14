@@ -9,7 +9,7 @@ No file is written to .decisions/ until the user confirms in deliberation chat.
 
 Before anything else, check that .decisions/CLAUDE.md exists.
 If it does not exist, stop and say:
-  "The decisions directory has not been initialised. Run /setup first, then retry."
+  "The decisions directory has not been initialised. Run /setup-vallorcine first, then retry."
 
 ---
 

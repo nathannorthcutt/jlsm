@@ -1,4 +1,4 @@
-# /feature-resume "<feature-slug>" [--status] [--share]
+# /feature-resume "<feature-slug>" [--status] [--share] [--list]
 
 Tells you exactly where a feature is and what to run next.
 Use this after any interruption, crash, or context switch.
@@ -7,8 +7,34 @@ Use this after any interruption, crash, or context switch.
 - (no flag) — navigation mode: current position, stage progress, next command
 - `--status` — session briefing mode: what was done, current blockers, next agenda
 - `--share` — condensed standup/team format (implies --status)
+- `--list` — list all active features with their current stage (ignores slug argument)
 
 Works for both `/feature` and `/quick` slugs.
+
+---
+
+## Step 0 — List mode (--list)
+
+If `--list` flag is set:
+
+1. List all directories under `.feature/` (excluding `_archive/` and `project-config.md`)
+2. For each directory, read `status.md` and extract: stage, substage, last updated timestamp
+3. Display:
+
+```
+───────────────────────────────────────────────
+📋 ACTIVE FEATURES
+───────────────────────────────────────────────
+  <slug>            <stage> · <substage>            <last updated>
+  <slug>            <stage> · <substage>            <last updated>
+  <slug>            <stage> · <substage>            <last updated>
+───────────────────────────────────────────────
+```
+
+Sort by last updated (most recent first).
+If no features exist, display: `No active features. Start one with /feature "<description>" or /quick "<description>"`
+
+Stop. Do not continue to other steps.
 
 ---
 
@@ -133,6 +159,19 @@ NEXT STEP
   <command to run>
   <one sentence explaining why>
 ```
+
+**Auto-invoke rules** (apply after displaying the NEXT STEP block):
+
+- If the next step resolves to `/feature-plan` (stage is `domains/complete` or
+  `planning/in-progress`): invoke `/feature-plan "<slug>"` as a sub-agent
+  immediately. Planning requires no external action to proceed.
+
+- If `automation_mode: autonomous` AND the next step resolves to
+  `/feature-implement` or `/feature-refactor` (stages `testing/complete`,
+  `implementation/in-progress`, or `implementation/complete`): invoke the
+  appropriate command as a sub-agent immediately. A crash should not break
+  the autonomous loop — resuming after a crash is equivalent to re-entering
+  the same stage that was interrupted.
 
 For pending domain commissions, list each:
 ```

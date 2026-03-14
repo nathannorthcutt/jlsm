@@ -10,15 +10,24 @@ and stub implementations. Idempotent — if planning is complete, reports and st
 Read `.feature/<slug>/status.md`.
 
 **If Planning stage is `complete`:**
+
+Check status.md for substage `escalated-to-work-planner`. Also check
+cycle-log.md for a recent `test-to-planner-escalation` entry.
+
+If an escalation is pending: proceed to the Contract Revision section below
+instead of stopping.
+
+Otherwise:
 ```
 🏗️  WORK PLANNER · <slug>
 ───────────────────────────────────────────────
 Work planning is already complete for '<slug>'.
 Work plan: .feature/<slug>/work-plan.md
-Next: /feature-test "<slug>"
-Run /feature-resume "<slug>" to see full status.
+
+  Type: continue  to proceed to test writing  ·  or: stop
 ```
-Stop.
+If "continue": invoke /feature-test "<slug>" as a sub-agent immediately.
+If "stop": display `Next: /feature-test "<slug>"` and stop.
 
 **If Planning stage is `in-progress`:**
 Display opening header, then:
@@ -72,9 +81,9 @@ New constructs to CREATE:
 
 Display:
 ```
-  ↵  looks good, write the stubs  ·  or type: corrections
+  Type: continue  ·  or: describe corrections
 ```
-Wait for the user to press Enter or describe corrections. Update status.md substage → `confirmed-design`
+Wait for the user to type "continue" or describe corrections. Update status.md substage → `confirmed-design`
 after confirmation.
 
 ---
@@ -158,11 +167,11 @@ Estimated savings: ~<N>K per session vs ~<N>K single unit
   WU-3: <name>  (depends on WU-1 + WU-2)  [if applicable]
         ...
 
-  ↵  split into work units  ·  or type: single
+  Type: split  ·  or: single
 ```
 
-If user chooses single: record `work_units: none` in status.md, proceed to Step 3.
-If user chooses split (or no split was proposed): proceed with unit structure.
+If "single": record `work_units: none` in status.md, proceed to Step 3.
+If "split" (or no split was proposed): proceed with unit structure.
 
 After confirmation, write the Work Units table to status.md:
 ```markdown
@@ -258,11 +267,41 @@ Stubs written: <list of files>
 
 Review the stub contracts above — the Test Writer works from these contracts
 and changing them later requires re-running tests.
-
-───────────────────────────────────────────────
-↵  continue to test writing  ·  or type: stop
-───────────────────────────────────────────────
 ```
+
+### Step 5a — Choose automation mode
+
+Ask the user how they want to run the TDD loop. This choice is recorded now and
+persists for the lifetime of this feature — it will not be asked again.
+
+Display:
+```
+── How would you like to run the TDD loop? ─────
+  autonomous  — test → implement → refactor cycles run without stopping.
+               I'll pause if I find something that needs your input.
+
+  manual      — I'll stop after each stage and wait for your command.
+
+Type: autonomous  or  manual
+```
+
+Wait for input:
+- "autonomous": set `automation_mode: autonomous` in status.md
+- "manual": set `automation_mode: manual` in status.md
+
+If autonomous, display:
+```
+Running autonomously. Type stop at any time to pause.
+──────────────────────────────────────────────────
+```
+
+If manual, display:
+```
+Manual mode. I'll prompt you at each stage boundary.
+──────────────────────────────────────────────────
+```
+
+### Step 5b — Start test writing
 
 If work units are defined:
 ```
@@ -274,16 +313,93 @@ Each unit runs its own test → implement → refactor cycle.
 Run /feature-resume "<slug>" at any point to see which unit is next.
 ───────────────────────────────────────────────
 ```
-If yes: invoke /feature-test "<slug>" --unit WU-1 as a sub-agent immediately.
-If no: print the command above and stop.
+Invoke `/feature-test "<slug>" --unit WU-1` as a sub-agent immediately.
 
 If single unit (no work units):
-If the user presses Enter or says yes: invoke /feature-test "<slug>" as a sub-agent immediately.
-If the user types stop or no:
+Invoke `/feature-test "<slug>"` as a sub-agent immediately.
+
+If the user types stop before test writing begins:
 ```
 When you're ready:
   /feature-test "<slug>"
 ```
+
+---
+
+## Contract Revision (escalation entry point)
+
+Entered when status.md substage is `escalated-to-work-planner` and cycle-log.md
+contains a `test-to-planner-escalation` entry.
+
+### Step R1 — Load the escalation
+
+Read the most recent `test-to-planner-escalation` entry from cycle-log.md. Extract:
+- The contract/construct name
+- The work plan section reference
+- The conflict description
+- The brief acceptance criterion that contradicts the contract
+- The escalation count (N of 3)
+
+Read the relevant contract section from work-plan.md, the referenced acceptance
+criterion from brief.md, and any governing ADRs linked in the contract.
+
+### Step R2 — Diagnose and revise
+
+Determine the root cause:
+
+1. **Contract contradicts brief** — the work plan constraint does not satisfy
+   the acceptance criterion. Revise the contract to match the brief.
+
+2. **Contract contradicts ADR** — the constraint conflicts with a governing
+   architecture decision. Revise the contract to align with the ADR.
+
+3. **Contract is internally inconsistent** — the signature, return type, or
+   error conditions conflict with each other. Fix the inconsistency.
+
+4. **Brief is ambiguous** — the acceptance criterion can be read multiple ways,
+   and the contract chose the wrong reading. Revise the contract to match the
+   intended reading. If the intended reading is unclear, ask the user.
+
+For each case, make the minimal change to the contract that resolves the conflict.
+Do NOT rewrite unrelated contracts.
+
+Update the contract section in work-plan.md:
+- Revise the Contract Definition for the affected construct
+- Update the stub signature if it changed
+- Add a revision note: `<!-- Revised <YYYY-MM-DD>: <one-line reason> -->`
+
+If the stub signature changed, update the stub file to match. Preserve any
+implementation code the Code Writer has already written — change only the
+signature and contract docstring/comment.
+
+### Step R3 — Log and hand off
+
+Append `contract-revised` to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — contract-revised
+**Agent:** 🏗️ Work Planner
+**Contract:** <construct name>
+**Change:** <what was wrong → what it is now>
+**Root cause:** <contradicts brief | contradicts ADR | internally inconsistent | brief ambiguous>
+**Escalation count:** <N> of 3
+---
+```
+
+Update status.md substage → `contract-revised`.
+
+Display:
+```
+🏗️  WORK PLANNER · contract revision · <slug>
+───────────────────────────────────────────────
+Revised: <construct name>
+Root cause: <one sentence>
+Change: <what changed in the contract>
+
+Contract updated — resuming test → implement cycle.
+```
+
+Invoke `/feature-test "<slug>"<  --unit WU-<n>>` as a sub-agent immediately.
+Do not wait for user input — the contract is revised and the cycle can resume.
 
 ---
 

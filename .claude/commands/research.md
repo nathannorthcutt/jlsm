@@ -8,7 +8,7 @@ Researches a technical topic and persists findings to .kb/<topic>/<category>/.
 
 Before anything else, check that .kb/CLAUDE.md exists.
 If it does not exist, stop and say:
-  "The knowledge base has not been initialised. Run /setup first, then retry."
+  "The knowledge base has not been initialised. Run /setup-vallorcine first, then retry."
 
 ---
 
@@ -65,12 +65,12 @@ After the user responds: echo confirmed values, then proceed.
 Existing topics: <list from .kb/CLAUDE.md Topic Map>
 
 To add it: /kb topic "<topic>" "<one-line description>"
-  ↵  create the topic now  ·  or type: manual
+  Type: continue  to create the topic now  ·  or: manual
 ```
 
-   If the user presses Enter: invoke `/kb topic "<topic>" "<description>"` as a sub-agent,
+   If "continue": invoke `/kb topic "<topic>" "<description>"` as a sub-agent,
    wait for it to complete, then proceed with the research session.
-   If the user types manual: stop and let the user run it manually.
+   If "manual": stop and let the user run it manually.
 
 4. Never add a topic row to .kb/CLAUDE.md directly from /research —
    that is /kb topic's job.
@@ -107,7 +107,7 @@ Report to user:
 
 If category already has content, display:
 ```
-  ↵  proceed anyway  ·  or type: stop
+  Type: continue  to proceed anyway  ·  or: stop
 ```
 
 ---

@@ -15,10 +15,11 @@ Read `.feature/<slug>/status.md`.
 ───────────────────────────────────────────────
 Domain analysis is already complete for '<slug>'.
 Domains: .feature/<slug>/domains.md
-Next: /feature-plan "<slug>"
-Run /feature-resume "<slug>" to see full status.
+
+  Type: continue  to proceed to work planning  ·  or: stop
 ```
-Stop.
+If "continue": invoke /feature-plan "<slug>" as a sub-agent immediately.
+If "stop": display `Next: /feature-plan "<slug>"` and stop.
 
 **If Domains stage is `in-progress`:**
 Display opening header, then:
@@ -180,12 +181,12 @@ Review the domain analysis above — the Work Planner will build the implementat
 structure from these constraints and ADRs.
 
 ───────────────────────────────────────────────
-  ↵  continue to work planning  ·  or type: stop
+  Type: continue  ·  or: stop
 ───────────────────────────────────────────────
 ```
 
-If the user presses Enter or says yes: invoke /feature-plan "<slug>" as a sub-agent immediately.
-If the user types stop or no:
+If "continue": invoke /feature-plan "<slug>" as a sub-agent immediately.
+If "stop":
 ```
 When you're ready:
   /feature-plan "<slug>"
