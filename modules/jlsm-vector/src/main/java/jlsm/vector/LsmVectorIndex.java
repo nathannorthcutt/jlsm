@@ -5,6 +5,7 @@ import jdk.incubator.vector.VectorOperators;
 import jdk.incubator.vector.VectorSpecies;
 import jlsm.core.indexing.SimilarityFunction;
 import jlsm.core.indexing.VectorIndex;
+import jlsm.core.indexing.VectorPrecision;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.model.Entry;
 import jlsm.core.tree.LsmTree;
@@ -100,6 +101,86 @@ public final class LsmVectorIndex {
     }
 
     // -----------------------------------------------------------------------
+    // Float16 encoding helpers
+    // -----------------------------------------------------------------------
+
+    /**
+     * Encodes a float array to float16 (IEEE 754 binary16) big-endian bytes. Contract: each float
+     * is converted via {@link Float#floatToFloat16(float)} and stored as 2 bytes big-endian. Output
+     * length is {@code floats.length * 2}. Side effects: none.
+     *
+     * @param floats the float array to encode; must not be null
+     * @return big-endian float16 byte array of length {@code floats.length * 2}
+     */
+    static byte[] encodeFloat16s(float[] floats) {
+        assert floats != null : "floats must not be null";
+        byte[] bytes = new byte[floats.length * 2];
+        for (int i = 0; i < floats.length; i++) {
+            short bits = Float.floatToFloat16(floats[i]);
+            bytes[i * 2] = (byte) (bits >>> 8);
+            bytes[i * 2 + 1] = (byte) bits;
+        }
+        return bytes;
+    }
+
+    /**
+     * Decodes big-endian float16 bytes back to a float array. Contract: each 2-byte pair is read as
+     * a big-endian short, converted to float via {@link Float#float16ToFloat(short)}. Input length
+     * must equal {@code dimensions * 2}. Side effects: none.
+     *
+     * @param bytes the float16 byte array; must not be null
+     * @param dimensions the expected number of float components
+     * @return float array of length {@code dimensions}
+     */
+    static float[] decodeFloat16s(byte[] bytes, int dimensions) {
+        assert bytes != null : "bytes must not be null";
+        assert bytes.length == dimensions * 2 : "byte count mismatch";
+        float[] floats = new float[dimensions];
+        for (int i = 0; i < dimensions; i++) {
+            short bits = (short) (((bytes[i * 2] & 0xFF) << 8) | (bytes[i * 2 + 1] & 0xFF));
+            floats[i] = Float.float16ToFloat(bits);
+        }
+        return floats;
+    }
+
+    /**
+     * Encodes a float vector using the specified precision. Contract: dispatches to
+     * {@link #encodeFloats(float[])} for FLOAT32 or {@link #encodeFloat16s(float[])} for FLOAT16.
+     * Side effects: none.
+     *
+     * @param floats the float array to encode; must not be null
+     * @param precision the target precision; must not be null
+     * @return encoded byte array
+     */
+    static byte[] encodeVector(float[] floats, VectorPrecision precision) {
+        assert floats != null : "floats must not be null";
+        assert precision != null : "precision must not be null";
+        return switch (precision) {
+            case FLOAT32 -> encodeFloats(floats);
+            case FLOAT16 -> encodeFloat16s(floats);
+        };
+    }
+
+    /**
+     * Decodes a vector from bytes using the specified precision, returning float[]. Contract:
+     * dispatches to {@link #decodeFloats(byte[], int)} for FLOAT32 or
+     * {@link #decodeFloat16s(byte[], int)} for FLOAT16. Side effects: none.
+     *
+     * @param bytes the encoded byte array; must not be null
+     * @param dimensions the expected number of float components
+     * @param precision the source precision; must not be null
+     * @return float array of length {@code dimensions}
+     */
+    static float[] decodeVector(byte[] bytes, int dimensions, VectorPrecision precision) {
+        assert bytes != null : "bytes must not be null";
+        assert precision != null : "precision must not be null";
+        return switch (precision) {
+            case FLOAT32 -> decodeFloats(bytes, dimensions);
+            case FLOAT16 -> decodeFloat16s(bytes, dimensions);
+        };
+    }
+
+    // -----------------------------------------------------------------------
     // SIMD similarity functions
     // -----------------------------------------------------------------------
 
@@ -187,6 +268,7 @@ public final class LsmVectorIndex {
         MemorySerializer<D> docIdSerializer;
         int dimensions; // 0 = not set
         SimilarityFunction similarityFunction;
+        VectorPrecision precision = VectorPrecision.FLOAT32;
 
         @SuppressWarnings("unchecked")
         public B lsmTree(LsmTree lsmTree) {
@@ -216,6 +298,18 @@ public final class LsmVectorIndex {
             return (B) this;
         }
 
+        /**
+         * Sets the vector storage precision. Default is {@link VectorPrecision#FLOAT32}.
+         *
+         * @param precision the precision; must not be null
+         * @return this builder
+         */
+        @SuppressWarnings("unchecked")
+        public B precision(VectorPrecision precision) {
+            this.precision = Objects.requireNonNull(precision, "precision must not be null");
+            return (B) this;
+        }
+
         void validateBase() {
             Objects.requireNonNull(lsmTree, "lsmTree must not be null");
             Objects.requireNonNull(docIdSerializer, "docIdSerializer must not be null");
@@ -236,8 +330,8 @@ public final class LsmVectorIndex {
      * <h2>Key namespaces within the backing {@link LsmTree}</h2>
      *
      * <pre>
-     *   [0x00][4-byte BE centroid_id]               → dim×4 bytes (centroid float coords)
-     *   [0x01][4-byte BE centroid_id][doc_id_bytes] → dim×4 bytes (vector float coords)
+     *   [0x00][4-byte BE centroid_id]               → dim×4 bytes (centroid float32 coords)
+     *   [0x01][4-byte BE centroid_id][doc_id_bytes] → dim×precision bytes (vector coords)
      *   [0x02][doc_id_bytes]                        → 4-byte BE centroid_id (reverse lookup)
      * </pre>
      *
@@ -264,21 +358,30 @@ public final class LsmVectorIndex {
         private final SimilarityFunction similarityFunction;
         private final int numClusters;
         private final int nprobe;
+        private final VectorPrecision precision;
 
         private IvfFlat(LsmTree lsmTree, MemorySerializer<D> docIdSerializer, int dimensions,
-                SimilarityFunction similarityFunction, int numClusters, int nprobe) {
+                SimilarityFunction similarityFunction, int numClusters, int nprobe,
+                VectorPrecision precision) {
             assert lsmTree != null;
             assert docIdSerializer != null;
             assert dimensions > 0;
             assert similarityFunction != null;
             assert numClusters > 0;
             assert nprobe > 0;
+            assert precision != null;
             this.lsmTree = lsmTree;
             this.docIdSerializer = docIdSerializer;
             this.dimensions = dimensions;
             this.similarityFunction = similarityFunction;
             this.numClusters = numClusters;
             this.nprobe = nprobe;
+            this.precision = precision;
+        }
+
+        @Override
+        public VectorPrecision precision() {
+            return precision;
         }
 
         @Override
@@ -291,7 +394,7 @@ public final class LsmVectorIndex {
             }
 
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
-            byte[] vectorBytes = encodeFloats(vector);
+            byte[] vectorBytes = encodeVector(vector, precision);
 
             int centroidId = assignCentroid(vector);
 
@@ -378,8 +481,8 @@ public final class LsmVectorIndex {
                         continue;
 
                     byte[] docIdBytes = Arrays.copyOfRange(key, 5, key.length);
-                    float[] vec = decodeFloats(put.value().toArray(ValueLayout.JAVA_BYTE),
-                            dimensions);
+                    float[] vec = decodeVector(put.value().toArray(ValueLayout.JAVA_BYTE),
+                            dimensions, precision);
                     float s = score(query, vec, similarityFunction);
 
                     heap.add(new ScoredCandidate(docIdBytes, s));
@@ -540,7 +643,7 @@ public final class LsmVectorIndex {
             public VectorIndex.IvfFlat<D> build() {
                 validateBase();
                 return new LsmVectorIndex.IvfFlat<>(lsmTree, docIdSerializer, dimensions,
-                        similarityFunction, numClusters, nprobe);
+                        similarityFunction, numClusters, nprobe, precision);
             }
         }
     }
@@ -568,7 +671,7 @@ public final class LsmVectorIndex {
      *   for each layer l = 0..layerCount-1:
      *     [4-byte BE neighborCount_l]
      *     [neighborCount_l × docIdBytesLen bytes]
-     *   [dim × 4 bytes] — big-endian IEEE-754 float vector
+     *   [dim × precision.bytesPerComponent() bytes] — vector encoded per VectorPrecision
      * </pre>
      *
      * <h2>Soft-delete</h2> {@link #remove} writes a soft-delete key {@code [0xFF][docId]}. During
@@ -586,11 +689,12 @@ public final class LsmVectorIndex {
         private final int maxConnections;
         private final int efConstruction;
         private final int efSearch;
+        private final VectorPrecision precision;
         private final Random random = new Random();
 
         private Hnsw(LsmTree lsmTree, MemorySerializer<D> docIdSerializer, int dimensions,
                 SimilarityFunction similarityFunction, int maxConnections, int efConstruction,
-                int efSearch) {
+                int efSearch, VectorPrecision precision) {
             assert lsmTree != null;
             assert docIdSerializer != null;
             assert dimensions > 0;
@@ -598,6 +702,7 @@ public final class LsmVectorIndex {
             assert maxConnections > 0;
             assert efConstruction > 0;
             assert efSearch > 0;
+            assert precision != null;
             this.lsmTree = lsmTree;
             this.docIdSerializer = docIdSerializer;
             this.dimensions = dimensions;
@@ -605,6 +710,12 @@ public final class LsmVectorIndex {
             this.maxConnections = maxConnections;
             this.efConstruction = efConstruction;
             this.efSearch = efSearch;
+            this.precision = precision;
+        }
+
+        @Override
+        public VectorPrecision precision() {
+            return precision;
         }
 
         @Override
@@ -627,7 +738,7 @@ public final class LsmVectorIndex {
                 for (int l = 0; l <= newLevel; l++)
                     layers.add(new ArrayList<>());
                 lsmTree.put(MemorySegment.ofArray(docIdBytes),
-                        MemorySegment.ofArray(encodeNode(docIdBytes, layers, vector)));
+                        MemorySegment.ofArray(encodeNode(docIdBytes, layers, vector, precision)));
                 lsmTree.put(MemorySegment.ofArray(ENTRY_POINT_KEY),
                         MemorySegment.ofArray(encodeEntryPoint(docIdBytes, newLevel)));
                 return;
@@ -666,7 +777,8 @@ public final class LsmVectorIndex {
                     if (nbOpt.isEmpty())
                         continue;
 
-                    DecodedNode nbNode = decodeNode(nbOpt.get().toArray(ValueLayout.JAVA_BYTE));
+                    DecodedNode nbNode = decodeNode(nbOpt.get().toArray(ValueLayout.JAVA_BYTE),
+                            precision);
                     if (lc >= nbNode.layerNeighbors().size())
                         continue;
 
@@ -680,13 +792,13 @@ public final class LsmVectorIndex {
 
                     updatedLayers.set(lc, updatedNbrs);
                     lsmTree.put(MemorySegment.ofArray(nbId), MemorySegment
-                            .ofArray(encodeNode(nbId, updatedLayers, nbNode.vector())));
+                            .ofArray(encodeNode(nbId, updatedLayers, nbNode.vector(), precision)));
                 }
             }
 
             // Write new node
-            lsmTree.put(MemorySegment.ofArray(docIdBytes),
-                    MemorySegment.ofArray(encodeNode(docIdBytes, newNodeLayers, vector)));
+            lsmTree.put(MemorySegment.ofArray(docIdBytes), MemorySegment
+                    .ofArray(encodeNode(docIdBytes, newNodeLayers, vector, precision)));
 
             // Promote entry point if this node has a higher level
             if (newLevel > maxLayer) {
@@ -875,7 +987,8 @@ public final class LsmVectorIndex {
                 Optional<MemorySegment> nbOpt = lsmTree.get(MemorySegment.ofArray(nbId));
                 if (nbOpt.isEmpty())
                     continue;
-                DecodedNode nbNode = decodeNode(nbOpt.get().toArray(ValueLayout.JAVA_BYTE));
+                DecodedNode nbNode = decodeNode(nbOpt.get().toArray(ValueLayout.JAVA_BYTE),
+                        precision);
                 float s = score(centerVec, nbNode.vector(), similarityFunction);
                 scored.add(new ScoredCandidate(nbId, s));
             }
@@ -886,7 +999,7 @@ public final class LsmVectorIndex {
             Optional<MemorySegment> opt = lsmTree.get(MemorySegment.ofArray(docIdBytes));
             if (opt.isEmpty())
                 return Float.NEGATIVE_INFINITY;
-            DecodedNode node = decodeNode(opt.get().toArray(ValueLayout.JAVA_BYTE));
+            DecodedNode node = decodeNode(opt.get().toArray(ValueLayout.JAVA_BYTE), precision);
             return score(query, node.vector(), similarityFunction);
         }
 
@@ -894,7 +1007,7 @@ public final class LsmVectorIndex {
             Optional<MemorySegment> opt = lsmTree.get(MemorySegment.ofArray(docIdBytes));
             if (opt.isEmpty())
                 return List.of();
-            DecodedNode node = decodeNode(opt.get().toArray(ValueLayout.JAVA_BYTE));
+            DecodedNode node = decodeNode(opt.get().toArray(ValueLayout.JAVA_BYTE), precision);
             if (layer >= node.layerNeighbors().size())
                 return List.of();
             return node.layerNeighbors().get(layer);
@@ -917,12 +1030,12 @@ public final class LsmVectorIndex {
         }
 
         private static byte[] encodeNode(byte[] docIdBytes, List<List<byte[]>> layerNeighbors,
-                float[] vector) {
+                float[] vector, VectorPrecision precision) {
             int docIdLen = docIdBytes.length;
             int layerCount = layerNeighbors.size();
             int neighborBytes = layerNeighbors.stream().mapToInt(l -> 4 + l.size() * docIdLen)
                     .sum();
-            int totalSize = 4 + 4 + neighborBytes + vector.length * 4;
+            int totalSize = 4 + 4 + neighborBytes + vector.length * precision.bytesPerComponent();
 
             byte[] buf = new byte[totalSize];
             int off = 0;
@@ -935,12 +1048,12 @@ public final class LsmVectorIndex {
                     off += docIdLen;
                 }
             }
-            byte[] vectorBytes = encodeFloats(vector);
+            byte[] vectorBytes = encodeVector(vector, precision);
             System.arraycopy(vectorBytes, 0, buf, off, vectorBytes.length);
             return buf;
         }
 
-        private static DecodedNode decodeNode(byte[] bytes) {
+        private static DecodedNode decodeNode(byte[] bytes, VectorPrecision precision) {
             int off = 0;
             int docIdLen = readInt(bytes, off);
             off += 4;
@@ -958,8 +1071,8 @@ public final class LsmVectorIndex {
                 layers.add(neighbors);
             }
             int vecBytes = bytes.length - off;
-            float[] vector = decodeFloats(Arrays.copyOfRange(bytes, off, bytes.length),
-                    vecBytes / 4);
+            float[] vector = decodeVector(Arrays.copyOfRange(bytes, off, bytes.length),
+                    vecBytes / precision.bytesPerComponent(), precision);
             return new DecodedNode(layers, vector);
         }
 
@@ -998,7 +1111,7 @@ public final class LsmVectorIndex {
             public VectorIndex.Hnsw<D> build() {
                 validateBase();
                 return new LsmVectorIndex.Hnsw<>(lsmTree, docIdSerializer, dimensions,
-                        similarityFunction, maxConnections, efConstruction, efSearch);
+                        similarityFunction, maxConnections, efConstruction, efSearch, precision);
             }
         }
     }

@@ -1,7 +1,8 @@
-# /feature-implement "<feature-slug>"
+# /feature-implement "<feature-slug>" [--unit <WU-N>]
 
 Implements stubs until all tests pass. Idempotent — checks current test state
 on startup and resumes from first failing test rather than starting over.
+With --unit, scopes to a single work unit.
 
 ---
 
@@ -9,10 +10,31 @@ on startup and resumes from first failing test rather than starting over.
 
 Read `.feature/<slug>/status.md`.
 
+### Work unit resolution (check before anything else)
+
+If `work_units: none` in status.md: ignore `--unit` flag, proceed as normal.
+
+If work units are defined:
+- If `--unit` flag provided: scope all steps to that unit only
+- If no `--unit` flag: find the unit currently `in-progress`, or the next
+  `not-started` unit whose dependencies are all `complete`
+- Update opening header to include unit name
+
+Update the active unit status → `in-progress` in the Work Units table.
+
+Display opening header:
+```
+───────────────────────────────────────────────
+⚙️  CODE WRITER · <slug> · Cycle <n><  · WU-<n>>
+───────────────────────────────────────────────
+```
+
 Determine the current TDD cycle from the TDD Cycle Tracker.
 
 **If Implementation for this cycle is `complete`:**
 ```
+⚙️  CODE WRITER · <slug> · Cycle <n>
+───────────────────────────────────────────────
 Implementation is already complete for cycle <n>.
 All tests were passing as of: <date from status.md>
 Next: /feature-refactor "<slug>"
@@ -29,18 +51,65 @@ Stop.
 **If Implementation is `not-started`:**
 - Verify `.feature/<slug>/test-plan.md` exists. If not: "Run /feature-test first."
 - Set status.md: Implementation cycle N → `in-progress`, substage → `loading-context`
-- Proceed to Step 1
+- Display opening header and proceed to Step 0
+
+Display opening header:
+```
+───────────────────────────────────────────────
+⚙️  CODE WRITER · <slug> · Cycle <n>
+───────────────────────────────────────────────
+```
+
+---
+
+## Step 0 — Automation mode
+
+Read `automation_mode` from status.md.
+
+**If `automation_mode` is `autonomous` or `manual`:** skip this step entirely —
+the user has already chosen and the choice persists for this feature.
+
+**If `automation_mode` is `not-set`** (first implementation run only):
+
+Display:
+```
+── How would you like to run the TDD loop? ─────
+  ↵  autonomous  — test → implement → refactor cycles run without stopping.
+                   Interrupt anytime by typing in the session.
+                   I'll pause if I find something that needs your input.
+
+  or type: manual  — I'll stop after each stage and wait for your command.
+```
+
+Wait for input:
+- Enter or "autonomous": set `automation_mode: autonomous` in status.md
+- "manual": set `automation_mode: manual` in status.md
+
+If autonomous, display:
+```
+Running autonomously. Type stop at any time to pause.
+──────────────────────────────────────────────────
+```
+
+If manual, display:
+```
+Manual mode. I'll prompt you at each stage boundary.
+──────────────────────────────────────────────────
+```
 
 ---
 
 ## Step 1 — Load context and baseline
 
 Read:
-1. `.feature/project-config.md`
-2. `.feature/<slug>/work-plan.md` — contracts and implementation order
-3. `.feature/<slug>/test-plan.md` — test names and constructs
-4. Stub files listed in work-plan.md
-5. Test files (to understand structure, not to anticipate implementation)
+1. `.feature/project-config.md` — always
+2. `.feature/<slug>/work-plan.md` — **if work units defined:** read only the
+   active unit's section and Contract Definitions. Do NOT load other units.
+3. Test files for the active unit only
+4. Stub files for the active unit only
+5. **Dependency interfaces only** (not implementations): for each completed
+   dependency unit, read only the public interface (signatures + contracts from
+   work-plan.md). Do not read their implementation files or test files.
 
 Run the test suite. Confirm all new tests are currently failing.
 Update status.md substage → `implementing`.
@@ -76,7 +145,7 @@ If a test cannot be satisfied given the work plan's constraints:
 1. Append `code-escalation` to cycle-log.md:
 ```markdown
 ## <YYYY-MM-DD> — code-escalation
-**Agent:** Code Writer
+**Agent:** ⚙️ Code Writer
 **Cycle:** <n>
 **Test:** `<test name>` in `<file>`
 **What the test expects:** <exact assertion>
@@ -89,6 +158,8 @@ If a test cannot be satisfied given the work plan's constraints:
 
 3. Say:
 ```
+⚠️  ESCALATION · Code Writer → Test Writer
+───────────────────────────────────────────────
 Contract conflict — cannot proceed without Test Writer input.
 Test: <test name>
 Problem: <paragraph>
@@ -118,12 +189,68 @@ Update status.md:
 - substage → "all tests passing"
 
 Append `implemented` entry to cycle-log.md.
+
+If work units are defined:
+- Mark the active unit as `complete` in the Work Units table in status.md
+- Check if any blocked units are now unblocked (all their deps are complete)
+  → update those units from `blocked` → `not-started`
+
 Update `.feature/CLAUDE.md`.
 
-Say:
+Read `automation_mode` from status.md.
+
+**If `automation_mode: autonomous`:**
+
+Display the unit progress summary then chain immediately without prompting:
 ```
-All tests passing. Cycle <n>.
+───────────────────────────────────────────────
+⚙️  CODE WRITER complete · <slug> · Cycle <n><  · WU-<n>>
+⏱  Token estimate: ~<N>K
+───────────────────────────────────────────────
+All tests passing. <n> constructs implemented.
+
+<If work units and more units remain:>
+Work unit progress:
+  ✓ WU-1 — complete
+  → WU-2 — starting refactor  ·  type stop to pause
+  ○ WU-3 — blocked (waiting on WU-2)
+
+<If single unit or final unit:>
+All units complete — starting refactor  ·  type stop to pause
+───────────────────────────────────────────────
+```
+
+Then invoke `/feature-refactor "<slug>"<  --unit WU-<n>>` as a sub-agent
+immediately. Do not wait for user input.
+
+**If `automation_mode: manual`:**
+
+Display:
+```
+───────────────────────────────────────────────
+⚙️  CODE WRITER complete · <slug> · Cycle <n><  · WU-<n>>
+⏱  Token estimate: ~<N>K
+   Loaded: work-plan (unit) ~<N>K, <n> test files ~<N>K, <n> stub files ~<N>K
+           dependency interfaces ~<N>K
+   Wrote:  <n> implementation files ~<N>K
+───────────────────────────────────────────────
+All tests passing. Cycle <n><  · WU-<n>>.
 <n> constructs implemented across <list of files>.
 
-Next: /feature-refactor "<slug>"
+<If work units and more units remain:>
+Work unit progress:
+  ✓ WU-1: <n> — complete
+  → WU-2: <n> — ready (unblocked)
+  ○ WU-3: <n> — blocked (waiting on WU-2)
+
+───────────────────────────────────────────────
+  ↵  continue to refactor  ·  or type: stop
+───────────────────────────────────────────────
+```
+
+If Enter: invoke `/feature-refactor "<slug>"<  --unit WU-<n>>` as a sub-agent.
+If "stop":
+```
+When you're ready:
+  /feature-refactor "<slug>"<  --unit WU-<n>>
 ```

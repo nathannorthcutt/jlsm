@@ -6,6 +6,13 @@ Also manages the .gitignore entries for .feature/ scratch directories.
 
 ---
 
+Display opening header:
+```
+───────────────────────────────────────────────
+🔧 FEATURE INIT
+───────────────────────────────────────────────
+```
+
 ## Step 1 — Check what exists
 
 - Check for `.feature/project-config.md`
@@ -58,6 +65,7 @@ Before asking the user anything, read the following files if they exist:
 
 Display the draft profile with source attribution, then ask only about fields
 that could not be inferred. Do not ask about fields you already know.
+
 ```
 I found the following from your project files:
 
@@ -84,7 +92,11 @@ Still needed:
 Confirm to accept all inferred values, or correct any field.
 ```
 
-Wait for confirmation or corrections. Apply any corrections to the profile.
+Display:
+```
+  ↵  save this profile  ·  or type: corrections
+```
+If Enter: save. If the user types corrections: apply them and confirm again.
 Do not re-ask about fields the user confirmed or did not mention.
 
 ---
@@ -92,6 +104,7 @@ Do not re-ask about fields the user confirmed or did not mention.
 ## Step 4 — Write project-config.md
 
 Write `.feature/project-config.md`:
+
 ```markdown
 ---
 created: "<YYYY-MM-DD>"
@@ -140,6 +153,7 @@ last_updated: "<YYYY-MM-DD>"
 ## Step 5 — Create .feature/ structure (if missing)
 
 Create `.feature/CLAUDE.md` if it does not exist:
+
 ```markdown
 # Feature Work Index
 
@@ -189,15 +203,45 @@ Tell the user:
 
 ---
 
-## Step 7 — Report
+## Step 7 — Hand off into feature planning
+
+Display:
 ```
+───────────────────────────────────────────────
+🔧 FEATURE INIT complete
+───────────────────────────────────────────────
 Project profile saved to .feature/project-config.md
 .gitignore updated for .feature/ scratch directories.
+───────────────────────────────────────────────
+```
 
-Ready to start feature work:
+Then immediately invite the user to start their first feature:
+
+```
+What would you like to build? Tell me as much or as little as you know —
+a rough idea is enough to get started, and I'll ask about anything that
+matters before we commit to a plan.
+```
+
+Wait for the user's response.
+
+**If the user describes a feature** (any length, any detail level): treat this
+as the feature description input to `/feature`. Generate the slug from their
+description, invoke the Scoping Agent, and begin the scoping interview as if
+the user had run `/feature "<their description>"` directly. Do not display a
+separate header for the transition — the scoping interview opening header is
+sufficient.
+
+**If the user says they're not ready / want to continue later**: respond with:
+```
+No problem. When you're ready:
   /feature "<describe what you want to build>"
   /quick "<description>"  (for small, well-understood changes)
+  /feature-resume "<slug>"  (to pick up an existing feature)
+```
 
-To resume an existing feature:
-  /feature-resume "<slug>"
+**If the user asks a question instead of describing a feature**: answer it,
+then re-offer the invitation once:
+```
+Ready to start something, or want to explore first?
 ```

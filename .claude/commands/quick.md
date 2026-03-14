@@ -43,7 +43,97 @@ Proceed to Step 1.
 
 ---
 
-## Step 1 — Understand the task (quick clarification if needed)
+## Step 1 — Complexity assessment (ALWAYS FIRST, before any other work)
+
+Before clarifying or proceeding, evaluate the description against the complexity
+signals below. This check runs on the raw description alone — do not scan the
+codebase yet.
+
+### Complexity signals — count how many apply
+
+**Scope signals**
+- [ ] Mentions 2 or more distinct constructs (classes, modules, services)
+- [ ] Uses words like "and", "also", "as well as", "plus" connecting distinct behaviours
+- [ ] Touches more than one domain (e.g. "update the API and the database schema")
+- [ ] Implies a new abstraction or pattern that doesn't exist yet
+
+**Uncertainty signals**
+- [ ] Description is vague about the expected interface or behaviour
+- [ ] Contains "not sure how to", "figure out", "design", "decide between"
+- [ ] No clear location in the codebase ("somewhere in the backend")
+
+**Decision signals**
+- [ ] Requires choosing between approaches ("should I use X or Y")
+- [ ] Involves an architectural boundary (auth, persistence, external service)
+- [ ] Would benefit from an ADR or KB lookup before writing code
+
+**Size signals**
+- [ ] Implies more than ~3 new constructs
+- [ ] Would likely span more than one session to implement
+- [ ] Feels like a "feature" rather than a "change"
+
+### Thresholds and responses
+
+**0–1 signals:** Proceed as /quick. Display your understanding and continue.
+
+**2–3 signals:** Soft warning. Display the assessment and ask for confirmation:
+
+```
+⚡ QUICK · <quick-slug>
+───────────────────────────────────────────────
+⚠️  This might be bigger than a /quick task.
+
+Signals I noticed:
+  · <signal 1>
+  · <signal 2>
+
+/quick works best for focused, single-construct changes.
+For this, /feature would give you: scoping confirmation, domain analysis,
+work planning with stub contracts, and crash recovery across sessions.
+
+Options:
+  1. Continue as /quick — I'll keep it tight and flag scope creep if I find it
+  2. Switch to /feature — run /feature "<description>" for the full pipeline
+
+  ↵  continue as /quick  ·  or type: feature
+───────────────────────────────────────────────
+```
+
+If the user presses Enter: continue as /quick, note the signals in status.md and proceed with
+heightened scope vigilance (see Step 3).
+
+**4+ signals:** Hard redirect. The description is clearly feature-scale:
+
+```
+⚡ QUICK · <quick-slug>
+───────────────────────────────────────────────
+⛔  This looks like a feature, not a quick task.
+
+Signals I noticed:
+  · <signal 1>
+  · <signal 2>
+  · <signal 3>
+  · <signal 4>
+
+/quick is for single-construct, single-session changes. This description
+suggests multiple constructs, multiple domains, or decisions that need
+scoping before writing code.
+
+Recommended: /feature "<description>"
+
+I can still run this as /quick if you're certain it's smaller than it sounds.
+  1  yes — continue as /quick (I understand the risk)
+  2  no — switch to /feature
+  Type 1 or 2.
+───────────────────────────────────────────────
+```
+
+Only proceed as /quick if user types 1.
+Record forced override in status.md: `complexity_override: true`.
+
+### After complexity check — understand the task
+
+**If proceeding as /quick after passing or confirming:**
 
 Read the description. Make a judgment call:
 
@@ -101,6 +191,8 @@ mode: "quick"
 **Stage:** testing
 **Substage:** not-started
 **Last successful checkpoint:** task described
+**Complexity signals:** <n> detected
+**Complexity override:** false
 
 ## Stage Completion
 
@@ -148,15 +240,23 @@ Do not do a broad scan. Read only what is needed to:
 
 If the codebase scan reveals the change is larger than the description suggests:
 ```
+⚠️  SCOPE CHECK · Quick → Feature
+───────────────────────────────────────────────
 This looks bigger than a /quick task.
-I found: <what makes it larger>
+I found: <what makes it larger — be specific>
 
+<If complexity_override: true in status.md:>
+Note: you already confirmed proceeding as /quick despite complexity signals.
+Flagging for visibility — continuing unless you say stop.
+
+<Otherwise:>
 Options:
   1. Continue as /quick — I'll implement what you described and note the larger
      context for later
   2. Upgrade to /feature — run /feature "<description>" for full pipeline support
 ```
-Wait for response before continuing.
+Wait for response before continuing (unless complexity_override is already set,
+in which case log the finding and continue).
 
 ---
 
@@ -167,19 +267,30 @@ Write tests for the described behaviour. Same rules as /feature-test:
 - Test names describe behaviour
 - Must be verified to fail before proceeding
 
-Display the tests in chat before writing to disk:
+Display:
 ```
+── Tests ───────────────────────────────────────
 Tests I'll write:
   1. test_<n> — <scenario>
   2. test_<n> — <scenario>
-Proceed?
+  ↵  write these tests  ·  or type: changes
 ```
-Write on confirmation (or after 10 seconds with no response — don't wait forever
-for trivial changes).
+Write on Enter or after a brief pause with no response.
 
 Run the test suite. Confirm all new tests fail.
 Update status.md: Testing cycle 1 → `complete`, substage → "tests verified failing".
 Append `tests-written` to cycle-log.md.
+
+Display:
+```
+── Tests written ───────────────────────────────
+<n> tests written and verified failing.
+
+───────────────────────────────────────────────
+↵  continue to implementation  ·  or type: stop
+───────────────────────────────────────────────
+```
+If the user presses Enter or says yes: proceed to Step 5.
 
 ---
 
@@ -194,6 +305,17 @@ Implement the change. Same rules as /feature-implement:
 Run tests after each logical unit. When all pass:
 Update status.md: Implementation cycle 1 → `complete`.
 Append `implemented` to cycle-log.md.
+
+Display:
+```
+── Implementation complete ──────────────────────
+All tests passing.
+
+───────────────────────────────────────────────
+↵  continue to refactor  ·  or type: stop
+───────────────────────────────────────────────
+```
+If the user presses Enter or says yes: proceed to Step 6.
 
 ---
 
@@ -218,7 +340,11 @@ Update `.feature/CLAUDE.md` — move to Completed / Archived if the change is
 committed and no further work is planned. Or leave in Active if it is part of
 a larger piece of work still in progress.
 
+Display:
 ```
+───────────────────────────────────────────────
+⚡ QUICK complete · <quick-slug>
+───────────────────────────────────────────────
 Done. <n> tests passing.
 
 Changes:
@@ -226,8 +352,12 @@ Changes:
 
 <If the task revealed larger scope:>
 Note: this touched <area> which may be worth a full /feature pass later.
+
+───────────────────────────────────────────────
+  ↵  skip PR draft  ·  or type: pr
+  (run /feature-pr "<quick-slug>" any time)
+───────────────────────────────────────────────
 ```
 
-There is no /feature-pr or /feature-complete for quick tasks — the change is
-small enough that the PR description can be written inline. If you want a PR
-description: /feature-pr "<quick-slug>" works the same way.
+If the user types pr: invoke /feature-pr "<quick-slug>" as a sub-agent immediately.
+If Enter or stop: stop.

@@ -1,8 +1,10 @@
-# /feature-refactor "<feature-slug>"
+# /feature-refactor "<feature-slug>" [--unit <WU-N>]
 
 Reviews and refactors implemented code. Tracks cycles, warns at cycle 3,
 checkpoints with the user at cycle 5. Idempotent — resumes from the review
 checklist item where it stopped if interrupted.
+With --unit, scopes to a single work unit. Integration tests (2f) run only
+after the final unit is refactored.
 
 ---
 
@@ -10,16 +12,41 @@ checklist item where it stopped if interrupted.
 
 Read `.feature/<slug>/status.md`.
 
+### Work unit resolution (check before anything else)
+
+If `work_units: none` in status.md: ignore `--unit` flag, proceed as normal.
+
+If work units are defined:
+- If `--unit` flag provided: scope refactor to that unit only
+- If no `--unit` flag: find the unit whose implementation is `complete` but
+  refactor has not run (check Work Units table and cycle-log.md)
+- **Integration tests (Step 2f):** run ONLY when the final work unit is being
+  refactored (all other units are `complete`). Skip 2f for intermediate units
+  and note: "Integration tests deferred — not the final work unit."
+
+Display opening header with unit if applicable:
+```
+───────────────────────────────────────────────
+✨ REFACTOR AGENT · <slug> · Cycle <n><  · WU-<n>>
+───────────────────────────────────────────────
+```
+
 Determine the current TDD cycle from the TDD Cycle Tracker.
 Count completed `refactor-complete` entries in cycle-log.md to get cycle number.
 
 **If cycle number would be 6 or more:**
 Stop and ask: "We've completed 5 refactor cycles and you approved continuation.
-Continue with cycle 6? (yes / no / summarise remaining issues)"
+Continue with cycle 6?
+  1  yes — proceed
+  2  no — stop here
+  3  summarise remaining issues first
+  Type 1, 2, or 3."
 Wait for explicit response before proceeding.
 
 **If Refactor for the current cycle is `complete`:**
 ```
+✨ REFACTOR AGENT · <slug> · Cycle <n>
+───────────────────────────────────────────────
 Refactor cycle <n> is already complete.
 Run /feature-resume "<slug>" to see full status.
 ```
@@ -37,7 +64,14 @@ Stop.
 - Verify cycle-log.md has an `implemented` entry for this cycle.
   If not: "Run /feature-implement first."
 - Set status.md: Refactor cycle N → `in-progress`, substage → `loading-context`
-- Proceed to Step 1
+- Display opening header and proceed to Step 1
+
+Display opening header:
+```
+───────────────────────────────────────────────
+✨ REFACTOR AGENT · <slug> · Cycle <n>
+───────────────────────────────────────────────
+```
 
 ---
 
@@ -62,6 +96,7 @@ Update status.md substage as each item begins so a crash is resumable.
 
 ### 2a — Coding standards
 `status.md substage → "refactor: coding-standards"`
+`Display: ── Coding standards ───────────────────────`
 - Naming conventions per project-config.md
 - Run formatter — commit all changes
 - Update docstrings on any stub that now has an implementation
@@ -71,12 +106,14 @@ Run tests after changes. Stop if any fail.
 
 ### 2b — Duplication
 `status.md substage → "refactor: duplication"`
+`Display: ── Duplication ────────────────────────────`
 - Logic repeated in 3+ places → extract shared utility
 - Do not over-abstract — only extract when benefit is clear
 Run tests after changes.
 
 ### 2c — Security
 `status.md substage → "refactor: security"`
+`Display: ── Security ───────────────────────────────`
 Apply project-config.md security requirements plus:
 - Input validation on all public methods
 - Parameterised DB queries / shell commands / templates
@@ -87,14 +124,31 @@ Run tests after changes.
 
 ### 2d — Performance
 `status.md substage → "refactor: performance"`
+`Display: ── Performance ─────────────────────────────`
 - O(n²) where O(n) clearly exists → fix if behaviour-preserving
 - Unnecessary allocations in loops → fix
 - N+1 query patterns → flag
 - No micro-optimisation — only obvious, high-impact fixes
 Run tests after changes.
 
+**Structural escalation (both modes):** If 2c or 2d reveals an issue requiring
+interface changes, new dependencies, or contract renegotiation — pause and
+surface it regardless of automation_mode:
+```
+── Refactor paused — structural issue found ─────
+This issue may affect other units or require interface changes:
+
+  <description of issue and why it can't be self-contained>
+
+  ↵  I'll handle it, continue
+  or type: stop  to review before continuing
+```
+Wait for input. If Enter: continue the refactor and resume chaining if autonomous.
+If "stop": complete the current checklist item, write the log entry, then stop.
+
 ### 2e — Missing tests
 `status.md substage → "refactor: missing-tests"`
+`Display: ── Missing tests ───────────────────────────`
 
 For each construct, ask:
 - Happy path tested? ✓/✗
@@ -107,6 +161,7 @@ If missing tests are found → see Step 3 (escalate, do not continue).
 
 ### 2f — Integration tests
 `status.md substage → "refactor: integration-tests"`
+`Display: ── Integration tests ───────────────────────`
 
 Only run this step if all unit tests are passing and no missing-test escalation
 was triggered in 2e.
@@ -177,7 +232,7 @@ Update status.md substage → `escalated-missing-tests`.
 Append `missing-tests-found` to cycle-log.md:
 ```markdown
 ## <YYYY-MM-DD> — missing-tests-found
-**Agent:** Refactor Agent
+**Agent:** ✨ Refactor Agent
 **Cycle:** <n>
 **Missing cases:**
 - `test_<name>` — <one sentence: scenario> | Construct: <name> | Why: <reason>
@@ -185,8 +240,10 @@ Append `missing-tests-found` to cycle-log.md:
 ---
 ```
 
-Say:
+Display:
 ```
+⚠️  MISSING TESTS · Refactor Agent → Test Writer
+───────────────────────────────────────────────
 Found <n> missing test case(s). Handing to Test Writer before continuing.
 
 Missing:
@@ -249,7 +306,7 @@ If no further cycles needed: update status.md Refactor stage → `complete`.
 Append `refactor-complete` to cycle-log.md:
 ```markdown
 ## <YYYY-MM-DD> — refactor-complete
-**Agent:** Refactor Agent
+**Agent:** ✨ Refactor Agent
 **Cycle:** <n>
 **Changes:** <bullet list>
 **Security findings:** <none | list>
@@ -257,19 +314,76 @@ Append `refactor-complete` to cycle-log.md:
 **Missing tests found:** <n>
 **Unit tests:** <n> passing, 0 failing
 **Integration tests:** <n passing | skipped — not configured | pre-existing failures noted>
+**Token estimate:** ~<N>K
 ---
 ```
 
 Update `.feature/CLAUDE.md`.
 
-Say:
+Read `automation_mode` from status.md.
+
+**If more work units remain (not the final unit):**
+
+— Autonomous:
 ```
+───────────────────────────────────────────────
+✨ REFACTOR AGENT complete · <slug> · Cycle <n> · WU-<n>
+───────────────────────────────────────────────
+Work unit progress:
+  ✓ WU-1 — complete
+  → WU-2 — starting tests  ·  type stop to pause
+  ○ WU-3 — blocked (waiting on WU-2)
+───────────────────────────────────────────────
+```
+Invoke `/feature-test "<slug>" --unit WU-<next>` immediately.
+
+— Manual:
+```
+───────────────────────────────────────────────
+✨ REFACTOR AGENT complete · <slug> · Cycle <n> · WU-<n>
+───────────────────────────────────────────────
+  ↵  start tests for WU-<next>  ·  or type: stop
+```
+If Enter: invoke `/feature-test "<slug>" --unit WU-<next>`.
+If "stop": display the manual command and stop.
+
+**If this is the final (or only) unit and refactor is clean:**
+
+— Autonomous:
+```
+───────────────────────────────────────────────
+✨ REFACTOR AGENT complete · <slug> · Cycle <n>
+───────────────────────────────────────────────
+All units complete. Starting PR draft  ·  type stop to pause
+───────────────────────────────────────────────
+```
+Invoke `/feature-pr "<slug>"` immediately.
+
+— Manual:
+```
+───────────────────────────────────────────────
+✨ REFACTOR AGENT complete · <slug> · Cycle <n>
+⏱  Token estimate: ~<N>K
+───────────────────────────────────────────────
 Refactor cycle <n> complete. <n> tests passing.
+Feature is ready for review.
 
-<If complete:>
-Feature is ready for review. Run /feature-complete "<slug>" when the PR merges
-to archive the working files.
-
-<If further cycles triggered:>
-Missing tests found. Resume with: /feature-test "<slug>" --add-missing
+  ↵  draft the PR now  ·  or type: stop
 ```
+If Enter: invoke `/feature-pr "<slug>"`.
+If "stop": display manual commands and stop.
+
+**If missing tests escalation triggered (either mode):**
+
+```
+───────────────────────────────────────────────
+✨ REFACTOR AGENT complete · <slug> · Cycle <n>
+───────────────────────────────────────────────
+Missing tests found — handing to Test Writer.
+<If autonomous:> Pausing — missing tests require your review.
+
+  ↵  add missing tests now  ·  or type: stop
+```
+Wait for input regardless of automation_mode — missing tests are always a
+human checkpoint. If Enter: invoke `/feature-test "<slug>" --add-missing`.
+If "stop": display the manual sequence and stop.

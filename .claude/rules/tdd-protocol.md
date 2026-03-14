@@ -13,8 +13,8 @@ its designated files. No agent may skip a stage or act outside its write authori
 
 ## Utility commands (any time)
   /feature-resume "<slug>"  — where am I, what do I run next
-  /feature-status "<slug>"  — human-readable session briefing and next-session agenda
-  /feature-status "<slug>" --share  — condensed standup/team format
+  /feature-resume "<slug>" --status  — human-readable session briefing and next-session agenda
+  /feature-resume "<slug>" --share  — condensed standup/team format
 
 ## Idempotency rule (CRITICAL)
 Every command MUST read status.md before doing any work.

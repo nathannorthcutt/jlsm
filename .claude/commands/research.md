@@ -14,6 +14,13 @@ If it does not exist, stop and say:
 
 ## Step 0 — Clarification gate (ALWAYS FIRST)
 
+Display opening header first:
+```
+───────────────────────────────────────────────
+🔬 RESEARCH AGENT
+───────────────────────────────────────────────
+```
+
 Parse the invocation for topic and category.
 
 - If BOTH are provided (e.g. `/research algorithms vector-indexing "HNSW"`): proceed to Step 1
@@ -21,6 +28,7 @@ Parse the invocation for topic and category.
 
 Clarification template:
 ```
+── Clarification needed ────────────────────────
 Before I start researching, I need to confirm where to place the findings.
 
 Topic    : <value if provided, or "not specified">
@@ -37,7 +45,37 @@ If unsure, suggest a topic and category and I will validate against existing ent
 
 After the user responds: echo confirmed values, then proceed.
 
-### Approved topic names (user may define new ones)
+### Topic resolution (ALWAYS read .kb/CLAUDE.md first)
+
+1. Read `.kb/CLAUDE.md` — the Topic Map table is the authoritative list of
+   approved topics. Any topic that already has a row there is valid.
+
+2. If the user's topic matches an existing row: proceed.
+
+3. If the topic does not exist in .kb/CLAUDE.md:
+   - If `.kb/CLAUDE.md` Topic Map is empty (new project): suggest from the
+     default list below and offer to create it
+   - If the Topic Map has entries but this topic isn't there: tell the user
+     the topic doesn't exist yet and offer to create it:
+
+```
+── New topic needed ─────────────────────────────
+"<topic>" is not in the knowledge base yet.
+
+Existing topics: <list from .kb/CLAUDE.md Topic Map>
+
+To add it: /kb topic "<topic>" "<one-line description>"
+  ↵  create the topic now  ·  or type: manual
+```
+
+   If the user presses Enter: invoke `/kb topic "<topic>" "<description>"` as a sub-agent,
+   wait for it to complete, then proceed with the research session.
+   If the user types manual: stop and let the user run it manually.
+
+4. Never add a topic row to .kb/CLAUDE.md directly from /research —
+   that is /kb topic's job.
+
+### Default topic suggestions (for empty knowledge bases only)
 
 | Topic | Covers |
 |-------|--------|
@@ -47,6 +85,9 @@ After the user responds: echo confirmed values, then proceed.
 | `research` | Academic papers, survey summaries, open problems |
 | `hardware` | GPU/CPU architecture, memory systems, accelerators |
 
+Users may define any topic name — these are starting suggestions, not an
+exhaustive list.
+
 ---
 
 ## Step 1 — Pre-flight index check
@@ -55,16 +96,25 @@ After the user responds: echo confirmed values, then proceed.
 2. Read `.kb/<topic>/CLAUDE.md` — check if category exists (if topic file exists)
 3. Read `.kb/<topic>/<category>/CLAUDE.md` — check what subjects already exist (if category exists)
 
+Display:
+```
+── Pre-flight check ─────────────────────────────
+```
 Report to user:
 - What already exists in this topic/category
 - What research gaps are noted in the category index
 - What you plan to research
 
-Get confirmation before proceeding if the category already has content.
+If category already has content, display:
+```
+  ↵  proceed anyway  ·  or type: stop
+```
 
 ---
 
 ## Step 2 — Web research
+
+Display: `── Researching ──────────────────────────────`
 
 For each subject:
 1. Search: `<subject> algorithm site:arxiv.org OR site:github.com OR site:wikipedia.org`
@@ -76,6 +126,8 @@ For each subject:
 ---
 
 ## Step 3 — Write subject files
+
+Display: `── Writing KB entries ───────────────────────`
 
 - Path: `.kb/<topic>/<category>/<subject>.md`
 - Filename: kebab-case of the subject name (e.g. `hnsw.md`, `ivf-flat.md`)
@@ -265,6 +317,24 @@ Brief description of what new information was added.
 ### Corrections
 Any prior errors found and corrected, with explanation.
 ```
+
+---
+
+## Closing report
+
+Display after all indexes are updated:
+```
+───────────────────────────────────────────────
+🔬 RESEARCH AGENT complete
+⏱  Token estimate: ~<N>K
+   Loaded: KB indexes ~3K, <n> source pages fetched
+   Wrote:  <n> subject files, <n> CLAUDE.md indexes updated
+───────────────────────────────────────────────
+Wrote: .kb/<topic>/<category>/<subject>.md
+Updated: category index, topic index, KB root index
+```
+
+To query what's in the KB later: `/kb "<question>"`
 
 ---
 

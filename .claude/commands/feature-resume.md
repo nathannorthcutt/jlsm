@@ -1,7 +1,14 @@
-# /feature-resume "<feature-slug>"
+# /feature-resume "<feature-slug>" [--status] [--share]
 
-Reads status.md and tells you exactly where the feature is, what happened,
-and what to run next. Use this after any interruption, crash, or context switch.
+Tells you exactly where a feature is and what to run next.
+Use this after any interruption, crash, or context switch.
+
+**Flags:**
+- (no flag) — navigation mode: current position, stage progress, next command
+- `--status` — session briefing mode: what was done, current blockers, next agenda
+- `--share` — condensed standup/team format (implies --status)
+
+Works for both `/feature` and `/quick` slugs.
 
 ---
 
@@ -20,18 +27,27 @@ Stop.
 
 ---
 
+## Step 1b — Mode dispatch
+
+If `--share` flag: run --status mode, then condense output to share format (see Step 5b).
+If `--status` flag: skip to Step 5 — Session briefing.
+Otherwise: continue to Step 2 — Navigation mode.
+
+---
+
 ## Step 2 — Display the full status report
 
 ```
-─────────────────────────────────────────────────────────────
-FEATURE RESUME — <slug>
-─────────────────────────────────────────────────────────────
+───────────────────────────────────────────────
+🔄 FEATURE RESUME · <slug>
+───────────────────────────────────────────────
 
 CURRENT POSITION
 Stage:      <stage>
 Substage:   <substage>
 Last checkpoint: <last successful checkpoint>
 Last updated:    <timestamp>
+Automation: <autonomous | manual | not-set (will ask on next /feature-implement)>
 
 STAGE PROGRESS
   ✓ Scoping        complete    <date>
@@ -49,10 +65,36 @@ DOMAIN STATUS (if domains stage was reached)
 TDD CYCLES (if testing was reached)
   Cycle 1: tests <date> | passing <date or "—"> | refactor <date or "—"> | missing: <n>
   Cycle 2: ...
-─────────────────────────────────────────────────────────────
+───────────────────────────────────────────────
 ```
 
 ---
+
+## Step 2b — Work unit next-command resolution
+
+If `work_units: none` in status.md: skip this section.
+
+If work units are defined, determine the precise next command:
+
+1. Find the first unit that is `in-progress` → that unit needs its current
+   stage continued (check substage in status.md)
+2. If no in-progress unit, find the first `not-started` unit → that unit
+   needs `/feature-test "<slug>" --unit WU-<n>`
+3. If all units are `complete` → feature is ready for `/feature-pr`
+4. If a unit is `blocked` → its dependencies need to complete first
+
+Display the work unit table as part of the resume output:
+```
+Work units:
+  ✓ WU-1: <n> — complete
+  → WU-2: <n> — in-progress (implementing, cycle 1)   ← active
+  ○ WU-3: <n> — blocked (waiting on WU-2)
+```
+
+The "Next command" line must include the `--unit` flag:
+```
+Next: /feature-implement "<slug>" --unit WU-2
+```
 
 ## Step 3 — Determine and display what to run next
 
@@ -76,6 +118,13 @@ Based on the current stage and substage:
 | refactor / in-progress | `/feature-refactor "<slug>"` — will resume from checklist item |
 | refactor / escalated-missing-tests | `/feature-test "<slug>" --add-missing` |
 | refactor / complete | `/feature-complete "<slug>"` — when PR has merged |
+
+If `automation_mode: autonomous` and the feature is mid-implementation or
+mid-refactor: note this in the Next Step display:
+```
+NOTE: This feature is in autonomous mode. Stages will chain automatically.
+Type stop at any time during a run to pause.
+```
 
 Display the specific next command clearly:
 
@@ -103,4 +152,91 @@ where the substage in status.md might be stale.
 ```
 RECENT ACTIVITY (from cycle-log.md)
 <last 3 entries>
+```
+
+---
+
+## Step 5 — Session briefing (--status mode)
+
+Load additional context beyond status.md:
+1. `.feature/<slug>/brief.md` or status.md Description (quick tasks)
+2. `.feature/<slug>/cycle-log.md` — full history
+3. `.feature/<slug>/work-plan.md` if it exists — construct completion
+4. `.feature/<slug>/test-plan.md` if it exists — test coverage
+
+Display:
+```
+───────────────────────────────────────────────
+📊 FEATURE STATUS · <slug>
+<YYYY-MM-DD> | <full pipeline / quick task>
+───────────────────────────────────────────────
+
+WHAT THIS IS
+<2–3 sentences from brief summary.>
+
+── Progress ───────────────────────────────────
+  ✓ Scoping        <date>
+  ✓ Domains        <date> — <n> domains resolved, <n> ADRs consulted
+  ✓ Planning       <date> — <n> constructs
+  ↻ Testing        in progress — cycle <n>
+  · Implementation not started
+  · Refactor       not started
+
+<If work units:>
+── Work Units ─────────────────────────────────
+  ✓ WU-1: <name> — complete
+  → WU-2: <name> — implementing (cycle 1, 4/7 tests passing)
+  ○ WU-3: <name> — blocked (waiting on WU-2)
+  Est. remaining sessions: <n>
+
+── What Was Done Last Session ─────────────────
+<Synthesise the most recent 3–5 cycle-log entries into plain English.
+Not a raw dump — a readable summary of what actually happened.
+Example: "The Work Planner identified 4 constructs and wrote stubs.
+The Test Writer wrote 12 tests covering the happy path and 3 error
+conditions — all verified failing.">
+
+── Current Blocker ────────────────────────────
+<If active escalation in cycle-log.md: describe in one paragraph.
+If no blocker: "None — ready to continue.">
+
+── Next Session Agenda ────────────────────────
+<3–5 concrete bullet points. Not "continue implementation" but
+"implement TokenBucket.consume() and RateLimitMiddleware.handle() —
+these are the two remaining failing tests.">
+  1. <specific task>
+  2. <specific task>
+  3. ...
+
+TO CONTINUE: <exact command to run>
+───────────────────────────────────────────────
+```
+
+<If work-plan.md exists, append construct completion table:>
+```
+CONSTRUCTS
+  ✓ <ConstructName>   <src/path>   tests passing
+  ↻ <ConstructName>   <src/path>   <n> tests failing
+  · <ConstructName>   <src/path>   not started
+```
+
+Determine construct status from: work-plan.md (planned), cycle-log.md
+`implemented` entries (completed), test-plan.md (test mapping).
+If results aren't in the log, mark "status unknown — run tests to confirm".
+
+---
+
+## Step 5b — Share format (--share)
+
+Condense the session briefing to standup/team format:
+
+```
+📋 <slug> — <one-line summary>
+Stage: <stage> | Cycle: <n><  | Units: <n>/<total>>
+
+Done: <bullet points of completed stages>
+Next: <1–2 sentences on what's next>
+Blocker: <one sentence or "none">
+
+Full details: .feature/<slug>/
 ```
