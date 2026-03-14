@@ -213,42 +213,14 @@ Brief written to .feature/<slug>/brief.md
 
 Take a moment to review the brief before continuing — domain analysis builds
 directly on it and fixing scope issues now is much cheaper than later.
-```
 
-### Step 5a — Feature branch
-
-Read `branch_naming` from `.feature/project-config.md`.
-
-**If `branch_naming: none` or project-config.md does not exist:** skip this step.
-
-**If a branch naming convention is defined:**
-
-Expand the convention by substituting `<slug>` with the feature slug.
-Check the current git branch (`git branch --show-current`). If already on a
-branch that matches the convention, skip silently — branch already created.
-
-Display:
-```
-── Feature branch ──────────────────────────────
-  Suggested branch: <expanded branch name>
-
-  Type: create  to checkout a new branch now  ·  or: skip
-```
-
-If "create": run `git checkout -b <branch-name>`. Display the result.
-If the branch already exists locally, run `git checkout <branch-name>` instead.
-If "skip": continue without creating a branch.
-
-### Step 5b — Continue
-
-```
 ───────────────────────────────────────────────
-  Type: continue  ·  or: stop
+  ↵  continue to domain analysis  ·  or type: stop
 ───────────────────────────────────────────────
 ```
 
-If "continue": invoke /feature-domains "<slug>" as a sub-agent immediately.
-If "stop":
+If the user presses Enter or says yes: invoke /feature-domains "<slug>" as a sub-agent immediately.
+If the user types stop or no:
 ```
 When you're ready:
   /feature-domains "<slug>"

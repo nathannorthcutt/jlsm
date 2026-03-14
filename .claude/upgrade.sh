@@ -159,8 +159,8 @@ compare_versions() {
     return 0
 }
 
-CMP=0
-compare_versions "$LATEST_VERSION" "$INSTALLED_VERSION" || CMP=$?
+compare_versions "$LATEST_VERSION" "$INSTALLED_VERSION"
+CMP=$?
 
 if [[ $CMP -eq 0 ]]; then
     echo -e "  ${GREEN}Already up to date.${NC} v${INSTALLED_VERSION} is the latest release."
@@ -306,7 +306,6 @@ echo ""
 echo "── Applying v${TO_VERSION} ──────────────────────────────"
 
 updated=0
-removed=0
 skipped_user=0
 
 apply_file() {
@@ -366,36 +365,6 @@ for f in "$KIT_ROOT_APPLY"/kb/_refs/*.md; do
     [[ -f "$f" ]] && apply_file "$f" "$PROJECT_ROOT/.kb/_refs/$(basename "$f")"
 done
 
-# ── Remove stale files ────────────────────────────────────────────────────────
-# Any file listed in the old installed manifest but absent from the new kit
-# manifest is a file that was removed from the kit — delete it.
-
-OLD_MANIFEST="$PROJECT_ROOT/.claude/.vallorcine-manifest"
-NEW_MANIFEST="$KIT_ROOT_APPLY/MANIFEST"
-
-if [[ -f "$OLD_MANIFEST" && -f "$NEW_MANIFEST" ]]; then
-    echo "  Checking for stale files..."
-    while IFS= read -r rel_path; do
-        # Skip comment lines and blank lines
-        [[ "$rel_path" =~ ^#.*$ || -z "$rel_path" ]] && continue
-        # If the path is not in the new manifest, it was removed from the kit
-        if ! grep -qF "$rel_path" "$NEW_MANIFEST" 2>/dev/null; then
-            target_file="$PROJECT_ROOT/$rel_path"
-            if [[ -f "$target_file" ]]; then
-                rm "$target_file"
-                echo -e "  ${RED}remove${NC} $rel_path  (removed from kit)"
-                ((removed++)) || true
-            fi
-        fi
-    done < "$OLD_MANIFEST"
-fi
-
-# Update manifest
-if [[ -f "$NEW_MANIFEST" ]]; then
-    cp "$NEW_MANIFEST" "$PROJECT_ROOT/.claude/.vallorcine-manifest"
-    echo -e "  ${GREEN}update${NC} .claude/.vallorcine-manifest"
-fi
-
 # Update version stamp and source file
 echo "$TO_VERSION" > "$PROJECT_ROOT/.claude/.vallorcine-version"
 echo -e "  ${GREEN}update${NC} .claude/.vallorcine-version  (v${FROM_VERSION} → v${TO_VERSION})"
@@ -411,12 +380,5 @@ echo ""
 echo "────────────────────────────────────────────────"
 echo -e "${GREEN}Upgrade complete.${NC}  v${FROM_VERSION} → v${TO_VERSION}"
 echo -e "  Files updated  : $updated"
-[[ $removed -gt 0 ]]      && echo -e "  Files removed  : $removed  (stale from previous version)"
 [[ $skipped_user -gt 0 ]] && echo -e "  Skipped (user) : $skipped_user"
-echo ""
-echo -e "  ${BLUE}Note:${NC} vallorcine follows a fail-forward upgrade policy — rollbacks are"
-echo -e "  not supported because removing new files and restoring old ones risks"
-echo -e "  corrupting user data. If this upgrade introduced a problem, upgrade"
-echo -e "  again once a fix is released."
-echo -e "  To pin to a specific version: bash .claude/upgrade.sh --version vX.Y.Z"
 echo ""

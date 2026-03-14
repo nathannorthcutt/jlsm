@@ -81,9 +81,9 @@ New constructs to CREATE:
 
 Display:
 ```
-  Type: continue  ·  or: describe corrections
+  ↵  looks good, write the stubs  ·  or type: corrections
 ```
-Wait for the user to type "continue" or describe corrections. Update status.md substage → `confirmed-design`
+Wait for the user to press Enter or describe corrections. Update status.md substage → `confirmed-design`
 after confirmation.
 
 ---
@@ -167,11 +167,11 @@ Estimated savings: ~<N>K per session vs ~<N>K single unit
   WU-3: <name>  (depends on WU-1 + WU-2)  [if applicable]
         ...
 
-  Type: split  ·  or: single
+  ↵  split into work units  ·  or type: single
 ```
 
-If "single": record `work_units: none` in status.md, proceed to Step 3.
-If "split" (or no split was proposed): proceed with unit structure.
+If user chooses single: record `work_units: none` in status.md, proceed to Step 3.
+If user chooses split (or no split was proposed): proceed with unit structure.
 
 After confirmation, write the Work Units table to status.md:
 ```markdown
@@ -267,6 +267,31 @@ Stubs written: <list of files>
 
 Review the stub contracts above — the Test Writer works from these contracts
 and changing them later requires re-running tests.
+
+───────────────────────────────────────────────
+↵  continue to test writing  ·  or type: stop
+───────────────────────────────────────────────
+```
+
+If work units are defined:
+```
+───────────────────────────────────────────────
+Start with the first unit:
+  /feature-test "<slug>" --unit WU-1
+
+Each unit runs its own test → implement → refactor cycle.
+Run /feature-resume "<slug>" at any point to see which unit is next.
+───────────────────────────────────────────────
+```
+If yes: invoke /feature-test "<slug>" --unit WU-1 as a sub-agent immediately.
+If no: print the command above and stop.
+
+If single unit (no work units):
+If the user presses Enter or says yes: invoke /feature-test "<slug>" as a sub-agent immediately.
+If the user types stop or no:
+```
+When you're ready:
+  /feature-test "<slug>"
 ```
 
 ### Step 5a — Choose automation mode

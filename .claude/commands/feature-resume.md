@@ -1,4 +1,4 @@
-# /feature-resume "<feature-slug>" [--status] [--share] [--list]
+# /feature-resume "<feature-slug>" [--status] [--share]
 
 Tells you exactly where a feature is and what to run next.
 Use this after any interruption, crash, or context switch.
@@ -7,34 +7,8 @@ Use this after any interruption, crash, or context switch.
 - (no flag) — navigation mode: current position, stage progress, next command
 - `--status` — session briefing mode: what was done, current blockers, next agenda
 - `--share` — condensed standup/team format (implies --status)
-- `--list` — list all active features with their current stage (ignores slug argument)
 
 Works for both `/feature` and `/quick` slugs.
-
----
-
-## Step 0 — List mode (--list)
-
-If `--list` flag is set:
-
-1. List all directories under `.feature/` (excluding `_archive/` and `project-config.md`)
-2. For each directory, read `status.md` and extract: stage, substage, last updated timestamp
-3. Display:
-
-```
-───────────────────────────────────────────────
-📋 ACTIVE FEATURES
-───────────────────────────────────────────────
-  <slug>            <stage> · <substage>            <last updated>
-  <slug>            <stage> · <substage>            <last updated>
-  <slug>            <stage> · <substage>            <last updated>
-───────────────────────────────────────────────
-```
-
-Sort by last updated (most recent first).
-If no features exist, display: `No active features. Start one with /feature "<description>" or /quick "<description>"`
-
-Stop. Do not continue to other steps.
 
 ---
 

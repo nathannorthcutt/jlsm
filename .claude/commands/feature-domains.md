@@ -181,12 +181,12 @@ Review the domain analysis above — the Work Planner will build the implementat
 structure from these constraints and ADRs.
 
 ───────────────────────────────────────────────
-  Type: continue  ·  or: stop
+  ↵  continue to work planning  ·  or type: stop
 ───────────────────────────────────────────────
 ```
 
-If "continue": invoke /feature-plan "<slug>" as a sub-agent immediately.
-If "stop":
+If the user presses Enter or says yes: invoke /feature-plan "<slug>" as a sub-agent immediately.
+If the user types stop or no:
 ```
 When you're ready:
   /feature-plan "<slug>"

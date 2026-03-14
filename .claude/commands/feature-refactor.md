@@ -140,9 +140,10 @@ This issue may affect other units or require interface changes:
 
   <description of issue and why it can't be self-contained>
 
-  Type: continue  ·  or: stop  to review before continuing
+  ↵  I'll handle it, continue
+  or type: stop  to review before continuing
 ```
-Wait for input. If "continue": continue the refactor and resume chaining if autonomous.
+Wait for input. If Enter: continue the refactor and resume chaining if autonomous.
 If "stop": complete the current checklist item, write the log entry, then stop.
 
 ### 2e — Missing tests
@@ -341,9 +342,9 @@ Invoke `/feature-test "<slug>" --unit WU-<next>` immediately.
 ───────────────────────────────────────────────
 ✨ REFACTOR AGENT complete · <slug> · Cycle <n> · WU-<n>
 ───────────────────────────────────────────────
-  Type: continue  ·  or: stop
+  ↵  start tests for WU-<next>  ·  or type: stop
 ```
-If "continue": invoke `/feature-test "<slug>" --unit WU-<next>`.
+If Enter: invoke `/feature-test "<slug>" --unit WU-<next>`.
 If "stop": display the manual command and stop.
 
 **If this is the final (or only) unit and refactor is clean:**
@@ -367,9 +368,9 @@ Invoke `/feature-pr "<slug>"` immediately.
 Refactor cycle <n> complete. <n> tests passing.
 Feature is ready for review.
 
-  Type: continue  ·  or: stop
+  ↵  draft the PR now  ·  or type: stop
 ```
-If "continue": invoke `/feature-pr "<slug>"`.
+If Enter: invoke `/feature-pr "<slug>"`.
 If "stop": display manual commands and stop.
 
 **If missing tests escalation triggered (either mode):**
@@ -381,7 +382,7 @@ If "stop": display manual commands and stop.
 Missing tests found — handing to Test Writer.
 <If autonomous:> Pausing — missing tests require your review.
 
-  Type: continue  ·  or: stop
+  ↵  add missing tests now  ·  or type: stop
 ```
 Wait for input regardless of automation_mode — missing tests are always a
 human checkpoint. If Enter: invoke `/feature-test "<slug>" --add-missing`.

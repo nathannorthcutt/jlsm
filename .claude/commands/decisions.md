@@ -21,7 +21,7 @@ than a subcommand name, treat it as `/decisions "<question>"`.
 
 Check that `.decisions/CLAUDE.md` exists. If not:
 ```
-The decisions directory has not been initialised. Run /setup-vallorcine first.
+The decisions directory has not been initialised. Run /setup first.
 ```
 Stop.
 
@@ -371,7 +371,7 @@ For each item:
   d  — delete        (remove stub entirely)
   s  — skip
 
-Enter choices: 1=e 2=s 3=c  (or type: skip  to skip all)
+Enter choices: 1=e 2=s 3=c  (↵ to skip all)
 ───────────────────────────────────────────────
 ```
 

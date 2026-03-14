@@ -27,10 +27,9 @@ If a previous PR draft exists in `.feature/<slug>/pr-draft.md`:
 A PR draft already exists for '<slug>'.
 Draft: .feature/<slug>/pr-draft.md
 
-  Type: continue  to proceed to PR creation  ·  or: regenerate
+  ↵  use existing draft  ·  or type: regenerate
 ```
-If "regenerate": proceed to regenerate the draft.
-If "continue": skip to Step 5 — PR creation (attempt to create the PR from the existing draft).
+If the user presses Enter: display existing draft and stop. If user types regenerate: proceed.
 
 ---
 
@@ -177,9 +176,7 @@ Append `pr-drafted` entry to cycle-log.md:
 
 ## Step 5 — Create the PR
 
-Check if `gh` CLI is available: run `gh auth status` silently.
-
-**If `gh` is not available or not authenticated:**
+Display:
 ```
 ───────────────────────────────────────────────
 📋 PR DRAFT complete · <slug>

@@ -19,7 +19,7 @@ keyword rather than a subcommand name, treat it as `/kb "<question>"`.
 
 Check that `.kb/CLAUDE.md` exists. If not:
 ```
-The knowledge base has not been initialised. Run /setup-vallorcine first.
+The knowledge base has not been initialised. Run /setup first.
 ```
 Stop.
 
@@ -201,7 +201,7 @@ Description : <description>
 Path        : .kb/<name>/
 Existing topics: <list or "none yet">
 
-  Type: continue  to create  ·  or: stop
+  ↵  create  ·  or type: stop
 ```
 
 **Step 3 — Create**

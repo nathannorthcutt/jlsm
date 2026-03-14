@@ -92,26 +92,11 @@ Still needed:
 Confirm to accept all inferred values, or correct any field.
 ```
 
-Also ask about branch naming convention. Check if any convention is already
-inferable (e.g. from CONTRIBUTING.md, .github/PULL_REQUEST_TEMPLATE.md, or
-existing branch names in `git branch`). Display:
-
-```
-── Feature branch naming ───────────────────────────────
-When you start a new feature, would you like to work on a separate branch?
-
-Convention (leave blank for none):
-  e.g.  feature/<slug>   feat/<slug>   wip/<slug>   or your own pattern
-```
-
-Accept any pattern string using `<slug>` as the placeholder (e.g. `feature/<slug>`).
-If the user leaves it blank or says "none": record `branch_naming: none`.
-
 Display:
 ```
-  Type: continue  to save  ·  or: describe corrections
+  ↵  save this profile  ·  or type: corrections
 ```
-If "continue": save. If the user types corrections: apply them and confirm again.
+If Enter: save. If the user types corrections: apply them and confirm again.
 Do not re-ask about fields the user confirmed or did not mention.
 
 ---

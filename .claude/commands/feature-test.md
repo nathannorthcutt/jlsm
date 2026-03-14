@@ -1,10 +1,9 @@
-# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing] [--escalation]
+# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing]
 
 Writes failing tests from work-plan contracts and brief acceptance criteria.
 Idempotent — if testing is complete for the current cycle, reports and stops.
 With --unit, scopes to a single work unit. With --add-missing, adds tests for
-cases found by the Refactor Agent. With --escalation, reviews a specific test
-flagged by the Code Writer as having a contract conflict.
+cases found by the Refactor Agent.
 
 ---
 
@@ -366,12 +365,12 @@ Display:
 Tests written and verified failing. Cycle <n><  · WU-<n>>.
 
 ───────────────────────────────────────────────
-  Type: continue  ·  or: stop
+  ↵  continue to implementation  ·  or type: stop
 ───────────────────────────────────────────────
 ```
 
-If "continue": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
-If "stop":
+If the user presses Enter or says yes: invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If the user types stop or no:
 ```
 When you're ready:
   /feature-implement "<slug>"<  --unit WU-<n>>

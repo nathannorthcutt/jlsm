@@ -74,28 +74,38 @@ Display opening header:
 
 ## Step 0 — Automation mode
 
-Read `automation_mode` from status.md. The mode is set during `/feature-plan`
-and persists for the lifetime of this feature.
+Read `automation_mode` from status.md.
 
-**If `automation_mode` is `autonomous` or `manual`:** continue — no prompt needed.
+**If `automation_mode` is `autonomous` or `manual`:** skip this step entirely —
+the user has already chosen and the choice persists for this feature.
 
-**If `automation_mode` is `not-set`** (fallback — should not occur if `/feature-plan`
-ran normally, but handle it gracefully):
+**If `automation_mode` is `not-set`** (first implementation run only):
 
 Display:
 ```
-── Automation mode was not set during planning ─
-  autonomous  — test → implement → refactor cycles run without stopping.
-               I'll pause if I find something that needs your input.
+── How would you like to run the TDD loop? ─────
+  ↵  autonomous  — test → implement → refactor cycles run without stopping.
+                   Interrupt anytime by typing in the session.
+                   I'll pause if I find something that needs your input.
 
-  manual      — I'll stop after each stage and wait for your command.
-
-Type: autonomous  or  manual
+  or type: manual  — I'll stop after each stage and wait for your command.
 ```
 
 Wait for input:
-- "autonomous": set `automation_mode: autonomous` in status.md
+- Enter or "autonomous": set `automation_mode: autonomous` in status.md
 - "manual": set `automation_mode: manual` in status.md
+
+If autonomous, display:
+```
+Running autonomously. Type stop at any time to pause.
+──────────────────────────────────────────────────
+```
+
+If manual, display:
+```
+Manual mode. I'll prompt you at each stage boundary.
+──────────────────────────────────────────────────
+```
 
 ---
 
@@ -182,9 +192,9 @@ If the work plan itself is wrong, update it before continuing.
 
 3. Say:
 ```
-⚠️  ESCALATION · Code Writer → Test Writer  (<N>/3)
+⚠️  ESCALATION · Code Writer → Test Writer
 ───────────────────────────────────────────────
-Contract conflict — handing to Test Writer now.
+Contract conflict — cannot proceed without Test Writer input.
 Test: <test name>
 Problem: <paragraph>
 Work plan reference: <section>
@@ -267,11 +277,11 @@ Work unit progress:
   ○ WU-3: <n> — blocked (waiting on WU-2)
 
 ───────────────────────────────────────────────
-  Type: continue  ·  or: stop
+  ↵  continue to refactor  ·  or type: stop
 ───────────────────────────────────────────────
 ```
 
-If "continue": invoke `/feature-refactor "<slug>"<  --unit WU-<n>>` as a sub-agent.
+If Enter: invoke `/feature-refactor "<slug>"<  --unit WU-<n>>` as a sub-agent.
 If "stop":
 ```
 When you're ready:
