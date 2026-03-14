@@ -22,14 +22,23 @@ If not: "Feature '<slug>' has not been implemented yet. Complete the pipeline fi
 Check status.md for a `pr-draft` substage entry.
 If a previous PR draft exists in `.feature/<slug>/pr-draft.md`:
 ```
+📋 PR DRAFT · <slug>
+───────────────────────────────────────────────
 A PR draft already exists for '<slug>'.
 Draft: .feature/<slug>/pr-draft.md
 
-Regenerate it? (yes / no)
+  ↵  use existing draft  ·  or type: regenerate
 ```
-Wait for response. If no: display the existing draft and stop.
+If the user presses Enter: display existing draft and stop. If user types regenerate: proceed.
 
 ---
+
+Display opening header:
+```
+───────────────────────────────────────────────
+📋 PR DRAFT · <slug>
+───────────────────────────────────────────────
+```
 
 ## Step 1 — Load context
 
@@ -154,18 +163,29 @@ status: "draft"
 ```
 
 Update status.md substage → `pr-draft-written`.
-Append `pr-drafted` entry to cycle-log.md.
+Append `pr-drafted` entry to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — pr-drafted
+**Agent:** 📋 PR Draft
+**Summary:** PR draft written and confirmed by user.
+**Token estimate:** ~<N>K (loaded: brief ~2K, work-plan ~4K, cycle-log ~<N>K)
+---
+```
 
 ---
 
 ## Step 5 — Report
 
+Display:
 ```
+───────────────────────────────────────────────
+📋 PR DRAFT complete · <slug>
+───────────────────────────────────────────────
 PR draft written to .feature/<slug>/pr-draft.md
 
 Copy the title and description into your PR. The review checklist
 can be pasted into the PR description or used as a reviewer guide.
 
-When the PR merges:
+When the PR merges, run:
   /feature-complete "<slug>"
 ```

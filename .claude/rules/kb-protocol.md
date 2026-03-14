@@ -16,7 +16,7 @@ Structure:
 - Only the Architect Agent may write to .decisions/
 
 ## To load KB content
-  /kb-lookup <topic> <category> <subject>
+  /kb lookup <topic> <category> <subject>
 
 ## To load a decision
   Read .decisions/CLAUDE.md → .decisions/<slug>/adr.md

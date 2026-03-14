@@ -39,11 +39,18 @@ This is fine if:
   - The PR has already merged
   - You intentionally skipped stages (e.g. no refactor needed for small changes)
 
-Proceed? (yes/no)
+  ↵  proceed  ·  or type: stop
 ```
 Wait for explicit yes before continuing.
 
 ---
+
+Display opening header:
+```
+───────────────────────────────────────────────
+📦 FEATURE COMPLETE · <slug>
+───────────────────────────────────────────────
+```
 
 ## Step 2 — Confirm PR is merged
 
@@ -67,7 +74,8 @@ If any are untracked or have uncommitted changes:
   <list>
 
 Archive them anyway? Their content will be lost from git history if you proceed
-without committing. (yes/no)
+without committing.
+  ↵  archive anyway  ·  or type: stop
 ```
 Wait for response.
 
@@ -139,6 +147,9 @@ Move the feature row from Active Features to Completed / Archived:
 ## Step 7 — Report
 
 ```
+───────────────────────────────────────────────
+📦 FEATURE COMPLETE · <slug>
+───────────────────────────────────────────────
 Feature '<slug>' archived.
 
 Working files moved to: .feature/_archive/<slug>/

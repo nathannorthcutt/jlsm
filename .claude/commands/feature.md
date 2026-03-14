@@ -12,6 +12,8 @@ brief.md, and initialises status.md as the restart checkpoint.
 3. If it exists, read it:
    - If stage is `scoping` and substage is `complete` or later:
      ```
+     🔍 SCOPING AGENT · <slug>
+     ───────────────────────────────────────────────
      Scoping is already complete for '<slug>'.
      Brief: .feature/<slug>/brief.md
      Next: /feature-domains "<slug>"
@@ -19,9 +21,9 @@ brief.md, and initialises status.md as the restart checkpoint.
      ```
      Stop unless the user says "redo" or "update brief".
    - If stage is `scoping` and substage is `in-progress`:
-     Say "Scoping was in progress — resuming from last checkpoint."
-     Re-display the last saved brief draft if it exists in status.md, then
-     continue from Step 3 (confirm brief).
+     Display the opening header, then say "Scoping was in progress — resuming
+     from last checkpoint." Re-display the last saved brief draft if it exists
+     in status.md, then continue from Step 3 (confirm brief).
 4. If status.md does not exist: proceed to Step 0.
 
 ---
@@ -34,6 +36,13 @@ brief.md, and initialises status.md as the restart checkpoint.
 - Write initial `status.md` (see Status File Template below) with stage `scoping`,
   substage `interviewing`
 
+Display opening header immediately:
+```
+───────────────────────────────────────────────
+🔍 SCOPING AGENT · <slug>
+───────────────────────────────────────────────
+```
+
 ---
 
 ## Step 1 — Read project config
@@ -45,46 +54,95 @@ Read `.feature/project-config.md`. If missing: stop and say
 
 ## Step 2 — The scoping interview
 
-Display opening:
+### Pre-interview analysis (internal — do not display)
+
+Before asking anything, read the description and project-config.md and privately
+build a list of unknowns across these six dimensions:
+
+| Dimension | What to resolve |
+|-----------|----------------|
+| Scope | What is in and explicitly out of scope |
+| Actors | Who or what initiates and receives this |
+| Interface | Inputs, outputs, formats, protocols |
+| Behaviour | Business rules, error cases, edge cases, performance |
+| Integration | External services, storage, existing codebase dependencies |
+| Success | Acceptance criteria, definition of done, concerns |
+
+For each dimension, mark it as:
+- **known** — the description or project-config.md answers it clearly
+- **inferable** — you can make a reasonable assumption; record it, don't ask
+- **unknown** — genuinely unclear and affects how downstream agents work
+
+Only unknowns become questions. Inferable items become assumptions in the brief.
+Simple features may have 1–2 unknowns. Complex ones may have 5–6. Either is fine.
+
+Rank unknowns by impact: questions whose answers would change the most about
+the brief come first. Scope and interface questions almost always rank highest.
+
+### Opening display
+
 ```
-I'll help scope this out. Here's what I understood:
-  "<one-sentence restatement>"
+── Scoping · <slug> ────────────────────────────
+<one-sentence restatement of what you understood>
 
-Before I write the brief, I have some questions.
+I have <n> question<s> before I can write the brief.
+I'll go one at a time.
 ```
 
-### Core questions (adapt to context — not all apply)
+If n is 0 (description is fully specified): skip directly to Step 3, noting
+"Description is complete — no clarification needed." in the brief's assumptions.
 
-**Scope boundaries**
-- What is explicitly OUT of scope for this piece of work?
-- Are there related features that should NOT be affected?
+### Question loop (one question per turn, always)
 
-**Users and actors**
-- Who uses this feature? (end user, admin, another service, cron job, etc.)
-- Are there different roles or permissions involved?
+For each unknown in ranked order:
 
-**Inputs and outputs**
-- What does the user/caller provide?
-- What does the system return or produce?
-- Any formats, schemas, or protocols that must be respected?
+Display:
+```
+── Question <i> of <n> ─────────────────────────
+<The question — one focused question only>
 
-**Behaviour and rules**
-- What are the key business rules or constraints?
-- What should happen in error cases or edge cases?
-- Any performance expectations (latency, throughput, batch size)?
+<One sentence of context explaining why this matters for the brief.>
+```
 
-**Dependencies and integration**
-- Does this call any external services or APIs?
-- Does it depend on existing parts of the codebase?
-- Does it write to or read from storage (DB, cache, file system, queue)?
+Rules for good questions:
+- One question per turn. Never combine two questions into one turn.
+- Ask about things that would change the brief if answered differently.
+- Frame the question with the specific tradeoff or consequence so the user
+  understands why you're asking: "This affects whether we need a migration
+  path for existing data."
+- If a yes/no framing helps, offer it: "Does X need to support Y? (yes / no /
+  it depends — <elaboration welcome>"
 
-**Success criteria**
-- How will we know this feature is complete and correct?
-- Are there acceptance criteria you're working from?
-- Anything you're particularly worried about getting wrong?
+After the user responds:
+- Absorb the answer into your internal model
+- Check if the answer resolved any other unknowns (skip those questions)
+- If the answer raises a new unknown that ranks higher than remaining questions,
+  insert it next
+- If you have remaining questions: ask the next one
+- If all unknowns are resolved: move directly to Step 3 — do not announce it,
+  just transition: "Got it — let me draft the brief."
 
-Maximum two rounds of follow-up. If still unclear after two rounds, record as
-an assumption in the brief.
+### What NOT to ask
+
+Never ask questions the implementation can answer:
+- Naming ("What should I call the method?")
+- Standard practice ("Should I add error handling?" — yes, always)
+- Obvious defaults ("Should I write tests?" — yes, always)
+- Things project-config.md already answers (language, test framework, conventions)
+
+Never ask for information just to be thorough. If a dimension is inferable,
+infer it and record the assumption. Ask only when the answer genuinely changes
+what gets built.
+
+### If a question opens a deeper conversation
+
+The user may give a long or complex answer that warrants a follow-up.
+That is fine — stay in the conversation. The question count is a guide,
+not a strict limit. If the user's answer to Q2 requires a follow-up, ask it
+before moving to Q3. Depth on one question is better than breadth across all.
+
+Record any discussion points that affect the brief as you go — don't rely
+on reconstructing them at brief-writing time.
 
 ---
 
@@ -93,20 +151,19 @@ an assumption in the brief.
 Update `status.md`: substage → `confirming-brief`. Save the draft brief text
 into status.md under `## Draft Brief` so it survives a crash.
 
-Display in chat:
+Display:
 ```
-─────────────────────────────────────────────────────────────
-FEATURE BRIEF — <feature-slug>
-─────────────────────────────────────────────────────────────
+── Brief ───────────────────────────────────────
+🔍 FEATURE BRIEF · <slug>
+───────────────────────────────────────────────
 SUMMARY
 <2–3 sentences>
 
-ACTORS / <INPUTS / OUTPUTS & SIDE EFFECTS / BUSINESS RULES /
+ACTORS / INPUTS / OUTPUTS & SIDE EFFECTS / BUSINESS RULES /
 ERROR CASES / EXPLICIT OUT OF SCOPE / ACCEPTANCE CRITERIA /
 OPEN ASSUMPTIONS / PERFORMANCE EXPECTATIONS
-─────────────────────────────────────────────────────────────
+───────────────────────────────────────────────
 Does this capture it correctly? Confirm or tell me what to change.
-─────────────────────────────────────────────────────────────
 ```
 
 Iterate until confirmed. Do not write brief.md until confirmed.
@@ -127,9 +184,10 @@ created: "<YYYY-MM-DD>"
 This file is append-only. Each agent appends entries. Nothing is edited or deleted.
 ---
 ## <YYYY-MM-DD> — scoped
-**Agent:** Scoping Agent
+**Agent:** 🔍 Scoping Agent
 **Summary:** Feature brief confirmed by user.
 **Brief:** [brief.md](brief.md)
+**Token estimate:** ~<N>K (loaded: project-config ~1K / wrote: brief ~2K, status ~1K, cycle-log ~1K)
 ---
 ```
 
@@ -141,10 +199,28 @@ Update `.feature/CLAUDE.md` Active Features table.
 
 ## Step 5 — Hand off
 
+Display:
 ```
+───────────────────────────────────────────────
+🔍 SCOPING AGENT complete · <slug>
+⏱  Token estimate: ~<N>K
+   Loaded: project-config ~1K
+   Wrote:  brief ~2K, status ~1K, cycle-log ~1K
+───────────────────────────────────────────────
 Brief written to .feature/<slug>/brief.md
 
-Next step:
+Take a moment to review the brief before continuing — domain analysis builds
+directly on it and fixing scope issues now is much cheaper than later.
+
+───────────────────────────────────────────────
+  ↵  continue to domain analysis  ·  or type: stop
+───────────────────────────────────────────────
+```
+
+If the user presses Enter or says yes: invoke /feature-domains "<slug>" as a sub-agent immediately.
+If the user types stop or no:
+```
+When you're ready:
   /feature-domains "<slug>"
 ```
 
@@ -167,6 +243,7 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 **Stage:** scoping
 **Substage:** interviewing
 **Last successful checkpoint:** feature directory created
+**Automation mode:** not-set
 
 ## Stage Completion
 
@@ -185,11 +262,19 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 | Domain | Status | ADR | KB entries | Commissioned | Resolved |
 |--------|--------|-----|------------|--------------|----------|
 
-## TDD Cycle Tracker
-<!-- Populated by /feature-test, /feature-implement, /feature-refactor -->
+## Work Units
+<!-- Populated by /feature-plan if feature is split into units -->
+<!-- work_units: none  ← set this if no split was done -->
 
-| Cycle | Tests written | Tests passing | Refactor done | Missing tests |
-|-------|--------------|---------------|---------------|---------------|
+| Unit | Name | Constructs | Depends On | Status | Cycle |
+|------|------|------------|------------|--------|-------|
+
+## TDD Cycle Tracker
+<!-- Single-unit: one row per cycle -->
+<!-- Multi-unit: rows labelled "Cycle N · WU-N" -->
+
+| Cycle | Unit | Tests written | Tests passing | Refactor done | Missing tests |
+|-------|------|--------------|---------------|---------------|---------------|
 ```
 
 ---

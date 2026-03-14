@@ -54,6 +54,13 @@ public sealed interface VectorIndex<D> extends Closeable
      */
     List<SearchResult<D>> search(float[] query, int topK) throws IOException;
 
+    /**
+     * Returns the precision used for vector storage in this index.
+     *
+     * @return the configured {@link VectorPrecision}; never null
+     */
+    VectorPrecision precision();
+
     @Override
     void close() throws IOException;
 

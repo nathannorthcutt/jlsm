@@ -1,4 +1,11 @@
-# /setup
+# /setup-vallorcine
+
+Display opening header:
+```
+───────────────────────────────────────────────
+🔧 SETUP
+───────────────────────────────────────────────
+```
 
 Verifies the knowledge base and decisions directory structures are in place.
 Run once when first adding these agents to a project, or any time you want
@@ -118,13 +125,13 @@ display this block and tell the user to add it manually (do not edit automatical
 ## Knowledge Base
 Research at .kb/<topic>/<category>/<subject>.md. On-demand only — do not scan proactively.
 Use /research <topic> <category> "<subject>" to add research.
-Use /kb-lookup <topic> <category> <subject> to retrieve an entry.
+Use /kb lookup <topic> <category> <subject> to retrieve an entry.
 
 ## Architecture Decisions
 Decisions at .decisions/<problem-slug>/adr.md. On-demand only.
 Full deliberation history at .decisions/<problem-slug>/log.md.
 Use /architect "<problem>" to start a decision session.
-Use /adr-review <slug> to review or update an existing decision.
+Use /decisions review <slug> to review or update an existing decision.
 ```
 
 ## Step 5 — Report
@@ -134,7 +141,7 @@ Print a summary of what was found, created, and skipped. Then show:
 ```
 Setup complete. Available commands:
   /research <topic> <category> "<subject>"   add new research to the KB
-  /kb-lookup <topic> <category> <subject>    retrieve a KB entry into context
+  /kb lookup <topic> <category> <subject>    retrieve a KB entry into context
   /architect "<problem statement>"            start an architecture decision session
-  /adr-review <problem-slug>                 review or update an existing decision
+  /decisions review <problem-slug>                 review or update an existing decision
 ```

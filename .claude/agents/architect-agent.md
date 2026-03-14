@@ -36,4 +36,4 @@ If it does not exist, stop and tell the user:
 
 ## Slash commands
 Start a new decision: /architect "<problem statement>"
-Review an existing decision: /adr-review <problem-slug>
+Review an existing decision: /decisions review <problem-slug>

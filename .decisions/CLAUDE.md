@@ -1,5 +1,9 @@
 # Architecture Decisions — Master Index
 
+> **Managed by vallorcine agents. Use slash commands to modify this file.**
+> To start a decision: `/architect "<problem>"`
+> To review a decision: `/decisions review "<slug>"`
+
 > Pull model. Load on demand only.
 > Structure: .decisions/<problem-slug>/adr.md
 > Full history: [history.md](history.md)
@@ -15,6 +19,18 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+
+## Deferred
+<!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
+
+| Problem | Slug | Deferred | Resume When |
+|---------|------|----------|-------------|
+
+## Closed
+<!-- Topics explicitly ruled out. Won't be raised again unless reopened. -->
+
+| Problem | Slug | Closed | Reason |
+|---------|------|--------|--------|
 
 ## Archived
 Decisions older than the 5 most recent: [history.md](history.md)

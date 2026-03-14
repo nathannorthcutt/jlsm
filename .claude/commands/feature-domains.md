@@ -11,6 +11,8 @@ Read `.feature/<slug>/status.md`.
 
 **If Domains stage is `complete`:**
 ```
+🗺️  DOMAIN SCOUT · <slug>
+───────────────────────────────────────────────
 Domain analysis is already complete for '<slug>'.
 Domains: .feature/<slug>/domains.md
 Next: /feature-plan "<slug>"
@@ -19,6 +21,7 @@ Run /feature-resume "<slug>" to see full status.
 Stop.
 
 **If Domains stage is `in-progress`:**
+Display opening header, then:
 - Load the Domain Resolution Tracker from status.md
 - Count resolved vs. pending domains
 - Say:
@@ -33,7 +36,14 @@ Stop.
 **If Domains stage is `not-started`:**
 - Check that `.feature/<slug>/brief.md` exists. If not: "Run /feature first."
 - Set status.md: stage Domains → `in-progress`
-- Proceed to Step 1
+- Display opening header and proceed to Step 1
+
+Display opening header:
+```
+───────────────────────────────────────────────
+🗺️  DOMAIN SCOUT · <slug>
+───────────────────────────────────────────────
+```
 
 ---
 
@@ -43,12 +53,13 @@ Read `brief.md` in full. Identify distinct technical domains — areas where an
 architectural or research decision is needed. Not every concept, only ones that
 require a choice or have research depth worth capturing.
 
-Display in chat before any KB/decisions lookups:
+Display:
 ```
+── Identifying domains ─────────────────────────
 Domains identified:
   1. <Domain> — <one sentence: what decision or research is needed>
   2. <Domain> — ...
-I'll now check the KB and decisions store for each.
+Checking KB and decisions store for each.
 ```
 
 Initialise the Domain Resolution Tracker in status.md with all identified
@@ -71,10 +82,10 @@ For each pending domain:
 Update the Domain Resolution Tracker in status.md immediately after classifying
 each domain (don't wait until all are done — crash safety).
 
-Display status table:
+Display:
 ```
-Domain coverage:
-  ✓ RESOLVED         <domain> — ADR: .decisions/<slug>/adr.md
+── Domain coverage ─────────────────────────────
+  ✓ RESOLVED          <domain> — ADR: .decisions/<slug>/adr.md
   ⚠ PENDING-RESEARCH  <domain> — no KB entry for <topic/category>
   ⚠ PENDING-DECISION  <domain> — KB has <entry>, no ADR yet
 ```
@@ -88,14 +99,14 @@ Domain coverage:
 Write the commission to status.md immediately (before the work is done):
 Update Domain Resolution Tracker: status → `pending-research`, commissioned → today's date.
 
-Tell the user:
+Display:
 ```
-Research needed:
+── Research needed ─────────────────────────────
   Domain: <domain>
   Run: /research <topic> <category> "<subject>"
   Then re-run: /feature-domains "<slug>"
 
-Or confirm to proceed without this research (gap will be noted in domains.md).
+  Or confirm to proceed without this research (gap will be noted in domains.md).
 ```
 Append `domains-research-commissioned` to cycle-log.md. Wait for user response.
 
@@ -103,15 +114,15 @@ Append `domains-research-commissioned` to cycle-log.md. Wait for user response.
 
 Update Domain Resolution Tracker: status → `pending-decision`, commissioned → today's date.
 
-Tell the user:
+Display:
 ```
-Architectural decision needed:
+── Decision needed ─────────────────────────────
   Domain: <domain>
   KB coverage: <path>
   Run: /architect "<decision problem>"
   Then re-run: /feature-domains "<slug>"
 
-Or confirm to proceed without a formal decision.
+  Or confirm to proceed without a formal decision.
 ```
 Append `domains-decision-commissioned` to cycle-log.md. Wait for user response.
 
@@ -125,7 +136,7 @@ When re-running after commissioning:
   ```
   ⚠ <domain> — architect session may be incomplete
     .decisions/<adr-slug>/log.md has no decision-confirmed entry.
-    Run /adr-review "<adr-slug>" or /architect "<problem>" to complete it.
+    Run /decisions review "<adr-slug>" or /architect "<problem>" to complete it.
   ```
 
 ---
@@ -137,18 +148,47 @@ After all domains are resolved (or user confirmed proceeding with gaps noted).
 Write `.feature/<slug>/domains.md` (Domains File Template below).
 
 Update status.md: Domains stage → `complete`, last checkpoint → "domains.md written".
-Append `domains-resolved` to cycle-log.md.
+
+Append `domains-resolved` to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — domains-resolved
+**Agent:** 🗺️ Domain Scout
+**Summary:** <n> domains resolved, <n> gaps noted.
+**Files read:** brief ~2K, .kb/CLAUDE.md ~1K, .decisions/CLAUDE.md ~1K, <any ADR/KB files>
+**Token estimate:** ~<N>K
+---
+```
+
 Update `.feature/CLAUDE.md` stage column.
 
 ---
 
 ## Step 5 — Hand off
 
+Display:
 ```
+───────────────────────────────────────────────
+🗺️  DOMAIN SCOUT complete · <slug>
+⏱  Token estimate: ~<N>K
+   Loaded: brief ~2K, KB index ~1K, decisions index ~1K<, ADR files ~2-4K each>
+   Wrote:  domains ~3K
+───────────────────────────────────────────────
 Domain analysis written to .feature/<slug>/domains.md
 Resolved: <n> | Gaps noted: <n>
 
-Next: /feature-plan "<slug>"
+Review the domain analysis above — the Work Planner will build the implementation
+structure from these constraints and ADRs.
+
+───────────────────────────────────────────────
+  ↵  continue to work planning  ·  or type: stop
+───────────────────────────────────────────────
+```
+
+If the user presses Enter or says yes: invoke /feature-plan "<slug>" as a sub-agent immediately.
+If the user types stop or no:
+```
+When you're ready:
+  /feature-plan "<slug>"
 ```
 
 ---

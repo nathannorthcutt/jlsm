@@ -18,3 +18,12 @@ Thumbs.db
 
 # Claude Code — local-only settings (user-specific permission grants)
 .claude/settings.local.json
+
+# Feature working state — scratch directories, not source-controlled
+# project-config.md and CLAUDE.md are committed (see below)
+.feature/*/
+.feature/_archive/
+
+# Explicitly track the project config and index
+!.feature/project-config.md
+!.feature/CLAUDE.md

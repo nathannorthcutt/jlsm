@@ -28,4 +28,4 @@ If it does not exist, stop and tell the user:
 
 ## Slash commands
 Full execution protocol: /research <topic> <category> "<subject>"
-Retrieve an existing entry: /kb-lookup <topic> <category> <subject>
+Retrieve an existing entry: /kb lookup <topic> <category> <subject>

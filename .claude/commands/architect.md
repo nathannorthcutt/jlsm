@@ -13,13 +13,151 @@ If it does not exist, stop and say:
 
 ---
 
-## Step 0 — Parse and slug the problem
+Display opening header:
+```
+───────────────────────────────────────────────
+🏛️  ARCHITECT AGENT
+───────────────────────────────────────────────
+```
+
+## Step 0 — Parse intent and slug the problem
+
+- Check whether the invocation includes a disposition flag:
+  - `/decisions defer "<problem>" [--until <condition>]` → lightweight deferred write, skip to **Step 0D**
+  - `/decisions close "<problem>" [--reason <text>]` → lightweight closed write, skip to **Step 0C**
+  - No flag → full evaluation, continue to Step 1
 
 - Extract the problem statement
 - Generate `problem-slug` in kebab-case (e.g. "vector search service" → "vector-search-service")
 - Check if `.decisions/<problem-slug>/` exists
   - If yes: read `adr.md` and `log.md`, ask whether this is a revision or a new problem
   - If no: proceed to Step 1
+
+---
+
+### Step 0D — Deferred write (lightweight)
+
+Write `.decisions/<problem-slug>/adr.md` with status `deferred`:
+
+```markdown
+---
+problem: "<problem-slug>"
+date: "<YYYY-MM-DD>"
+version: 1
+status: "deferred"
+---
+
+# <Problem Slug> — Deferred
+
+## Problem
+<problem statement>
+
+## Why Deferred
+<reason given, or "not specified">
+
+## Resume When
+<--until condition, or "not specified — check back manually">
+
+## What Is Known So Far
+<any context or constraints already stated, or "none captured">
+
+## Next Step
+Run `/architect "<problem>"` when ready to evaluate.
+```
+
+Append to `log.md`:
+```markdown
+## <YYYY-MM-DD> — deferred
+
+**Agent:** Architect Agent
+**Event:** deferred
+**Summary:** <problem> marked as deferred. Resume condition: <condition or "unspecified">.
+
+---
+```
+
+Update `.decisions/CLAUDE.md` — add a row to the **Deferred** section.
+Update `.decisions/<problem-slug>/CLAUDE.md` (Problem Index) with status `deferred`.
+
+Display:
+```
+───────────────────────────────────────────────
+🏛️  ARCHITECT AGENT — deferred
+───────────────────────────────────────────────
+Deferred: <problem-slug>
+Reason:   <reason or "not specified">
+Resume when: <condition or "not specified">
+
+Recorded in .decisions/<problem-slug>/adr.md
+Listed in .decisions/CLAUDE.md under Deferred.
+
+To revisit: /architect "<problem>"
+───────────────────────────────────────────────
+```
+Stop.
+
+---
+
+### Step 0C — Closed write (lightweight)
+
+Write `.decisions/<problem-slug>/adr.md` with status `closed`:
+
+```markdown
+---
+problem: "<problem-slug>"
+date: "<YYYY-MM-DD>"
+version: 1
+status: "closed"
+---
+
+# <Problem Slug> — Closed (Won't Pursue)
+
+## Problem
+<problem statement>
+
+## Decision
+**Will not pursue.** This topic is explicitly ruled out and should not be raised again.
+
+## Reason
+<reason given, or "not specified">
+
+## Context
+<any relevant constraints or context that informed this closure, or "none captured">
+
+## Conditions for Reopening
+<if the user specified any, or "none — treat as permanently closed">
+```
+
+Append to `log.md`:
+```markdown
+## <YYYY-MM-DD> — closed
+
+**Agent:** Architect Agent
+**Event:** closed
+**Summary:** <problem> closed — will not pursue. Reason: <reason or "not specified">.
+
+---
+```
+
+Update `.decisions/CLAUDE.md` — add a row to the **Closed** section.
+Update `.decisions/<problem-slug>/CLAUDE.md` with status `closed`.
+
+Display:
+```
+───────────────────────────────────────────────
+🏛️  ARCHITECT AGENT — closed
+───────────────────────────────────────────────
+Closed: <problem-slug>
+Reason: <reason or "not specified">
+This topic will not be raised again.
+
+Recorded in .decisions/<problem-slug>/adr.md
+Listed in .decisions/CLAUDE.md under Closed.
+
+To reopen: /architect "<problem>" (will note prior closure)
+───────────────────────────────────────────────
+```
+Stop.
 
 ---
 
@@ -42,6 +180,7 @@ If any dimension is missing or unclear, display the collection dialogue and wait
 ### Constraint collection dialogue
 
 ```
+── Constraint collection ───────────────────────
 To evaluate options I need your constraint profile. Please provide:
 
 Scale              : <volume, throughput, growth — or "not specified">
@@ -67,11 +206,14 @@ Missing dimensions will be noted as unknowns and will reduce decision confidence
 
 ## Step 2 — KB survey
 
+Display: `── Surveying KB ─────────────────────────────`
+
 Read `.kb/CLAUDE.md` → relevant topic/category `CLAUDE.md` files.
 Do NOT read individual subject files yet — use category indexes to identify candidates.
 
 Produce a candidate list:
 ```
+── Candidates ──────────────────────────────────
 Candidates identified:
   ✓ .kb/algorithms/vector-indexing/hnsw.md
   ✓ .kb/algorithms/vector-indexing/ivf-flat.md
@@ -144,8 +286,8 @@ The ADR is only written after the user explicitly confirms.
 Display this in chat (do NOT write it to a file):
 
 ```
-─────────────────────────────────────────────────────────────
-RECOMMENDATION — <problem-slug>
+───────────────────────────────────────────────
+🏛️  RECOMMENDATION — <problem-slug>
 ─────────────────────────────────────────────────────────────
 
 Recommended approach: <Subject Name>
@@ -174,7 +316,7 @@ WHAT THIS DOES NOT SOLVE
 
 CONFIDENCE: <High | Medium | Low>
 <One sentence reason — e.g. "All six constraints specified; all candidates in KB.">
-─────────────────────────────────────────────────────────────
+───────────────────────────────────────────────
 Do you agree with this recommendation?
 
   • Confirm — say "yes", "confirmed", "looks good", etc.
@@ -193,6 +335,34 @@ I will answer questions and iterate until we reach an agreed position.
 - Answer directly with a KB source reference if applicable
 - Do not re-present the full summary — answer then return to waiting
 - If the question reveals a constraint gap, note it and ask for the value
+
+**If the user flags a topic as out-of-scope, deferred, or not worth pursuing now:**
+
+Do not let it disappear. Immediately capture it:
+
+1. Acknowledge briefly: "Got it — I'll log that and set it aside."
+2. Append a `tangent-captured` entry to `log.md`:
+```markdown
+## <YYYY-MM-DD> — tangent-captured
+
+**Agent:** Architect Agent
+**Event:** tangent-captured
+**During:** deliberation on <current problem-slug>
+**Topic:** <the tangent topic, one line>
+**Disposition:** <deferred | closed>
+**User's words:** "<exact phrase the user used>"
+**Resume condition:** <condition stated, or "not specified">
+
+---
+```
+3. If disposition is **deferred**: also create a stub `.decisions/<tangent-slug>/adr.md`
+   with status `deferred` (Step 0D template) and add it to the Deferred section of
+   `.decisions/CLAUDE.md`. Tell the user: "Logged as deferred — it'll appear in
+   /decisions when you're ready to pick it up."
+4. If disposition is **closed**: create a stub `.decisions/<tangent-slug>/adr.md`
+   with status `closed` (Step 0C template) and add it to the Closed section of
+   `.decisions/CLAUDE.md`. Tell the user: "Logged as closed — won't surface it again."
+5. Return to deliberation without re-presenting the full summary.
 
 **If the user challenges the recommendation:**
 - Acknowledge the challenge specifically — do not defend generically
@@ -232,6 +402,17 @@ Never ask hypothetical or open-ended future questions.
 When the user confirms (any affirmative):
 
 1. Say: "Decision confirmed. Writing the ADR now."
+
+Display after writing:
+```
+───────────────────────────────────────────────
+🏛️  ARCHITECT AGENT complete
+⏱  Token estimate: ~<N>K
+   Loaded: KB indexes ~3K, <n> subject files ~<N>K
+   Wrote:  constraints ~1K, evaluation ~2K, adr ~3K, log entry ~1K
+───────────────────────────────────────────────
+Decision written: .decisions/<slug>/adr.md
+```
 2. If constraints were updated during deliberation:
    - Append `## Updates YYYY-MM-DD` to `constraints.md`
 3. Write `.decisions/<problem-slug>/adr.md` using the **ADR Template**
@@ -603,10 +784,13 @@ Written to `log.md` at Step 6c immediately after the user confirms.
 | `research-commissioned` | research-brief.md written, Research Agent requested |
 | `research-received` | Architect re-run after Research Agent completed |
 | `decision-confirmed` | User confirmed in deliberation — adr.md written immediately after |
-| `review-requested` | /adr-review invoked |
+| `review-requested` | /decisions review invoked |
 | `review-deliberation-confirmed` | User confirmed review outcome in deliberation |
 | `review-completed` | Review concluded with no change after deliberation |
 | `revision-confirmed` | New adr-v<N>.md written after deliberation confirmed revision |
+| `deferred` | /decisions defer invoked — lightweight adr.md written with status deferred |
+| `closed` | /decisions close invoked — lightweight adr.md written with status closed |
+| `tangent-captured` | Topic raised and set aside during deliberation on another problem |
 
 ---
 
@@ -651,6 +835,12 @@ last_updated: "<YYYY-MM-DD>"
 | Version | File | Date | Status | Summary |
 |---------|------|------|--------|---------|
 | v1 | [adr.md](adr.md) | <date> | active | Initial recommendation |
+
+## Tangents Captured During Deliberation
+<!-- Topics that came up and were set aside. Each has its own .decisions/<slug>/ entry. -->
+
+| Topic | Slug | Disposition | Resume When |
+|-------|------|-------------|-------------|
 ```
 
 ---
@@ -714,3 +904,9 @@ last_updated: "<YYYY-MM-DD>"
 - [ ] .decisions/<slug>/CLAUDE.md ADR Version History populated
 - [ ] .decisions/CLAUDE.md master index updated, line count checked against 80-line cap
 - [ ] Oldest accepted rows moved to history.md if cap exceeded
+
+**Deferred / Closed / Tangents**
+- [ ] Any deferred problem: adr.md written with status `deferred`, Deferred row in CLAUDE.md
+- [ ] Any closed problem: adr.md written with status `closed`, Closed row in CLAUDE.md
+- [ ] Any tangent captured during deliberation: `tangent-captured` log entry written,
+      stub adr.md written, row added to parent problem's Tangents table in CLAUDE.md

@@ -1,8 +1,9 @@
-# /feature-test "<feature-slug>" [--add-missing]
+# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing]
 
 Writes failing tests from work-plan contracts and brief acceptance criteria.
 Idempotent — if testing is complete for the current cycle, reports and stops.
-With --add-missing, adds tests for cases found by the Refactor Agent.
+With --unit, scopes to a single work unit. With --add-missing, adds tests for
+cases found by the Refactor Agent.
 
 ---
 
@@ -10,13 +11,46 @@ With --add-missing, adds tests for cases found by the Refactor Agent.
 
 Read `.feature/<slug>/status.md`.
 
+### Work unit resolution (check before anything else)
+
+If `work_units: none` in status.md: ignore `--unit` flag, proceed as normal.
+
+If work units are defined:
+- If `--unit` flag provided: scope all steps to that unit only
+- If no `--unit` flag: find the next unit where status is `not-started`
+  (units are `blocked` until all dependencies are `complete`)
+  - If all units complete: report and stop
+  - If a unit is `in-progress`: resume that unit
+  - If next unit is `blocked`: display:
+    ```
+    🧪 TEST WRITER · <slug>
+    ───────────────────────────────────────────────
+    WU-<n> is blocked — waiting on: <dependency units>
+    Complete those units first, then run:
+      /feature-test "<slug>" --unit WU-<n>
+    Current unit statuses:
+      <table from Work Units status>
+    ```
+    Stop.
+
+Update the Work Units table in status.md: active unit → `in-progress`.
+
+Display opening header with unit if applicable:
+```
+───────────────────────────────────────────────
+🧪 TEST WRITER · <slug> · Cycle <n><  · WU-<n>>
+───────────────────────────────────────────────
+```
+
 Determine the current TDD cycle number from the TDD Cycle Tracker.
 
 **Without --add-missing:**
 
-If Testing status for the current cycle is `complete`:
+If Testing status for the current cycle is `complete` (for this unit if --unit provided):
 ```
-Tests are already written for cycle <n>.
+🧪 TEST WRITER · <slug>
+───────────────────────────────────────────────
+Tests are already written for cycle <n><  · WU-<n>>.
 Test plan: .feature/<slug>/test-plan.md
 All tests verified failing.
 Next: /feature-implement "<slug>"
@@ -39,16 +73,26 @@ If found: load only the listed missing test cases and proceed directly to Step 3
 **If Testing is `not-started`:**
 - Verify `.feature/<slug>/work-plan.md` exists. If not: "Run /feature-plan first."
 - Set status.md: Testing cycle N → `in-progress`, substage → `planning`
-- Proceed to Step 1
+- Display opening header and proceed to Step 1
+
+Display opening header:
+```
+───────────────────────────────────────────────
+🧪 TEST WRITER · <slug> · Cycle <n>
+───────────────────────────────────────────────
+```
 
 ---
 
 ## Step 1 — Load context
 
-Read:
-1. `.feature/project-config.md`
+If work unit is active, load only what is needed for that unit:
+
+1. `.feature/project-config.md` — always
 2. `.feature/<slug>/brief.md` — acceptance criteria and error cases
-3. `.feature/<slug>/work-plan.md` — contracts
+3. `.feature/<slug>/work-plan.md` — **if work units defined:** read only the
+   section for the active unit plus the Contract Definitions for its constructs.
+   Do NOT load contract sections for other units.
 
 **Do NOT read implementation files.**
 
@@ -62,7 +106,7 @@ Update status.md substage → `confirming-plan`.
 
 Display:
 ```
-─────────────────────────────────────────────────────────────
+── Test plan ───────────────────────────────────
 TEST PLAN — <slug> (Cycle <n>)
 ─────────────────────────────────────────────────────────────
 Happy path
@@ -71,9 +115,9 @@ Happy path
 Error and edge cases
   N. test_<name> — <scenario>
   ...
-─────────────────────────────────────────────────────────────
+───────────────────────────────────────────────
 Does this cover the acceptance criteria? Any to add or remove?
-─────────────────────────────────────────────────────────────
+───────────────────────────────────────────────
 ```
 
 Wait for confirmation. Update status.md substage → `writing-tests` after confirm.
@@ -147,8 +191,24 @@ Update `.feature/CLAUDE.md`.
 
 ## Step 6 — Hand off
 
+Display:
 ```
-Tests written and verified failing. Cycle <n>.
+───────────────────────────────────────────────
+🧪 TEST WRITER complete · <slug> · Cycle <n><  · WU-<n>>
+⏱  Token estimate: ~<N>K
+   Loaded: brief ~2K, work-plan (unit section) ~<N>K, project-config ~1K
+   Wrote:  <n> test files ~<N>K total
+───────────────────────────────────────────────
+Tests written and verified failing. Cycle <n><  · WU-<n>>.
 
-Next: /feature-implement "<slug>"
+───────────────────────────────────────────────
+  ↵  continue to implementation  ·  or type: stop
+───────────────────────────────────────────────
+```
+
+If the user presses Enter or says yes: invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If the user types stop or no:
+```
+When you're ready:
+  /feature-implement "<slug>"<  --unit WU-<n>>
 ```
