@@ -174,7 +174,7 @@ Append `pr-drafted` entry to cycle-log.md:
 
 ---
 
-## Step 5 — Report
+## Step 5 — Create the PR
 
 Display:
 ```
@@ -183,9 +183,62 @@ Display:
 ───────────────────────────────────────────────
 PR draft written to .feature/<slug>/pr-draft.md
 
-Copy the title and description into your PR. The review checklist
-can be pasted into the PR description or used as a reviewer guide.
+gh CLI not found or not authenticated. To create the PR manually:
+  1. Copy the title from pr-draft.md
+  2. Copy the description from pr-draft.md
+  3. Open a PR in your repo's UI or with: gh pr create
 
 When the PR merges, run:
   /feature-complete "<slug>"
 ```
+Stop.
+
+**If `gh` is available:**
+
+Display:
+```
+───────────────────────────────────────────────
+📋 PR DRAFT complete · <slug>
+Draft: .feature/<slug>/pr-draft.md
+
+  Type: create  to open the PR now via gh  ·  or: skip
+───────────────────────────────────────────────
+```
+
+If "skip":
+```
+When you're ready:
+  gh pr create --title "<title>" --body-file .feature/<slug>/pr-draft.md
+
+When the PR merges, run:
+  /feature-complete "<slug>"
+```
+Stop.
+
+If "create":
+
+Run:
+```
+gh pr create --title "<title from pr-draft.md>" --body-file ".feature/<slug>/pr-draft.md"
+```
+
+If the command succeeds, capture the PR URL from `gh` output. Update status.md
+substage → `pr-created`. Append to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — pr-created
+**Agent:** 📋 PR Draft
+**PR:** <URL>
+---
+```
+
+Display:
+```
+───────────────────────────────────────────────
+✓ PR opened: <URL>
+───────────────────────────────────────────────
+When the PR merges, run:
+  /feature-complete "<slug>"
+```
+
+If `gh pr create` fails (e.g. branch not pushed, no remote): display the error
+and fall back to the manual instructions above. Do not retry automatically.

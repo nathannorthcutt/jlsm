@@ -41,7 +41,7 @@ This is fine if:
 
   ↵  proceed  ·  or type: stop
 ```
-Wait for explicit yes before continuing.
+Wait for explicit confirmation before continuing.
 
 ---
 

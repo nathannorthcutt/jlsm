@@ -31,16 +31,26 @@ Display opening header:
 
 Determine the current TDD cycle from the TDD Cycle Tracker.
 
+**If substage is `escalation-resolved`:**
+The Test Writer has resolved a contract conflict. Resume implementation.
+- Say: "Escalation resolved by Test Writer — checking current test state."
+- Read the most recent `test-escalation-resolved` entry from cycle-log.md to
+  understand what changed
+- Run the test suite to see what is passing and what is failing
+- Set status.md substage → `resuming-after-escalation`
+- Jump to Step 2 (implement in order, skipping constructs whose tests already pass)
+
 **If Implementation for this cycle is `complete`:**
 ```
 ⚙️  CODE WRITER · <slug> · Cycle <n>
 ───────────────────────────────────────────────
 Implementation is already complete for cycle <n>.
 All tests were passing as of: <date from status.md>
-Next: /feature-refactor "<slug>"
-Run /feature-resume "<slug>" to see full status.
+
+  Type: continue  to proceed to refactor  ·  or: stop
 ```
-Stop.
+If "continue": invoke /feature-refactor "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "stop": display `Next: /feature-refactor "<slug>"` and stop.
 
 **If Implementation is `in-progress`:**
 - Say: "Implementation was in progress for cycle <n> — checking current test state."
@@ -142,6 +152,29 @@ If a test fails unexpectedly after implementation: see Escalation Protocol.
 
 If a test cannot be satisfied given the work plan's constraints:
 
+**Step 0 — Check escalation count.** Read cycle-log.md and count
+`code-escalation` entries for the same test name.
+
+- **3rd escalation on the same test:** hard stop. Do NOT escalate to the
+  Test Writer again. Instead say:
+```
+🛑  ESCALATION LIMIT · Code Writer → Manual Resolution
+───────────────────────────────────────────────
+The same contract conflict has been escalated 3 times without resolution.
+Test: <test name>
+File: <file>
+
+Automatic resolution is not working. Please review the conflict manually:
+  1. Check the test expectation in the test file
+  2. Check the constraint in the work plan
+  3. Resolve the mismatch directly, then re-run /feature-implement "<slug>"
+
+If the work plan itself is wrong, update it before continuing.
+```
+  Update status.md substage → `escalation-limit-reached`. Stop.
+
+- **Under the limit:** proceed with escalation below.
+
 1. Append `code-escalation` to cycle-log.md:
 ```markdown
 ## <YYYY-MM-DD> — code-escalation
@@ -151,6 +184,7 @@ If a test cannot be satisfied given the work plan's constraints:
 **What the test expects:** <exact assertion>
 **Constraint from work plan:** <section reference>
 **Conflict:** <paragraph>
+**Escalation count:** <N> of 3
 ---
 ```
 
@@ -164,11 +198,10 @@ Contract conflict — cannot proceed without Test Writer input.
 Test: <test name>
 Problem: <paragraph>
 Work plan reference: <section>
-
-Run /feature-test "<slug>" — the Test Writer will review and either
-adjust the test or escalate the contract change to the Work Planner.
 ```
-Stop.
+
+Invoke `/feature-test "<slug>" --escalation` as a sub-agent immediately.
+Do not wait for user input — the escalation is already logged.
 
 ---
 

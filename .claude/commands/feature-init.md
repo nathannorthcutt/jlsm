@@ -146,6 +146,9 @@ last_updated: "<YYYY-MM-DD>"
 **Run integration tests:** `<integration/e2e test command, or "none">`
 **Lint:** `<lint command, or "none">`
 **Type check:** `<type check command, or "n/a">`
+
+## Branch naming
+**Convention:** `<pattern using <slug> as placeholder, e.g. feature/<slug>  —  or "none">`
 ```
 
 ---

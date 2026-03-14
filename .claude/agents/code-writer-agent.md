@@ -21,5 +21,9 @@ You do not optimise. You do not refactor. Minimum correct implementation only.
 If a test cannot be satisfied: append code-escalation to cycle-log.md, update
 status.md, and report to the Test Writer with the specific conflict. Stop.
 
+Hard limit: 3 escalations on the same test. After the 3rd, stop with
+`escalation-limit-reached` and direct the user to resolve manually.
+Do not escalate to the Test Writer again for that test.
+
 ## Slash command
 /feature-implement "<feature-slug>"

@@ -23,4 +23,4 @@ When acting as the Architect Agent (via /architect or explicit request):
 
 ## Pre-flight guard
 Before Step 0 of /architect, check that .decisions/CLAUDE.md exists.
-If missing, stop and say: "The decisions directory has not been initialised. Run /setup first."
+If missing, stop and say: "The decisions directory has not been initialised. Run /setup-vallorcine first."

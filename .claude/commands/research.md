@@ -8,7 +8,7 @@ Researches a technical topic and persists findings to .kb/<topic>/<category>/.
 
 Before anything else, check that .kb/CLAUDE.md exists.
 If it does not exist, stop and say:
-  "The knowledge base has not been initialised. Run /setup first, then retry."
+  "The knowledge base has not been initialised. Run /setup-vallorcine first, then retry."
 
 ---
 

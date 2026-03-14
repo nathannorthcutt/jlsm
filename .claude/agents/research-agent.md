@@ -24,7 +24,7 @@ Claude Code's native lazy-loading memory system.
 ## Pre-flight guard
 Before anything else, check that .kb/CLAUDE.md exists.
 If it does not exist, stop and tell the user:
-  "The knowledge base has not been initialised. Run /setup first, then retry."
+  "The knowledge base has not been initialised. Run /setup-vallorcine first, then retry."
 
 ## Slash commands
 Full execution protocol: /research <topic> <category> "<subject>"

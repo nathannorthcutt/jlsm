@@ -15,10 +15,11 @@ Read `.feature/<slug>/status.md`.
 ───────────────────────────────────────────────
 Domain analysis is already complete for '<slug>'.
 Domains: .feature/<slug>/domains.md
-Next: /feature-plan "<slug>"
-Run /feature-resume "<slug>" to see full status.
+
+  Type: continue  to proceed to work planning  ·  or: stop
 ```
-Stop.
+If "continue": invoke /feature-plan "<slug>" as a sub-agent immediately.
+If "stop": display `Next: /feature-plan "<slug>"` and stop.
 
 **If Domains stage is `in-progress`:**
 Display opening header, then:

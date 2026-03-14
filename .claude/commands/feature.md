@@ -16,10 +16,12 @@ brief.md, and initialises status.md as the restart checkpoint.
      ───────────────────────────────────────────────
      Scoping is already complete for '<slug>'.
      Brief: .feature/<slug>/brief.md
-     Next: /feature-domains "<slug>"
-     Run /feature-resume "<slug>" to see full status.
+
+       Type: continue  to proceed to domain analysis  ·  or: stop
      ```
-     Stop unless the user says "redo" or "update brief".
+     If "continue": invoke /feature-domains "<slug>" as a sub-agent immediately.
+     If "stop": display `Next: /feature-domains "<slug>"` and stop.
+     Stop if the user says "redo" or "update brief" — proceed with re-scoping.
    - If stage is `scoping` and substage is `in-progress`:
      Display the opening header, then say "Scoping was in progress — resuming
      from last checkpoint." Re-display the last saved brief draft if it exists

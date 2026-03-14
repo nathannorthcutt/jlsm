@@ -134,6 +134,19 @@ NEXT STEP
   <one sentence explaining why>
 ```
 
+**Auto-invoke rules** (apply after displaying the NEXT STEP block):
+
+- If the next step resolves to `/feature-plan` (stage is `domains/complete` or
+  `planning/in-progress`): invoke `/feature-plan "<slug>"` as a sub-agent
+  immediately. Planning requires no external action to proceed.
+
+- If `automation_mode: autonomous` AND the next step resolves to
+  `/feature-implement` or `/feature-refactor` (stages `testing/complete`,
+  `implementation/in-progress`, or `implementation/complete`): invoke the
+  appropriate command as a sub-agent immediately. A crash should not break
+  the autonomous loop — resuming after a crash is equivalent to re-entering
+  the same stage that was interrupted.
+
 For pending domain commissions, list each:
 ```
 PENDING DOMAINS — complete these before re-running /feature-domains:

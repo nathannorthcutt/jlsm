@@ -19,4 +19,4 @@ Path is .kb/<topic>/<category>/<subject>.md — both values required.
 
 ## Pre-flight guard
 Before Step 0 of /research, check that .kb/CLAUDE.md exists.
-If missing, stop and say: "The knowledge base has not been initialised. Run /setup first."
+If missing, stop and say: "The knowledge base has not been initialised. Run /setup-vallorcine first."
