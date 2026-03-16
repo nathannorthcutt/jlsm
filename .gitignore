@@ -32,7 +32,9 @@ Thumbs.db
 perf-scratch/
 perf-output/**/*.collapsed
 perf-output/**/*.jfr
+perf-output/**/results.json
 perf-output/**/*-results.json
 perf-output/**/run-manifest.json
 perf-output/**/latest-*
+perf-output/**/gc.log
 !perf-output/findings.md
