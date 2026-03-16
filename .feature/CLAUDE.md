@@ -10,6 +10,7 @@
 | Feature | Slug | Started | Stage | Last Checkpoint |
 |---------|------|---------|-------|-----------------|
 | Float16 vector support | float16-vector-support | 2026-03-12 | refactor/complete | cycle 1 — all tests passing, check clean |
+| Table indices and queries | table-indices-and-queries | 2026-03-16 | WU-1 complete | cycle 1 clean, WU-2 ready |
 
 ## Completed / Archived
 

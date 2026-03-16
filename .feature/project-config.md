@@ -1,6 +1,6 @@
 ---
 created: "2026-03-12"
-last_updated: "2026-03-12"
+last_updated: "2026-03-16"
 ---
 
 # Project Configuration
@@ -24,7 +24,7 @@ last_updated: "2026-03-12"
 
 ## Source Layout
 **Source directory:** `src/main/java` (per module, standard Gradle layout)
-**Module/package structure:** 4 main modules (`jlsm-core`, `jlsm-indexing`, `jlsm-vector`, `jlsm-table`), 1 integration test module (`tests/jlsm-remote-integration`), 2 benchmark modules, 1 example module. All under `modules/`, `tests/`, `benchmarks/`, `examples/` directories. Each module has its own `module-info.java` (JPMS).
+**Module/package structure:** 4 main modules (`jlsm-core`, `jlsm-indexing`, `jlsm-vector`, `jlsm-table`), 1 integration test module (`tests/jlsm-remote-integration`), 2 benchmark modules (`benchmarks/jlsm-bloom-benchmarks`, `benchmarks/jlsm-tree-benchmarks`), 1 example module (`examples/sample-db`). All under `modules/`, `tests/`, `benchmarks/`, `examples/` directories. Each module has its own `module-info.java` (JPMS).
 
 ## Style & Quality
 **Style guide:** Eclipse formatter (`config/eclipse/eclipse-formatter.xml`) + Checkstyle 10.21.4 (`config/checkstyle/checkstyle.xml`)
