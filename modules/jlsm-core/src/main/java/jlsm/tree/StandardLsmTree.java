@@ -305,13 +305,19 @@ public final class StandardLsmTree implements LsmTree {
             } catch (IOException e) {
                 if (deferred == null)
                     deferred = e;
+                else
+                    deferred.addSuppressed(e);
             }
         }
 
         if (compactor instanceof AutoCloseable ac) {
             try {
                 ac.close();
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                if (deferred == null && e instanceof IOException io)
+                    deferred = io;
+                else if (deferred != null)
+                    deferred.addSuppressed(e);
             }
         }
 

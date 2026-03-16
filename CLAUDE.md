@@ -4,7 +4,8 @@
 `jlsm` is a pure Java 25 modular library implementing LSM-Tree components. Composable —
 consumers use individual components to build key-value stores, vector indices, etc.
 
-Modules: `jlsm-core` (interfaces + implementations), `jlsm-indexing`, `jlsm-vector`.
+Modules: `jlsm-core` (interfaces + implementations), `jlsm-indexing`, `jlsm-vector`,
+`jlsm-table` (document model + secondary indices), `jlsm-sql` (SQL parser/translator).
 
 ## Technology Stack
 - **Java 25** — use modern language features; target version is 25

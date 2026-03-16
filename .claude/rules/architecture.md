@@ -1,6 +1,10 @@
 ## Architecture
 
-The library is organized as a Gradle multi-project build where each subproject is a distinct JPMS module. All interfaces and implementations live in `jlsm-core`; higher-level modules (`jlsm-indexing`, `jlsm-vector`) depend only on `jlsm-core` and add domain-specific index structures on top.
+The library is organized as a Gradle multi-project build where each subproject is a distinct JPMS module. All interfaces and implementations live in `jlsm-core`; higher-level modules build on top in layers:
+
+- `jlsm-indexing` and `jlsm-vector` depend only on `jlsm-core` (domain-specific index structures)
+- `jlsm-table` depends on `jlsm-core` (document model, secondary indices, fluent query API)
+- `jlsm-sql` depends on `jlsm-table` (SQL SELECT parser and translator)
 
 ### Core LSM-Tree Components
 
@@ -17,7 +21,7 @@ The canonical LSM-Tree pipeline — **write path**: WAL → MemTable → flush t
 
 ### Key Design Principles
 
-- **Interfaces and implementations in jlsm-core** — all contracts and their implementations live in `jlsm-core`; higher-level modules (`jlsm-indexing`, `jlsm-vector`) depend only on `jlsm-core`
+- **Interfaces and implementations in jlsm-core** — all contracts and their implementations live in `jlsm-core`; higher-level modules layer on top (see dependency graph above)
 - **No external runtime dependencies** — this is a pure library; avoid pulling in third-party frameworks
 - **Designed for composition** — consumers wire components together; the library does not mandate a single configuration
 - **Java NIO / memory-mapped I/O** — prefer `java.nio` for SSTable and WAL file operations
@@ -33,8 +37,16 @@ jlsm-core/          # ALL interfaces AND all implementations (bloom, wal, memtab
                     #   jlsm.compaction.internal, jlsm.tree.internal
 jlsm-indexing/      # Higher-level index structures: inverted index (LsmInvertedIndex)
 jlsm-vector/        # Vector index: IvfFlat, Hnsw backed by LSM tree; uses jdk.incubator.vector
+jlsm-table/         # Document model, schema, secondary indices, fluent query API
+                    #   Internal packages (not exported): jlsm.table.internal
+jlsm-sql/           # SQL SELECT parser and translator; depends on jlsm-table
 tests/
   jlsm-remote-integration/  # Integration tests against remote (S3) backends
+examples/
+  sample-db/         # Example application wiring components together
+benchmarks/
+  jlsm-bloom-benchmarks/    # JMH benchmarks for bloom filter implementations
+  jlsm-tree-benchmarks/     # JMH benchmarks for LSM tree operations
 ```
 
 Each module directory contains its own `build.gradle` and `src/main/java/module-info.java`.
