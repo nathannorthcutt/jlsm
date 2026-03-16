@@ -1,0 +1,24 @@
+plugins {
+    id 'java'
+    id 'me.champeau.jmh' version '0.7.2'
+}
+
+dependencies {
+    // All modules available — scratch benchmarks can target any component
+    implementation project(':modules:jlsm-core')
+    implementation project(':modules:jlsm-indexing')
+    implementation project(':modules:jlsm-vector')
+    implementation project(':modules:jlsm-table')
+    implementation project(':modules:jlsm-sql')
+}
+
+// Point JMH source at the project-root perf-scratch/ directory
+sourceSets {
+    jmh {
+        java {
+            srcDirs = ["${rootDir}/perf-scratch"]
+        }
+    }
+}
+
+apply from: "${rootDir}/benchmarks/jmh-common.gradle"

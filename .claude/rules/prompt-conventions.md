@@ -51,7 +51,7 @@ Example — genuine divergence (no safe default, explicit choice required):
 ```
 
 Use the numbered format sparingly — only when there is no safe default and both
-paths are meaningfully different. The complexity override in /quick is one case.
+paths are meaningfully different. The complexity override in /feature-quick is one case.
 The cycle-6 continuation in /feature-refactor is another.
 
 ## Scoping questions

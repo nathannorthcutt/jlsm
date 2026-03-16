@@ -16,9 +16,9 @@ Read `.feature/<slug>/status.md`.
 Domain analysis is already complete for '<slug>'.
 Domains: .feature/<slug>/domains.md
 
-  Type: continue  to proceed to work planning  ·  or: stop
+  Type **yes**  to proceed to work planning  ·  or: stop
 ```
-If "continue": invoke /feature-plan "<slug>" as a sub-agent immediately.
+If "yes": invoke /feature-plan "<slug>" as a sub-agent immediately.
 If "stop": display `Next: /feature-plan "<slug>"` and stop.
 
 **If Domains stage is `in-progress`:**
@@ -48,6 +48,12 @@ Display opening header:
 
 ---
 
+## Step 0b — Token tracking
+
+Run silently: `bash -c 'source .claude/scripts/token-usage.sh && token_checkpoint ".feature/<slug>" "domains"'`
+
+---
+
 ## Step 1 — Extract domains from the brief
 
 Read `brief.md` in full. Identify distinct technical domains — areas where an
@@ -74,26 +80,73 @@ here doesn't lose the domain list.
 For each pending domain:
 1. Read `.kb/CLAUDE.md` — check for relevant topic/category
 2. Read `.decisions/CLAUDE.md` — check for relevant ADR
-3. Classify:
-   - `resolved` — sufficient ADR and/or KB coverage exists
-   - `pending-research` — KB gap, research needed
-   - `pending-decision` — KB exists but no ADR for this decision
-   - `skipped` — user confirmed proceeding without coverage
+3. Classify using the rules below
+
+### Classification rules
+
+**`resolved`** — an existing ADR explicitly covers this domain's decision.
+The ADR must actually exist in `.decisions/` with a confirmed decision (`status:
+accepted` or `status: confirmed`). The Domain Scout's own reasoning that
+something is "well-understood" or "standard practice" does NOT count as
+resolution. If no ADR exists, the domain is not resolved.
+
+**Draft ADRs** (`status: draft`) do NOT count as resolved. Display a warning:
+```
+  ⚠ DRAFT ADR    <domain> — .decisions/<slug>/adr.md (draft — not yet deliberated)
+```
+Classify the domain as `pending-decision`. The user can proceed (the draft
+provides context) or formalize first via `/decisions review "<slug>"`.
+
+**`pending-decision`** — any domain that involves a design choice, even if the
+answer seems obvious. Specifically:
+- A choice between approaches (storage model A vs B, API shape X vs Y)
+- A data model or schema design (table structure, index strategy, encoding)
+- An integration boundary (how modules compose, what depends on what)
+- A performance/correctness tradeoff
+- Any domain where the guidance section would contain design rationale
+
+The Domain Scout MUST NOT self-resolve these by reasoning about what the "right"
+answer is. That is the Architect Agent's job. The scout identifies domains and
+checks for existing coverage — it does not make architectural decisions.
+
+**`pending-research`** — KB gap exists and research is needed before a decision
+can be made (or the domain is purely informational with no decision component).
+
+**`skipped`** — user explicitly confirmed proceeding without coverage.
+
+### When in doubt: `pending-decision`
+
+If a domain could be `resolved` (because the answer seems obvious) or
+`pending-decision` (because no ADR exists), classify it as `pending-decision`.
+The Architect Agent's deliberation is cheap; an undocumented design assumption
+baked into the implementation is expensive to change later.
 
 Update the Domain Resolution Tracker in status.md immediately after classifying
 each domain (don't wait until all are done — crash safety).
+
+**Decision candidates notice:** After classification, check if
+`.decisions/.decision-candidates` exists and has `status: new` entries. If so,
+append to the domain coverage display:
+```
+  ℹ <n> undocumented decision candidates from recent sessions.
+    Run /decisions candidates to review.
+```
 
 Display:
 ```
 ── Domain coverage ─────────────────────────────
   ✓ RESOLVED          <domain> — ADR: .decisions/<slug>/adr.md
+  ⚠ DRAFT ADR         <domain> — .decisions/<slug>/adr.md (draft — not yet deliberated)
   ⚠ PENDING-RESEARCH  <domain> — no KB entry for <topic/category>
-  ⚠ PENDING-DECISION  <domain> — KB has <entry>, no ADR yet
+  ⚠ PENDING-DECISION  <domain> — no ADR for this design choice
 ```
 
 ---
 
-## Step 3 — Commission missing work (pending domains only)
+## Step 3 — Resolve missing work (pending domains only)
+
+Process each pending domain in order. For each one, resolve it before moving
+to the next — don't batch commissions and leave them for the user.
 
 ### If research is missing
 
@@ -104,41 +157,75 @@ Display:
 ```
 ── Research needed ─────────────────────────────
   Domain: <domain>
-  Run: /research <topic> <category> "<subject>"
-  Then re-run: /feature-domains "<slug>"
+  Topic: <topic> / <category> / "<subject>"
 
-  Or confirm to proceed without this research (gap will be noted in domains.md).
+  Launching research to fill this gap.
+
+  Type **yes** to research now · or: skip (gap will be noted in domains.md)
 ```
 Append `domains-research-commissioned` to cycle-log.md. Wait for user response.
+
+If "yes" (or any response other than "skip"):
+- Invoke `/research <topic> <category> "<subject>"` as a sub-agent immediately
+- After research completes, verify the KB entry now exists
+- If yes → mark domain `resolved` in status.md, display `✓ <domain> — resolved`
+- If research failed or was incomplete → mark `gap-noted`, continue
+
+If "skip": mark domain `skipped` in status.md, note gap in domains.md.
 
 ### If an architectural decision is missing
 
 Update Domain Resolution Tracker: status → `pending-decision`, commissioned → today's date.
 
+Architectural decisions that affect system structure — data models, indexing
+strategies, protocol choices, API boundaries, storage engines — should be
+resolved through the Architect Agent rather than decided implicitly during
+planning or implementation.
+
+**Detection signals** (any one is sufficient to classify as `pending-decision`):
+- The domain involves a choice between competing approaches (e.g., table
+  structure A vs B, index type X vs Y)
+- The domain has cross-cutting implications (affects multiple constructs or
+  future features)
+- The domain involves an external system boundary (storage, API, protocol)
+- The domain has constraints that need deliberation (performance vs simplicity,
+  consistency vs availability)
+
 Display:
 ```
 ── Decision needed ─────────────────────────────
   Domain: <domain>
-  KB coverage: <path>
-  Run: /architect "<decision problem>"
-  Then re-run: /feature-domains "<slug>"
+  KB coverage: <path or "none">
+  Decision: "<one-sentence framing of the architectural choice>"
 
-  Or confirm to proceed without a formal decision.
+  Launching architect to deliberate.
+
+  Type **yes** to decide now · or: skip (proceeds without formal ADR)
 ```
 Append `domains-decision-commissioned` to cycle-log.md. Wait for user response.
 
+If "yes" (or any response other than "skip"):
+- Invoke `/architect "<decision problem>"` as a sub-agent immediately
+- After architect completes, check if ADR's log.md contains a
+  `decision-confirmed` entry
+- If yes → mark domain `resolved` in status.md, display `✓ <domain> — resolved`
+- If architect session was incomplete → warn and offer to resume:
+  ```
+  ⚠ <domain> — architect session incomplete
+    .decisions/<adr-slug>/log.md has no decision-confirmed entry.
+
+    Type **yes** to resume · or: skip
+  ```
+
+If "skip": mark domain `skipped` in status.md, note gap in domains.md.
+
 ### Verifying commissioned work on resume
 
-When re-running after commissioning:
+When re-running after commissioning (crash recovery):
 - For each domain with status `pending-research`: check if the KB entry now exists.
-  If yes → mark `resolved`. If no → repeat commission message.
+  If yes → mark `resolved`. If no → re-offer research (same flow as above).
 - For each domain with status `pending-decision`: check if the ADR's log.md contains
-  a `decision-confirmed` entry. If yes → mark `resolved`. If no → warn:
-  ```
-  ⚠ <domain> — architect session may be incomplete
-    .decisions/<adr-slug>/log.md has no decision-confirmed entry.
-    Run /decisions review "<adr-slug>" or /architect "<problem>" to complete it.
-  ```
+  a `decision-confirmed` entry. If yes → mark `resolved`. If no → re-offer architect.
 
 ---
 
@@ -149,6 +236,8 @@ After all domains are resolved (or user confirmed proceeding with gaps noted).
 Write `.feature/<slug>/domains.md` (Domains File Template below).
 
 Update status.md: Domains stage → `complete`, last checkpoint → "domains.md written".
+Update the Stage Completion table: Domains row → Est. Tokens `~<N>K` (sum of files
+loaded: brief ~2K + KB/decisions indexes ~2K + any ADR/KB files read).
 
 Append `domains-resolved` to cycle-log.md:
 ```markdown
@@ -166,13 +255,15 @@ Update `.feature/CLAUDE.md` stage column.
 
 ## Step 5 — Hand off
 
+**Token tracking:** run `bash -c 'source .claude/scripts/token-usage.sh && token_summary ".feature/<slug>" "domains"'`
+and capture the output as TOKEN_USAGE. Update the Stage Completion table: Domains
+row → Actual Tokens from TOKEN_USAGE.
+
 Display:
 ```
 ───────────────────────────────────────────────
 🗺️  DOMAIN SCOUT complete · <slug>
-⏱  Token estimate: ~<N>K
-   Loaded: brief ~2K, KB index ~1K, decisions index ~1K<, ADR files ~2-4K each>
-   Wrote:  domains ~3K
+  Tokens : <TOKEN_USAGE>
 ───────────────────────────────────────────────
 Domain analysis written to .feature/<slug>/domains.md
 Resolved: <n> | Gaps noted: <n>
@@ -181,12 +272,12 @@ Review the domain analysis above — the Work Planner will build the implementat
 structure from these constraints and ADRs.
 
 ───────────────────────────────────────────────
-  ↵  continue to work planning  ·  or type: stop
+  Type **yes**  ·  or: stop
 ───────────────────────────────────────────────
 ```
 
-If the user presses Enter or says yes: invoke /feature-plan "<slug>" as a sub-agent immediately.
-If the user types stop or no:
+If "yes": invoke /feature-plan "<slug>" as a sub-agent immediately.
+If "stop":
 ```
 When you're ready:
   /feature-plan "<slug>"

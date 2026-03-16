@@ -46,8 +46,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
     private DataBlock currentBlock = new DataBlock();
     private long writePosition = 0L;
 
-    // Index: parallel lists of keys + file offsets (offset of entry start within the block data)
-    private final List<MemorySegment> indexKeys = new ArrayList<>();
+    // Index: parallel lists of keys (raw byte[]) + file offsets
+    private final List<byte[]> indexKeys = new ArrayList<>();
     private final List<Long> indexOffsets = new ArrayList<>();
 
     // Bloom filter
@@ -121,24 +121,26 @@ public final class TrieSSTableWriter implements SSTableWriter {
             }
         }
 
-        byte[] encoded = EntryCodec.encode(entry);
+        // Encode using the already-extracted key bytes to avoid a redundant toArray
+        byte[] encoded = EntryCodec.encode(entry, keyBytes);
 
         // Absolute file offset of this entry: block start + block's current byte size.
         // currentBlock.byteSize() includes the 4-byte count header plus all previously encoded
         // entries, so this points to the byte immediately after the last written entry.
         long entryAbsOffset = writePosition + currentBlock.byteSize();
 
-        indexKeys.add(MemorySegment.ofArray(keyBytes));
+        // Store raw byte[] — avoids MemorySegment round-trip in writeKeyIndex
+        indexKeys.add(keyBytes);
         indexOffsets.add(entryAbsOffset);
 
         currentBlock.add(encoded);
         approximateSizeBytes += encoded.length;
 
-        // Update stats
+        // Update stats — reuse keyBytes; clone only for smallest (first entry)
         SequenceNumber seq = entry.sequenceNumber();
         if (smallestKey == null)
             smallestKey = MemorySegment.ofArray(keyBytes.clone());
-        largestKey = MemorySegment.ofArray(keyBytes.clone());
+        largestKey = MemorySegment.ofArray(keyBytes);
 
         if (minSequence == null || seq.compareTo(minSequence) < 0)
             minSequence = seq;
@@ -184,8 +186,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
 
         // Build bloom filter
         bloomFilter = bloomFactory.create((int) Math.max(1, entryCount));
-        for (MemorySegment key : indexKeys) {
-            bloomFilter.add(key);
+        for (byte[] key : indexKeys) {
+            bloomFilter.add(MemorySegment.ofArray(key));
         }
 
         // Write key index
@@ -220,8 +222,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
         // count: 4 bytes
         // per key: 4 (keyLen) + keyBytes + 8 (offset)
         int indexSize = 4;
-        for (MemorySegment k : indexKeys) {
-            indexSize += 4 + (int) k.byteSize() + 8;
+        for (byte[] k : indexKeys) {
+            indexSize += 4 + k.length + 8;
         }
         byte[] buf = new byte[indexSize];
         int off = 0;
@@ -232,7 +234,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
         buf[off++] = (byte) numKeys;
 
         for (int i = 0; i < numKeys; i++) {
-            byte[] keyBytes = indexKeys.get(i).toArray(ValueLayout.JAVA_BYTE);
+            byte[] keyBytes = indexKeys.get(i);
             int keyLen = keyBytes.length;
             buf[off++] = (byte) (keyLen >>> 24);
             buf[off++] = (byte) (keyLen >>> 16);

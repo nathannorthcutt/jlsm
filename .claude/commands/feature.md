@@ -17,9 +17,9 @@ brief.md, and initialises status.md as the restart checkpoint.
      Scoping is already complete for '<slug>'.
      Brief: .feature/<slug>/brief.md
 
-       Type: continue  to proceed to domain analysis  ·  or: stop
+       Type **yes**  to proceed to domain analysis  ·  or: stop
      ```
-     If "continue": invoke /feature-domains "<slug>" as a sub-agent immediately.
+     If "yes": invoke /feature-domains "<slug>" as a sub-agent immediately.
      If "stop": display `Next: /feature-domains "<slug>"` and stop.
      Stop if the user says "redo" or "update brief" — proceed with re-scoping.
    - If stage is `scoping` and substage is `in-progress`:
@@ -37,6 +37,8 @@ brief.md, and initialises status.md as the restart checkpoint.
 - Create `.feature/<slug>/` directory
 - Write initial `status.md` (see Status File Template below) with stage `scoping`,
   substage `interviewing`
+- **Token tracking:** run `bash -c 'source .claude/scripts/token-usage.sh && token_checkpoint ".feature/<slug>" "scoping"'`
+  (silently — no output to the user)
 
 Display opening header immediately:
 ```
@@ -51,6 +53,11 @@ Display opening header immediately:
 
 Read `.feature/project-config.md`. If missing: stop and say
   "Run /feature-init to set up the project profile first."
+
+If `PROJECT-CONTEXT.md` exists in the project root: read the `## Active` section.
+Use global entries and any scoped entries matching the feature description to
+inform the scoping interview. Do not ask questions that active context entries
+already answer.
 
 ---
 
@@ -194,6 +201,7 @@ This file is append-only. Each agent appends entries. Nothing is edited or delet
 ```
 
 Update `status.md`: stage → `scoping`, substage → `complete`.
+Update the Stage Completion table: Scoping row → Est. Tokens `~5K`, status → `complete`.
 Remove the `## Draft Brief` section from status.md now that brief.md is written.
 Update `.feature/CLAUDE.md` Active Features table.
 
@@ -201,26 +209,56 @@ Update `.feature/CLAUDE.md` Active Features table.
 
 ## Step 5 — Hand off
 
+**Token tracking:** run `bash -c 'source .claude/scripts/token-usage.sh && token_summary ".feature/<slug>" "scoping"'`
+and capture the output as TOKEN_USAGE. Update the Stage Completion table: Scoping
+row → Actual Tokens from TOKEN_USAGE (extract the `<N>K in / <N>K out` values).
+
 Display:
 ```
 ───────────────────────────────────────────────
 🔍 SCOPING AGENT complete · <slug>
-⏱  Token estimate: ~<N>K
-   Loaded: project-config ~1K
-   Wrote:  brief ~2K, status ~1K, cycle-log ~1K
+  Tokens : <TOKEN_USAGE>
 ───────────────────────────────────────────────
 Brief written to .feature/<slug>/brief.md
 
 Take a moment to review the brief before continuing — domain analysis builds
 directly on it and fixing scope issues now is much cheaper than later.
+```
 
+### Step 5a — Feature branch
+
+Read `branch_naming` from `.feature/project-config.md`.
+
+**If `branch_naming: none` or project-config.md does not exist:** skip this step.
+
+**If a branch naming convention is defined:**
+
+Expand the convention by substituting `<slug>` with the feature slug.
+Check the current git branch (`git branch --show-current`). If already on a
+branch that matches the convention, skip silently — branch already created.
+
+Display:
+```
+── Feature branch ──────────────────────────────
+  Suggested branch: <expanded branch name>
+
+  Type: create  to checkout a new branch now  ·  or: skip
+```
+
+If "create": run `git checkout -b <branch-name>`. Display the result.
+If the branch already exists locally, run `git checkout <branch-name>` instead.
+If "skip": continue without creating a branch.
+
+### Step 5b — Continue
+
+```
 ───────────────────────────────────────────────
-  ↵  continue to domain analysis  ·  or type: stop
+  Type **yes**  ·  or: stop
 ───────────────────────────────────────────────
 ```
 
-If the user presses Enter or says yes: invoke /feature-domains "<slug>" as a sub-agent immediately.
-If the user types stop or no:
+If "yes": invoke /feature-domains "<slug>" as a sub-agent immediately.
+If "stop":
 ```
 When you're ready:
   /feature-domains "<slug>"
@@ -231,6 +269,28 @@ When you're ready:
 ## Status File Template
 
 Written at Step 0, updated in-place by every agent throughout the pipeline.
+
+### Token tracking in Stage Completion table
+
+Every pipeline agent updates the Stage Completion table with token data:
+
+**Est. Tokens** — written at stage start. The agent's estimate of context window
+load for this stage, derived from the construct count and file sizes. Format:
+`~<N>K` (e.g., `~8K`, `~15K`). Based on:
+- Scoping: project-config (~1K) + brief writing (~2K) + status (~1K)
+- Domains: brief (~2K) + KB/decisions indexes (~2K) + ADR files loaded
+- Planning: brief (~2K) + domains (~3K) + ADRs + source scan
+- Testing: project-config (~1K) + brief (~2K) + work-plan section (~2K)
+- Implementation: work-plan section (~2K) + test files (~3K) + stubs (~1K)
+- Refactor: project-config (~1K) + work-plan (~2K) + impl files + test files
+
+**Actual Tokens** — written at stage completion. Captured from the `token_summary`
+shell output. Format: `<N>K in / <N>K out` (e.g., `12K in / 8K out`). If
+`token_summary` returns "unknown", write `unknown`.
+
+When each stage completes and calls `token_summary`, also update the Stage
+Completion row for that stage with the actual token values. The estimate is
+written when the stage begins (or when the work unit analysis calculates load).
 
 ```markdown
 ---
@@ -246,17 +306,18 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 **Substage:** interviewing
 **Last successful checkpoint:** feature directory created
 **Automation mode:** not-set
+**Execution strategy:** not-set
 
 ## Stage Completion
 
-| Stage | Status | Completed | Notes |
-|-------|--------|-----------|-------|
-| Scoping | in-progress | — | |
-| Domains | not-started | — | |
-| Planning | not-started | — | |
-| Testing | not-started | — | cycle 0 |
-| Implementation | not-started | — | cycle 0 |
-| Refactor | not-started | — | cycle 0 |
+| Stage | Status | Completed | Est. Tokens | Actual Tokens | Notes |
+|-------|--------|-----------|-------------|---------------|-------|
+| Scoping | in-progress | — | — | — | |
+| Domains | not-started | — | — | — | |
+| Planning | not-started | — | — | — | |
+| Testing | not-started | — | — | — | cycle 0 |
+| Implementation | not-started | — | — | — | cycle 0 |
+| Refactor | not-started | — | — | — | cycle 0 |
 
 ## Domain Resolution Tracker
 <!-- Populated by /feature-domains -->
@@ -267,6 +328,8 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 ## Work Units
 <!-- Populated by /feature-plan if feature is split into units -->
 <!-- work_units: none  ← set this if no split was done -->
+<!-- execution_strategy: not-set -->
+<!-- current_batch: 0 -->
 
 | Unit | Name | Constructs | Depends On | Status | Cycle |
 |------|------|------------|------------|--------|-------|

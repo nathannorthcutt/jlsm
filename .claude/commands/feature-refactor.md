@@ -24,6 +24,23 @@ If work units are defined:
   refactored (all other units are `complete`). Skip 2f for intermediate units
   and note: "Integration tests deferred — not the final work unit."
 
+### Per-unit path resolution (parallel mode)
+
+If `execution_strategy` is `balanced` or `speed` in feature-level status.md:
+```
+unit_status = .feature/<slug>/units/WU-<n>/status.md
+unit_log = .feature/<slug>/units/WU-<n>/cycle-log.md
+```
+Else:
+```
+unit_status = .feature/<slug>/status.md
+unit_log = .feature/<slug>/cycle-log.md
+```
+
+All status.md reads/writes for stage, substage, cycle tracker → use `unit_status`.
+All cycle-log.md appends → use `unit_log`.
+Feature-level status.md Work Units table → still update unit status there too.
+
 Display opening header with unit if applicable:
 ```
 ───────────────────────────────────────────────
@@ -58,7 +75,7 @@ Stop.
 - Say: "Refactor was in progress at: <substage>. Resuming from there."
 - Jump to the appropriate checklist item in this order:
   2a coding-standards → 2b duplication → 2c security → 2d performance →
-  2e missing-tests → 2f integration-tests → Step 4 final-lint
+  2e missing-tests → 2f integration-tests → 2g documentation → Step 4 final-lint
 
 **If Refactor is `not-started`:**
 - Verify cycle-log.md has an `implemented` entry for this cycle.
@@ -72,6 +89,12 @@ Display opening header:
 ✨ REFACTOR AGENT · <slug> · Cycle <n>
 ───────────────────────────────────────────────
 ```
+
+---
+
+## Step 0b — Token tracking
+
+Run silently: `bash -c 'source .claude/scripts/token-usage.sh && token_checkpoint ".feature/<slug>" "refactor"'`
 
 ---
 
@@ -140,10 +163,9 @@ This issue may affect other units or require interface changes:
 
   <description of issue and why it can't be self-contained>
 
-  ↵  I'll handle it, continue
-  or type: stop  to review before continuing
+  Type **yes**  ·  or: stop  to review before continuing
 ```
-Wait for input. If Enter: continue the refactor and resume chaining if autonomous.
+Wait for input. If "yes": continue the refactor and resume chaining if autonomous.
 If "stop": complete the current checklist item, write the log entry, then stop.
 
 ### 2e — Missing tests
@@ -162,6 +184,9 @@ If missing tests are found → see Step 3 (escalate, do not continue).
 ### 2f — Integration tests
 `status.md substage → "refactor: integration-tests"`
 `Display: ── Integration tests ───────────────────────`
+
+**Parallel mode (`execution_strategy` is `balanced` or `speed`):** skip 2f entirely.
+Display: "Integration tests deferred to coordinator." Continue to Step 4.
 
 Only run this step if all unit tests are passing and no missing-test escalation
 was triggered in 2e.
@@ -220,6 +245,49 @@ Manual check needed before merging: <path>
 ```
 
 If not found: skip silently and continue.
+
+### 2g — Documentation
+`status.md substage → "refactor: documentation"`
+`Display: ── Documentation ────────────────────────────`
+
+Check whether this feature added, renamed, or changed constructs that are
+covered by existing project documentation. Scan for:
+
+- **README.md** / **CONTRIBUTING.md** — do they reference modules, APIs, or
+  patterns that this feature changed?
+- **docs/ directory** (if it exists) — any files that describe the area this
+  feature touches?
+- **Module-level documentation** — package-info.java, module docstrings,
+  `__init__.py` module docs, Go package comments
+- **API documentation** — if the feature changed public API signatures that are
+  documented (OpenAPI specs, generated docs, etc.)
+- **Inline architecture notes** — README files in subdirectories that describe
+  the module's purpose or structure
+
+For each documentation file that references something this feature changed:
+
+1. Read the doc file
+2. Check whether the documentation is still accurate given the implementation
+3. If inaccurate or incomplete: update it to reflect the current state
+4. If a new module/package was created and the project has documentation
+   conventions (e.g., README per module): create the expected documentation
+
+**What NOT to update:**
+- Changelog entries (handled by `/feature-pr` and `/feature-retro`)
+- vallorcine's own working files (status.md, cycle-log.md, etc.)
+- Test documentation (tests are self-documenting)
+- Comments in code that were already addressed in 2a
+
+Display findings:
+```
+  Documentation updates:
+    ✓ README.md — updated API section for new <construct>
+    ✓ docs/architecture.md — added <module> description
+    · No documentation found for <new module> (no convention detected)
+```
+
+Run tests after changes (documentation changes should not break tests, but
+verify anyway).
 
 ---
 
@@ -300,6 +368,8 @@ Update status.md:
 - Refactor cycle N → `complete`
 - TDD Cycle Tracker: Refactor done → today, Missing tests → <n found>
 - substage → "refactor complete"
+- Stage Completion table: Refactor row → Est. Tokens `~<N>K` (project-config ~1K +
+  work-plan ~2K + all impl files + all test files)
 
 If no further cycles needed: update status.md Refactor stage → `complete`.
 
@@ -322,7 +392,26 @@ Update `.feature/CLAUDE.md`.
 
 Read `automation_mode` from status.md.
 
-**If more work units remain (not the final unit):**
+**Token tracking:** run `bash -c 'source .claude/scripts/token-usage.sh && token_summary ".feature/<slug>" "refactor"'`
+and capture the output as TOKEN_USAGE. Update the Stage Completion table: Refactor
+row → Actual Tokens from TOKEN_USAGE.
+
+**If `execution_strategy` is `balanced` or `speed` (parallel mode):**
+
+Mark unit complete in per-unit `unit_status`.
+Mark unit complete in feature-level Work Units table.
+Do NOT chain to next unit or PR — the coordinator handles that.
+
+```
+───────────────────────────────────────────────
+✨ REFACTOR AGENT complete · <slug> · WU-<n>
+  Tokens : <TOKEN_USAGE>
+───────────────────────────────────────────────
+Unit complete. Returning to coordinator.
+```
+STOP. (Coordinator launched this as subagent; returning is sufficient.)
+
+**If more work units remain (not the final unit) — sequential/cost mode only:**
 
 — Autonomous:
 ```
@@ -342,18 +431,42 @@ Invoke `/feature-test "<slug>" --unit WU-<next>` immediately.
 ───────────────────────────────────────────────
 ✨ REFACTOR AGENT complete · <slug> · Cycle <n> · WU-<n>
 ───────────────────────────────────────────────
-  ↵  start tests for WU-<next>  ·  or type: stop
+  Type **yes**  ·  or: stop
 ```
-If Enter: invoke `/feature-test "<slug>" --unit WU-<next>`.
+If "yes": invoke `/feature-test "<slug>" --unit WU-<next>`.
 If "stop": display the manual command and stop.
 
-**If this is the final (or only) unit and refactor is clean:**
+**If this is the final (or only) unit and refactor is clean — sequential/cost mode only:**
 
-— Autonomous:
+Read the Stage Completion table from status.md and display a token summary:
+
 ```
 ───────────────────────────────────────────────
 ✨ REFACTOR AGENT complete · <slug> · Cycle <n>
 ───────────────────────────────────────────────
+Refactor cycle <n> complete. <n> tests passing.
+
+── Token Summary ──────────────────────────────
+  | Stage          | Est.   | Actual           | Δ      |
+  |----------------|--------|------------------|--------|
+  | Scoping        | ~5K    | 4.2K in / 3K out | -16%   |
+  | Domains        | ~6K    | 8.1K in / 2K out | +35%   |
+  | Planning       | ~8K    | 7.5K in / 5K out | -6%    |
+  | Testing        | ~5K    | 6.0K in / 4K out | +20%   |
+  | Implementation | ~8K    | 9.2K in / 7K out | +15%   |
+  | Refactor       | ~6K    | 5.8K in / 3K out | -3%    |
+  |----------------|--------|------------------|--------|
+  | Total          | ~38K   | 40.8K in / 24K out       |
+───────────────────────────────────────────────
+```
+
+The Δ column compares estimated tokens to actual input tokens:
+`((actual_input - estimate) / estimate × 100)`, rounded to nearest integer.
+Only show for stages with both values present. Parse actual input tokens from
+the "Actual Tokens" column (the number before "in").
+
+— Autonomous:
+```
 All units complete. Starting PR draft  ·  type stop to pause
 ───────────────────────────────────────────────
 ```
@@ -361,16 +474,12 @@ Invoke `/feature-pr "<slug>"` immediately.
 
 — Manual:
 ```
-───────────────────────────────────────────────
-✨ REFACTOR AGENT complete · <slug> · Cycle <n>
-⏱  Token estimate: ~<N>K
-───────────────────────────────────────────────
-Refactor cycle <n> complete. <n> tests passing.
 Feature is ready for review.
 
-  ↵  draft the PR now  ·  or type: stop
+  Type **yes**  ·  or: stop
+───────────────────────────────────────────────
 ```
-If Enter: invoke `/feature-pr "<slug>"`.
+If "yes": invoke `/feature-pr "<slug>"`.
 If "stop": display manual commands and stop.
 
 **If missing tests escalation triggered (either mode):**
@@ -382,8 +491,8 @@ If "stop": display manual commands and stop.
 Missing tests found — handing to Test Writer.
 <If autonomous:> Pausing — missing tests require your review.
 
-  ↵  add missing tests now  ·  or type: stop
+  Type **yes**  ·  or: stop
 ```
 Wait for input regardless of automation_mode — missing tests are always a
-human checkpoint. If Enter: invoke `/feature-test "<slug>" --add-missing`.
+human checkpoint. If "yes": invoke `/feature-test "<slug>" --add-missing`.
 If "stop": display the manual sequence and stop.

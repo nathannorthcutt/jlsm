@@ -1,4 +1,4 @@
-# /feature-resume "<feature-slug>" [--status] [--share]
+# /feature-resume "<feature-slug>" [--status] [--share] [--list]
 
 Tells you exactly where a feature is and what to run next.
 Use this after any interruption, crash, or context switch.
@@ -7,8 +7,34 @@ Use this after any interruption, crash, or context switch.
 - (no flag) — navigation mode: current position, stage progress, next command
 - `--status` — session briefing mode: what was done, current blockers, next agenda
 - `--share` — condensed standup/team format (implies --status)
+- `--list` — list all active features with their current stage (ignores slug argument)
 
-Works for both `/feature` and `/quick` slugs.
+Works for both `/feature` and `/feature-quick` slugs.
+
+---
+
+## Step 0 — List mode (--list)
+
+If `--list` flag is set:
+
+1. List all directories under `.feature/` (excluding `_archive/` and `project-config.md`)
+2. For each directory, read `status.md` and extract: stage, substage, last updated timestamp
+3. Display:
+
+```
+───────────────────────────────────────────────
+📋 ACTIVE FEATURES
+───────────────────────────────────────────────
+  <slug>            <stage> · <substage>            <last updated>
+  <slug>            <stage> · <substage>            <last updated>
+  <slug>            <stage> · <substage>            <last updated>
+───────────────────────────────────────────────
+```
+
+Sort by last updated (most recent first).
+If no features exist, display: `No active features. Start one with /feature "<description>" or /feature-quick "<description>"`
+
+Stop. Do not continue to other steps.
 
 ---
 
@@ -48,6 +74,8 @@ Substage:   <substage>
 Last checkpoint: <last successful checkpoint>
 Last updated:    <timestamp>
 Automation: <autonomous | manual | not-set (will ask on next /feature-implement)>
+<If execution_strategy is balanced or speed:>
+EXECUTION: parallel (<balanced|speed>)
 
 STAGE PROGRESS
   ✓ Scoping        complete    <date>
@@ -57,6 +85,27 @@ STAGE PROGRESS
   · Implementation not-started
   · Refactor       not-started
 
+TOKEN USAGE (from Stage Completion table in status.md)
+  Read the Stage Completion table and display estimated vs actual:
+
+  | Stage          | Est.   | Actual         | Δ       |
+  |----------------|--------|----------------|---------|
+  | Scoping        | ~5K    | 4.2K in / 3K out | -16%  |
+  | Domains        | ~6K    | 8.1K in / 2K out | +35%  |
+  | Planning       | ~8K    | 7.5K in / 5K out | -6%   |
+  | Testing        | ~5K    | —              | —       |
+  | Implementation | —      | —              | —       |
+  | Refactor       | —      | —              | —       |
+  | **Total**      | **~24K** | **19.8K in / 10K out** | |
+
+  The Δ column compares estimated tokens to actual input tokens.
+  Calculate as: ((actual_input - estimate) / estimate × 100), rounded.
+  Only show for completed stages with both values present.
+
+  If token-log.md also exists, additionally run:
+  `bash -c 'source .claude/scripts/token-usage.sh && token_report ".feature/<slug>"'`
+  and display below the comparison table.
+
 DOMAIN STATUS (if domains stage was reached)
   ✓ <domain>   resolved    ADR: .decisions/<adr>/adr.md
   ✓ <domain>   resolved    KB: .kb/<topic>/<cat>/<subject>.md
@@ -65,6 +114,9 @@ DOMAIN STATUS (if domains stage was reached)
 TDD CYCLES (if testing was reached)
   Cycle 1: tests <date> | passing <date or "—"> | refactor <date or "—"> | missing: <n>
   Cycle 2: ...
+
+<If .decisions/.decision-candidates has status: new entries:>
+  ℹ <n> decision candidates pending review (/decisions candidates)
 ───────────────────────────────────────────────
 ```
 
@@ -83,17 +135,39 @@ If work units are defined, determine the precise next command:
 3. If all units are `complete` → feature is ready for `/feature-pr`
 4. If a unit is `blocked` → its dependencies need to complete first
 
-Display the work unit table as part of the resume output:
+**If `execution_strategy` is `balanced` or `speed`:** read per-unit
+`units/WU-N/status.md` for each unit's current stage/substage and display
+with batch grouping:
+
 ```
 Work units:
-  ✓ WU-1: <n> — complete
-  → WU-2: <n> — in-progress (implementing, cycle 1)   ← active
-  ○ WU-3: <n> — blocked (waiting on WU-2)
+  Batch 1 (complete):
+    ✓ WU-1: <name>
+  Batch 2 (in-progress):
+    ↻ WU-2: <name> — implementing (cycle 1)
+    ↻ WU-3: <name> — testing (cycle 1)
+  Batch 3 (waiting):
+    ○ WU-4: <name> — blocked (waiting on WU-2, WU-3)
 ```
 
-The "Next command" line must include the `--unit` flag:
+**Otherwise (sequential/cost mode):** display the work unit table with dependency
+info as part of the resume output:
 ```
-Next: /feature-implement "<slug>" --unit WU-2
+Work units:
+  ✓ WU-1: <name> — complete
+  → WU-2: <name> — in-progress (implementing, cycle 1)   ← active
+    └─ depends on: WU-1
+  ○ WU-3: <name> — blocked (waiting on WU-2)
+    └─ depends on: WU-1, WU-2
+
+  Progress: <n complete> / <n total>
+```
+
+The "Next command" line must include the `--unit` flag (sequential mode) or
+use the coordinator (parallel mode):
+```
+<sequential:> Next: /feature-implement "<slug>" --unit WU-2
+<parallel:>   Next: /feature-coordinate "<slug>"
 ```
 
 ## Step 3 — Determine and display what to run next
@@ -136,9 +210,17 @@ NEXT STEP
 
 **Auto-invoke rules** (apply after displaying the NEXT STEP block):
 
+- If the next step resolves to `/feature-domains` (stage is `scoping/complete`):
+  invoke `/feature-domains "<slug>"` as a sub-agent immediately. Domain analysis
+  requires no external action to proceed.
+
 - If the next step resolves to `/feature-plan` (stage is `domains/complete` or
   `planning/in-progress`): invoke `/feature-plan "<slug>"` as a sub-agent
   immediately. Planning requires no external action to proceed.
+
+- If `automation_mode: autonomous` AND `execution_strategy` is `balanced` or
+  `speed` AND work units remain incomplete: invoke `/feature-coordinate "<slug>"`
+  as a sub-agent immediately.
 
 - If `automation_mode: autonomous` AND the next step resolves to
   `/feature-implement` or `/feature-refactor` (stages `testing/complete`,
@@ -197,9 +279,30 @@ WHAT THIS IS
 
 <If work units:>
 ── Work Units ─────────────────────────────────
-  ✓ WU-1: <name> — complete
-  → WU-2: <name> — implementing (cycle 1, 4/7 tests passing)
-  ○ WU-3: <name> — blocked (waiting on WU-2)
+  Read the Work Units table from status.md. For each unit, read the
+  Depends On column to build the dependency graph.
+
+  Display units grouped by dependency layer (topological order):
+
+  Layer 0 (no dependencies):
+    ✓ WU-1: <name> — complete
+    ✓ WU-4: <name> — complete
+
+  Layer 1 (depends on layer 0):
+    → WU-2: <name> — implementing (cycle 1, 4/7 tests passing)
+      └─ depends on: WU-1
+
+  Layer 2 (depends on layer 1):
+    ○ WU-3: <name> — blocked (waiting on WU-2)
+      └─ depends on: WU-1, WU-2
+
+  If execution_strategy is balanced or speed, also show batch info:
+    Batch 1 (complete): WU-1, WU-4
+    Batch 2 (in-progress): WU-2
+    Batch 3 (waiting): WU-3
+    Critical path: <n> sequential batches
+
+  Progress: <n complete> / <n total> units
   Est. remaining sessions: <n>
 
 ── What Was Done Last Session ─────────────────

@@ -1,9 +1,10 @@
-# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing]
+# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing] [--escalation]
 
 Writes failing tests from work-plan contracts and brief acceptance criteria.
 Idempotent — if testing is complete for the current cycle, reports and stops.
 With --unit, scopes to a single work unit. With --add-missing, adds tests for
-cases found by the Refactor Agent.
+cases found by the Refactor Agent. With --escalation, reviews a specific test
+flagged by the Code Writer as having a contract conflict.
 
 ---
 
@@ -34,6 +35,23 @@ If work units are defined:
     Stop.
 
 Update the Work Units table in status.md: active unit → `in-progress`.
+
+### Per-unit path resolution (parallel mode)
+
+If `execution_strategy` is `balanced` or `speed` in feature-level status.md:
+```
+unit_status = .feature/<slug>/units/WU-<n>/status.md
+unit_log = .feature/<slug>/units/WU-<n>/cycle-log.md
+```
+Else:
+```
+unit_status = .feature/<slug>/status.md
+unit_log = .feature/<slug>/cycle-log.md
+```
+
+All status.md reads/writes for stage, substage, cycle tracker → use `unit_status`.
+All cycle-log.md appends → use `unit_log`.
+Feature-level status.md Work Units table → still update unit status there too.
 
 Display opening header with unit if applicable:
 ```
@@ -83,6 +101,20 @@ Re-run implementation:
 Stop.
 
 If Testing status for the current cycle is `complete` (for this unit if --unit provided):
+
+Read `automation_mode` from status.md.
+
+**If `automation_mode: autonomous`:**
+```
+🧪 TEST WRITER · <slug>
+───────────────────────────────────────────────
+Tests are already written for cycle <n><  · WU-<n>>.
+Starting implementation  ·  type stop to pause
+───────────────────────────────────────────────
+```
+Invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+
+**If `automation_mode: manual` (or not set):**
 ```
 🧪 TEST WRITER · <slug>
 ───────────────────────────────────────────────
@@ -90,9 +122,9 @@ Tests are already written for cycle <n><  · WU-<n>>.
 Test plan: .feature/<slug>/test-plan.md
 All tests verified failing.
 
-  Type: continue  to proceed to implementation  ·  or: stop
+  Type **yes**  to proceed to implementation  ·  or: stop
 ```
-If "continue": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "yes": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
 If "stop": display `Next: /feature-implement "<slug>"` and stop.
 
 If Testing is `in-progress`:
@@ -124,6 +156,12 @@ Display opening header:
 🧪 TEST WRITER · <slug> · Cycle <n>
 ───────────────────────────────────────────────
 ```
+
+---
+
+## Step 0b — Token tracking
+
+Run silently: `bash -c 'source .claude/scripts/token-usage.sh && token_checkpoint ".feature/<slug>" "testing"'`
 
 ---
 
@@ -346,6 +384,8 @@ Update status.md:
 - Testing cycle N → `complete`
 - TDD Cycle Tracker: Tests written → today
 - substage → "tests verified failing"
+- Stage Completion table: Testing row → Est. Tokens `~<N>K` (project-config ~1K +
+  brief ~2K + work-plan section ~2K + test files written)
 
 Append `tests-written` entry to cycle-log.md.
 Update `.feature/CLAUDE.md`.
@@ -354,23 +394,46 @@ Update `.feature/CLAUDE.md`.
 
 ## Step 6 — Hand off
 
+Read `automation_mode` from status.md.
+
+**Token tracking:** run `bash -c 'source .claude/scripts/token-usage.sh && token_summary ".feature/<slug>" "testing"'`
+and capture the output as TOKEN_USAGE. Update the Stage Completion table: Testing
+row → Actual Tokens from TOKEN_USAGE.
+
+**If `automation_mode: autonomous`:**
+
+Display the summary then chain immediately without prompting:
+```
+───────────────────────────────────────────────
+🧪 TEST WRITER complete · <slug> · Cycle <n><  · WU-<n>>
+  Tokens : <TOKEN_USAGE>
+───────────────────────────────────────────────
+Tests written and verified failing. Cycle <n><  · WU-<n>>.
+
+Starting implementation  ·  type stop to pause
+───────────────────────────────────────────────
+```
+
+Then invoke `/feature-implement "<slug>"<  --unit WU-<n>>` as a sub-agent
+immediately. Do not wait for user input.
+
+**If `automation_mode: manual` (or not set):**
+
 Display:
 ```
 ───────────────────────────────────────────────
 🧪 TEST WRITER complete · <slug> · Cycle <n><  · WU-<n>>
-⏱  Token estimate: ~<N>K
-   Loaded: brief ~2K, work-plan (unit section) ~<N>K, project-config ~1K
-   Wrote:  <n> test files ~<N>K total
+  Tokens : <TOKEN_USAGE>
 ───────────────────────────────────────────────
 Tests written and verified failing. Cycle <n><  · WU-<n>>.
 
 ───────────────────────────────────────────────
-  ↵  continue to implementation  ·  or type: stop
+  Type **yes**  ·  or: stop
 ───────────────────────────────────────────────
 ```
 
-If the user presses Enter or says yes: invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
-If the user types stop or no:
+If "yes": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "stop":
 ```
 When you're ready:
   /feature-implement "<slug>"<  --unit WU-<n>>
