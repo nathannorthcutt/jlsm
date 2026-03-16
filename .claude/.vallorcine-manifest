@@ -19,7 +19,11 @@
 .claude/commands/feature-test.md
 .claude/commands/feature.md
 .claude/commands/kb.md
-.claude/commands/quick.md
+.claude/commands/feature-quick.md
+.claude/commands/feature-cleanup.md
+.claude/commands/feature-coordinate.md
+.claude/commands/feature-retro.md
+.claude/commands/project-context.md
 .claude/commands/research.md
 .claude/commands/setup-vallorcine.md
 .claude/commands/upgrade-vallorcine.md
@@ -42,4 +46,5 @@
 .claude/scripts/merge-driver-index.sh
 .claude/scripts/ensure-merge-driver.sh
 .claude/scripts/kb-freshness-check.sh
+.claude/scripts/adr-validate.sh
 .claude/upgrade.sh

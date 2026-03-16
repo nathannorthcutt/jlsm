@@ -19,7 +19,7 @@ keyword rather than a subcommand name, treat it as `/kb "<question>"`.
 
 Check that `.kb/CLAUDE.md` exists. If not:
 ```
-The knowledge base has not been initialised. Run /setup first.
+The knowledge base has not been initialised. Run /setup-vallorcine first.
 ```
 Stop.
 
@@ -32,7 +32,7 @@ Answers questions like:
   "Which algorithm is best for low-memory environments?"
   "What are the tradeoffs between HNSW and IVF?"
 
-No files are written. Read-only.
+Read-only unless the user opts into inline research for gaps or stale entries.
 
 Display opening header:
 ```
@@ -49,6 +49,14 @@ is best for low-latency reads?"
 ```
 Wait for input, then proceed.
 
+### Step 0 — Read staleness threshold
+
+Read `.feature/project-config.md` if it exists. Look for:
+```
+**KB staleness threshold (days):** `<number>`
+```
+Default to 90 days if not found or no project-config exists.
+
 ### Step 1 — Index scan (read indexes only, not subject files)
 
 Read `.kb/CLAUDE.md` in full. From the Topic Map and Recently Added table,
@@ -59,16 +67,12 @@ For each candidate category, read `.kb/<topic>/<category>/CLAUDE.md` — the
 category index contains a comparison summary and contents table with one-line
 descriptions. This is usually enough to answer the question.
 
-If no candidates found:
-```
-Nothing found in the KB matching "<question>".
+**Staleness check:** for each candidate, note the `Last Updated` date from
+the index tables. If any candidate's last update is older than the staleness
+threshold, mark it as stale. Also check `last_researched` frontmatter in
+subject files when loaded in Step 2.
 
-KB currently contains:
-  <n> topics: <list from CLAUDE.md Topic Map>
-
-If this is a gap: /research <topic> <category> "<subject>"
-```
-Stop.
+If no candidates found, skip to Step 4 (offer research).
 
 ### Step 2 — Deep read (only when indexes leave the question unanswered)
 
@@ -113,14 +117,21 @@ COMPARISON SUMMARY
 DECISIONS USING THIS RESEARCH
   <slug> — <one-line outcome>  (.decisions/<slug>/adr.md)
 
+<If any entries are stale:>
+⚠ STALE ENTRIES
+  <topic>/<category>/<subject> — last researched <date> (<N> days ago)
+  This may not reflect current best practices or recent developments.
+
 <If gaps:>
 GAPS IN THE KB
   <What would need to be researched to fully answer this>
-  To fill this gap: /research <topic> <category> "<subject>"
 ───────────────────────────────────────────────
 <n> subject(s) found.  Want more detail? /kb lookup <topic> <category> <subject>
 ───────────────────────────────────────────────
 ```
+
+If there are stale entries or gaps, proceed to Step 4.
+If not, stop here.
 
 **Quality rules:**
 - Use the category comparison summary if it answers the question — don't load
@@ -128,6 +139,53 @@ GAPS IN THE KB
 - For "which is best" questions: give a direct recommendation, then note the runner-up
 - Surface gaps when the question clearly needs something not yet documented
 - Never fabricate KB content — if it's not in a file, say it's not documented
+
+### Step 4 — Offer inline research (only when gaps or stale entries exist)
+
+When no candidates were found:
+```
+Nothing found in the KB matching "<question>".
+
+KB currently contains:
+  <n> topics: <list from CLAUDE.md Topic Map>
+
+I can research this now and add it to the KB.
+  Type **yes**  to start research  ·  or: stop
+```
+
+When stale entries were found:
+```
+Some entries used to answer this question may be outdated.
+I can refresh the research and update the KB.
+  Type **yes**  to refresh stale entries  ·  or: skip  to use current data as-is
+```
+
+When gaps were identified alongside valid results:
+```
+I answered from what's available, but the KB has gaps that could
+improve the answer:
+  <gap description>
+
+I can research the gaps now and update the KB.
+  Type **yes**  to research gaps  ·  or: skip
+```
+
+**If the user chooses to research:**
+
+For each gap or stale entry, invoke `/research <topic> <category> "<subject>"`
+as a sub-agent. Wait for it to complete.
+
+After all research completes, re-answer the original question using the
+freshly written KB entries. Display:
+```
+───────────────────────────────────────────────
+📚 KB QUERY updated · "<question>"
+───────────────────────────────────────────────
+<Updated answer incorporating new research>
+───────────────────────────────────────────────
+```
+
+**If the user skips:** stop. The answer from Step 3 stands.
 
 ---
 
@@ -201,7 +259,7 @@ Description : <description>
 Path        : .kb/<name>/
 Existing topics: <list or "none yet">
 
-  ↵  create  ·  or type: stop
+  Type **yes**  to create  ·  or: stop
 ```
 
 **Step 3 — Create**

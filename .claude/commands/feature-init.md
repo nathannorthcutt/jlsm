@@ -1,8 +1,13 @@
 # /feature-init
 
 Sets up the .feature/ directory and project configuration profile.
-Run once per project. Safe to re-run — updates config rather than overwriting.
+Run once per project on the main/shared branch before creating feature branches.
+Safe to re-run — updates config rather than overwriting.
 Also manages the .gitignore entries for .feature/ scratch directories.
+
+> **Important:** project-config.md is committed and shared. Running /feature-init
+> on separate branches with different answers causes merge conflicts. Run it once
+> on main, commit, then branch from there.
 
 ---
 
@@ -92,11 +97,26 @@ Still needed:
 Confirm to accept all inferred values, or correct any field.
 ```
 
+Also ask about branch naming convention. Check if any convention is already
+inferable (e.g. from CONTRIBUTING.md, .github/PULL_REQUEST_TEMPLATE.md, or
+existing branch names in `git branch`). Display:
+
+```
+── Feature branch naming ───────────────────────────────
+When you start a new feature, would you like to work on a separate branch?
+
+Convention (leave blank for none):
+  e.g.  feature/<slug>   feat/<slug>   wip/<slug>   or your own pattern
+```
+
+Accept any pattern string using `<slug>` as the placeholder (e.g. `feature/<slug>`).
+If the user leaves it blank or says "none": record `branch_naming: none`.
+
 Display:
 ```
-  ↵  save this profile  ·  or type: corrections
+  Type **yes**  to save  ·  or: describe corrections
 ```
-If Enter: save. If the user types corrections: apply them and confirm again.
+If "yes": save. If the user types corrections: apply them and confirm again.
 Do not re-ask about fields the user confirmed or did not mention.
 
 ---
@@ -149,6 +169,12 @@ last_updated: "<YYYY-MM-DD>"
 
 ## Branch naming
 **Convention:** `<pattern using <slug> as placeholder, e.g. feature/<slug>  —  or "none">`
+
+## Knowledge Base
+**KB staleness threshold (days):** `90`
+
+## Decisions
+**Backfill file threshold:** `50`
 ```
 
 ---
@@ -239,7 +265,7 @@ sufficient.
 ```
 No problem. When you're ready:
   /feature "<describe what you want to build>"
-  /quick "<description>"  (for small, well-understood changes)
+  /feature-quick "<description>"  (for small, well-understood changes)
   /feature-resume "<slug>"  (to pick up an existing feature)
 ```
 
