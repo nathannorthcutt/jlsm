@@ -70,7 +70,7 @@ The build is a Gradle multi-project build. Every submodule is also a JPMS module
 
 ## Architecture
 
-All interfaces live in `jlsm-core`. Implementations are in separate submodules (`jlsm-memtable`, `jlsm-sstable`, `jlsm-wal`, `jlsm-bloom`, `jlsm-compaction`, `jlsm-cache`). Consumers compose the pieces they need.
+All interfaces and their implementations live in `jlsm-core`. Higher-level modules layer on top: `jlsm-indexing` (inverted index), `jlsm-vector` (ANN search), `jlsm-table` (document model with secondary indices), and `jlsm-sql` (SQL parser/translator). Consumers compose the pieces they need.
 
 The diagram below shows the core interface components and how data flows through them on the write path, read path, and during background compaction.
 
