@@ -143,7 +143,7 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         List<TrieSSTableReader> readers = new ArrayList<>(sources.size());
         try {
             for (SSTableMetadata meta : sources) {
-                readers.add(TrieSSTableReader.open(meta.path(), bloomDeserializer));
+                readers.add(TrieSSTableReader.openLazy(meta.path(), bloomDeserializer));
             }
 
             // Build merge iterator

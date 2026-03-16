@@ -39,7 +39,7 @@ This is fine if:
   - The PR has already merged
   - You intentionally skipped stages (e.g. no refactor needed for small changes)
 
-  ↵  proceed  ·  or type: stop
+  Type **yes**  ·  or: stop
 ```
 Wait for explicit confirmation before continuing.
 
@@ -75,7 +75,7 @@ If any are untracked or have uncommitted changes:
 
 Archive them anyway? Their content will be lost from git history if you proceed
 without committing.
-  ↵  archive anyway  ·  or type: stop
+  Type **yes**  to archive anyway  ·  or: stop
 ```
 Wait for response.
 
@@ -125,6 +125,8 @@ ADRs and KB entries are permanent and remain in place.
 ## Step 5 — Archive the working directory
 
 Move `.feature/<slug>/` to `.feature/_archive/<slug>/`.
+(If `units/` subdirectory exists inside the slug directory, it moves with it
+automatically — no special handling needed.)
 
 `.feature/_archive/` is gitignored — the archive stays on the local machine
 as a short-term reference but does not go into the repository.

@@ -1,7 +1,7 @@
 # /feature-pr "<feature-slug>"
 
 Drafts a pull request title, description, and review checklist by reading the
-feature's working files. Works for both /feature and /quick slugs.
+feature's working files. Works for both /feature and /feature-quick slugs.
 
 Run this after /feature-refactor completes and before opening the PR.
 
@@ -27,9 +27,10 @@ If a previous PR draft exists in `.feature/<slug>/pr-draft.md`:
 A PR draft already exists for '<slug>'.
 Draft: .feature/<slug>/pr-draft.md
 
-  ↵  use existing draft  ·  or type: regenerate
+  Type **yes**  to proceed to PR creation  ·  or: regenerate
 ```
-If the user presses Enter: display existing draft and stop. If user types regenerate: proceed.
+If "regenerate": proceed to regenerate the draft.
+If "yes": skip to Step 5 — PR creation (attempt to create the PR from the existing draft).
 
 ---
 
@@ -40,6 +41,12 @@ Display opening header:
 ───────────────────────────────────────────────
 ```
 
+## Step 0b — Token tracking
+
+Run silently: `bash -c 'source .claude/scripts/token-usage.sh && token_checkpoint ".feature/<slug>" "pr-draft"'`
+
+---
+
 ## Step 1 — Load context
 
 Read in order:
@@ -48,6 +55,8 @@ Read in order:
    OR the Description field from status.md (quick task)
 3. `.feature/<slug>/work-plan.md` if it exists
 4. `.feature/<slug>/cycle-log.md` — full history
+   (If `units/` directory exists, the coordinator has already merged per-unit
+   logs into the feature-level cycle-log.md — read that merged log.)
 5. `.feature/<slug>/domains.md` if it exists — for ADR links
 
 Do NOT read implementation or test files — the PR description should describe
@@ -77,6 +86,13 @@ who has not seen the feature work. No implementation details.>
 ## Changes
 <Bullet list of the meaningful changes — constructs added, behaviour changed,
 files modified. One line each. Sourced from work-plan.md and cycle-log.md.>
+
+<If units/ directory exists (parallel feature), group changes by work unit:>
+### WU-1: <name>
+- <changes from WU-1 cycle-log entries>
+
+### WU-2: <name>
+- <changes from WU-2 cycle-log entries>
 
 ## Tests
 <How the change is tested. Number of tests written, what they cover at a high
@@ -176,10 +192,16 @@ Append `pr-drafted` entry to cycle-log.md:
 
 ## Step 5 — Create the PR
 
-Display:
+**Token tracking:** run `bash -c 'source .claude/scripts/token-usage.sh && token_summary ".feature/<slug>" "pr-draft"'`
+and capture the output as TOKEN_USAGE.
+
+Check if `gh` CLI is available: run `gh auth status` silently.
+
+**If `gh` is not available or not authenticated:**
 ```
 ───────────────────────────────────────────────
 📋 PR DRAFT complete · <slug>
+  Tokens : <TOKEN_USAGE>
 ───────────────────────────────────────────────
 PR draft written to .feature/<slug>/pr-draft.md
 
@@ -199,6 +221,7 @@ Display:
 ```
 ───────────────────────────────────────────────
 📋 PR DRAFT complete · <slug>
+  Tokens : <TOKEN_USAGE>
 Draft: .feature/<slug>/pr-draft.md
 
   Type: create  to open the PR now via gh  ·  or: skip
@@ -236,7 +259,10 @@ Display:
 ───────────────────────────────────────────────
 ✓ PR opened: <URL>
 ───────────────────────────────────────────────
-When the PR merges, run:
+While the feature is fresh, consider running a retrospective:
+  /feature-retro "<slug>"
+
+When the PR merges:
   /feature-complete "<slug>"
 ```
 

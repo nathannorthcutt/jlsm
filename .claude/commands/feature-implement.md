@@ -22,6 +22,23 @@ If work units are defined:
 
 Update the active unit status → `in-progress` in the Work Units table.
 
+### Per-unit path resolution (parallel mode)
+
+If `execution_strategy` is `balanced` or `speed` in feature-level status.md:
+```
+unit_status = .feature/<slug>/units/WU-<n>/status.md
+unit_log = .feature/<slug>/units/WU-<n>/cycle-log.md
+```
+Else:
+```
+unit_status = .feature/<slug>/status.md
+unit_log = .feature/<slug>/cycle-log.md
+```
+
+All status.md reads/writes for stage, substage, cycle tracker → use `unit_status`.
+All cycle-log.md appends → use `unit_log`.
+Feature-level status.md Work Units table → still update unit status there too.
+
 Display opening header:
 ```
 ───────────────────────────────────────────────
@@ -41,15 +58,29 @@ The Test Writer has resolved a contract conflict. Resume implementation.
 - Jump to Step 2 (implement in order, skipping constructs whose tests already pass)
 
 **If Implementation for this cycle is `complete`:**
+
+Read `automation_mode` from status.md.
+
+**If `automation_mode: autonomous`:**
+```
+⚙️  CODE WRITER · <slug> · Cycle <n>
+───────────────────────────────────────────────
+Implementation is already complete for cycle <n>.
+Starting refactor  ·  type stop to pause
+───────────────────────────────────────────────
+```
+Invoke /feature-refactor "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+
+**If `automation_mode: manual` (or not set):**
 ```
 ⚙️  CODE WRITER · <slug> · Cycle <n>
 ───────────────────────────────────────────────
 Implementation is already complete for cycle <n>.
 All tests were passing as of: <date from status.md>
 
-  Type: continue  to proceed to refactor  ·  or: stop
+  Type **yes**  to proceed to refactor  ·  or: stop
 ```
-If "continue": invoke /feature-refactor "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "yes": invoke /feature-refactor "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
 If "stop": display `Next: /feature-refactor "<slug>"` and stop.
 
 **If Implementation is `in-progress`:**
@@ -74,38 +105,34 @@ Display opening header:
 
 ## Step 0 — Automation mode
 
-Read `automation_mode` from status.md.
+Read `automation_mode` from status.md. The mode is set during `/feature-plan`
+and persists for the lifetime of this feature.
 
-**If `automation_mode` is `autonomous` or `manual`:** skip this step entirely —
-the user has already chosen and the choice persists for this feature.
+**If `automation_mode` is `autonomous` or `manual`:** continue — no prompt needed.
 
-**If `automation_mode` is `not-set`** (first implementation run only):
+**If `automation_mode` is `not-set`** (fallback — should not occur if `/feature-plan`
+ran normally, but handle it gracefully):
 
 Display:
 ```
-── How would you like to run the TDD loop? ─────
-  ↵  autonomous  — test → implement → refactor cycles run without stopping.
-                   Interrupt anytime by typing in the session.
-                   I'll pause if I find something that needs your input.
+── Automation mode was not set during planning ─
+  autonomous  — test → implement → refactor cycles run without stopping.
+               I'll pause if I find something that needs your input.
 
-  or type: manual  — I'll stop after each stage and wait for your command.
+  manual      — I'll stop after each stage and wait for your command.
+
+Type: autonomous  or  manual
 ```
 
 Wait for input:
-- Enter or "autonomous": set `automation_mode: autonomous` in status.md
+- "autonomous": set `automation_mode: autonomous` in status.md
 - "manual": set `automation_mode: manual` in status.md
 
-If autonomous, display:
-```
-Running autonomously. Type stop at any time to pause.
-──────────────────────────────────────────────────
-```
+---
 
-If manual, display:
-```
-Manual mode. I'll prompt you at each stage boundary.
-──────────────────────────────────────────────────
-```
+## Step 0b — Token tracking
+
+Run silently: `bash -c 'source .claude/scripts/token-usage.sh && token_checkpoint ".feature/<slug>" "implementation"'`
 
 ---
 
@@ -192,9 +219,9 @@ If the work plan itself is wrong, update it before continuing.
 
 3. Say:
 ```
-⚠️  ESCALATION · Code Writer → Test Writer
+⚠️  ESCALATION · Code Writer → Test Writer  (<N>/3)
 ───────────────────────────────────────────────
-Contract conflict — cannot proceed without Test Writer input.
+Contract conflict — handing to Test Writer now.
 Test: <test name>
 Problem: <paragraph>
 Work plan reference: <section>
@@ -220,6 +247,8 @@ Update status.md:
 - Implementation cycle N → `complete`
 - TDD Cycle Tracker: Tests passing → today
 - substage → "all tests passing"
+- Stage Completion table: Implementation row → Est. Tokens `~<N>K` (work-plan
+  section ~2K + test files ~3K + stub files ~1K + dependency interfaces)
 
 Append `implemented` entry to cycle-log.md.
 
@@ -227,10 +256,18 @@ If work units are defined:
 - Mark the active unit as `complete` in the Work Units table in status.md
 - Check if any blocked units are now unblocked (all their deps are complete)
   → update those units from `blocked` → `not-started`
+- **Parallel mode (`execution_strategy` is `balanced` or `speed`):** mark unit
+  complete in feature-level Work Units table and unblock dependent units, but do
+  NOT invoke the next unit — the coordinator handles unit sequencing. Chain to
+  `/feature-refactor` for the current unit as normal.
 
 Update `.feature/CLAUDE.md`.
 
 Read `automation_mode` from status.md.
+
+**Token tracking:** run `bash -c 'source .claude/scripts/token-usage.sh && token_summary ".feature/<slug>" "implementation"'`
+and capture the output as TOKEN_USAGE. Update the Stage Completion table:
+Implementation row → Actual Tokens from TOKEN_USAGE.
 
 **If `automation_mode: autonomous`:**
 
@@ -238,7 +275,7 @@ Display the unit progress summary then chain immediately without prompting:
 ```
 ───────────────────────────────────────────────
 ⚙️  CODE WRITER complete · <slug> · Cycle <n><  · WU-<n>>
-⏱  Token estimate: ~<N>K
+  Tokens : <TOKEN_USAGE>
 ───────────────────────────────────────────────
 All tests passing. <n> constructs implemented.
 
@@ -262,10 +299,7 @@ Display:
 ```
 ───────────────────────────────────────────────
 ⚙️  CODE WRITER complete · <slug> · Cycle <n><  · WU-<n>>
-⏱  Token estimate: ~<N>K
-   Loaded: work-plan (unit) ~<N>K, <n> test files ~<N>K, <n> stub files ~<N>K
-           dependency interfaces ~<N>K
-   Wrote:  <n> implementation files ~<N>K
+  Tokens : <TOKEN_USAGE>
 ───────────────────────────────────────────────
 All tests passing. Cycle <n><  · WU-<n>>.
 <n> constructs implemented across <list of files>.
@@ -277,11 +311,11 @@ Work unit progress:
   ○ WU-3: <n> — blocked (waiting on WU-2)
 
 ───────────────────────────────────────────────
-  ↵  continue to refactor  ·  or type: stop
+  Type **yes**  ·  or: stop
 ───────────────────────────────────────────────
 ```
 
-If Enter: invoke `/feature-refactor "<slug>"<  --unit WU-<n>>` as a sub-agent.
+If "yes": invoke `/feature-refactor "<slug>"<  --unit WU-<n>>` as a sub-agent.
 If "stop":
 ```
 When you're ready:

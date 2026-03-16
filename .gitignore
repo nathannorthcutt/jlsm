@@ -27,3 +27,12 @@ Thumbs.db
 # Explicitly track the project config and index
 !.feature/project-config.md
 !.feature/CLAUDE.md
+
+# Performance analysis — scratch and transient output
+perf-scratch/
+perf-output/**/*.collapsed
+perf-output/**/*.jfr
+perf-output/**/*-results.json
+perf-output/**/run-manifest.json
+perf-output/**/latest-*
+!perf-output/findings.md

@@ -1,10 +1,97 @@
-# /vallorcine-help
+# /vallorcine-help [question]
 
-Entry point for anyone not familiar with the command structure.
-No arguments required. Figures out what you need and routes you to the right command.
+Entry point for anyone not familiar with the command structure. Two modes:
 
-This command never does pipeline work itself — it reads context, asks one question,
+**With a question:** answers questions about vallorcine commands, workflows, and
+capabilities. "How do I resume a feature?" "What does the architect do?" "How do
+I check the KB?" Routes to the right command with context.
+
+**Without arguments:** figures out what you need and routes you to the right command.
+
+This command never does pipeline work itself — it reads context, answers questions,
 and hands you a pre-filled command to run. It is a router, not an agent.
+
+---
+
+## Step 0 — Question detection
+
+If the user provided an argument, determine whether it is:
+- **A question about vallorcine** — contains question words (how, what, where, when,
+  why, can, does, is) or is phrased as a question about commands, workflows, or
+  capabilities. Jump to **Step Q** (question answering).
+- **A task description** — describes something to build or fix. Jump to **Step 4**
+  (routing) with this as the description.
+
+If no argument provided: continue to Step 1.
+
+---
+
+## Step Q — Answer questions about vallorcine
+
+Display:
+```
+───────────────────────────────────────────────
+🚀 HELP
+───────────────────────────────────────────────
+```
+
+Answer the question using the command reference below. Lead with the specific
+command to run, then explain what it does and what the user can expect.
+
+### Command reference (for answering questions)
+
+**Starting and resuming work:**
+- `/feature "<description>"` — start a new feature (full pipeline: scoping → domains → plan → test → implement → refactor → PR)
+- `/feature-quick "<description>"` — small, well-understood tasks (single session, no planning overhead)
+- `/feature-resume "<slug>"` — see where a feature is and what to run next (crash recovery, session resume)
+- `/feature-resume "<slug>" --status` — detailed session briefing with next-session agenda
+- `/feature-resume "<slug>" --list` — list all active features with their current stage
+
+**Knowledge and decisions:**
+- `/kb "<question>"` — query the knowledge base in plain language
+- `/research <topic> <category> "<subject>"` — run a research session, writes to `.kb/`
+- `/architect "<problem>"` — run an architecture decision session with full deliberation
+- `/decisions "<question>"` — query existing decisions in plain language
+- `/decisions backfill [<path>]` — surface implicit decisions from past work and source code
+- `/decisions review "<slug>"` — revisit a confirmed decision
+- `/decisions triage` — review all deferred/draft items
+- `/decisions defer "<problem>"` — park a topic for later
+- `/decisions close "<problem>"` — rule out permanently
+
+**Setup and maintenance:**
+- `/project-context add "<entry>"` — add team-shared knowledge about the codebase
+- `/project-context cleanup` — review expired context entries
+- `/project-context` — display all active context entries
+- `/feature-init` — one-time project setup (language, test framework, conventions)
+- `/feature-cleanup` — interactive walkthrough of stale feature directories
+- `/setup-vallorcine` — initialise `.kb/` and `.decisions/` directories
+- `/upgrade-vallorcine` — check for and apply kit updates
+
+**Pipeline stages (usually invoked automatically, not manually):**
+- `/feature-domains "<slug>"` — domain analysis, commissions research/architect
+- `/feature-plan "<slug>"` — work plan, stubs, execution strategy
+- `/feature-coordinate "<slug>"` — parallel batch coordinator (balanced/speed mode)
+- `/feature-test "<slug>"` — write failing tests from contracts
+- `/feature-implement "<slug>"` — implement until tests pass
+- `/feature-refactor "<slug>"` — quality review checklist
+- `/feature-pr "<slug>"` — draft PR title, description, checklist
+- `/feature-retro "<slug>"` — post-feature retrospective (scope, assumptions, gaps, tokens)
+- `/feature-complete "<slug>"` — archive after PR merges
+
+### Answer format
+
+```
+<Direct answer: the specific command to run and why>
+
+  <command with arguments filled in where possible>
+
+<1-2 sentences of context: what it does, what to expect>
+```
+
+If the question doesn't match any command, say so and suggest `/vallorcine-help`
+with no arguments to get routed interactively.
+
+After answering, stop. Do not continue to the routing flow.
 
 ---
 
@@ -103,7 +190,7 @@ so you can skip the full planning pipeline and go straight to tests.
 
 Here's your command:
 
-  /quick "<their description, cleaned up into one clear sentence>"
+  /feature-quick "<their description, cleaned up into one clear sentence>"
 
 What happens:
   1. I'll check the codebase briefly and confirm my understanding
@@ -179,7 +266,7 @@ If the description could go either way, lean toward the full pipeline and say so
 ```
 That could go either way. Here's how to decide:
 
-  Use /quick if:  you already know exactly what to build and it follows
+  Use /feature-quick if:  you already know exactly what to build and it follows
                   an existing pattern in the codebase
 
   Use /feature if: there are design decisions to make, the scope isn't
@@ -188,7 +275,7 @@ That could go either way. Here's how to decide:
 My lean: <quick / full pipeline> because <one sentence reason>.
 
 Your commands:
-  Quick:    /quick "<description>"
+  Quick:    /feature-quick "<description>"
   Full:     /feature "<description>"
 ```
 
@@ -200,14 +287,12 @@ After any routing decision, add:
 
 ```
 Other commands you might want:
-  /feature-resume "<slug>" --status   — human-readable progress summary for any active feature
-  /feature-init              — update the project profile (language, test framework, etc.)
-  /decisions "<question>" — query decisions in plain language: "what did we decide about caching?"
-  /kb "<question>"        — query the KB in plain language: "what do we know about HNSW?"
-  /decisions defer "<topic>"  — park a topic for later without full evaluation
-  /decisions close "<topic>"  — rule a topic out permanently
-  /decisions triage            — triage deferred topics: promote, close, update, or delete
-  /decisions review "<slug>"        — revisit a confirmed architecture decision
+  /feature-resume "<slug>" --status  — detailed progress summary for any active feature
+  /feature-init                      — update the project profile
+  /kb "<question>"                   — query the knowledge base
+  /decisions "<question>"            — query architecture decisions
+  /decisions backfill                — surface undocumented decisions from past work
+  /vallorcine-help "<question>"      — ask me anything about these commands
 ```
 
 Only show these if they're relevant — omit if the user is clearly a first-timer
