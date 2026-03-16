@@ -1,0 +1,175 @@
+package jlsm.table;
+
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Fluent query builder for table lookups. Builds a {@link Predicate} tree and executes it against
+ * the table's indices and data.
+ *
+ * <p>
+ * Usage:
+ *
+ * <pre>{@code
+ * Iterator<TableEntry<String>> results = table.query().where("age").gt(30).and("status")
+ *         .eq("active").execute();
+ * }</pre>
+ *
+ * <p>
+ * Contract:
+ * <ul>
+ * <li>Receives: field names and values via fluent chaining</li>
+ * <li>Returns: {@code Iterator<TableEntry<K>>} on execute()</li>
+ * <li>Side effects: none until execute() — query building is pure</li>
+ * <li>Error conditions: IllegalArgumentException on invalid field/type combinations</li>
+ * </ul>
+ *
+ * @param <K> the primary key type (String or Long)
+ */
+public final class TableQuery<K> {
+
+    private enum CombineMode {
+        NONE, AND, OR
+    }
+
+    private Predicate root;
+    private CombineMode nextMode = CombineMode.NONE;
+
+    private TableQuery() {
+    }
+
+    /**
+     * Begins a predicate on the given field.
+     *
+     * @param fieldName the field to filter on
+     * @return a field clause for specifying the comparison operator
+     */
+    public FieldClause<K> where(String fieldName) {
+        Objects.requireNonNull(fieldName, "fieldName");
+        return new FieldClause<>(this, fieldName);
+    }
+
+    /**
+     * Executes the query, returning matching entries. Uses available indices where possible; falls
+     * back to scan-and-filter.
+     *
+     * @return iterator over matching table entries
+     * @throws IOException if an I/O error occurs during query execution
+     */
+    public Iterator<TableEntry<K>> execute() throws IOException {
+        throw new UnsupportedOperationException(
+                "execute() requires table binding — use table.query() to obtain a bound instance");
+    }
+
+    /**
+     * Returns the predicate tree built so far. Useful for inspection, serialization, or future SQL
+     * translation.
+     *
+     * @return the root predicate, or null if no predicates have been added
+     */
+    public Predicate predicate() {
+        return root;
+    }
+
+    /**
+     * Chains an AND predicate on the given field.
+     *
+     * @param fieldName the next field to filter on
+     * @return a field clause for specifying the comparison operator
+     */
+    public FieldClause<K> and(String fieldName) {
+        Objects.requireNonNull(fieldName, "fieldName");
+        nextMode = CombineMode.AND;
+        return new FieldClause<>(this, fieldName);
+    }
+
+    /**
+     * Chains an OR predicate on the given field.
+     *
+     * @param fieldName the next field to filter on
+     * @return a field clause for specifying the comparison operator
+     */
+    public FieldClause<K> or(String fieldName) {
+        Objects.requireNonNull(fieldName, "fieldName");
+        nextMode = CombineMode.OR;
+        return new FieldClause<>(this, fieldName);
+    }
+
+    TableQuery<K> addPredicate(Predicate predicate) {
+        assert predicate != null : "predicate must not be null";
+        if (root == null || nextMode == CombineMode.NONE) {
+            root = predicate;
+        } else if (nextMode == CombineMode.AND) {
+            root = new Predicate.And(List.of(root, predicate));
+        } else {
+            root = new Predicate.Or(List.of(root, predicate));
+        }
+        nextMode = CombineMode.NONE;
+        return this;
+    }
+
+    /**
+     * A field-level clause that provides comparison operators.
+     *
+     * @param <K> the primary key type
+     */
+    public static final class FieldClause<K> {
+
+        private final TableQuery<K> query;
+        private final String fieldName;
+
+        FieldClause(TableQuery<K> query, String fieldName) {
+            assert query != null : "query must not be null";
+            assert fieldName != null : "fieldName must not be null";
+            this.query = query;
+            this.fieldName = fieldName;
+        }
+
+        /** Equality: field == value. */
+        public TableQuery<K> eq(Object value) {
+            return query.addPredicate(new Predicate.Eq(fieldName, value));
+        }
+
+        /** Inequality: field != value. */
+        public TableQuery<K> ne(Object value) {
+            return query.addPredicate(new Predicate.Ne(fieldName, value));
+        }
+
+        /** Greater than: field > value. */
+        public TableQuery<K> gt(Comparable<?> value) {
+            return query.addPredicate(new Predicate.Gt(fieldName, value));
+        }
+
+        /** Greater than or equal: field >= value. */
+        public TableQuery<K> gte(Comparable<?> value) {
+            return query.addPredicate(new Predicate.Gte(fieldName, value));
+        }
+
+        /** Less than: field < value. */
+        public TableQuery<K> lt(Comparable<?> value) {
+            return query.addPredicate(new Predicate.Lt(fieldName, value));
+        }
+
+        /** Less than or equal: field <= value. */
+        public TableQuery<K> lte(Comparable<?> value) {
+            return query.addPredicate(new Predicate.Lte(fieldName, value));
+        }
+
+        /** Range: low <= field <= high. */
+        public TableQuery<K> between(Comparable<?> low, Comparable<?> high) {
+            return query.addPredicate(new Predicate.Between(fieldName, low, high));
+        }
+
+        /** Full-text search on this field. */
+        public TableQuery<K> fullTextMatch(String queryText) {
+            return query.addPredicate(new Predicate.FullTextMatch(fieldName, queryText));
+        }
+
+        /** Vector nearest-neighbour search on this field. */
+        public TableQuery<K> vectorNearest(float[] queryVector, int topK) {
+            return query.addPredicate(new Predicate.VectorNearest(fieldName, queryVector, topK));
+        }
+    }
+}

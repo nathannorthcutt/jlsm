@@ -1,0 +1,45 @@
+# vallorcine kit manifest — kit-managed installed files
+# Generated paths are relative to the project root.
+# Used by upgrade.sh to detect and remove stale files from previous installs.
+# Do not edit by hand — regenerate by running: bash install.sh --update-manifest
+#
+# Note: .kb/ and .decisions/ seed files are excluded — they are user-populated
+# and should never be auto-removed by an upgrade.
+
+.claude/commands/architect.md
+.claude/commands/decisions.md
+.claude/commands/feature-complete.md
+.claude/commands/feature-domains.md
+.claude/commands/feature-implement.md
+.claude/commands/feature-init.md
+.claude/commands/feature-plan.md
+.claude/commands/feature-pr.md
+.claude/commands/feature-refactor.md
+.claude/commands/feature-resume.md
+.claude/commands/feature-test.md
+.claude/commands/feature.md
+.claude/commands/kb.md
+.claude/commands/quick.md
+.claude/commands/research.md
+.claude/commands/setup-vallorcine.md
+.claude/commands/upgrade-vallorcine.md
+.claude/commands/vallorcine-help.md
+.claude/agents/architect-agent.md
+.claude/agents/code-writer-agent.md
+.claude/agents/domain-scout-agent.md
+.claude/agents/refactor-agent.md
+.claude/agents/research-agent.md
+.claude/agents/scoping-agent.md
+.claude/agents/test-writer-agent.md
+.claude/agents/work-planner-agent.md
+.claude/rules/kb-architect.md
+.claude/rules/kb-protocol.md
+.claude/rules/kb-research-agent.md
+.claude/rules/prompt-conventions.md
+.claude/rules/tdd-protocol.md
+.claude/scripts/token-usage.sh
+.claude/scripts/version-check.sh
+.claude/scripts/merge-driver-index.sh
+.claude/scripts/ensure-merge-driver.sh
+.claude/scripts/kb-freshness-check.sh
+.claude/upgrade.sh

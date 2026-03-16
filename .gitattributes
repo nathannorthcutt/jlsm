@@ -1,0 +1,7 @@
+
+# vallorcine merge driver — scoped to managed index files only
+# Auto-resolves concurrent table row additions by keeping all rows.
+.kb/CLAUDE.md           merge=vallorcine-index
+.kb/*/CLAUDE.md         merge=vallorcine-index
+.kb/*/*/CLAUDE.md       merge=vallorcine-index
+.decisions/CLAUDE.md    merge=vallorcine-index

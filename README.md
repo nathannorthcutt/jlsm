@@ -2,6 +2,8 @@
 
 A pure Java 25 modular library of LSM-Tree (Log-Structured Merge-Tree) components.
 
+> **Built entirely by [Claude Code](https://claude.ai/claude-code).** Every line of code, test, and design decision in this repository was written by Anthropic's Claude Code CLI under human direction. The project serves as both a serious LSM-Tree library and an experiment in how far AI-assisted development can be pushed — exploring productivity gains from AI agents working in a complex, multi-module codebase with strict TDD, JPMS boundaries, and real architectural tradeoffs.
+
 ## About
 
 `jlsm` is an exploration of what a modern LSM-Tree library looks like when built from scratch with current Java features. The goal is not just to replicate established designs, but to take a fresh look at each component — experimenting with new data structures, novel compaction strategies, and storage abstractions that work across local and remote file systems.

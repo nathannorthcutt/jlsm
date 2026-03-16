@@ -1,0 +1,126 @@
+package jlsm.table;
+
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * A query predicate AST node. Predicates form a tree that the query executor inspects to select
+ * indices and build execution plans.
+ *
+ * <p>
+ * Designed to be inspectable and serializable for future SQL translation.
+ *
+ * <p>
+ * Contract:
+ * <ul>
+ * <li>All leaf predicates carry a field name and typed value(s)</li>
+ * <li>Composite predicates (And, Or) hold a list of child predicates</li>
+ * <li>Field name and type compatibility validated eagerly at construction</li>
+ * </ul>
+ */
+public sealed interface Predicate {
+
+    /** Equality: field == value. Usable with any primitive field type. */
+    record Eq(String field, Object value) implements Predicate {
+        public Eq {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(value);
+        }
+    }
+
+    /** Inequality: field != value. Usable with any primitive field type. */
+    record Ne(String field, Object value) implements Predicate {
+        public Ne {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(value);
+        }
+    }
+
+    /** Greater than: field > value. Requires an ordered field type. */
+    record Gt(String field, Comparable<?> value) implements Predicate {
+        public Gt {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(value);
+        }
+    }
+
+    /** Greater than or equal: field >= value. Requires an ordered field type. */
+    record Gte(String field, Comparable<?> value) implements Predicate {
+        public Gte {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(value);
+        }
+    }
+
+    /** Less than: field < value. Requires an ordered field type. */
+    record Lt(String field, Comparable<?> value) implements Predicate {
+        public Lt {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(value);
+        }
+    }
+
+    /** Less than or equal: field <= value. Requires an ordered field type. */
+    record Lte(String field, Comparable<?> value) implements Predicate {
+        public Lte {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(value);
+        }
+    }
+
+    /** Range: low <= field <= high. Requires an ordered field type. */
+    record Between(String field, Comparable<?> low, Comparable<?> high) implements Predicate {
+        public Between {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(low);
+            Objects.requireNonNull(high);
+        }
+    }
+
+    /**
+     * Full-text match: field contains the query terms. Requires a STRING field with FULL_TEXT
+     * index.
+     */
+    record FullTextMatch(String field, String query) implements Predicate {
+        public FullTextMatch {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(query);
+        }
+    }
+
+    /**
+     * Vector nearest neighbour: find the topK closest vectors to the query. Requires a VECTOR
+     * index.
+     */
+    record VectorNearest(String field, float[] queryVector, int topK) implements Predicate {
+        public VectorNearest {
+            Objects.requireNonNull(field);
+            Objects.requireNonNull(queryVector);
+            if (topK <= 0) {
+                throw new IllegalArgumentException("topK must be positive");
+            }
+        }
+    }
+
+    /** Logical AND: all children must match. */
+    record And(List<Predicate> children) implements Predicate {
+        public And {
+            Objects.requireNonNull(children);
+            if (children.size() < 2) {
+                throw new IllegalArgumentException("And requires at least 2 children");
+            }
+            children = List.copyOf(children);
+        }
+    }
+
+    /** Logical OR: at least one child must match. */
+    record Or(List<Predicate> children) implements Predicate {
+        public Or {
+            Objects.requireNonNull(children);
+            if (children.size() < 2) {
+                throw new IllegalArgumentException("Or requires at least 2 children");
+            }
+            children = List.copyOf(children);
+        }
+    }
+}
