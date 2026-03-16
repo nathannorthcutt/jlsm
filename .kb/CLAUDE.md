@@ -12,12 +12,13 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 1 | 5 | 2026-03-16 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 2 | 6 | 2026-03-16 |
 | systems | [systems/](systems/CLAUDE.md) | 1 | 5 | 2026-03-16 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-16 | algorithms | sql-extensions | [vector-similarity-sql-syntax](algorithms/sql-extensions/vector-similarity-sql-syntax.md) |
 | 2026-03-16 | algorithms | vector-quantization | [product-quantization](algorithms/vector-quantization/product-quantization.md) |
 | 2026-03-16 | algorithms | vector-quantization | [rabitq](algorithms/vector-quantization/rabitq.md) |
 | 2026-03-16 | algorithms | vector-quantization | [scalar-quantization](algorithms/vector-quantization/scalar-quantization.md) |

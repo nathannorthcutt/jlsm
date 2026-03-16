@@ -1,0 +1,394 @@
+package jlsm.sql;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Recursive descent parser for the supported SQL SELECT subset.
+ *
+ * <p>
+ * Contract:
+ * <ul>
+ * <li>Receives: a non-null, non-empty list of {@link Token}s (from {@link SqlLexer})</li>
+ * <li>Returns: a {@link SqlAst.SelectStatement} representing the parsed query</li>
+ * <li>Side effects: none</li>
+ * <li>Error conditions: throws {@link SqlParseException} with position info on syntax errors,
+ * unexpected tokens, or unsupported SQL constructs (INSERT, UPDATE, DELETE, JOIN, subqueries,
+ * etc.)</li>
+ * </ul>
+ *
+ * <p>
+ * Grammar (simplified):
+ *
+ * <pre>
+ * selectStatement := SELECT columnList FROM tableName
+ *                    [WHERE expression]
+ *                    [ORDER BY orderByList]
+ *                    [LIMIT number]
+ *                    [OFFSET number]
+ *
+ * columnList      := STAR | column (COMMA column)*
+ * column          := identifier [AS identifier]
+ * expression      := orExpr
+ * orExpr          := andExpr (OR andExpr)*
+ * andExpr         := notExpr (AND notExpr)*
+ * notExpr         := NOT notExpr | comparison
+ * comparison      := primary compareOp primary
+ *                  | primary BETWEEN primary AND primary
+ *                  | primary IS [NOT] NULL
+ * primary         := literal | columnRef | parameter | functionCall | LPAREN expression RPAREN
+ * functionCall    := MATCH LPAREN args RPAREN | VECTOR_DISTANCE LPAREN args RPAREN
+ * </pre>
+ *
+ * <p>
+ * Governed by: brief.md — Architecture section (recursive descent parser).
+ */
+public final class SqlParser {
+
+    private List<Token> tokens;
+    private int pos;
+    private int parameterIndex;
+
+    /**
+     * Parses a list of tokens into a SQL AST.
+     *
+     * @param tokens the token list from {@link SqlLexer#tokenize}, must not be null or empty
+     * @return the parsed SELECT statement AST
+     * @throws SqlParseException on syntax errors or unsupported SQL constructs
+     */
+    public SqlAst.SelectStatement parse(List<Token> tokens) throws SqlParseException {
+        Objects.requireNonNull(tokens, "tokens");
+        if (tokens.isEmpty()) {
+            throw new SqlParseException("Empty token list", 0);
+        }
+
+        this.tokens = tokens;
+        this.pos = 0;
+        this.parameterIndex = 0;
+
+        return parseSelectStatement();
+    }
+
+    // ── Token navigation ─────────────────────────────────────────
+
+    private Token peek() {
+        assert pos < tokens.size() : "pos out of bounds";
+        return tokens.get(pos);
+    }
+
+    private Token advance() {
+        final Token token = peek();
+        if (token.type() != TokenType.EOF) {
+            pos++;
+        }
+        return token;
+    }
+
+    private Token expect(TokenType type) throws SqlParseException {
+        final Token token = peek();
+        if (token.type() != type) {
+            throw new SqlParseException("Expected " + type + " but found " + token.type() + " '"
+                    + token.text() + "' at position " + token.position(), token.position());
+        }
+        return advance();
+    }
+
+    private boolean check(TokenType type) {
+        return peek().type() == type;
+    }
+
+    private boolean match(TokenType type) {
+        if (check(type)) {
+            advance();
+            return true;
+        }
+        return false;
+    }
+
+    // ── Statement parsing ────────────────────────────────────────
+
+    private SqlAst.SelectStatement parseSelectStatement() throws SqlParseException {
+        final Token first = peek();
+
+        // Reject non-SELECT statements
+        if (first.type() == TokenType.IDENTIFIER) {
+            final String upper = first.text().toUpperCase();
+            if (upper.equals("INSERT") || upper.equals("UPDATE") || upper.equals("DELETE")
+                    || upper.equals("CREATE") || upper.equals("DROP") || upper.equals("ALTER")) {
+                throw new SqlParseException("Only SELECT statements are supported, found '"
+                        + first.text() + "' at position " + first.position(), first.position());
+            }
+        }
+
+        expect(TokenType.SELECT);
+
+        // Parse columns
+        final List<SqlAst.Column> columns = parseColumnList();
+
+        // FROM
+        expect(TokenType.FROM);
+        final Token tableName = expect(TokenType.IDENTIFIER);
+
+        // Optional WHERE
+        Optional<SqlAst.Expression> where = Optional.empty();
+        if (match(TokenType.WHERE)) {
+            where = Optional.of(parseExpression());
+        }
+
+        // Optional ORDER BY
+        final List<SqlAst.OrderByClause> orderBy;
+        if (check(TokenType.ORDER)) {
+            orderBy = parseOrderBy();
+        } else {
+            orderBy = List.of();
+        }
+
+        // Optional LIMIT
+        Optional<Integer> limit = Optional.empty();
+        if (match(TokenType.LIMIT)) {
+            limit = Optional.of(parseIntegerLiteral());
+        }
+
+        // Optional OFFSET
+        Optional<Integer> offset = Optional.empty();
+        if (match(TokenType.OFFSET)) {
+            offset = Optional.of(parseIntegerLiteral());
+        }
+
+        return new SqlAst.SelectStatement(columns, tableName.text(), where, orderBy, limit, offset);
+    }
+
+    private int parseIntegerLiteral() throws SqlParseException {
+        final Token num = expect(TokenType.NUMBER_LITERAL);
+        try {
+            return Integer.parseInt(num.text());
+        } catch (NumberFormatException e) {
+            throw new SqlParseException(
+                    "Expected integer but found '" + num.text() + "' at position " + num.position(),
+                    num.position(), e);
+        }
+    }
+
+    // ── Column list ──────────────────────────────────────────────
+
+    private List<SqlAst.Column> parseColumnList() throws SqlParseException {
+        if (match(TokenType.STAR)) {
+            return List.of(new SqlAst.Column.Wildcard());
+        }
+
+        final var columns = new ArrayList<SqlAst.Column>();
+        columns.add(parseColumn());
+
+        while (match(TokenType.COMMA)) {
+            columns.add(parseColumn());
+        }
+
+        return columns;
+    }
+
+    private SqlAst.Column parseColumn() throws SqlParseException {
+        final Token name = expect(TokenType.IDENTIFIER);
+        Optional<String> alias = Optional.empty();
+
+        if (match(TokenType.AS)) {
+            final Token aliasToken = expect(TokenType.IDENTIFIER);
+            alias = Optional.of(aliasToken.text());
+        }
+
+        return new SqlAst.Column.Named(name.text(), alias);
+    }
+
+    // ── ORDER BY ─────────────────────────────────────────────────
+
+    private List<SqlAst.OrderByClause> parseOrderBy() throws SqlParseException {
+        expect(TokenType.ORDER);
+        expect(TokenType.BY);
+
+        final var clauses = new ArrayList<SqlAst.OrderByClause>();
+        clauses.add(parseOrderByClause());
+
+        while (match(TokenType.COMMA)) {
+            clauses.add(parseOrderByClause());
+        }
+
+        return clauses;
+    }
+
+    private SqlAst.OrderByClause parseOrderByClause() throws SqlParseException {
+        final SqlAst.Expression expr = parseOrderByExpression();
+        boolean ascending = true;
+
+        if (match(TokenType.ASC)) {
+            ascending = true;
+        } else if (match(TokenType.DESC)) {
+            ascending = false;
+        }
+
+        return new SqlAst.OrderByClause(expr, ascending);
+    }
+
+    private SqlAst.Expression parseOrderByExpression() throws SqlParseException {
+        // Could be a function call (VECTOR_DISTANCE) or a column ref
+        if (check(TokenType.VECTOR_DISTANCE) || check(TokenType.MATCH)) {
+            return parseFunctionCall();
+        }
+        final Token name = expect(TokenType.IDENTIFIER);
+        return new SqlAst.Expression.ColumnRef(name.text());
+    }
+
+    // ── Expression parsing (precedence climbing) ─────────────────
+
+    private SqlAst.Expression parseExpression() throws SqlParseException {
+        return parseOr();
+    }
+
+    private SqlAst.Expression parseOr() throws SqlParseException {
+        SqlAst.Expression left = parseAnd();
+
+        while (match(TokenType.OR)) {
+            final SqlAst.Expression right = parseAnd();
+            left = new SqlAst.Expression.Logical(left, SqlAst.LogicalOp.OR, right);
+        }
+
+        return left;
+    }
+
+    private SqlAst.Expression parseAnd() throws SqlParseException {
+        SqlAst.Expression left = parseNot();
+
+        // BETWEEN...AND is consumed by parseComparison before reaching here,
+        // so any AND token at this level is always a logical connective.
+        while (match(TokenType.AND)) {
+            final SqlAst.Expression right = parseNot();
+            left = new SqlAst.Expression.Logical(left, SqlAst.LogicalOp.AND, right);
+        }
+
+        return left;
+    }
+
+    private SqlAst.Expression parseNot() throws SqlParseException {
+        if (match(TokenType.NOT)) {
+            final SqlAst.Expression operand = parseNot();
+            return new SqlAst.Expression.Not(operand);
+        }
+        return parseComparison();
+    }
+
+    private SqlAst.Expression parseComparison() throws SqlParseException {
+        final SqlAst.Expression left = parsePrimary();
+
+        // BETWEEN
+        if (match(TokenType.BETWEEN)) {
+            final SqlAst.Expression low = parsePrimary();
+            expect(TokenType.AND);
+            final SqlAst.Expression high = parsePrimary();
+            return new SqlAst.Expression.Between(left, low, high);
+        }
+
+        // IS [NOT] NULL
+        if (match(TokenType.IS)) {
+            final boolean negated = match(TokenType.NOT);
+            expect(TokenType.NULL);
+            return new SqlAst.Expression.IsNull(left, negated);
+        }
+
+        // Comparison operators
+        final SqlAst.ComparisonOp op = matchComparisonOp();
+        if (op != null) {
+            final SqlAst.Expression right = parsePrimary();
+            return new SqlAst.Expression.Comparison(left, op, right);
+        }
+
+        return left;
+    }
+
+    private SqlAst.ComparisonOp matchComparisonOp() {
+        return switch (peek().type()) {
+            case EQ -> {
+                advance();
+                yield SqlAst.ComparisonOp.EQ;
+            }
+            case NE -> {
+                advance();
+                yield SqlAst.ComparisonOp.NE;
+            }
+            case LT -> {
+                advance();
+                yield SqlAst.ComparisonOp.LT;
+            }
+            case LTE -> {
+                advance();
+                yield SqlAst.ComparisonOp.LTE;
+            }
+            case GT -> {
+                advance();
+                yield SqlAst.ComparisonOp.GT;
+            }
+            case GTE -> {
+                advance();
+                yield SqlAst.ComparisonOp.GTE;
+            }
+            default -> null;
+        };
+    }
+
+    // ── Primary expressions ──────────────────────────────────────
+
+    private SqlAst.Expression parsePrimary() throws SqlParseException {
+        final Token token = peek();
+
+        return switch (token.type()) {
+            case STRING_LITERAL -> {
+                advance();
+                yield new SqlAst.Expression.StringLiteral(token.text());
+            }
+            case NUMBER_LITERAL -> {
+                advance();
+                yield new SqlAst.Expression.NumberLiteral(token.text());
+            }
+            case TRUE -> {
+                advance();
+                yield new SqlAst.Expression.BooleanLiteral(true);
+            }
+            case FALSE -> {
+                advance();
+                yield new SqlAst.Expression.BooleanLiteral(false);
+            }
+            case PARAMETER -> {
+                advance();
+                yield new SqlAst.Expression.Parameter(parameterIndex++);
+            }
+            case MATCH, VECTOR_DISTANCE -> parseFunctionCall();
+            case IDENTIFIER -> {
+                advance();
+                yield new SqlAst.Expression.ColumnRef(token.text());
+            }
+            case LPAREN -> {
+                advance(); // consume (
+                final SqlAst.Expression expr = parseExpression();
+                expect(TokenType.RPAREN);
+                yield expr;
+            }
+            default -> throw new SqlParseException("Unexpected token " + token.type() + " '"
+                    + token.text() + "' at position " + token.position(), token.position());
+        };
+    }
+
+    private SqlAst.Expression.FunctionCall parseFunctionCall() throws SqlParseException {
+        final Token name = advance(); // MATCH or VECTOR_DISTANCE
+        expect(TokenType.LPAREN);
+
+        final var args = new ArrayList<SqlAst.Expression>();
+        if (!check(TokenType.RPAREN)) {
+            args.add(parsePrimary());
+            while (match(TokenType.COMMA)) {
+                args.add(parsePrimary());
+            }
+        }
+
+        expect(TokenType.RPAREN);
+        return new SqlAst.Expression.FunctionCall(name.text().toUpperCase(), args);
+    }
+}
