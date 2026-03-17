@@ -3,74 +3,82 @@ package jlsm.table.internal;
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.util.Iterator;
+import java.util.Objects;
 
 import jlsm.table.IndexDefinition;
 import jlsm.table.Predicate;
 
 /**
- * Secondary index for vector nearest-neighbour search on a float array field. Wraps
+ * Secondary index for vector nearest-neighbour search on a VectorType field. Wraps
  * {@code LsmVectorIndex} (IvfFlat or Hnsw) from jlsm-vector.
  *
  * <p>
  * Contract:
  * <ul>
  * <li>Supports: VectorNearest predicate only</li>
- * <li>The indexed field must be an ArrayType with FLOAT32 or FLOAT16 element type</li>
- * <li>On insert: extracts the float array from the document and inserts into the vector index</li>
+ * <li>The indexed field must be a VectorType with FLOAT32 or FLOAT16 element type</li>
+ * <li>On insert: extracts the vector from the document and inserts into the vector index</li>
  * <li>On update: removes old vector, inserts new vector</li>
  * <li>On delete: removes the vector from the index</li>
  * <li>Caller chooses IvfFlat or Hnsw algorithm at table build time</li>
  * </ul>
  *
  * <p>
- * Governed by: domains.md § Vector Index Integration
+ * <b>Stub:</b> operations are not yet implemented. The constructor accepts the definition so that
+ * IndexRegistry validation can complete, but all mutation and query operations throw
+ * {@link UnsupportedOperationException}.
  */
 public final class VectorFieldIndex implements SecondaryIndex {
 
+    private final IndexDefinition definition;
+
     /**
-     * Creates a new vector field index.
+     * Creates a new vector field index stub.
      *
-     * @param definition the index definition (must be VECTOR type with dimensions and similarity
-     *            fn)
+     * @param definition the index definition (must be VECTOR type with similarity function)
      * @throws IOException if the backing index cannot be created
      */
     public VectorFieldIndex(IndexDefinition definition) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(definition, "definition");
+        assert definition.indexType() == jlsm.table.IndexType.VECTOR
+                : "VectorFieldIndex requires VECTOR index type";
+        this.definition = definition;
     }
 
     @Override
     public IndexDefinition definition() {
-        throw new UnsupportedOperationException("Not implemented");
+        return definition;
     }
 
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        throw new UnsupportedOperationException("VectorFieldIndex.onInsert not implemented");
     }
 
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        throw new UnsupportedOperationException("VectorFieldIndex.onUpdate not implemented");
     }
 
     @Override
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        throw new UnsupportedOperationException("VectorFieldIndex.onDelete not implemented");
     }
 
     @Override
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        throw new UnsupportedOperationException("VectorFieldIndex.lookup not implemented");
     }
 
     @Override
     public boolean supports(Predicate predicate) {
-        throw new UnsupportedOperationException("Not implemented");
+        return predicate instanceof Predicate.VectorNearest vn
+                && vn.field().equals(definition.fieldName());
     }
 
     @Override
     public void close() throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        // No resources to release in the stub
     }
 }

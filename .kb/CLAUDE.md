@@ -12,13 +12,14 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| 2026-03-16 | distributed-systems | data-partitioning | [partitioning-strategies](distributed-systems/data-partitioning/partitioning-strategies.md) |
-| 2026-03-16 | distributed-systems | data-partitioning | [vector-search-partitioning](distributed-systems/data-partitioning/vector-search-partitioning.md) |
-| distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 1 | 2 | 2026-03-16 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 3 | 9 | 2026-03-17 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-17 | algorithms | vector-encoding | flat-vector-encoding |
+| 2026-03-17 | algorithms | vector-encoding | sparse-vector-encoding |
+| 2026-03-17 | algorithms | vector-encoding | lossless-vector-compression |
 
 ## Shared References
 `_refs/complexity-notation.md` — notation key used in algorithm files

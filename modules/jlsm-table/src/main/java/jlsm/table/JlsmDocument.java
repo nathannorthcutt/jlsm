@@ -285,6 +285,27 @@ public final class JlsmDocument {
                 }
             }
             case FieldType.ArrayType _ -> expect(fieldName, value, Object[].class, "ARRAY");
+            case FieldType.VectorType vt -> {
+                if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+                    expect(fieldName, value, float[].class, "VECTOR(FLOAT32)");
+                    final float[] fArr = (float[]) value;
+                    if (fArr.length != vt.dimensions()) {
+                        throw new IllegalArgumentException(
+                                "Field '" + fieldName + "' expects VECTOR(FLOAT32, "
+                                        + vt.dimensions() + ") but got " + fArr.length
+                                        + " elements");
+                    }
+                } else {
+                    expect(fieldName, value, short[].class, "VECTOR(FLOAT16)");
+                    final short[] sArr = (short[]) value;
+                    if (sArr.length != vt.dimensions()) {
+                        throw new IllegalArgumentException(
+                                "Field '" + fieldName + "' expects VECTOR(FLOAT16, "
+                                        + vt.dimensions() + ") but got " + sArr.length
+                                        + " elements");
+                    }
+                }
+            }
             case FieldType.ObjectType _ -> expect(fieldName, value, JlsmDocument.class, "OBJECT");
         }
     }

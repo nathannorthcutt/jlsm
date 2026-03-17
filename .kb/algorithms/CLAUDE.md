@@ -10,6 +10,7 @@ Algorithm designs, complexity analysis, pseudocode, and data structure technique
 | Category | Path | Files | Last Updated | Description |
 |----------|------|-------|--------------|-------------|
 | sql-extensions | [sql-extensions/](sql-extensions/CLAUDE.md) | 1 | 2026-03-16 | SQL syntax extensions for vector search, full-text, and domain-specific queries |
+| vector-encoding | [vector-encoding/](vector-encoding/CLAUDE.md) | 3 | 2026-03-17 | Serialization formats and lossless encoding for fixed-dimension float arrays |
 | vector-quantization | [vector-quantization/](vector-quantization/CLAUDE.md) | 5 | 2026-03-16 | Compression techniques for high-dimensional vectors in ANN search |
 
 ## Navigation

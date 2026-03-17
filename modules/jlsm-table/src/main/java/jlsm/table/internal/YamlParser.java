@@ -148,6 +148,12 @@ public final class YamlParser {
                 }
                 yield parseBlockSequence(lines, lineRef, mappingIndent, at);
             }
+            case FieldType.VectorType vt -> {
+                if ("null".equals(valuePart)) {
+                    yield null;
+                }
+                yield parseVectorSequence(lines, lineRef, mappingIndent, vt);
+            }
             case FieldType.ObjectType ot -> {
                 if ("null".equals(valuePart)) {
                     yield null;
@@ -166,6 +172,51 @@ public final class YamlParser {
     /**
      * Parses a YAML block sequence (lines starting with "- ") at indent = mappingIndent.
      */
+    private Object parseVectorSequence(List<String> lines, int[] lineRef, int mappingIndent,
+            FieldType.VectorType vt) {
+        assert lines != null : "lines must not be null";
+        assert lineRef != null : "lineRef must not be null";
+        assert vt != null : "vt must not be null";
+
+        final int d = vt.dimensions();
+
+        if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+            final float[] vec = new float[d];
+            for (int i = 0; i < d; i++) {
+                if (lineRef[0] >= lines.size()) {
+                    throw new IllegalArgumentException(
+                            "Expected " + d + " vector elements but only got " + i);
+                }
+                final String line = lines.get(lineRef[0]);
+                final String trimmed = line.stripLeading();
+                if (!trimmed.startsWith("- ")) {
+                    throw new IllegalArgumentException(
+                            "Expected YAML list item for vector at line " + (lineRef[0] + 1));
+                }
+                vec[i] = Float.parseFloat(trimmed.substring(2).trim());
+                lineRef[0]++;
+            }
+            return vec;
+        } else {
+            final short[] vec = new short[d];
+            for (int i = 0; i < d; i++) {
+                if (lineRef[0] >= lines.size()) {
+                    throw new IllegalArgumentException(
+                            "Expected " + d + " vector elements but only got " + i);
+                }
+                final String line = lines.get(lineRef[0]);
+                final String trimmed = line.stripLeading();
+                if (!trimmed.startsWith("- ")) {
+                    throw new IllegalArgumentException(
+                            "Expected YAML list item for vector at line " + (lineRef[0] + 1));
+                }
+                vec[i] = Float16.fromFloat(Float.parseFloat(trimmed.substring(2).trim()));
+                lineRef[0]++;
+            }
+            return vec;
+        }
+    }
+
     private Object[] parseBlockSequence(List<String> lines, int[] lineRef, int mappingIndent,
             FieldType.ArrayType at) {
         assert lines != null : "lines must not be null";

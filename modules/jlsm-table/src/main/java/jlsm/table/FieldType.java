@@ -14,8 +14,8 @@ import java.util.Objects;
  * <li>{@link ObjectType} — a nested object with its own field definitions</li>
  * </ul>
  */
-public sealed interface FieldType
-        permits FieldType.Primitive, FieldType.ArrayType, FieldType.ObjectType {
+public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayType,
+        FieldType.ObjectType, FieldType.VectorType {
 
     /** Scalar primitive field types. */
     enum Primitive implements FieldType {
@@ -61,6 +61,27 @@ public sealed interface FieldType
         }
     }
 
+    /**
+     * A fixed-dimension vector of floating-point elements.
+     *
+     * @param elementType the element precision; must be {@link Primitive#FLOAT16} or
+     *            {@link Primitive#FLOAT32}
+     * @param dimensions the fixed number of elements per vector; must be positive
+     */
+    record VectorType(Primitive elementType, int dimensions) implements FieldType {
+        public VectorType {
+            Objects.requireNonNull(elementType, "elementType must not be null");
+            if (elementType != Primitive.FLOAT16 && elementType != Primitive.FLOAT32) {
+                throw new IllegalArgumentException(
+                        "VectorType elementType must be FLOAT16 or FLOAT32, got: " + elementType);
+            }
+            if (dimensions <= 0) {
+                throw new IllegalArgumentException(
+                        "VectorType dimensions must be positive, got: " + dimensions);
+            }
+        }
+    }
+
     // --- Static factory shortcuts ---
 
     /** Returns {@link Primitive#STRING}. */
@@ -96,6 +117,17 @@ public sealed interface FieldType
     /** Returns {@link Primitive#TIMESTAMP}. */
     static FieldType timestamp() {
         return Primitive.TIMESTAMP;
+    }
+
+    /**
+     * Returns a {@link VectorType} with the given element type and dimensions.
+     *
+     * @param elementType the element precision; must be FLOAT16 or FLOAT32
+     * @param dimensions the fixed number of elements per vector; must be positive
+     * @return a new VectorType
+     */
+    static FieldType vector(Primitive elementType, int dimensions) {
+        return new VectorType(elementType, dimensions);
     }
 
     /**

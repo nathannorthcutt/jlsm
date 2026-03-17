@@ -10,25 +10,28 @@ import jlsm.core.indexing.SimilarityFunction;
  * <p>
  * Contract:
  * <ul>
- * <li>Receives: field name, index type, and optional configuration for vector indices</li>
+ * <li>Receives: field name, index type, and optional similarity function for vector indices</li>
  * <li>Returns: immutable definition used by the table builder to create the index</li>
  * <li>Side effects: none — pure value holder</li>
  * <li>Validated at table build time against the schema</li>
  * </ul>
  *
+ * <p>
+ * Vector dimensions are derived from the schema's {@link FieldType.VectorType} at
+ * {@link jlsm.table.internal.IndexRegistry} construction time, not stored here.
+ *
  * @param fieldName the schema field to index — must exist in the table's schema
  * @param indexType the type of index to create
- * @param vectorDimensions number of dimensions for VECTOR indices; ignored for other types
- * @param similarityFunction similarity function for VECTOR indices; ignored for other types
+ * @param similarityFunction similarity function for VECTOR indices; null for other types
  */
-public record IndexDefinition(String fieldName, IndexType indexType, int vectorDimensions,
+public record IndexDefinition(String fieldName, IndexType indexType,
         SimilarityFunction similarityFunction) {
 
     /**
      * Creates an index definition for non-vector index types.
      */
     public IndexDefinition(String fieldName, IndexType indexType) {
-        this(fieldName, indexType, 0, null);
+        this(fieldName, indexType, null);
     }
 
     public IndexDefinition {
@@ -38,10 +41,6 @@ public record IndexDefinition(String fieldName, IndexType indexType, int vectorD
             throw new IllegalArgumentException("fieldName must not be blank");
         }
         if (indexType == IndexType.VECTOR) {
-            if (vectorDimensions <= 0) {
-                throw new IllegalArgumentException(
-                        "vectorDimensions must be positive for VECTOR indices");
-            }
             Objects.requireNonNull(similarityFunction,
                     "similarityFunction required for VECTOR indices");
         }
