@@ -1,0 +1,135 @@
+// ── Shared JMH + profiler configuration for all benchmark modules ───────────
+//
+// Apply from each benchmark build.gradle:
+//   apply from: "${rootDir}/benchmarks/jmh-common.gradle"
+//
+// Gradle properties (all optional):
+//   -PrunMode=snapshot|sustained    (default: snapshot)
+//   -Pprofile                       enable async-profiler
+//   -PprofileEvent=cpu|alloc        (default: cpu)
+//   -Pjfr                           enable JFR recording (sustained runs)
+//   -Pjmh.includes=<regex>          filter benchmark classes
+//   -PgcLog                         enable GC text log (sustained runs)
+
+def runMode    = project.findProperty('runMode') ?: 'snapshot'
+def isSnapshot = runMode == 'snapshot'
+
+// ── Output directories ──────────────────────────────────────────────────────
+def perfOutputDir = "${rootProject.projectDir}/perf-output/${project.name}"
+
+// ── JMH plugin configuration ────────────────────────────────────────────────
+jmh {
+    jmhVersion = '1.37'
+    resultFormat = 'JSON'
+    resultsFile = project.file("${perfOutputDir}/results.json")
+
+    if (project.hasProperty('jmh.includes')) {
+        includes = [project.property('jmh.includes')]
+    }
+
+    if (isSnapshot) {
+        fork = 2
+        warmupIterations = 3
+        iterations = 5
+        timeOnIteration = '2s'
+        warmup = '1s'
+    } else {
+        // Sustained: single fork, many iterations, state accumulates
+        fork = 1
+        warmupIterations = 5
+        iterations = 30
+        timeOnIteration = '5s'
+        warmup = '5s'
+    }
+
+    // ── JVM args: profiler accuracy + internal package access ────────────
+    def extraJvmArgs = [
+        // Profiler accuracy — attribute samples to actual bytecodes, not just safepoints
+        '-XX:+UnlockDiagnosticVMOptions',
+        '-XX:+DebugNonSafepoints',
+
+        // Enable assertions in benchmarked code
+        '-ea',
+
+        // jlsm-core internal packages
+        '--add-exports', 'jlsm.core/jlsm.bloom.hash=ALL-UNNAMED',
+        '--add-exports', 'jlsm.core/jlsm.wal.internal=ALL-UNNAMED',
+        '--add-exports', 'jlsm.core/jlsm.memtable.internal=ALL-UNNAMED',
+        '--add-exports', 'jlsm.core/jlsm.sstable.internal=ALL-UNNAMED',
+        '--add-exports', 'jlsm.core/jlsm.compaction.internal=ALL-UNNAMED',
+        '--add-exports', 'jlsm.core/jlsm.tree.internal=ALL-UNNAMED',
+
+        // jlsm-table internal package
+        '--add-exports', 'jlsm.table/jlsm.table.internal=ALL-UNNAMED',
+
+        // jdk.incubator.vector for vector/table benchmarks
+        '--add-modules', 'jdk.incubator.vector',
+    ]
+
+    // ── GC text log (sustained runs) ────────────────────────────────────
+    if (project.hasProperty('gcLog') && !isSnapshot) {
+        def gcLogFile = "${perfOutputDir}/gc.log"
+        extraJvmArgs += "-Xlog:gc*:file=${gcLogFile}:time,level,tags"
+    }
+
+    // ── JFR recording (sustained runs) ──────────────────────────────────
+    if (project.hasProperty('jfr') && !isSnapshot) {
+        def jfrFile = "${perfOutputDir}/recording.jfr"
+        extraJvmArgs += "-XX:StartFlightRecording=filename=${jfrFile},settings=profile,dumponexit=true"
+    }
+
+    jvmArgsAppend = extraJvmArgs
+}
+
+// ── async-profiler integration ──────────────────────────────────────────────
+// Outputs collapsed stacks (text, parseable) instead of HTML flamegraphs.
+
+def osName      = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+def isMac       = osName.contains('mac') || osName.contains('darwin')
+def profilerLib = isMac ? 'libasyncProfiler.dylib' : 'libasyncProfiler.so'
+def profilerDir = rootProject.layout.buildDirectory.dir('async-profiler').get().asFile
+
+if (project.hasProperty('profile')) {
+    def event      = project.findProperty('profileEvent') ?: 'cpu'
+    def outputFile = event == 'alloc'
+        ? "${perfOutputDir}/alloc.collapsed"
+        : "${perfOutputDir}/profiler.collapsed"
+    def agentPath  = "${profilerDir.absolutePath}/lib/${profilerLib}"
+
+    jmh.fork = 1   // Single fork for clean profiler output
+    jmh.jvmArgsAppend = jmh.jvmArgsAppend.get() + [
+        "-agentpath:${agentPath}=start,event=${event},file=${outputFile},collapsed"
+    ]
+
+    tasks.named('jmh').configure {
+        mustRunAfter ':downloadAsyncProfiler'
+        doFirst {
+            file(perfOutputDir).mkdirs()
+            if (!new File(agentPath).exists()) {
+                throw new GradleException(
+                    "async-profiler not found at ${agentPath}. " +
+                    "Run './gradlew :downloadAsyncProfiler' first, or omit -Pprofile.")
+            }
+        }
+    }
+} else {
+    // Ensure output directory exists even without profiling
+    tasks.named('jmh').configure {
+        doFirst {
+            file(perfOutputDir).mkdirs()
+        }
+    }
+}
+
+// ── Lifecycle task: download profiler + run JMH ─────────────────────────────
+tasks.register('jmhProfile') {
+    description = 'Download async-profiler and run JMH. Use -Pprofile [-PprofileEvent=cpu|alloc].'
+    group       = 'profiling'
+    dependsOn ':downloadAsyncProfiler', 'jmh'
+
+    doLast {
+        if (!project.hasProperty('profile')) {
+            logger.warn('jmhProfile invoked without -Pprofile; benchmarks ran without the profiling agent.')
+        }
+    }
+}

@@ -49,11 +49,23 @@ public final class EntryCodec {
      */
     public static byte[] encode(Entry entry) {
         assert entry != null : "entry must not be null";
-        byte[] buf = new byte[encodedSize(entry)];
-        int off = 0;
+        byte[] keyBytes = entry.key().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
+        return encode(entry, keyBytes);
+    }
+
+    /**
+     * Encodes {@code entry} into a new byte array, using pre-extracted key bytes to avoid a
+     * redundant {@link MemorySegment#toArray} call.
+     *
+     * @param entry the entry to encode; must not be null
+     * @param keyBytes the key bytes already extracted from {@code entry.key()}; must not be null
+     * @return encoded bytes
+     */
+    public static byte[] encode(Entry entry, byte[] keyBytes) {
+        assert entry != null : "entry must not be null";
+        assert keyBytes != null : "keyBytes must not be null";
 
         byte type;
-        byte[] keyBytes = entry.key().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
         long seqNum = entry.sequenceNumber().value();
         byte[] valBytes;
 
@@ -68,11 +80,15 @@ public final class EntryCodec {
             }
         }
 
+        int keyLen = keyBytes.length;
+        int valLen = valBytes.length;
+        byte[] buf = new byte[1 + 4 + keyLen + 8 + 4 + valLen];
+        int off = 0;
+
         // type
         buf[off++] = type;
 
         // keyLen (big-endian int)
-        int keyLen = keyBytes.length;
         buf[off++] = (byte) (keyLen >>> 24);
         buf[off++] = (byte) (keyLen >>> 16);
         buf[off++] = (byte) (keyLen >>> 8);
@@ -93,7 +109,6 @@ public final class EntryCodec {
         buf[off++] = (byte) seqNum;
 
         // valLen (big-endian int)
-        int valLen = valBytes.length;
         buf[off++] = (byte) (valLen >>> 24);
         buf[off++] = (byte) (valLen >>> 16);
         buf[off++] = (byte) (valLen >>> 8);

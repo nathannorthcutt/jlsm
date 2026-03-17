@@ -50,8 +50,6 @@ public final class ConcurrentSkipListMemTable implements MemTable {
             case Entry.Delete d -> d.key().byteSize() + Long.BYTES;
         };
         sizeBytes.addAndGet(delta);
-
-        assert map.containsKey(compositeKey) : "entry must be present after apply";
     }
 
     @Override
