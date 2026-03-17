@@ -1,0 +1,99 @@
+package jlsm.table;
+
+import java.lang.foreign.MemorySegment;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Configuration for a {@link PartitionedTable} specifying the partition layout.
+ *
+ * <p>
+ * Contract: Immutable configuration holding partition descriptors that must form a contiguous,
+ * non-overlapping coverage of the keyspace. Validated at construction time.
+ *
+ * <p>
+ * Governed by: .decisions/table-partitioning/adr.md — static partitions, boundaries fixed at
+ * creation.
+ */
+public final class PartitionConfig {
+
+    private final List<PartitionDescriptor> descriptors;
+
+    private PartitionConfig(List<PartitionDescriptor> descriptors) {
+        assert descriptors != null : "descriptors must not be null";
+        assert !descriptors.isEmpty() : "descriptors must not be empty";
+        this.descriptors = List.copyOf(descriptors);
+    }
+
+    /**
+     * Creates a partition configuration from a list of descriptors.
+     *
+     * <p>
+     * Contract:
+     * <ul>
+     * <li>Receives: list of {@link PartitionDescriptor} — must be non-empty, contiguous,
+     * non-overlapping, covering the full keyspace</li>
+     * <li>Returns: validated {@code PartitionConfig}</li>
+     * <li>Side effects: none</li>
+     * <li>Error conditions: throws {@link IllegalArgumentException} if descriptors overlap, have
+     * gaps, or are empty</li>
+     * </ul>
+     *
+     * @param descriptors the partition descriptors in key order
+     * @return a validated partition configuration
+     */
+    public static PartitionConfig of(List<PartitionDescriptor> descriptors) {
+        Objects.requireNonNull(descriptors, "descriptors must not be null");
+        if (descriptors.isEmpty()) {
+            throw new IllegalArgumentException("descriptors must contain at least one partition");
+        }
+        // Validate elements are non-null and boundaries are contiguous
+        for (int i = 0; i < descriptors.size(); i++) {
+            var d = descriptors.get(i);
+            Objects.requireNonNull(d,
+                    "descriptors must not contain null elements (index " + i + ")");
+            if (i > 0) {
+                var prev = descriptors.get(i - 1);
+                // prev.highKey must equal d.lowKey (contiguous, non-overlapping)
+                if (!segmentsEqual(prev.highKey(), d.lowKey())) {
+                    throw new IllegalArgumentException(
+                            "Partition boundary gap or overlap between partition " + (i - 1)
+                                    + " (highKey) and partition " + i
+                                    + " (lowKey): they must be equal for contiguous coverage");
+                }
+            }
+        }
+        return new PartitionConfig(descriptors);
+    }
+
+    /**
+     * Returns the unmodifiable list of partition descriptors in key order.
+     *
+     * @return partition descriptors
+     */
+    public List<PartitionDescriptor> descriptors() {
+        return descriptors;
+    }
+
+    /**
+     * Returns the number of partitions.
+     *
+     * @return partition count
+     */
+    public int partitionCount() {
+        return descriptors.size();
+    }
+
+    /**
+     * Compares two {@link MemorySegment} keys for byte-lexicographic equality.
+     *
+     * @param a first segment
+     * @param b second segment
+     * @return true if the segments are byte-for-byte equal
+     */
+    static boolean segmentsEqual(MemorySegment a, MemorySegment b) {
+        assert a != null : "a must not be null";
+        assert b != null : "b must not be null";
+        return a.mismatch(b) == -1L;
+    }
+}

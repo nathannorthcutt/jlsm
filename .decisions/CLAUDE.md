@@ -19,6 +19,7 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| Table partitioning strategy | table-partitioning | 2026-03-16 | Range partitioning with per-partition co-located indices |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->

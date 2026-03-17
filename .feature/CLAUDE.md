@@ -9,11 +9,12 @@
 
 | Feature | Slug | Started | Stage | Last Checkpoint |
 |---------|------|---------|-------|-----------------|
-| SQL query support | sql-query-support | 2026-03-16 | refactor/complete | all units done, 74 tests passing |
+| Table partitioning | table-partitioning | 2026-03-16 | refactor/complete | 3 WUs done, 85 tests, check clean |
 
 ## Completed / Archived
 
 | Feature | Slug | Completed | Archive |
 |---------|------|-----------|---------|
 | Float16 vector support | float16-vector-support | 2026-03-16 | .feature/_archive/float16-vector-support/ |
+| SQL query support | sql-query-support | 2026-03-17 | .feature/_archive/sql-query-support/ |
 | Table indices and queries | table-indices-and-queries | 2026-03-16 | .feature/_archive/table-indices-and-queries/ |

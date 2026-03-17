@@ -59,6 +59,8 @@ Default to 90 days if not found or no project-config exists.
 
 ### Step 1 — Index scan (read indexes only, not subject files)
 
+#### 1a — Top-down navigation (primary path)
+
 Read `.kb/CLAUDE.md` in full. From the Topic Map and Recently Added table,
 identify candidate topics and categories that relate to the question.
 
@@ -67,7 +69,22 @@ For each candidate category, read `.kb/<topic>/<category>/CLAUDE.md` — the
 category index contains a comparison summary and contents table with one-line
 descriptions. This is usually enough to answer the question.
 
-**Staleness check:** for each candidate, note the `Last Updated` date from
+#### 1b — Cross-topic keyword scan (discovery path)
+
+Extract 3–5 keywords from the question. Search across ALL category-level
+`CLAUDE.md` files for entries whose descriptions match these keywords. This
+catches entries in unexpected topics/categories that are relevant to the query.
+
+Read only the matching category `CLAUDE.md` files (not subject files). Merge
+any new candidates not already found in 1a. Mark keyword-matched candidates
+with the matching term so the user can see why they were surfaced.
+
+**Cost control:** category indexes are ~10-30 lines each. Even on a large KB
+(50 categories), the scan costs ~1-2K tokens — less than a single subject file.
+
+#### Staleness check
+
+For each candidate from 1a and 1b, note the `Last Updated` date from
 the index tables. If any candidate's last update is older than the staleness
 threshold, mark it as stale. Also check `last_researched` frontmatter in
 subject files when loaded in Step 2.

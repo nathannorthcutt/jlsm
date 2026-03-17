@@ -1,0 +1,23 @@
+package jlsm.table;
+
+import java.util.Objects;
+
+/**
+ * A query result entry with an associated relevance score.
+ *
+ * <p>
+ * Contract: Immutable result from a ranked query (vector similarity, full-text, or hybrid). The
+ * score semantics depend on the query type: higher is better for similarity and text relevance.
+ *
+ * @param key the document key
+ * @param document the matched document
+ * @param score relevance score (higher = more relevant)
+ * @param <K> the key type
+ */
+public record ScoredEntry<K>(K key, JlsmDocument document, double score) {
+
+    public ScoredEntry {
+        Objects.requireNonNull(key, "key must not be null");
+        Objects.requireNonNull(document, "document must not be null");
+    }
+}
