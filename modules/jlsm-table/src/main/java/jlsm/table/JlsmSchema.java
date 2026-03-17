@@ -72,7 +72,6 @@ public final class JlsmSchema {
      */
     public int fieldIndex(String name) {
         Objects.requireNonNull(name, "name must not be null");
-        assert name != null : "name must not be null";
         return fieldIndexMap.getOrDefault(name, -1);
     }
 
@@ -131,6 +130,22 @@ public final class JlsmSchema {
             assert type != null : "type must not be null";
             fields.add(new FieldDefinition(name, type));
             return this;
+        }
+
+        /**
+         * Adds a vector field with the given element type and fixed dimensions.
+         *
+         * @param name the field name; must not be null
+         * @param elementType the element precision; must be FLOAT16 or FLOAT32
+         * @param dimensions the fixed number of elements per vector; must be positive
+         * @return this builder
+         */
+        public Builder vectorField(String name, FieldType.Primitive elementType, int dimensions) {
+            Objects.requireNonNull(name, "name must not be null");
+            Objects.requireNonNull(elementType, "elementType must not be null");
+            assert name != null : "name must not be null";
+            assert elementType != null : "elementType must not be null";
+            return field(name, FieldType.vector(elementType, dimensions));
         }
 
         /**

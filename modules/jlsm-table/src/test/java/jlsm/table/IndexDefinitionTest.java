@@ -12,7 +12,6 @@ class IndexDefinitionTest {
         var eqDef = new IndexDefinition("name", IndexType.EQUALITY);
         assertEquals("name", eqDef.fieldName());
         assertEquals(IndexType.EQUALITY, eqDef.indexType());
-        assertEquals(0, eqDef.vectorDimensions());
         assertNull(eqDef.similarityFunction());
 
         var rangeDef = new IndexDefinition("age", IndexType.RANGE);
@@ -27,11 +26,9 @@ class IndexDefinitionTest {
         assertEquals("body", ftDef.fieldName());
         assertEquals(IndexType.FULL_TEXT, ftDef.indexType());
 
-        var vecDef = new IndexDefinition("embedding", IndexType.VECTOR, 128,
-                SimilarityFunction.COSINE);
+        var vecDef = new IndexDefinition("embedding", IndexType.VECTOR, SimilarityFunction.COSINE);
         assertEquals("embedding", vecDef.fieldName());
         assertEquals(IndexType.VECTOR, vecDef.indexType());
-        assertEquals(128, vecDef.vectorDimensions());
         assertEquals(SimilarityFunction.COSINE, vecDef.similarityFunction());
     }
 
@@ -53,14 +50,8 @@ class IndexDefinitionTest {
     }
 
     @Test
-    void testIndexDefinitionVectorMissingDimensionsThrowsIae() {
-        assertThrows(IllegalArgumentException.class, () -> new IndexDefinition("embedding",
-                IndexType.VECTOR, 0, SimilarityFunction.COSINE));
-    }
-
-    @Test
     void testIndexDefinitionVectorMissingSimilarityThrowsNpe() {
         assertThrows(NullPointerException.class,
-                () -> new IndexDefinition("embedding", IndexType.VECTOR, 128, null));
+                () -> new IndexDefinition("embedding", IndexType.VECTOR, null));
     }
 }

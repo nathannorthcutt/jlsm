@@ -151,6 +151,7 @@ public final class JsonParser {
         return switch (type) {
             case FieldType.Primitive p -> parsePrimitive(src, pos, p, fieldName, b);
             case FieldType.ArrayType at -> parseArray(src, pos, at, fieldName, parentSchema);
+            case FieldType.VectorType vt -> parseVector(src, pos, vt, fieldName);
             case FieldType.ObjectType ot -> {
                 final JlsmSchema subSchema = ot.toSchema(fieldName, parentSchema.version());
                 yield parseObject(src, pos, subSchema);
@@ -221,6 +222,57 @@ public final class JsonParser {
                 yield Long.parseLong(parseNumberString(src, pos));
             }
         };
+    }
+
+    private Object parseVector(byte[] src, int[] pos, FieldType.VectorType vt, String fieldName) {
+        assert src != null : "src must not be null";
+        assert pos != null : "pos must not be null";
+        assert vt != null : "vt must not be null";
+
+        expect(src, pos, '[');
+        skipWhitespace(src, pos);
+
+        final int d = vt.dimensions();
+        if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+            final float[] vec = new float[d];
+            for (int i = 0; i < d; i++) {
+                if (i > 0) {
+                    skipWhitespace(src, pos);
+                    expect(src, pos, ',');
+                    skipWhitespace(src, pos);
+                }
+                vec[i] = parseFloat(src, pos);
+            }
+            skipWhitespace(src, pos);
+            expect(src, pos, ']');
+            return vec;
+        } else {
+            final short[] vec = new short[d];
+            for (int i = 0; i < d; i++) {
+                if (i > 0) {
+                    skipWhitespace(src, pos);
+                    expect(src, pos, ',');
+                    skipWhitespace(src, pos);
+                }
+                vec[i] = Float16.fromFloat(parseFloat(src, pos));
+            }
+            skipWhitespace(src, pos);
+            expect(src, pos, ']');
+            return vec;
+        }
+    }
+
+    private float parseFloat(byte[] src, int[] pos) {
+        final int start = pos[0];
+        while (pos[0] < src.length) {
+            final byte b = src[pos[0]];
+            if (b == ',' || b == ']' || b == ' ' || b == '\n' || b == '\r' || b == '\t') {
+                break;
+            }
+            pos[0]++;
+        }
+        return Float.parseFloat(
+                new String(src, start, pos[0] - start, java.nio.charset.StandardCharsets.US_ASCII));
     }
 
     private Object[] parseArray(byte[] src, int[] pos, FieldType.ArrayType at, String fieldName,

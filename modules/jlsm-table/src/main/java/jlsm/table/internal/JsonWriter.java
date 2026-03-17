@@ -89,6 +89,7 @@ public final class JsonWriter {
         switch (type) {
             case FieldType.Primitive p -> writePrimitive(p, value, sb, indent, depth);
             case FieldType.ArrayType at -> writeArray(at, (Object[]) value, sb, indent, depth);
+            case FieldType.VectorType vt -> writeVector(vt, value, sb, indent, depth);
             case FieldType.ObjectType _ -> writeDocument((JlsmDocument) value, sb, indent, depth);
         }
     }
@@ -131,6 +132,39 @@ public final class JsonWriter {
                 }
             }
             writeValue(at.elementType(), elements[i], sb, indent, depth);
+        }
+        sb.append(']');
+    }
+
+    private void writeVector(FieldType.VectorType vt, Object value, StringBuilder sb, int indent,
+            int depth) {
+        assert vt != null : "vt must not be null";
+        assert value != null : "value must not be null";
+        assert sb != null : "sb must not be null";
+
+        sb.append('[');
+        if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+            final float[] vec = (float[]) value;
+            for (int i = 0; i < vec.length; i++) {
+                if (i > 0) {
+                    sb.append(',');
+                    if (indent > 0) {
+                        sb.append(' ');
+                    }
+                }
+                writeFloat(vec[i], sb);
+            }
+        } else {
+            final short[] vec = (short[]) value;
+            for (int i = 0; i < vec.length; i++) {
+                if (i > 0) {
+                    sb.append(',');
+                    if (indent > 0) {
+                        sb.append(' ');
+                    }
+                }
+                writeFloat(Float16.toFloat(vec[i]), sb);
+            }
         }
         sb.append(']');
     }

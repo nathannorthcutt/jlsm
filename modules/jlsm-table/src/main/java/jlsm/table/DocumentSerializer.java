@@ -245,6 +245,10 @@ public final class DocumentSerializer {
                 }
                 yield sz;
             }
+            case FieldType.VectorType vt -> {
+                final int elemBytes = vt.elementType() == FieldType.Primitive.FLOAT32 ? 4 : 2;
+                yield vt.dimensions() * elemBytes;
+            }
             case FieldType.ObjectType ot -> {
                 final JlsmDocument sub = (JlsmDocument) value;
                 final List<FieldDefinition> subFields = ot.fields();
@@ -317,6 +321,7 @@ public final class DocumentSerializer {
                 }
             }
             case FieldType.ArrayType at -> encodeArray(c, at.elementType(), (Object[]) value);
+            case FieldType.VectorType vt -> encodeVector(c, vt, value);
             case FieldType.ObjectType ot -> encodeObject(c, ot, (JlsmDocument) value);
         }
     }
@@ -337,6 +342,26 @@ public final class DocumentSerializer {
                 if (elem != null) {
                     encodeField(c, elemType, elem);
                 }
+            }
+        }
+    }
+
+    private static void encodeVector(Cursor c, FieldType.VectorType vt, Object value) {
+        final int d = vt.dimensions();
+        if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+            final float[] vec = (float[]) value;
+            assert vec.length == d : "vector length must match dimensions";
+            for (int i = 0; i < d; i++) {
+                writeIntBE(c.buf, c.pos, Float.floatToRawIntBits(vec[i]));
+                c.pos += 4;
+            }
+        } else {
+            // FLOAT16 — stored as short[]
+            final short[] vec = (short[]) value;
+            assert vec.length == d : "vector length must match dimensions";
+            for (int i = 0; i < d; i++) {
+                writeShortBE(c.buf, c.pos, vec[i]);
+                c.pos += 2;
             }
         }
     }
@@ -514,6 +539,7 @@ public final class DocumentSerializer {
                 }
             };
             case FieldType.ArrayType at -> decodeArray(buf, cursor, at);
+            case FieldType.VectorType vt -> decodeVector(buf, cursor, vt);
             case FieldType.ObjectType ot -> decodeObject(buf, cursor, ot);
         };
     }
@@ -536,6 +562,26 @@ public final class DocumentSerializer {
             arr[i] = decodeField(buf, cursor, elemType);
         }
         return arr;
+    }
+
+    private static Object decodeVector(byte[] buf, Cursor cursor, FieldType.VectorType vt) {
+        final int d = vt.dimensions();
+        if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+            final float[] vec = new float[d];
+            for (int i = 0; i < d; i++) {
+                vec[i] = Float.intBitsToFloat(readIntBE(buf, cursor.pos));
+                cursor.pos += 4;
+            }
+            return vec;
+        } else {
+            // FLOAT16 — return as short[]
+            final short[] vec = new short[d];
+            for (int i = 0; i < d; i++) {
+                vec[i] = readShortBE(buf, cursor.pos);
+                cursor.pos += 2;
+            }
+            return vec;
+        }
     }
 
     private static Object decodeObject(byte[] buf, Cursor cursor, FieldType.ObjectType ot) {

@@ -51,16 +51,16 @@ public final class IndexRegistry implements Closeable {
         Objects.requireNonNull(document, "document");
 
         // Unique checks first
-        for (SecondaryIndex idx : indices) {
+        for (final SecondaryIndex idx : indices) {
             if (idx.definition().indexType() == IndexType.UNIQUE) {
-                Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
+                final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
                 idx.onInsert(primaryKey, fieldValue);
             }
         }
         // Non-unique inserts
-        for (SecondaryIndex idx : indices) {
+        for (final SecondaryIndex idx : indices) {
             if (idx.definition().indexType() != IndexType.UNIQUE) {
-                Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
+                final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
                 idx.onInsert(primaryKey, fieldValue);
             }
         }
@@ -71,11 +71,11 @@ public final class IndexRegistry implements Closeable {
     public void onUpdate(MemorySegment primaryKey, JlsmDocument oldDocument,
             JlsmDocument newDocument) throws IOException {
         assert !closed : "Registry is closed";
-        for (SecondaryIndex idx : indices) {
-            String fieldName = idx.definition().fieldName();
-            Object oldValue = oldDocument != null ? extractFieldValue(oldDocument, fieldName)
+        for (final SecondaryIndex idx : indices) {
+            final String fieldName = idx.definition().fieldName();
+            final Object oldValue = oldDocument != null ? extractFieldValue(oldDocument, fieldName)
                     : null;
-            Object newValue = extractFieldValue(newDocument, fieldName);
+            final Object newValue = extractFieldValue(newDocument, fieldName);
             idx.onUpdate(primaryKey, oldValue, newValue);
         }
 
@@ -85,8 +85,8 @@ public final class IndexRegistry implements Closeable {
 
     public void onDelete(MemorySegment primaryKey, JlsmDocument document) throws IOException {
         assert !closed : "Registry is closed";
-        for (SecondaryIndex idx : indices) {
-            Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
+        for (final SecondaryIndex idx : indices) {
+            final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
             idx.onDelete(primaryKey, fieldValue);
         }
 
@@ -187,14 +187,14 @@ public final class IndexRegistry implements Closeable {
     // ── Private helpers ─────────────────────────────────────────────────
 
     private static void validate(JlsmSchema schema, IndexDefinition def) {
-        int fieldIdx = schema.fieldIndex(def.fieldName());
+        final int fieldIdx = schema.fieldIndex(def.fieldName());
         if (fieldIdx < 0) {
             throw new IllegalArgumentException("Field '" + def.fieldName()
                     + "' does not exist in schema '" + schema.name() + "'");
         }
 
-        FieldDefinition fieldDef = schema.fields().get(fieldIdx);
-        FieldType fieldType = fieldDef.type();
+        final FieldDefinition fieldDef = schema.fields().get(fieldIdx);
+        final FieldType fieldType = fieldDef.type();
 
         switch (def.indexType()) {
             case RANGE, UNIQUE -> {
@@ -224,13 +224,10 @@ public final class IndexRegistry implements Closeable {
                 }
             }
             case VECTOR -> {
-                if (!(fieldType instanceof FieldType.ArrayType at
-                        && (at.elementType() == FieldType.Primitive.FLOAT32
-                                || at.elementType() == FieldType.Primitive.FLOAT16))) {
+                if (!(fieldType instanceof FieldType.VectorType)) {
                     throw new IllegalArgumentException(
-                            "VECTOR index requires ArrayType(FLOAT32) or "
-                                    + "ArrayType(FLOAT16) field, got: " + fieldType + " for field '"
-                                    + def.fieldName() + "'");
+                            "VECTOR index requires VectorType field, got: " + fieldType
+                                    + " for field '" + def.fieldName() + "'");
                 }
             }
         }
@@ -248,10 +245,10 @@ public final class IndexRegistry implements Closeable {
         if (document.isNull(fieldName)) {
             return null;
         }
-        int idx = schema.fieldIndex(fieldName);
+        final int idx = schema.fieldIndex(fieldName);
         assert idx >= 0 : "Field must exist — validated at construction";
-        FieldDefinition fieldDef = schema.fields().get(idx);
-        FieldType fieldType = fieldDef.type();
+        final FieldDefinition fieldDef = schema.fields().get(idx);
+        final FieldType fieldType = fieldDef.type();
 
         if (fieldType instanceof FieldType.Primitive p) {
             return switch (p) {
@@ -268,6 +265,8 @@ public final class IndexRegistry implements Closeable {
             };
         } else if (fieldType instanceof FieldType.ArrayType) {
             return document.getArray(fieldName);
+        } else if (fieldType instanceof FieldType.VectorType) {
+            return DocumentAccess.get().values(document)[idx];
         } else if (fieldType instanceof FieldType.ObjectType) {
             return document.getObject(fieldName);
         }

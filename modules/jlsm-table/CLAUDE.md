@@ -18,7 +18,7 @@ Not exported in `module-info.java` and must not be made public:
 
 - `jlsm.table.internal` — `StringKeyedTable`, `LongKeyedTable`, `DocumentSerializer`,
   `FieldValueCodec`, `JsonParser`/`JsonWriter`, `YamlParser`/`YamlWriter`,
-  `IndexRegistry`, `FieldIndex`, `QueryExecutor`
+  `IndexRegistry`, `FieldIndex`, `VectorFieldIndex`, `QueryExecutor`
 
 ## Key Constraint
 

@@ -75,6 +75,7 @@ public final class YamlWriter {
         switch (type) {
             case FieldType.Primitive p -> writePrimitive(p, value, sb);
             case FieldType.ArrayType at -> writeArray(at, (Object[]) value, sb, depth);
+            case FieldType.VectorType vt -> writeVector(vt, value, sb, depth);
             case FieldType.ObjectType _ -> {
                 sb.append('\n');
                 writeDocument((JlsmDocument) value, sb, depth + 1);
@@ -119,6 +120,30 @@ public final class YamlWriter {
         }
     }
 
+    private void writeVector(FieldType.VectorType vt, Object value, StringBuilder sb, int depth) {
+        assert vt != null : "vt must not be null";
+        assert value != null : "value must not be null";
+        assert sb != null : "sb must not be null";
+
+        if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+            final float[] vec = (float[]) value;
+            for (int i = 0; i < vec.length; i++) {
+                sb.append('\n');
+                appendIndent(sb, depth);
+                sb.append("- ");
+                writeYamlFloat(vec[i], sb);
+            }
+        } else {
+            final short[] vec = (short[]) value;
+            for (int i = 0; i < vec.length; i++) {
+                sb.append('\n');
+                appendIndent(sb, depth);
+                sb.append("- ");
+                writeYamlFloat(Float16.toFloat(vec[i]), sb);
+            }
+        }
+    }
+
     private void writeArrayElement(FieldType elementType, Object value, StringBuilder sb,
             int depth) {
         assert sb != null : "sb must not be null";
@@ -132,6 +157,8 @@ public final class YamlWriter {
             case FieldType.Primitive p -> writePrimitive(p, value, sb);
             case FieldType.ArrayType _ ->
                 throw new UnsupportedOperationException("Nested arrays not supported in YAML");
+            case FieldType.VectorType _ ->
+                throw new UnsupportedOperationException("Nested vectors not supported in YAML");
             case FieldType.ObjectType _ -> {
                 sb.append('\n');
                 writeDocument((JlsmDocument) value, sb, depth + 1);
