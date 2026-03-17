@@ -18,7 +18,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * internal ordering and is therefore a write-equivalent operation.
  *
  * <p>
- * Obtain instances via {@link #builder()}.
+ * Obtain instances via {@link #builder()}, or use the convenience factory methods
+ * {@link #getMultiThreaded()} and {@link #getSingleThreaded()} for the recommended entry points.
  */
 public final class LruBlockCache implements BlockCache {
 
@@ -104,6 +105,27 @@ public final class LruBlockCache implements BlockCache {
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * Returns a {@link StripedBlockCache.Builder} for constructing a striped (sharded) cache
+     * optimized for multi-threaded access. Each stripe has its own lock, eliminating single-lock
+     * contention under concurrent workloads.
+     *
+     * @return a new {@link StripedBlockCache.Builder}
+     */
+    public static StripedBlockCache.Builder getMultiThreaded() {
+        return StripedBlockCache.builder();
+    }
+
+    /**
+     * Returns a {@link Builder} for constructing a single-lock LRU cache suitable for
+     * single-threaded or low-contention workloads. Equivalent to {@link #builder()}.
+     *
+     * @return a new {@link Builder}
+     */
+    public static Builder getSingleThreaded() {
+        return builder();
     }
 
     public static Builder builder() {
