@@ -106,10 +106,11 @@ perf-output/
 | jlsm-core | — | SSTable read (TrieSSTableReader) | 🔍 scratch explored 2026-03-16 | ❌ |
 | jlsm-core | — | Compaction (SpookyCompactor) | 🔍 scratch explored 2026-03-16 | ❌ |
 | jlsm-core | — | WAL (LocalWriteAheadLog) | 🔍 scratch explored 2026-03-16 | ❌ |
-| jlsm-core | — | Block cache (LRU) | ❌ | ❌ |
+| jlsm-core | jlsm-tree-benchmarks | Block cache (LRU) | ✅ LruBlockCacheBenchmark | 🔍 scratch explored 2026-03-17 (no degradation) |
 | jlsm-indexing | — | Inverted index | ❌ | ❌ |
 | jlsm-vector | — | IvfFlat / Hnsw | ❌ | ❌ |
 | jlsm-table | — | Document model + secondary indices | ❌ | ❌ |
+| jlsm-table | — | Partition routing (RangeMap, ResultMerger) | 🔍 scratch explored 2026-03-17 | ❌ |
 
 > ✅ = benchmarked and baselined  ❌ = not yet covered  ⚠️ = stale (rerun needed)
 
@@ -125,6 +126,7 @@ perf-output/
 - `jlsm-core#TrieSSTableReader#get — SSTable read — 543f0e3 — getHit: 1.07M ops/s, getMiss: 12.85M ops/s`
 - `jlsm-core#TrieSSTableWriter#append — SSTable write — 543f0e3 — 125 ops/s @1K entries, 45 ops/s @10K (post-fix)`
 - `jlsm-core#MappedByteBuffer#force — WAL — 543f0e3 — ~100% of append CPU; 427 ops/s @128B`
+- `jlsm-core#LruBlockCache#get/#put — Cache/Contention — 1030761 — 1T: 30.6M ops/s, 2T: 7.6M ops/s (75% drop), 8T: 12.7M ops/s (58% drop)`
 
 ---
 
@@ -149,6 +151,14 @@ perf-output/
 - `MemTableBenchmark` — snapshot — getHit@10K: 1.52M ops/s — 10% threshold — 543f0e3
 - `MemTableBenchmark` — snapshot — getHit@100K: 1.39M ops/s — 10% threshold — 543f0e3
 - `MemTableBenchmark` — snapshot — scan: 4.60M ops/s — 10% threshold — 543f0e3
+- `LruBlockCacheBenchmark` — snapshot — putWithEviction@1K: 23.2M ops/s — 10% threshold — 1030761
+- `LruBlockCacheBenchmark` — snapshot — putWithEviction@10K: 22.8M ops/s — 10% threshold — 1030761
+- `LruBlockCacheBenchmark` — snapshot — mixedGetPut@1K: 32.8M ops/s — 10% threshold — 1030761
+- `LruBlockCacheBenchmark` — snapshot — mixedGetPut@10K: 28.2M ops/s — 10% threshold — 1030761
+- `LruBlockCacheBenchmark` — snapshot — contention_t1@1K: 30.6M ops/s — 10% threshold — 1030761
+- `LruBlockCacheBenchmark` — snapshot — contention_t2@1K: 7.6M ops/s — 10% threshold — 1030761
+- `LruBlockCacheBenchmark` — snapshot — contention_t4@1K: 13.9M ops/s — 10% threshold — 1030761
+- `LruBlockCacheBenchmark` — snapshot — contention_t8@1K: 12.7M ops/s — 10% threshold — 1030761
 
 ---
 
@@ -163,9 +173,11 @@ Explored but no regression benchmark yet (scratch-only, 2026-03-16):
 - SpookyCompactor — compaction merge (lazy open fix applied; MergeIterator is efficient)
 - LocalWriteAheadLog — WAL (fsync dominates; group commit needed for throughput)
 
+Explored but no regression benchmark yet (scratch-only, 2026-03-17):
+- RangeMap + ResultMerger — partition routing layer (no significant cost found; routing ~106ns, overlap ~1.5μs @64P)
+
 Not yet explored:
 - BlockedBloomFilter — bloom filter standalone (hash + double-hash loop)
-- LruBlockCache — block cache (ReentrantLock contention, sustained candidate)
 - LsmVectorIndex — SIMD distance computation (snapshot candidate)
 - DocumentSerializer — SIMD byte-swap encoding (snapshot candidate)
 - FieldIndex — secondary index maintenance (sustained candidate)
@@ -181,7 +193,7 @@ Not yet explored:
 Examples to evaluate on first exploration:
 - MemTable skip list — does search cost grow with entry count?
 - Bloom filter sizing — does memory grow proportionally or leak?
-- Block cache — does eviction keep memory bounded under sustained load?
+- ~~Block cache — does eviction keep memory bounded under sustained load?~~ ✅ confirmed bounded, no drift (1030761)
 - Compaction merge iterator — do file handles accumulate between compactions?
 
 *(agent populates confirmed candidates here)*
@@ -221,3 +233,4 @@ jfr summary recording.jfr
 
 - **I/O dominates SSTable write** — 35% of CPU in FileChannel.write; inherent to write path (543f0e3)
 - **Bloom hash dominates SSTable read** — expected; getMiss 12x faster than getHit proves bloom is working (543f0e3)
+- **Partition routing overhead** — routeKey ~106ns, overlapping ~1.5μs, mergeOrdered ~163ns/entry @64P; all negligible vs data I/O (1030761)

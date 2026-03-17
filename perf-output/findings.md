@@ -97,3 +97,45 @@
 - **Proposed fix:** Group commit — batch appends before fsync. Changes durability contract.
 - **Impact:** High potential but requires design work
 - **Detected on commit:** 543f0e3
+
+## Finding: Partition routing layer — no significant cost
+
+- **Location:** `jlsm.table.internal.RangeMap#routeKey`, `RangeMap#overlapping`, `jlsm.table.internal.ResultMerger#mergeOrdered`
+- **Layer:** Table / Partitioning
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Open — investigated, no significant cost found
+- **Hypothesis:** Partition routing (binary search + MemorySegment.mismatch), range overlap discovery (linear scan), and N-way merge (PriorityQueue) may introduce measurable overhead as partition count grows.
+- **Evidence:** routeKey: 16.8M ops/s @4P → 9.4M ops/s @64P (~106ns/call). overlapping: 9.5M ops/s @4P → 661K ops/s @64P (~1.5μs/call, O(P) confirmed). mergeOrdered: 6.1M entries/s merged @64P (~163ns/entry). Profiler: SegmentBulkOperations.mismatch dominates routeKey (same FFM overhead as MemTable KeyComparator finding). All costs dwarfed by underlying LSM tree I/O.
+- **Proposed fix:** overlapping() could use binary search to find start partition (O(log P + K) vs O(P)), but only worthwhile at hundreds of partitions.
+- **Impact:** Low — routing overhead is negligible relative to data access
+- **Benchmark to validate:** N/A — scratch confirmed no issue
+- **Detected on commit:** 1030761
+
+## Finding: LruBlockCache sustained eviction — no degradation
+
+- **Location:** `jlsm.cache.LruBlockCache`
+- **Layer:** Resource Growth
+- **Run mode:** Sustained
+- **Tier:** Scratch
+- **Status:** Open — investigated, no degradation found
+- **Hypothesis:** Eviction overhead or GC pressure from CacheKey/Entry churn might cause throughput degradation over time under sustained eviction load.
+- **Degradation pattern:** None — flat throughput across 30 iterations (150s)
+- **Evidence:** putWithEviction: 24.5M ops/s @1K, 23.7M ops/s @10K — flat across all iterations. mixedGetPut: 28.4M ops/s @1K, 28.3M ops/s @10K — flat. Allocation profile: 316K samples in LinkedHashMap$Entry, 251K in CacheKey — both short-lived, no accumulation. No GC drift.
+- **Impact:** Low — eviction is O(1) and GC handles the churn cleanly
+- **Benchmark to validate:** N/A — sustained scratch confirmed no growth issue
+- **Detected on commit:** 1030761
+
+## Finding: LruBlockCache severe lock contention under concurrency
+
+- **Location:** `jlsm.cache.LruBlockCache#get`, `#put` — single `ReentrantLock`
+- **Layer:** Cache / Contention
+- **Run mode:** Snapshot
+- **Tier:** Regression (promoted from scratch — `LruBlockCacheBenchmark`)
+- **Status:** Open
+- **Hypothesis:** Single `ReentrantLock` serialises all operations. `LinkedHashMap` with `accessOrder=true` makes every `get()` a structural modification (relinks entry to tail), so `ReadWriteLock` cannot be used. Throughput collapses under concurrent access.
+- **Evidence:** 1 thread: 30.6M ops/s. 2 threads: 7.6M ops/s (75% drop). 4 threads: 13.9M ops/s (54% drop). 8 threads: 12.7M ops/s (58% drop). Profiler: AQS.acquire (6 samples), pthread_cond_signal (14), Unsafe.park (3) — lock wait dominates multi-threaded stacks. HashMap.getNode (13) and afterNodeAccess (12) are cheap — lock is the bottleneck, not the data structure.
+- **Proposed fix:** Striped/sharded cache — partition key space across N independent LruBlockCache instances (e.g., `sstableId % N`), each with its own lock. Near-linear scaling for independent SSTable reads. Alternative: Caffeine-style concurrent LRU, but adds complexity.
+- **Impact:** High — 75% throughput loss at 2 threads makes cache a bottleneck for concurrent SSTable readers
+- **Benchmark to validate:** `./gradlew :benchmarks:jlsm-tree-benchmarks:jmh "-Pjmh.includes=LruBlockCacheBenchmark"`
+- **Detected on commit:** 1030761
