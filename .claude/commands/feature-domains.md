@@ -78,9 +78,13 @@ here doesn't lose the domain list.
 ## Step 2 — Survey KB and decisions (only for pending domains)
 
 For each pending domain:
-1. Read `.kb/CLAUDE.md` — check for relevant topic/category
-2. Read `.decisions/CLAUDE.md` — check for relevant ADR
-3. Classify using the rules below
+1. Read `.kb/CLAUDE.md` — check for relevant topic/category (top-down navigation)
+2. Extract keywords from the domain name and description. Search across all
+   category-level `CLAUDE.md` files for entries matching these keywords — this
+   catches tangentially related KB entries in other topics/categories. Read only
+   the matching category indexes, not subject files.
+3. Read `.decisions/CLAUDE.md` — check for relevant ADR
+4. Classify using the rules below
 
 ### Classification rules
 

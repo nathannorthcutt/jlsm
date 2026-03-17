@@ -46,4 +46,5 @@
 .claude/scripts/merge-driver-index.sh
 .claude/scripts/ensure-merge-driver.sh
 .claude/scripts/kb-freshness-check.sh
+.claude/scripts/adr-validate.sh
 .claude/upgrade.sh

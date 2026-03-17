@@ -172,6 +172,9 @@ last_updated: "<YYYY-MM-DD>"
 
 ## Knowledge Base
 **KB staleness threshold (days):** `90`
+
+## Decisions
+**Backfill file threshold:** `50`
 ```
 
 ---

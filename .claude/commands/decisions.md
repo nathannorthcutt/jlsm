@@ -14,7 +14,7 @@ Single entry point for all architecture decision operations.
 | `/decisions list [--status <filter>] [--search <term>]` | Browse and filter all decisions |
 | `/decisions explain "<slug>"` | Plain-language summary of a decision with KB context |
 | `/decisions candidates` | Review undocumented decision candidates from recent sessions |
-| `/decisions backfill [<path>] [--limit N]` | Surface implicit decisions from archived features and source code |
+| `/decisions backfill [<path>] [--limit N]` | Surface implicit decisions from source code. Path required for large projects (over backfill_file_threshold) |
 
 **Default (no subcommand):** if the first argument looks like a question rather
 than a subcommand name, treat it as `/decisions "<question>"`.
@@ -703,7 +703,9 @@ file.
 
 Scans archived features and source structure to surface implicit architectural
 decisions that were never documented as ADRs. Presents candidates one at a time
-for the user to decide, draft, defer, or dismiss.
+for the user to decide, draft, defer, or dismiss. On projects with more than
+`backfill_file_threshold` source files (default 50, set in project-config.md),
+a `<path>` argument is required to scope the scan.
 
 Display opening header:
 ```
@@ -712,12 +714,51 @@ Display opening header:
 ───────────────────────────────────────────────
 ```
 
-### Step 0 — Parse arguments
+### Step 0 — Parse arguments and size check
 
 - `<path>` (optional): scope the source scan to this module/package path.
   Archived feature scan still runs (results are filtered to domains that
   relate to constructs in the scoped path).
 - `--limit N` (optional, default 5): max candidates to present this session.
+
+**Size check (before any scanning):**
+
+Read `.feature/project-config.md` for the source directory, language, and
+`Backfill file threshold` (default 50). Count source files using bash:
+
+```bash
+find <source-dir> -type f \( -name "*.<ext>" \) | wc -l
+```
+
+Use language from project-config to determine extensions:
+- Java: `*.java`
+- TypeScript/JavaScript: `*.ts *.tsx *.js *.jsx`
+- Python: `*.py`
+- Go: `*.go`
+- Rust: `*.rs`
+- Multiple languages: union of applicable extensions
+
+**If `<path>` was provided:** skip the size check, proceed to Step 1.
+
+**If no `<path>` and file count is under threshold:** proceed to Step 1.
+
+**If no `<path>` and file count is at or over threshold:** require a path.
+List available top-level directories under the source root with file counts:
+
+```
+This project has ~<n> source files. To keep scan costs predictable,
+specify a module or package path:
+
+  /decisions backfill <source-dir>/<module-1>
+  /decisions backfill <source-dir>/<module-2>
+
+Available:
+  <source-dir>/<module-1>/    (<n> files)
+  <source-dir>/<module-2>/    (<n> files)
+  <source-dir>/<module-3>/    (<n> files)
+  ...
+```
+Stop. Do not proceed without a path.
 
 ### Step 1 — Load dismissed list
 

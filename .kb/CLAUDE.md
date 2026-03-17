@@ -12,6 +12,9 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
+| 2026-03-16 | distributed-systems | data-partitioning | [partitioning-strategies](distributed-systems/data-partitioning/partitioning-strategies.md) |
+| 2026-03-16 | distributed-systems | data-partitioning | [vector-search-partitioning](distributed-systems/data-partitioning/vector-search-partitioning.md) |
+| distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 1 | 2 | 2026-03-16 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |

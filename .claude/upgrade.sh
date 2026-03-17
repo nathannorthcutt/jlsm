@@ -101,30 +101,35 @@ LATEST_VERSION=""
 RELEASE_ZIP_URL=""
 RELEASE_NOTES=""
 
-# Try gh CLI first
+# Try gh CLI first (plain text output — no --json flag, no python3)
 if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
     echo "  Using gh CLI..."
 
     if [[ -n "$TARGET_VERSION" ]]; then
-        RELEASE_JSON="$(gh release view "$TARGET_VERSION" --repo "$GH_REPO" --json tagName,assets,body 2>/dev/null || echo "")"
+        RELEASE_TAG="$TARGET_VERSION"
     else
-        RELEASE_JSON="$(gh release view --repo "$GH_REPO" --json tagName,assets,body 2>/dev/null || echo "")"
+        # Get latest release tag from plain text listing
+        RELEASE_TAG="$(gh release list --repo "$GH_REPO" --limit 1 2>/dev/null | awk '{print $1}')"
     fi
 
-    if [[ -n "$RELEASE_JSON" ]]; then
-        LATEST_VERSION="$(echo "$RELEASE_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tagName'].lstrip('v'))")"
-        RELEASE_NOTES="$(echo "$RELEASE_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('body','')[:500])")"
-        RELEASE_ZIP_URL="$(echo "$RELEASE_JSON" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assets = d.get('assets', [])
-zips = [a['url'] for a in assets if a['name'].endswith('.zip')]
-print(zips[0] if zips else '')
-")"
+    if [[ -n "$RELEASE_TAG" ]]; then
+        LATEST_VERSION="${RELEASE_TAG#v}"
+
+        # Get release notes (plain text body)
+        RELEASE_NOTES="$(gh release view "$RELEASE_TAG" --repo "$GH_REPO" 2>/dev/null \
+            | sed -n '/^--$/,$ p' | tail -n +2 | head -20)"
+
+        # Download URL: construct from known GitHub pattern
+        RELEASE_ZIP_URL="https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}/vallorcine-${RELEASE_TAG}.zip"
+
+        # Verify the zip asset actually exists (HEAD request)
+        if ! curl -sfI "$RELEASE_ZIP_URL" >/dev/null 2>&1; then
+            RELEASE_ZIP_URL=""
+        fi
     fi
 fi
 
-# Fallback to curl + GitHub API
+# Fallback to curl + GitHub API (parse JSON with sed/grep — no python3)
 if [[ -z "$LATEST_VERSION" ]] && [[ -n "$API_URL" ]]; then
     echo "  Using curl + GitHub API..."
 
@@ -136,23 +141,25 @@ if [[ -z "$LATEST_VERSION" ]] && [[ -n "$API_URL" ]]; then
     fi
 
     if [[ -n "$RELEASE_JSON" ]]; then
-        LATEST_VERSION="$(echo "$RELEASE_JSON" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-print(d.get('tag_name','').lstrip('v'))
-")"
-        RELEASE_NOTES="$(echo "$RELEASE_JSON" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-print(d.get('body','')[:500])
-")"
-        RELEASE_ZIP_URL="$(echo "$RELEASE_JSON" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assets = d.get('assets', [])
-zips = [a['browser_download_url'] for a in assets if a['name'].endswith('.zip')]
-print(zips[0] if zips else '')
-")"
+        # Extract tag_name (strip quotes and leading v)
+        LATEST_VERSION="$(echo "$RELEASE_JSON" \
+            | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+            | head -1 \
+            | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/')"
+
+        # Extract body (first 500 chars)
+        RELEASE_NOTES="$(echo "$RELEASE_JSON" \
+            | grep -o '"body"[[:space:]]*:[[:space:]]*"[^"]*"' \
+            | head -1 \
+            | sed 's/.*"body"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' \
+            | head -c 500 \
+            | sed 's/\\n/\n/g')"
+
+        # Extract first .zip asset URL
+        RELEASE_ZIP_URL="$(echo "$RELEASE_JSON" \
+            | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*\.zip"' \
+            | head -1 \
+            | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
     fi
 fi
 

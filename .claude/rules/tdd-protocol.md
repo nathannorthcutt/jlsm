@@ -26,6 +26,7 @@ Before starting any pipeline command, run these scripts and display any output:
 - `bash .claude/scripts/version-check.sh` — warns if branch is behind main
 - `bash .claude/scripts/ensure-merge-driver.sh` — registers index merge driver if missing
 - `bash .claude/scripts/kb-freshness-check.sh` — warns if KB/decisions are behind main
+- `bash .claude/scripts/adr-validate.sh` — warns if contradictory accepted ADRs exist
 All are advisory — never block on their output.
 
 ## Idempotency rule (CRITICAL)

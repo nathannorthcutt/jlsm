@@ -75,7 +75,8 @@ Stop.
 - Say: "Refactor was in progress at: <substage>. Resuming from there."
 - Jump to the appropriate checklist item in this order:
   2a coding-standards → 2b duplication → 2c security → 2d performance →
-  2e missing-tests → 2f integration-tests → 2g documentation → Step 4 final-lint
+  2e missing-tests → 2f integration-tests → 2g documentation →
+  2h security-review → Step 4 final-lint
 
 **If Refactor is `not-started`:**
 - Verify cycle-log.md has an `implemented` entry for this cycle.
@@ -289,6 +290,87 @@ Display findings:
 Run tests after changes (documentation changes should not break tests, but
 verify anyway).
 
+### 2h — Security review
+`status.md substage → "refactor: security-review"`
+`Display: ── Security review ──────────────────────────`
+
+This is a holistic audit of the feature's security posture — distinct from 2c
+which fixes implementation-level vulnerabilities inline. 2h steps back and
+assesses what this feature changes about the project's threat surface.
+
+Scope to only the constructs and files changed by this feature (read work-plan.md
+for the list). Do not audit the entire codebase.
+
+**Authentication & Authorization:**
+- Do new endpoints/APIs enforce authentication?
+- Do access control checks match the feature's intended audience?
+- Are there privilege escalation paths (user action → admin effect)?
+
+**Data handling:**
+- Is sensitive data (PII, credentials, tokens) encrypted at rest and in transit?
+- Are there new logging statements that might log sensitive data?
+- Is data sanitized before display (XSS) and before storage (injection)?
+- Are temporary files / caches cleaned up?
+
+**Trust boundaries:**
+- Does this feature introduce new trust boundaries (user input, external API,
+  file upload, deserialization)?
+- Are all inputs from untrusted sources validated at the boundary?
+- Are error responses safe (no stack traces, internal paths, or version info)?
+
+**Dependency & configuration:**
+- Do new dependencies have known vulnerabilities? (advisory check, not a scanner)
+- Are there new configuration options with insecure defaults?
+- Are feature flags / admin toggles protected?
+
+**Threat surface delta:**
+- What attack surface does this feature add that didn't exist before?
+- One sentence summary of the security posture change
+
+**If no findings:**
+```
+  Security review: no issues found ✓
+  Threat surface delta: <one sentence>
+```
+Continue to Step 4.
+
+**If findings exist — always pause:**
+```
+── Security review — findings ─────────────────
+<n> issue(s) found:
+
+  1. [HIGH] <description> — <file:line>
+  2. [MEDIUM] <description> — <file:line>
+  3. [LOW/INFO] <description>
+
+  Fix now?  Type **yes**  ·  or: stop  to review first
+```
+
+Severity levels:
+- **HIGH** — exploitable vulnerability, must fix before PR (injection, auth
+  bypass, secret exposure)
+- **MEDIUM** — defense-in-depth gap, should fix (missing rate limiting, overly
+  broad permissions)
+- **LOW/INFO** — observation worth noting in PR (new attack surface, recommended
+  future hardening)
+
+If "yes": fix HIGH and MEDIUM inline, note LOW/INFO in the cycle-log. Re-run
+tests after fixes.
+
+If "stop": write all findings to cycle-log, do not fix anything.
+
+Append to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — security-review
+**Agent:** ✨ Refactor Agent
+**Cycle:** <n>
+**Findings:** <n total — n HIGH, n MEDIUM, n LOW>
+**Fixed:** <list of fixed issues, or "none">
+**Noted:** <list of LOW/INFO items for PR review, or "none">
+**Threat surface delta:** <one sentence>
+---
+```
+
 ---
 
 ## Step 3 — Missing tests escalation
@@ -379,7 +461,9 @@ Append `refactor-complete` to cycle-log.md:
 **Agent:** ✨ Refactor Agent
 **Cycle:** <n>
 **Changes:** <bullet list>
-**Security findings:** <none | list>
+**Security findings (2c):** <none | list>
+**Security review (2h):** <n findings — n HIGH, n MEDIUM, n LOW | clean>
+**Threat surface delta:** <one sentence>
 **Performance findings:** <none | list>
 **Missing tests found:** <n>
 **Unit tests:** <n> passing, 0 failing

@@ -208,17 +208,50 @@ Missing dimensions will be noted as unknowns and will reduce decision confidence
 
 Display: `── Surveying KB ─────────────────────────────`
 
+### 2a — Top-down navigation (primary path)
+
 Read `.kb/CLAUDE.md` → relevant topic/category `CLAUDE.md` files.
 Do NOT read individual subject files yet — use category indexes to identify candidates.
 
-Produce a candidate list:
+### 2b — Cross-topic keyword scan (discovery path)
+
+Extract 3–5 keywords from the problem statement and constraint dimensions.
+Search across ALL category-level `CLAUDE.md` files for entries whose descriptions
+match these keywords. This catches tangentially related research that lives in
+a different topic/category than the obvious one.
+
+```bash
+# Example: problem is "rate limiting strategy"
+# Keywords: rate, limiting, throughput, capacity, request
+# Scan all category indexes for matches
+grep -ril "rate\|throughput\|capacity" .kb/*/CLAUDE.md .kb/*/*/CLAUDE.md
+```
+
+Read only the matching category `CLAUDE.md` files (not subject files). Extract
+any entries not already found in 2a.
+
+**Cost control:** this reads category indexes only (~10-30 lines each). Even on
+a large KB (50 categories), the scan costs ~1-2K tokens — less than a single
+subject file. Subject files are NOT loaded until Step 4 after the user reviews
+the candidate list.
+
+### 2c — Merge and present candidates
+
+Combine results from 2a (direct navigation) and 2b (keyword scan). Mark the
+source of each candidate:
+
 ```
 ── Candidates ──────────────────────────────────
 Candidates identified:
   ✓ .kb/algorithms/vector-indexing/hnsw.md
   ✓ .kb/algorithms/vector-indexing/ivf-flat.md
+  ✓ .kb/infrastructure/databases/connection-pooling.md  (keyword match: "throughput")
   ✗ DiskANN — not in KB (needs research)
 ```
+
+Keyword-matched candidates are shown with the matching term so the user can
+quickly judge relevance. The user can exclude any candidate before subject
+files are loaded in Step 4.
 
 ---
 
@@ -245,7 +278,57 @@ Append a log entry: event `research-commissioned`, listing subjects requested.
 
 ## Step 4 — Deep evaluation
 
-For each candidate:
+### 4a — ADR-informed candidate ranking (when category has >8 candidates)
+
+If any category in the candidate list has more than 8 entries, rank candidates
+before loading subject files to control token cost:
+
+1. Check `.decisions/CLAUDE.md` for accepted ADRs. For each, read the
+   `candidates:` frontmatter in `evaluation.md` (not the full file — just the
+   candidate list with paths and scores, typically ~10-20 lines per ADR).
+2. Identify ADRs that reference entries in the same category as the current
+   candidates. These are "related ADRs."
+3. Build a priority ranking using the current decision's constraint profile:
+
+   - **High priority:** entries that scored well (4-5) on constraint dimensions
+     that overlap with the current decision's top constraints
+   - **Normal priority:** entries with no ADR history (new/unranked — must be
+     evaluated since they've never been scored)
+   - **Low priority:** entries that scored poorly (1-2) across multiple related
+     ADRs on dimensions that still matter for the current decision
+
+4. Load subject files for the top 8 candidates by this ranking. Display:
+   ```
+   ── Candidate ranking (15 in category, loading top 8) ──
+     ✓ hnsw.md           — scored 5/5 performance in <related-adr-slug>
+     ✓ diskann.md         — new, unranked
+     ✓ ivf-pq.md          — scored 4/5 memory in <related-adr-slug>
+     ✓ ...
+     · vamana.md          — scored 2/5 complexity in <related-adr-slug>
+     · brute-force.md     — scored 1/5 scalability in <related-adr-slug>
+
+     Load more?  Type **yes**  ·  or: proceed with these
+   ```
+
+   If "yes": load the next batch. If proceed: continue with loaded candidates.
+
+**ADR staleness signal:** if any related ADR was accepted before new KB entries
+were added to the same category (entries exist that the ADR never evaluated),
+flag it:
+```
+  ℹ ADR <slug> (accepted <date>) has not evaluated <n> newer entries:
+      <entry-1>.md (added <date>)
+      <entry-2>.md (added <date>)
+    Consider: /decisions review "<slug>" after this session.
+```
+This is informational — it does not block the current decision.
+
+**When category has 8 or fewer candidates:** skip ranking, load all subject
+files directly (no ADR lookup needed).
+
+### 4b — Score candidates
+
+For each loaded candidate:
 1. Read the full subject file at `.kb/<topic>/<category>/<subject>.md`
 2. Record the exact path — every score must reference it
 3. Score against each constraint dimension (1–5, see scale below)

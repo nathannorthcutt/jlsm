@@ -119,7 +119,7 @@ Display: `── Researching ─────────────────
 For each subject:
 1. Search: `<subject> algorithm site:arxiv.org OR site:github.com OR site:wikipedia.org`
 2. Search: `<subject> implementation pseudocode complexity analysis`
-3. Search: `<subject> benchmark 2024 OR 2025`
+3. Search: `<subject> benchmark <current_year - 1> OR <current_year>`
 4. Fetch full content from top 3–5 authoritative sources
 5. Record every URL with title and access date — these go in the sources frontmatter
 
