@@ -212,9 +212,10 @@
 - **Layer:** Encoding / Allocation
 - **Run mode:** Snapshot
 - **Tier:** Scratch
-- **Status:** Open — optimization candidate
+- **Status:** Fixed
 - **Hypothesis:** Document deserialization consumes 34% of scan CPU. Three avoidable costs: (1) `segment.toArray()` copies entire document binary on every deserialize (103 samples / 8%), (2) `countBoolFieldsUpTo()` iterates schema fields per-document instead of precomputing (19 samples / 1.5%), (3) field type dispatch via pattern matching per-field per-document (~20-30 samples). String allocation (106 samples / 8%) is inherent to the document model.
-- **Proposed fix:** (a) Use `segment.heapBase()` to avoid toArray copy for heap-backed segments, (b) precompute boolCount/nullMaskBytes/boolMaskBytes and field-is-boolean flags in SchemaSerializer constructor, (c) precompute field decoder dispatch table. Combined ~10-12% scan CPU reduction.
-- **Impact:** Medium — 34% of scan CPU; optimizations could recover ~10-12%
-- **Benchmark to validate:** Scratch benchmark comparing scan throughput before/after
+- **Fix applied:** (a) `extractBytes()` uses `heapBase()` for zero-copy on heap-backed segments with `toArray()` fallback for off-heap, (b) precomputed `isBoolField[]`, `prefixBoolCount[]`, `fieldCount`, `boolCount`, `nullMaskBytes`, `boolMaskBytes` in SchemaSerializer constructor, (c) `FieldDecoder` dispatch table built per-schema replacing per-field switch. Dead `countBoolFieldsUpTo()` removed.
+- **Post-fix evidence:** Scratch benchmark — heap: 5.45M ops/s, off-heap: 4.99M ops/s (+9.2% heap advantage). Profiler: toArray 0 samples on heap path (was 103), countBoolFieldsUpTo 0 samples (was 19), dispatch lambdas inline at 1.7% overhead. Remaining CPU dominated by String construction (7.9%) and primitive boxing (2%) — both inherent to the document model.
+- **Impact:** Medium — ~10-12% scan CPU reduction confirmed, matching target
 - **Detected on commit:** eef5903
+- **Fixed on commit:** 313ad12

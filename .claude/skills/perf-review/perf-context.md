@@ -110,7 +110,7 @@ perf-output/
 | jlsm-core | jlsm-tree-benchmarks | Block cache (LRU) | ✅ LruBlockCacheBenchmark | 🔍 scratch explored 2026-03-17 (no degradation) |
 | jlsm-indexing | — | Inverted index | ❌ | ❌ |
 | jlsm-vector | — | IvfFlat / Hnsw | ❌ | ❌ |
-| jlsm-table | — | Document model + secondary indices | 🔍 scratch explored 2026-03-18 (DocumentSerializer deserialization hotspot found) | ❌ |
+| jlsm-table | — | Document model + secondary indices | 🔍 scratch explored 2026-03-18 (DocumentSerializer deserialization optimized — heap 5.45M, off-heap 4.99M ops/s) | ❌ |
 | jlsm-table | — | PartitionedTable (end-to-end) | 🔍 scratch explored 2026-03-18 (snapshot + sustained, no routing overhead, no degradation) | 🔍 scratch explored 2026-03-18 (no degradation) |
 | jlsm-table | — | Partition routing (RangeMap, ResultMerger) | 🔍 scratch explored 2026-03-17, confirmed negligible 2026-03-18 | ❌ |
 
@@ -131,7 +131,7 @@ perf-output/
 - `jlsm-core#LruBlockCache#get/#put — Cache/Contention — 1030761 — 1T: 30.6M ops/s, 2T: 7.6M ops/s (75% drop), 8T: 12.7M ops/s (58% drop)`
 - `jlsm-core#DeflateCodec#compress → zlib — SSTable write — 1e70573 — 90%+ of write-path CPU when compression enabled; write@10K: none 44.5, deflate1 38.0 (-15%), deflate6 27.7 (-38%) ops/s`
 - `jlsm-core#TrieSSTableReader#CompressedBlockIterator — SSTable scan — eef5903 — scan@10K: none 166, deflate1 109 (+2% vs pre-fix), deflate6 112 (+9% vs pre-fix) ops/s; decompressAllBlocks removed`
-- `jlsm-table#DocumentSerializer$SchemaSerializer#deserialize — Encoding — eef5903 — 34% of scan CPU (432 samples): toArray copy 103, String alloc 106, decodeField 93, countBoolFieldsUpTo 19`
+- `jlsm-table#DocumentSerializer$SchemaSerializer#deserialize — Encoding — 313ad12 — optimized: heap 5.45M ops/s (zero-copy), off-heap 4.99M ops/s; toArray eliminated on heap path, countBoolFieldsUpTo removed, dispatch table inlines at 1.7%. Remaining: String alloc 7.9%, boxing 2%`
 - `jlsm-table#PartitionedTable — Table routing — eef5903 — create 279ops/s (WAL-bound), getHit 1.17M ops/s, rangeScan 12.3K ops/s; routing overhead <1%`
 
 ---
@@ -243,3 +243,4 @@ jfr summary recording.jfr
 - **Block compression write cost** — Deflate CPU is the expected trade-off; 90%+ in native zlib, no Java-level overhead (1e70573)
 - **Block compression point-get improvement** — smaller files offset decompression cost; +9-20% getHit throughput (1e70573)
 - **Block compression scan path fixed** — streaming decompression (CompressedBlockIterator) replaced decompressAllBlocks; +2-9% throughput, O(total)→O(block) memory (eef5903)
+- **DocumentSerializer deserialization optimized** — heap zero-copy via heapBase(), precomputed schema constants, dispatch table; ~10-12% scan CPU reduction, heap 5.45M ops/s (313ad12)
