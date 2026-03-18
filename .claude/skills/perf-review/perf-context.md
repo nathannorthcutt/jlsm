@@ -102,8 +102,9 @@ perf-output/
 | jlsm-core | jlsm-bloom-benchmarks | Bloom filter (add, mightContain) | ❌ | ❌ |
 | jlsm-core | jlsm-tree-benchmarks | LSM tree (mixed put/update/delete) | ❌ | ❌ |
 | jlsm-core | jlsm-tree-benchmarks | MemTable (skip list) | ✅ MemTableBenchmark | ❌ |
-| jlsm-core | — | SSTable write (TrieSSTableWriter) | 🔍 scratch explored 2026-03-16 | ❌ |
-| jlsm-core | — | SSTable read (TrieSSTableReader) | 🔍 scratch explored 2026-03-16 | ❌ |
+| jlsm-core | — | SSTable write (TrieSSTableWriter) | 🔍 scratch explored 2026-03-16, compression explored 2026-03-18 | ❌ |
+| jlsm-core | — | SSTable read (TrieSSTableReader) | 🔍 scratch explored 2026-03-16, compression explored 2026-03-18 | ❌ |
+| jlsm-core | — | SSTable compression (DeflateCodec) | 🔍 scratch explored 2026-03-18 (write/read/scan with deflate1+6) | ❌ |
 | jlsm-core | — | Compaction (SpookyCompactor) | 🔍 scratch explored 2026-03-16 | ❌ |
 | jlsm-core | — | WAL (LocalWriteAheadLog) | 🔍 scratch explored 2026-03-16 | ❌ |
 | jlsm-core | jlsm-tree-benchmarks | Block cache (LRU) | ✅ LruBlockCacheBenchmark | 🔍 scratch explored 2026-03-17 (no degradation) |
@@ -127,6 +128,8 @@ perf-output/
 - `jlsm-core#TrieSSTableWriter#append — SSTable write — 543f0e3 — 125 ops/s @1K entries, 45 ops/s @10K (post-fix)`
 - `jlsm-core#MappedByteBuffer#force — WAL — 543f0e3 — ~100% of append CPU; 427 ops/s @128B`
 - `jlsm-core#LruBlockCache#get/#put — Cache/Contention — 1030761 — 1T: 30.6M ops/s, 2T: 7.6M ops/s (75% drop), 8T: 12.7M ops/s (58% drop)`
+- `jlsm-core#DeflateCodec#compress → zlib — SSTable write — 1e70573 — 90%+ of write-path CPU when compression enabled; write@10K: none 44.5, deflate1 38.0 (-15%), deflate6 27.7 (-38%) ops/s`
+- `jlsm-core#TrieSSTableReader#decompressAllBlocks — SSTable scan — 1e70573 — scan@10K: none 169, deflate1 106 (-37%), deflate6 102 (-39%) ops/s`
 
 ---
 
@@ -234,3 +237,5 @@ jfr summary recording.jfr
 - **I/O dominates SSTable write** — 35% of CPU in FileChannel.write; inherent to write path (543f0e3)
 - **Bloom hash dominates SSTable read** — expected; getMiss 12x faster than getHit proves bloom is working (543f0e3)
 - **Partition routing overhead** — routeKey ~106ns, overlapping ~1.5μs, mergeOrdered ~163ns/entry @64P; all negligible vs data I/O (1030761)
+- **Block compression write cost** — Deflate CPU is the expected trade-off; 90%+ in native zlib, no Java-level overhead (1e70573)
+- **Block compression point-get improvement** — smaller files offset decompression cost; +9-20% getHit throughput (1e70573)
