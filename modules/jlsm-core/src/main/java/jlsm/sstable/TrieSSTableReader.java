@@ -292,9 +292,8 @@ public final class TrieSSTableReader implements SSTableReader {
     public Iterator<Entry> scan() throws IOException {
         checkNotClosed();
         if (compressionMap != null) {
-            // v2: decompress all blocks and iterate
-            byte[] allData = decompressAllBlocks();
-            return new DataRegionIterator(allData, allData.length);
+            // v2: lazy block-by-block decompression — O(single block) memory
+            return new CompressedBlockIterator();
         } else {
             // v1: iterate raw data region
             byte[] data = getAllDataV1();
@@ -360,23 +359,27 @@ public final class TrieSSTableReader implements SSTableReader {
     }
 
     /**
-     * Decompresses all blocks and concatenates them into a single byte array for full scan.
+     * Reads and decompresses a single block by index, bypassing the BlockCache. Used by scan
+     * iterators to avoid polluting the shared cache with sequential reads.
      */
-    private byte[] decompressAllBlocks() throws IOException {
-        assert compressionMap != null : "decompressAllBlocks called on v1 reader";
-        int totalUncompressed = 0;
-        for (int i = 0; i < compressionMap.blockCount(); i++) {
-            totalUncompressed += compressionMap.entry(i).uncompressedSize();
+    private byte[] readAndDecompressBlockNoCache(int blockIndex) throws IOException {
+        assert compressionMap != null : "readAndDecompressBlockNoCache called on v1 reader";
+        assert codecMap != null : "codecMap must not be null for v2";
+
+        CompressionMap.Entry mapEntry = compressionMap.entry(blockIndex);
+
+        byte[] compressed;
+        if (eagerData != null) {
+            compressed = new byte[mapEntry.compressedSize()];
+            System.arraycopy(eagerData, (int) mapEntry.blockOffset(), compressed, 0,
+                    mapEntry.compressedSize());
+        } else {
+            compressed = readBytes(lazyChannel, mapEntry.blockOffset(), mapEntry.compressedSize());
         }
-        byte[] result = new byte[totalUncompressed];
-        int off = 0;
-        for (int i = 0; i < compressionMap.blockCount(); i++) {
-            byte[] block = readAndDecompressBlock(i);
-            System.arraycopy(block, 0, result, off, block.length);
-            off += block.length;
-        }
-        assert off == totalUncompressed : "decompressed size mismatch";
-        return result;
+
+        CompressionCodec codec = codecMap.get(mapEntry.codecId());
+        assert codec != null : "codec not found for ID 0x%02x".formatted(mapEntry.codecId());
+        return codec.decompress(compressed, 0, compressed.length, mapEntry.uncompressedSize());
     }
 
     private static Map<Byte, CompressionCodec> buildCodecMap(CompressionCodec... codecs) {
@@ -669,12 +672,88 @@ public final class TrieSSTableReader implements SSTableReader {
     }
 
     /**
+     * Iterates entries from a v2 compressed SSTable by decompressing one block at a time. Only one
+     * decompressed block is held in memory at any point — O(single block uncompressed size).
+     *
+     * <p>
+     * Does not interact with the shared BlockCache — each scan maintains its own block buffer to
+     * prevent cache pollution of point-get entries.
+     */
+    private final class CompressedBlockIterator implements Iterator<Entry> {
+        private int currentBlockIndex;
+        private List<Entry> blockEntries;
+        private int entryIdx;
+        private Entry next;
+
+        CompressedBlockIterator() {
+            assert compressionMap != null : "CompressedBlockIterator requires v2 reader";
+            this.currentBlockIndex = 0;
+            this.blockEntries = List.of();
+            this.entryIdx = 0;
+            advance();
+        }
+
+        private void advance() {
+            next = null;
+            while (true) {
+                if (entryIdx < blockEntries.size()) {
+                    next = blockEntries.get(entryIdx++);
+                    return;
+                }
+                if (currentBlockIndex >= compressionMap.blockCount()) {
+                    return;
+                }
+                // Decompress next block and parse entries
+                try {
+                    byte[] decompressed = readAndDecompressBlockNoCache(currentBlockIndex);
+                    currentBlockIndex++;
+                    int count = readBlockInt(decompressed, 0);
+                    blockEntries = new ArrayList<>(count);
+                    int off = 4;
+                    for (int i = 0; i < count; i++) {
+                        Entry e = EntryCodec.decode(decompressed, off);
+                        blockEntries.add(e);
+                        off += EntryCodec.encodedSize(e);
+                    }
+                    entryIdx = 0;
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return next != null;
+        }
+
+        @Override
+        public Entry next() {
+            if (next == null) {
+                throw new NoSuchElementException();
+            }
+            Entry result = next;
+            advance();
+            return result;
+        }
+
+        private static int readBlockInt(byte[] buf, int off) {
+            return ((buf[off] & 0xFF) << 24) | ((buf[off + 1] & 0xFF) << 16)
+                    | ((buf[off + 2] & 0xFF) << 8) | (buf[off + 3] & 0xFF);
+        }
+    }
+
+    /**
      * Iterates entries via key index range results, reading each entry at its offset. Handles both
      * v1 (absolute file offset) and v2 (packed blockIndex + intraBlockOffset) formats.
      */
     private final class IndexRangeIterator implements Iterator<Entry> {
         private final Iterator<KeyIndex.Entry> indexIter;
         private Entry next;
+
+        // v2 block cache: reuse the current decompressed block for consecutive entries
+        private int cachedBlockIndex = -1;
+        private byte[] cachedBlock = null;
 
         IndexRangeIterator(Iterator<KeyIndex.Entry> indexIter) {
             this.indexIter = indexIter;
@@ -692,7 +771,14 @@ public final class TrieSSTableReader implements SSTableReader {
                     long packed = ie.fileOffset();
                     int blockIndex = (int) (packed >>> 32);
                     int intraBlockOffset = (int) packed;
-                    byte[] block = readAndDecompressBlock(blockIndex);
+                    byte[] block;
+                    if (blockIndex == cachedBlockIndex) {
+                        block = cachedBlock;
+                    } else {
+                        block = readAndDecompressBlockNoCache(blockIndex);
+                        cachedBlockIndex = blockIndex;
+                        cachedBlock = block;
+                    }
                     next = EntryCodec.decode(block, intraBlockOffset);
                 } else {
                     // v1: read at absolute file offset

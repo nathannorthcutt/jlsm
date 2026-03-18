@@ -139,3 +139,43 @@
 - **Impact:** High — 75% throughput loss at 2 threads makes cache a bottleneck for concurrent SSTable readers
 - **Benchmark to validate:** `./gradlew :benchmarks:jlsm-tree-benchmarks:jmh "-Pjmh.includes=LruBlockCacheBenchmark"`
 - **Detected on commit:** 1030761
+
+## Finding: Block compression write path — expected Deflate CPU cost
+
+- **Location:** `jlsm.sstable.TrieSSTableWriter#flushCurrentBlock` → `DeflateCodec#compress` → native zlib
+- **Layer:** SSTable encoding
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Open — investigated, expected behavior
+- **Hypothesis:** Deflate compression adds CPU cost proportional to data volume during SSTable block flush. Level 6 is more expensive than level 1, with the gap widening at higher entry counts.
+- **Evidence:** Write throughput: none@1K 129.6 ops/s, deflate1@1K 93.3 (-28%), deflate6@1K 89.8 (-31%), none@10K 44.5 ops/s, deflate1@10K 38.0 (-15%), deflate6@10K 27.7 (-38%). Profiler: 1,044 samples in zlib native deflate (90%+ of write-path CPU). No Java-level overhead surprises — all cost is in native compression.
+- **Impact:** Low — expected trade-off; no implementation defect
+- **Benchmark to validate:** N/A — scratch confirmed expected behavior
+- **Detected on commit:** 1e70573
+
+## Finding: Block compression improves point-get throughput
+
+- **Location:** `jlsm.sstable.TrieSSTableReader#get` → `readAndDecompressBlock`
+- **Layer:** SSTable read
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Open — investigated, positive result
+- **Hypothesis:** Compressed SSTables produce smaller files; eager-load reads less data from disk. Single-block decompression cost is negligible relative to I/O savings.
+- **Evidence:** getHit: none@1K 1,500 ops/s, deflate1@1K 1,629 (+9%), deflate6@1K 1,647 (+10%), none@10K 197.5 ops/s, deflate1@10K 237.6 (+20%), deflate6@10K 235.8 (+19%). Decompression overhead fully offset by reduced I/O.
+- **Impact:** Low — positive finding, no action needed
+- **Benchmark to validate:** N/A — scratch confirmed improvement
+- **Detected on commit:** 1e70573
+
+## Finding: Block compression scan path — decompressAllBlocks overhead
+
+- **Location:** `jlsm.sstable.TrieSSTableReader#decompressAllBlocks`
+- **Layer:** SSTable read / decompression
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Open — potential optimization candidate
+- **Hypothesis:** Full scan decompresses all blocks upfront and concatenates into a single byte array before iteration. The decompression CPU cost plus extra allocation/copy degrades scan throughput by ~37-39%.
+- **Evidence:** scanAll: none@1K 1,429 ops/s, deflate1@1K 888 (-38%), deflate6@1K 899 (-37%), none@10K 169.0 ops/s, deflate1@10K 106.4 (-37%), deflate6@10K 102.4 (-39%). Degradation is consistent across compression levels, confirming decompression volume (not level) is the driver.
+- **Proposed fix:** Streaming decompression — decompress blocks lazily during iteration rather than upfront. Would reduce peak memory and amortize decompression across iterator consumption.
+- **Impact:** Medium — 37-39% scan throughput loss is significant for range-query workloads
+- **Benchmark to validate:** N/A — scratch confirmed the cost; streaming fix would need new scratch benchmark
+- **Detected on commit:** 1e70573
