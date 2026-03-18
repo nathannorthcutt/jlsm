@@ -81,6 +81,25 @@ HEADER
 
         echo "| $cached_stage | $messages | $input | $output | $cache_create | $cache_read | ${timestamp:-unknown} | $(date -u +%Y-%m-%dT%H:%M:%SZ) |" >> "$log_file"
 
+        # Update Actual Tokens column in status.md Stage Completion table
+        if [[ -f "$feature_dir/status.md" ]]; then
+            actual_str="$(_fmt_tokens "$input") in / $(_fmt_tokens "$output") out"
+            # Capitalize stage name to match table format (scoping → Scoping)
+            stage_cap="$(echo "$cached_stage" | sed 's/^\(.\)/\U\1/')"
+            # Replace 6th pipe-delimited field (Actual Tokens) in the matching row
+            awk -v stage="$stage_cap" -v actual="$actual_str" '
+                BEGIN { FS="|"; OFS="|" }
+                {
+                    f2 = $2; gsub(/^[ \t]+|[ \t]+$/, "", f2)
+                    if (f2 == stage) {
+                        $6 = " " actual " "
+                    }
+                    print
+                }
+            ' "$feature_dir/status.md" > "$feature_dir/status.md.tmp" && \
+                mv "$feature_dir/status.md.tmp" "$feature_dir/status.md"
+        fi
+
         # Update state for new stage
         current_line=$(wc -l < "$transcript" 2>/dev/null || echo "1")
         printf 'feature_dir=%q\ncached_stage=%q\ntranscript=%q\nstart_line=%s\ntimestamp=%s\n' \

@@ -58,11 +58,16 @@ command to run, then explain what it does and what the user can expect.
 - `/research <topic> <category> "<subject>"` — run a research session, writes to `.kb/`
 - `/architect "<problem>"` — run an architecture decision session with full deliberation
 - `/decisions "<question>"` — query existing decisions in plain language
-- `/decisions backfill [<path>]` — surface implicit decisions from past work and source code
+- `/decisions backfill [<path>]` — surface implicit decisions from past work (prefer `/curate` for broader review)
 - `/decisions review "<slug>"` — revisit a confirmed decision
 - `/decisions triage` — review all deferred/draft items
 - `/decisions defer "<problem>"` — park a topic for later
 - `/decisions close "<problem>"` — rule out permanently
+
+**Codebase quality:**
+- `/curate` — review codebase quality: find stale decisions, knowledge gaps, implicit dependencies
+- `/curate --init` — first-time scan on an existing codebase (bootstraps quality signals)
+- `/curate --deeper` — scan 6 months of history instead of default 3
 
 **Setup and maintenance:**
 - `/project-context add "<entry>"` — add team-shared knowledge about the codebase
@@ -298,7 +303,7 @@ Other commands you might want:
   /feature-init                      — update the project profile
   /kb "<question>"                   — query the knowledge base
   /decisions "<question>"            — query architecture decisions
-  /decisions backfill                — surface undocumented decisions from past work
+  /curate                            — review codebase quality, find gaps, and surface undocumented decisions
   /vallorcine-help "<question>"      — ask me anything about these commands
 ```
 

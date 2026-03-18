@@ -565,7 +565,12 @@ If stop: display the manual command and stop.
 
 2. If constraints were updated during deliberation:
    - Append `## Updates YYYY-MM-DD` to `constraints.md`
-3. Write `.decisions/<problem-slug>/adr.md` using the **ADR Template**
+3. Populate the `files:` frontmatter field in the ADR with key source files this
+   decision constrains. Derive from: constraint discussion (files mentioned),
+   implementation guidance (files that will implement the decision), and KB
+   sources (files referenced in related research). These enable `/curate` to
+   detect when code drifts from the decision.
+4. Write `.decisions/<problem-slug>/adr.md` using the **ADR Template**
    - If an override occurred, add this block after the Decision section:
      ```
      > **Override note:** The scored evaluation favoured <original candidate>.
@@ -787,6 +792,7 @@ date: "<YYYY-MM-DD>"
 version: 1
 status: "confirmed"
 supersedes: null
+files: []
 ---
 
 # ADR-<NNN> — <Problem Slug>
@@ -805,6 +811,11 @@ supersedes: null
 | <Subject 2> | Rejected candidate | [`.kb/<topic>/<category>/<subject2>.md`](../../.kb/<topic>/<category>/<subject2>.md) |
 
 ---
+
+## Files Constrained by This Decision
+<!-- Key source files this decision affects. Used by /curate to detect drift. -->
+<!-- Populated from constraint discussion, implementation guidance, and KB sources. -->
+<!-- Listed in frontmatter files: field for grep-based scanning. -->
 
 ## Problem
 <1–2 sentence restatement of what needs to be designed>

@@ -9,12 +9,15 @@
 
 | Feature | Slug | Started | Stage | Last Checkpoint |
 |---------|------|---------|-------|-----------------|
-| Block-level SSTable compression | block-compression | 2026-03-17 | planning | work-plan.md written, 4 stubs created |
+
 
 ## Completed / Archived
 
 | Feature | Slug | Completed | Archive |
 |---------|------|-----------|---------|
+| Optimize DocumentSerializer | optimize-document-serializer | 2026-03-18 | .feature/_archive/optimize-document-serializer/ |
+| Streaming block decompression | streaming-block-decompression | 2026-03-18 | .feature/_archive/streaming-block-decompression/ |
+| Block-level SSTable compression | block-compression | 2026-03-18 | .feature/_archive/block-compression/ |
 | Float16 vector support | float16-vector-support | 2026-03-16 | .feature/_archive/float16-vector-support/ |
 | SQL query support | sql-query-support | 2026-03-17 | .feature/_archive/sql-query-support/ |
 | Table indices and queries | table-indices-and-queries | 2026-03-16 | .feature/_archive/table-indices-and-queries/ |

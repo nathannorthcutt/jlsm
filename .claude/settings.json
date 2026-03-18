@@ -2,6 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(./gradlew:*)",
+      "Bash(bash .claude/scripts/adr-validate.sh:*)",
+      "Bash(bash .claude/scripts/curate-scan.sh:*)",
+      "Bash(bash .claude/scripts/ensure-merge-driver.sh:*)",
+      "Bash(bash .claude/scripts/kb-freshness-check.sh:*)",
+      "Bash(bash .claude/scripts/version-check.sh:*)",
       "Bash(git:*)",
       "mcp__ide__getDiagnostics"
     ]

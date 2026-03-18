@@ -172,10 +172,50 @@
 - **Layer:** SSTable read / decompression
 - **Run mode:** Snapshot
 - **Tier:** Scratch
-- **Status:** Open — potential optimization candidate
+- **Status:** Fixed
 - **Hypothesis:** Full scan decompresses all blocks upfront and concatenates into a single byte array before iteration. The decompression CPU cost plus extra allocation/copy degrades scan throughput by ~37-39%.
 - **Evidence:** scanAll: none@1K 1,429 ops/s, deflate1@1K 888 (-38%), deflate6@1K 899 (-37%), none@10K 169.0 ops/s, deflate1@10K 106.4 (-37%), deflate6@10K 102.4 (-39%). Degradation is consistent across compression levels, confirming decompression volume (not level) is the driver.
-- **Proposed fix:** Streaming decompression — decompress blocks lazily during iteration rather than upfront. Would reduce peak memory and amortize decompression across iterator consumption.
-- **Impact:** Medium — 37-39% scan throughput loss is significant for range-query workloads
-- **Benchmark to validate:** N/A — scratch confirmed the cost; streaming fix would need new scratch benchmark
+- **Fix applied:** Streaming decompression via `CompressedBlockIterator` (lazy block-by-block) + `IndexRangeIterator` block caching. Both bypass BlockCache. `decompressAllBlocks()` removed.
+- **Post-fix evidence:** scanAll deflate1@10K 106.4→108.8 (+2%), deflate6@10K 102.4→112.0 (+9%). Throughput gain modest (decompression CPU dominates); primary win is memory: O(total) → O(single block).
+- **Impact:** Medium — throughput +2-9%, memory reduction significant
 - **Detected on commit:** 1e70573
+- **Fixed on commit:** eef5903
+
+## Finding: PartitionedTable routing overhead — negligible
+
+- **Location:** `jlsm.table.PartitionedTable#routeKey`, `RangeMap#routeKey`, `ResultMerger#mergeOrdered`
+- **Layer:** Table / Partitioning
+- **Run mode:** Snapshot + Sustained
+- **Tier:** Scratch
+- **Status:** Open — investigated, no significant cost found
+- **Hypothesis:** Partition routing, scatter-gather, and result merging may add measurable overhead to PartitionedTable operations.
+- **Evidence:** Snapshot (4 partitions, 1K preloaded): create 279 ops/s (WAL-bound), getHit 1.17M ops/s, rangeScan 12.3K ops/s, mixed 1.42K ops/s. Profiler: routeKey 0 samples, getRange 12 samples (< 1%). Sustained (30 iterations, 150s): flat throughput at 276 ops/s, no degradation. Routing layer contributes no measurable overhead — all cost is in WAL fsync (writes) and DocumentSerializer (reads).
+- **Impact:** Low — routing is negligible; no action needed
+- **Detected on commit:** eef5903
+
+## Finding: PartitionedTable sustained load — no degradation
+
+- **Location:** `jlsm.table.PartitionedTable` (all operations)
+- **Layer:** Table / Resource Growth
+- **Run mode:** Sustained
+- **Tier:** Scratch
+- **Status:** Open — investigated, no degradation found
+- **Degradation pattern:** None — flat throughput across 30 iterations (150s)
+- **Hypothesis:** Growing data volume across partitions (MemTable flushes, SSTable accumulation) might cause throughput decline.
+- **Evidence:** mixedCreateAndGet: 276 ops/s ±5 across all 30 iterations. 64KB flush threshold triggered multiple MemTable flushes. No monotonic decline, no step degradation, no cliff. Allocation profile: byte[] (815), HeapMemorySegmentImpl (201), KeyIndex$TrieNode[] (108) — all proportional to data volume, no leak signatures.
+- **Impact:** Low — system is stable under sustained load
+- **Detected on commit:** eef5903
+
+## Finding: DocumentSerializer deserialization dominates scan path
+
+- **Location:** `jlsm.table.DocumentSerializer$SchemaSerializer#deserialize`, `DocumentSerializer#decodeField`
+- **Layer:** Encoding / Allocation
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Fixed
+- **Hypothesis:** Document deserialization consumes 34% of scan CPU. Three avoidable costs: (1) `segment.toArray()` copies entire document binary on every deserialize (103 samples / 8%), (2) `countBoolFieldsUpTo()` iterates schema fields per-document instead of precomputing (19 samples / 1.5%), (3) field type dispatch via pattern matching per-field per-document (~20-30 samples). String allocation (106 samples / 8%) is inherent to the document model.
+- **Fix applied:** (a) `extractBytes()` uses `heapBase()` for zero-copy on heap-backed segments with `toArray()` fallback for off-heap, (b) precomputed `isBoolField[]`, `prefixBoolCount[]`, `fieldCount`, `boolCount`, `nullMaskBytes`, `boolMaskBytes` in SchemaSerializer constructor, (c) `FieldDecoder` dispatch table built per-schema replacing per-field switch. Dead `countBoolFieldsUpTo()` removed.
+- **Post-fix evidence:** Scratch benchmark — heap: 5.45M ops/s, off-heap: 4.99M ops/s (+9.2% heap advantage). Profiler: toArray 0 samples on heap path (was 103), countBoolFieldsUpTo 0 samples (was 19), dispatch lambdas inline at 1.7% overhead. Remaining CPU dominated by String construction (7.9%) and primitive boxing (2%) — both inherent to the document model.
+- **Impact:** Medium — ~10-12% scan CPU reduction confirmed, matching target
+- **Detected on commit:** eef5903
+- **Fixed on commit:** 313ad12

@@ -134,7 +134,59 @@ If upgrade.sh exits non-zero: display the error and stop.
 
 ---
 
-## Step 4 — Post-upgrade notice
+## Step 4 — Commit upgrade
+
+Kit upgrades are a separate concern from feature work. Commit them immediately
+so they don't leak into feature PRs.
+
+First, check if there are already staged changes from other work:
+```bash
+git diff --cached --stat
+```
+
+If there ARE already-staged files: **stash them first** so they don't get
+swept into the upgrade commit:
+```bash
+git stash push --staged -m "pre-upgrade: stash staged changes"
+```
+
+Then stage only kit-managed files:
+```bash
+git add .claude/skills/ .claude/agents/ .claude/rules/ .claude/scripts/ \
+       .claude/upgrade.sh .claude/.vallorcine-version .claude/.vallorcine-manifest
+```
+
+Also stage `.gitattributes` and `.gitignore` if they were modified by the
+installer (merge driver entries, runtime file entries).
+
+Verify only kit files are staged with `git diff --cached --stat`. If non-kit
+files are accidentally staged, unstage them before committing.
+
+Commit with:
+```
+chore: upgrade vallorcine to v<LATEST>
+```
+
+If staged changes were stashed earlier, restore them:
+```bash
+git stash pop
+```
+
+Display:
+```
+── Committed ───────────────────────────────────
+Upgrade committed as a standalone change.
+This keeps kit updates out of your feature PRs.
+```
+
+If the commit fails (e.g. pre-commit hook rejects formatting on kit files):
+display the error and suggest the user commit manually with the same message.
+Do not block the upgrade — the files are already updated on disk.
+If staged changes were stashed, restore them regardless of commit success.
+
+---
+
+## Step 5 — Post-upgrade notice
 
 Display:
 ```
@@ -142,6 +194,7 @@ Display:
 ⬆️  UPGRADE complete · v<INSTALLED> → v<LATEST>
 ───────────────────────────────────────────────
 New commands and agents are active immediately.
+Upgrade committed — won't appear in feature PRs.
 
 If any command behaviour seems unexpected, check CHANGELOG.md
 in the source repository for breaking changes:

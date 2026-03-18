@@ -38,3 +38,10 @@ perf-output/**/run-manifest.json
 perf-output/**/latest-*
 perf-output/**/gc.log
 !perf-output/findings.md
+
+# vallorcine runtime files — generated at runtime, not committed
+.claude/.statusline-baseline
+.claude/.token-state
+.claude/.token-checkpoint
+.feature/
+.curate/
