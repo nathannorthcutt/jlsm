@@ -290,19 +290,17 @@ public final class JlsmDocument {
                     expect(fieldName, value, float[].class, "VECTOR(FLOAT32)");
                     final float[] fArr = (float[]) value;
                     if (fArr.length != vt.dimensions()) {
-                        throw new IllegalArgumentException(
-                                "Field '" + fieldName + "' expects VECTOR(FLOAT32, "
-                                        + vt.dimensions() + ") but got " + fArr.length
-                                        + " elements");
+                        throw new IllegalArgumentException("Field '" + fieldName
+                                + "' expects VECTOR(FLOAT32, " + vt.dimensions() + ") but got "
+                                + fArr.length + " elements");
                     }
                 } else {
                     expect(fieldName, value, short[].class, "VECTOR(FLOAT16)");
                     final short[] sArr = (short[]) value;
                     if (sArr.length != vt.dimensions()) {
-                        throw new IllegalArgumentException(
-                                "Field '" + fieldName + "' expects VECTOR(FLOAT16, "
-                                        + vt.dimensions() + ") but got " + sArr.length
-                                        + " elements");
+                        throw new IllegalArgumentException("Field '" + fieldName
+                                + "' expects VECTOR(FLOAT16, " + vt.dimensions() + ") but got "
+                                + sArr.length + " elements");
                     }
                 }
             }

@@ -14,6 +14,7 @@ import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Binary serializer for {@link JlsmDocument} values.
@@ -89,12 +90,55 @@ public final class DocumentSerializer {
     // Serializer implementation
     // -------------------------------------------------------------------------
 
+    /** Decodes a single non-boolean, non-null field from a byte array at the cursor position. */
+    @FunctionalInterface
+    private interface FieldDecoder {
+        Object decode(byte[] buf, Cursor cursor);
+    }
+
     private static final class SchemaSerializer implements MemorySerializer<JlsmDocument> {
 
         private final JlsmSchema schema;
+        private final boolean[] isBoolField;
+        private final int[] prefixBoolCount;
+        private final int fieldCount;
+        private final int boolCount;
+        private final int nullMaskBytes;
+        private final int boolMaskBytes;
+        private final FieldDecoder[] decoders;
 
         SchemaSerializer(JlsmSchema schema) {
             this.schema = schema;
+
+            final List<FieldDefinition> fields = schema.fields();
+            this.fieldCount = fields.size();
+            final FieldDefinition[] fieldArray = fields.toArray(new FieldDefinition[0]);
+
+            // Precompute boolean field flags and prefix counts
+            this.isBoolField = new boolean[fieldCount];
+            this.prefixBoolCount = new int[fieldCount + 1];
+            int bools = 0;
+            for (int i = 0; i < fieldCount; i++) {
+                prefixBoolCount[i] = bools;
+                if (fieldArray[i].type() == FieldType.Primitive.BOOLEAN) {
+                    isBoolField[i] = true;
+                    bools++;
+                }
+            }
+            prefixBoolCount[fieldCount] = bools;
+            this.boolCount = bools;
+
+            this.nullMaskBytes = (fieldCount + 7) / 8;
+            this.boolMaskBytes = boolCount > 0 ? (boolCount + 7) / 8 : 0;
+
+            // Build dispatch table for non-boolean field decoders
+            this.decoders = new FieldDecoder[fieldCount];
+            for (int i = 0; i < fieldCount; i++) {
+                if (!isBoolField[i]) {
+                    final FieldType type = fieldArray[i].type();
+                    decoders[i] = (buf, cursor) -> decodeField(buf, cursor, type);
+                }
+            }
         }
 
         @Override
@@ -144,23 +188,19 @@ public final class DocumentSerializer {
         public JlsmDocument deserialize(MemorySegment segment) {
             Objects.requireNonNull(segment, "segment must not be null");
 
-            final byte[] buf = segment.toArray(ValueLayout.JAVA_BYTE);
-            final Cursor cursor = new Cursor(buf, 0);
+            final ByteArrayView view = extractBytes(segment);
+            final byte[] buf = view.data();
+            final Cursor cursor = new Cursor(buf, view.offset());
 
             // Read header
             final int _ = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
             final int writeFieldCount = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
 
-            final List<FieldDefinition> currentFields = schema.fields();
-            final int currentFieldCount = currentFields.size();
-
             // We only read min(writeFieldCount, currentFieldCount) fields
-            final int readCount = Math.min(writeFieldCount, currentFieldCount);
+            final int readCount = Math.min(writeFieldCount, fieldCount);
 
-            // Count bool fields in the *write-time* schema (same field list up to writeFieldCount)
-            // We use the current schema's first writeFieldCount fields for the null/bool masks.
-            // For the boolMask we count booleans among the first writeFieldCount fields.
-            final int writeBoolCount = countBoolFieldsUpTo(currentFields, writeFieldCount);
+            // Use precomputed prefixBoolCount for O(1) lookup instead of O(n) iteration
+            final int writeBoolCount = prefixBoolCount[readCount];
             final int writeNullMaskBytes = (writeFieldCount + 7) / 8;
             final int writeBoolMaskBytes = writeBoolCount > 0 ? (writeBoolCount + 7) / 8 : 0;
 
@@ -168,36 +208,26 @@ public final class DocumentSerializer {
             final int boolMaskOffset = writeBoolCount > 0 ? cursor.advance(writeBoolMaskBytes) : -1;
 
             // Decode values
-            final Object[] values = new Object[currentFieldCount];
+            final Object[] values = new Object[fieldCount];
             // Fields beyond readCount remain null (new fields added in a later schema version)
 
-            int boolIdx = 0; // index among BOOLEAN fields seen so far
+            int boolIdx = 0;
             for (int i = 0; i < readCount; i++) {
-                final FieldDefinition fd = currentFields.get(i);
                 final boolean isNull = isNullBit(buf, nullMaskOffset, i);
                 if (isNull) {
-                    // Track bool index even when null
-                    if (fd.type() == FieldType.Primitive.BOOLEAN) {
+                    if (isBoolField[i]) {
                         boolIdx++;
                     }
-                    values[i] = null;
                     continue;
                 }
-                if (fd.type() == FieldType.Primitive.BOOLEAN) {
-                    // Value is encoded in the bool bitmask
+                if (isBoolField[i]) {
                     assert boolMaskOffset >= 0 : "bool bitmask offset should be set";
                     values[i] = isBoolBit(buf, boolMaskOffset, boolIdx);
                     boolIdx++;
                 } else {
-                    values[i] = decodeField(buf, cursor, fd.type());
+                    values[i] = decoders[i].decode(buf, cursor);
                 }
             }
-
-            // If writeFieldCount > currentFieldCount we need to skip the extra encoded fields.
-            // However, since we can't know the sizes of unknown fields (their types may differ
-            // from the current schema), we handle schema shrinkage gracefully by only reading
-            // min(writeFieldCount, currentFieldCount). Extra write-time fields beyond the current
-            // schema are simply ignored — the cursor position won't matter after this point.
 
             return new JlsmDocument(schema, values);
         }
@@ -765,17 +795,6 @@ public final class DocumentSerializer {
         return count;
     }
 
-    private static int countBoolFieldsUpTo(List<FieldDefinition> fields, int limit) {
-        int count = 0;
-        final int bound = Math.min(limit, fields.size());
-        for (int i = 0; i < bound; i++) {
-            if (fields.get(i).type() == FieldType.Primitive.BOOLEAN) {
-                count++;
-            }
-        }
-        return count;
-    }
-
     // =========================================================================
     // VarInt (LEB128 unsigned)
     // =========================================================================
@@ -865,6 +884,31 @@ public final class DocumentSerializer {
                 | ((long) (buf[offset + 2] & 0xFF) << 40) | ((long) (buf[offset + 3] & 0xFF) << 32)
                 | ((long) (buf[offset + 4] & 0xFF) << 24) | ((long) (buf[offset + 5] & 0xFF) << 16)
                 | ((long) (buf[offset + 6] & 0xFF) << 8) | ((long) (buf[offset + 7] & 0xFF));
+    }
+
+    // =========================================================================
+    // Heap fast path
+    // =========================================================================
+
+    /** View of a byte array with an offset — enables zero-copy for heap-backed segments. */
+    private record ByteArrayView(byte[] data, int offset) {
+    }
+
+    /**
+     * Extracts a byte array view from a {@link MemorySegment}. For heap-backed segments (created
+     * via {@code MemorySegment.ofArray(byte[])}), returns the backing array directly — zero-copy.
+     * For off-heap or sliced segments, falls back to {@code toArray()}.
+     */
+    private static ByteArrayView extractBytes(MemorySegment segment) {
+        Optional<Object> heapBase = segment.heapBase();
+        if (heapBase.isPresent() && heapBase.get() instanceof byte[] data
+                && segment.byteSize() == data.length) {
+            // Full array — offset is 0 for MemorySegment.ofArray(byte[])
+            return new ByteArrayView(data, 0);
+        } else {
+            byte[] data = segment.toArray(ValueLayout.JAVA_BYTE);
+            return new ByteArrayView(data, 0);
+        }
     }
 
     // =========================================================================
