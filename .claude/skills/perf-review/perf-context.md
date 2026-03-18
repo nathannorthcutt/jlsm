@@ -110,8 +110,9 @@ perf-output/
 | jlsm-core | jlsm-tree-benchmarks | Block cache (LRU) | ✅ LruBlockCacheBenchmark | 🔍 scratch explored 2026-03-17 (no degradation) |
 | jlsm-indexing | — | Inverted index | ❌ | ❌ |
 | jlsm-vector | — | IvfFlat / Hnsw | ❌ | ❌ |
-| jlsm-table | — | Document model + secondary indices | ❌ | ❌ |
-| jlsm-table | — | Partition routing (RangeMap, ResultMerger) | 🔍 scratch explored 2026-03-17 | ❌ |
+| jlsm-table | — | Document model + secondary indices | 🔍 scratch explored 2026-03-18 (DocumentSerializer deserialization hotspot found) | ❌ |
+| jlsm-table | — | PartitionedTable (end-to-end) | 🔍 scratch explored 2026-03-18 (snapshot + sustained, no routing overhead, no degradation) | 🔍 scratch explored 2026-03-18 (no degradation) |
+| jlsm-table | — | Partition routing (RangeMap, ResultMerger) | 🔍 scratch explored 2026-03-17, confirmed negligible 2026-03-18 | ❌ |
 
 > ✅ = benchmarked and baselined  ❌ = not yet covered  ⚠️ = stale (rerun needed)
 
@@ -129,7 +130,9 @@ perf-output/
 - `jlsm-core#MappedByteBuffer#force — WAL — 543f0e3 — ~100% of append CPU; 427 ops/s @128B`
 - `jlsm-core#LruBlockCache#get/#put — Cache/Contention — 1030761 — 1T: 30.6M ops/s, 2T: 7.6M ops/s (75% drop), 8T: 12.7M ops/s (58% drop)`
 - `jlsm-core#DeflateCodec#compress → zlib — SSTable write — 1e70573 — 90%+ of write-path CPU when compression enabled; write@10K: none 44.5, deflate1 38.0 (-15%), deflate6 27.7 (-38%) ops/s`
-- `jlsm-core#TrieSSTableReader#decompressAllBlocks — SSTable scan — 1e70573 — scan@10K: none 169, deflate1 106 (-37%), deflate6 102 (-39%) ops/s`
+- `jlsm-core#TrieSSTableReader#CompressedBlockIterator — SSTable scan — eef5903 — scan@10K: none 166, deflate1 109 (+2% vs pre-fix), deflate6 112 (+9% vs pre-fix) ops/s; decompressAllBlocks removed`
+- `jlsm-table#DocumentSerializer$SchemaSerializer#deserialize — Encoding — eef5903 — 34% of scan CPU (432 samples): toArray copy 103, String alloc 106, decodeField 93, countBoolFieldsUpTo 19`
+- `jlsm-table#PartitionedTable — Table routing — eef5903 — create 279ops/s (WAL-bound), getHit 1.17M ops/s, rangeScan 12.3K ops/s; routing overhead <1%`
 
 ---
 
@@ -239,3 +242,4 @@ jfr summary recording.jfr
 - **Partition routing overhead** — routeKey ~106ns, overlapping ~1.5μs, mergeOrdered ~163ns/entry @64P; all negligible vs data I/O (1030761)
 - **Block compression write cost** — Deflate CPU is the expected trade-off; 90%+ in native zlib, no Java-level overhead (1e70573)
 - **Block compression point-get improvement** — smaller files offset decompression cost; +9-20% getHit throughput (1e70573)
+- **Block compression scan path fixed** — streaming decompression (CompressedBlockIterator) replaced decompressAllBlocks; +2-9% throughput, O(total)→O(block) memory (eef5903)

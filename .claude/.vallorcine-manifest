@@ -28,6 +28,7 @@
 .claude/skills/setup-vallorcine/SKILL.md
 .claude/skills/uninstall-vallorcine/SKILL.md
 .claude/skills/upgrade-vallorcine/SKILL.md
+.claude/skills/curate/SKILL.md
 .claude/skills/vallorcine-help/SKILL.md
 .claude/agents/architect-agent.md
 .claude/agents/code-writer-agent.md
@@ -49,6 +50,8 @@
 .claude/scripts/kb-freshness-check.sh
 .claude/scripts/adr-validate.sh
 .claude/scripts/token-stop-hook.sh
+.claude/scripts/curate-scan.sh
+.claude/scripts/index-verify.sh
 .claude/scripts/statusline.sh
 .claude/scripts/uninstall.sh
 .claude/upgrade.sh

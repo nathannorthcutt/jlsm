@@ -134,18 +134,34 @@ Read `brief.md` in full. Identify distinct technical domains — areas where an
 architectural or research decision is needed. Not every concept, only ones that
 require a choice or have research depth worth capturing.
 
+### Research commissions from scoping
+
+Check the `## Research Commissions` section of `brief.md`. If it contains
+entries, each one becomes a domain pre-classified as `pending-research`. These
+represent uncertainty the user expressed during scoping that was captured as a
+research signal rather than deferred.
+
+Add research commission domains to the domain list alongside domains you
+identify from the brief's technical content. Do not duplicate — if a research
+commission overlaps with a domain you would have extracted anyway, merge them
+(the commission's key questions and purpose enrich the domain).
+
 Display:
 ```
 ── Identifying domains ─────────────────────────
 Domains identified:
   1. <Domain> — <one sentence: what decision or research is needed>
   2. <Domain> — ...
+  📋 <n> research commission(s) from scoping included.
 Checking KB and decisions store for each.
 ```
 
+If no research commissions: omit the commission line.
+
 Initialise the Domain Resolution Tracker in status.md with all identified
-domains set to `pending`. Write this before doing any lookups so a crash
-here doesn't lose the domain list.
+domains set to `pending`. Research commission domains start as `pending-research`
+rather than `pending`. Write this before doing any lookups so a crash here
+doesn't lose the domain list.
 
 ---
 

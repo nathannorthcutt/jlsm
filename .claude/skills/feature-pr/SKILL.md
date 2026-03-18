@@ -35,7 +35,7 @@ Draft: .feature/<slug>/pr-draft.md
   Type **yes**  to proceed to PR creation  ·  or: regenerate
 ```
 If "regenerate": proceed to regenerate the draft.
-If "yes": skip to Step 5 — PR creation (attempt to create the PR from the existing draft).
+If "yes": skip to Step 6 — PR creation (attempt to create the PR from the existing draft).
 
 ---
 
@@ -45,6 +45,91 @@ Display opening header:
 📋 PR DRAFT · <slug>
 ───────────────────────────────────────────────
 ```
+
+---
+
+## Step 0.5 — Pre-PR commit verification
+
+Before drafting, check for uncommitted files that should be part of this PR.
+These are files created by the pipeline (research, architect, test writer,
+code writer) that may not have been staged — especially after crashes or
+session interruptions.
+
+### Scan for uncommitted files
+
+Run `git status --short` and check for untracked or modified files in:
+
+1. **`.kb/`** — KB entries created during `/feature-domains` or `/feature-retro`
+2. **`.decisions/`** — ADRs, index updates, and history.md from `/feature-domains`
+   or `/feature-retro`. This includes `CLAUDE.md` (active decisions index) and
+   `history.md` (archived rows) — both are updated by the architect agent during
+   domain analysis. These are feature-produced, not upgrade artifacts.
+3. **Source files** listed in `work-plan.md` (if it exists)
+4. **Test files** listed in `work-plan.md` or referenced in `cycle-log.md`
+
+### Separating feature changes from upgrade changes
+
+If `.claude/` files are also modified (skills, scripts, settings, manifest),
+those are likely from a vallorcine upgrade, not the feature pipeline. Present
+them separately:
+
+```
+── Pre-PR check ────────────────────────────────
+I found uncommitted changes in two categories:
+
+Feature-produced (should be in this PR):
+  ? .decisions/compression-codec-api-design/adr.md
+  M .decisions/CLAUDE.md
+  M .decisions/history.md
+  ? .kb/systems/lsm-index-patterns/index-scan-patterns.md
+  M src/storage/block.go
+
+Vallorcine upgrade (separate commit recommended):
+  M .claude/skills/research/SKILL.md
+  M .claude/settings.json
+  M .claude/.vallorcine-manifest
+```
+
+Recommend committing upgrade changes first (`chore: upgrade vallorcine to vX.X.X`)
+before staging feature changes. This keeps the feature PR clean.
+
+Filter out:
+- `.feature/` — gitignored working files, not committed
+- `.curate/` — gitignored runtime files
+- Files already staged
+
+### If uncommitted files found
+
+```
+── Pre-PR check ────────────────────────────────
+I found files created during this feature's pipeline that haven't been
+committed yet:
+
+Knowledge & decisions:
+  ? .decisions/session-storage/adr.md
+  ? .decisions/session-storage/constraints.md
+  ? .decisions/session-storage/evaluation.md
+  ? .decisions/session-storage/log.md
+  ? .kb/systems/payments/stripe-integration.md
+
+Source & tests:
+  M src/auth/session.ts
+  ? tests/auth/test-session.ts
+
+These should be included in your PR. Want me to stage them?
+  yes  — stage all listed files
+  pick — let me choose which to stage
+  skip — proceed without staging (I'll handle it manually)
+```
+
+**If "yes":** run `git add` for all listed files. Report what was staged.
+**If "pick":** present numbered list, user picks by number. Stage selected.
+**If "skip":** proceed to Step 1. Note in the PR description that uncommitted
+files were detected (so the reviewer knows to check).
+
+### If no uncommitted files found
+
+Proceed silently to Step 1. No message needed.
 
 ---
 
@@ -191,7 +276,80 @@ Append `pr-drafted` entry to cycle-log.md:
 
 ---
 
-## Step 5 — Create the PR
+## Step 5 — Finalize feature records
+
+Before creating the PR, finalize the feature's knowledge and index records so
+they are included in the PR. This work used to happen post-merge in
+`/feature-complete`, but leaving it until after the PR risks losing information
+— users may not run the cleanup step, or the uncommitted changes get ignored.
+
+### 5a — Write archive manifest
+
+Write `.feature/<slug>/ARCHIVE.md`:
+
+```markdown
+---
+feature: "<slug>"
+archived: "<YYYY-MM-DD>"
+---
+
+# Archive Manifest — <slug>
+
+## Feature Summary
+<Summary from brief.md>
+
+## What Was Built
+<Bullet list of constructs from work-plan.md>
+
+## Files Created / Modified
+<From work-plan.md and cycle-log.md>
+
+## TDD Summary
+- Cycles completed: <n>
+- Tests written: <n>
+- Missing tests found during refactor: <total across all cycles>
+
+## Decisions Made
+<Links to ADRs created or used — these remain in .decisions/, this is just a reference>
+
+## KB Entries Used
+<Links to KB entries — these remain in .kb/>
+```
+
+### 5b — Update .feature/CLAUDE.md
+
+Move the feature row from Active Features to Completed / Archived:
+
+```
+| <feature> | <slug> | <YYYY-MM-DD> | .feature/_archive/<slug>/ |
+```
+
+### 5c — Commit feature records
+
+Stage and commit all feature-produced files that aren't yet committed:
+
+```bash
+git add .feature/CLAUDE.md
+```
+
+Also check for and include any uncommitted `.decisions/` and `.kb/` files
+(indexes, history, ADRs, KB entries created during this feature's pipeline):
+
+```bash
+# Only add files that are actually modified or untracked
+git add .decisions/CLAUDE.md .decisions/history.md .kb/CLAUDE.md 2>/dev/null
+# Add any ADR directories created for this feature
+git add .decisions/*/adr.md .decisions/*/constraints.md .decisions/*/evaluation.md .decisions/*/log.md 2>/dev/null
+# Add any KB entries created for this feature
+git add .kb/ 2>/dev/null
+git commit -m "chore: finalize <slug> — archive manifest, index updates, knowledge files"
+```
+
+If nothing to commit (all already staged), continue silently.
+
+---
+
+## Step 6 — Create the PR
 
 Check if `gh` CLI is available: run `gh auth status` silently.
 

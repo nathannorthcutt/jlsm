@@ -217,11 +217,21 @@ If "stop": complete the current checklist item, write the log entry, then stop.
 `status.md substage → "refactor: missing-tests"`
 `Display: ── Missing tests ───────────────────────────`
 
-For each construct, ask:
+For each construct, check these categories (same checklist the Test Writer uses):
+
+**Scenario-based:**
 - Happy path tested? ✓/✗
 - All documented error conditions tested? ✓/✗
-- Boundary values (empty, max, null/nil)? ✓/✗
-- Concurrency / ordering dependencies? ✓/✗
+- Boundary values (empty, zero, max, null/nil, single element)? ✓/✗
+- Concurrency / ordering dependencies (if applicable)? ✓/✗
+
+**Structural (derived from interface):**
+- Paired methods have round-trip tests (encode/decode, write/read)? ✓/✗
+- Resource lifecycle tested (close, use-after-close)? ✓/✗
+- Method interaction tested (add+remove, sequences of mutations)? ✓/✗
+- Type boundaries (overflow, precision loss, encoding limits)? ✓/✗
+
+**Implementation-discovered:**
 - Cases the implementation handles that the Work Planner didn't anticipate? ✓/✗
 
 If missing tests are found → see Step 3 (escalate, do not continue).

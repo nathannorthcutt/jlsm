@@ -128,6 +128,20 @@ For each subject:
 4. Fetch full content from top 3–5 authoritative sources
 5. Record every URL with title and access date — these go in the sources frontmatter
 
+### Fetch discipline
+
+Fetches can hang indefinitely on slow or unresponsive sources. Rules:
+- **Never block on a single fetch.** If a fetch hasn't returned within ~30
+  seconds, move on. The research can proceed with the sources that did respond.
+- **Prefer smaller pages.** Arxiv HTML versions, GitHub wiki pages, and
+  documentation sites are usually fast. Avoid fetching large PDFs, full
+  repository archives, or pages that require JavaScript rendering.
+- **3 sources is enough.** Don't fetch 5 sources if 3 gave you what you need.
+  Each additional fetch is a timeout risk for diminishing return.
+- **If a fetch fails or times out:** note the URL in the subject file's sources
+  as `(not fetched — timeout/error)` so future research knows to try again or
+  use a different source. Do not retry in the same session.
+
 ---
 
 ## Step 3 — Write subject files
@@ -138,6 +152,10 @@ Display: `── Writing KB entries ──────────────�
 - Filename: kebab-case of the subject name (e.g. `hnsw.md`, `ivf-flat.md`)
 - Keep under 200 lines; if longer, extract to `<subject>-detail.md` and add `@./<subject>-detail.md` at the bottom
 - If file already exists: append `## Updates YYYY-MM-DD` section — NEVER overwrite
+- Populate `applies_to:` frontmatter with source file paths this research is
+  relevant to (if known from the research context, commissioning ADR, or feature
+  work). Leave empty if no specific files are known — `/curate` will help
+  populate this over time as correlations are discovered.
 
 Use the Subject File Template below.
 
@@ -180,6 +198,7 @@ complexity:
   space: "<e.g. O(n * M)>"
 research_status: "<active | mature | stable | deprecated>"
 last_researched: "<YYYY-MM-DD>"
+applies_to: []
 sources:
   - url: "<URL>"
     title: "<title>"

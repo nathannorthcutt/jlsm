@@ -155,6 +155,27 @@ before moving to Q3. Depth on one question is better than breadth across all.
 Record any discussion points that affect the brief as you go — don't rely
 on reconstructing them at brief-writing time.
 
+### Recognising research signals in user answers
+
+When the user responds with uncertainty about a topic that could influence the
+design — phrases like "I'm not sure," "I don't know," "might be worth
+investigating," "my feeling is," or similar hedging — treat this as a
+**research signal**, not a deferral.
+
+**Do not** put research signals in "Explicit Out of Scope" or "Open Assumptions."
+Those sections are dead ends — the Domain Scout may never surface them as domains.
+
+**Instead**, capture each research signal in the brief's `## Research Commissions`
+section with:
+- **Topic** — what needs investigating
+- **Key questions** — the specific unknowns the user expressed
+- **Purpose** — how findings would influence the design of this feature
+
+The scoping agent does not do research — it captures the signal so the Domain
+Scout can commission it during domain analysis. When in doubt about whether
+something is a deferral or a research signal, ask the user: "Would it help to
+research this before we design, or is it safe to defer?"
+
 ---
 
 ## Step 3 — Present the brief for confirmation
@@ -172,7 +193,7 @@ SUMMARY
 
 ACTORS / INPUTS / OUTPUTS & SIDE EFFECTS / BUSINESS RULES /
 ERROR CASES / EXPLICIT OUT OF SCOPE / ACCEPTANCE CRITERIA /
-OPEN ASSUMPTIONS / PERFORMANCE EXPECTATIONS
+OPEN ASSUMPTIONS / RESEARCH COMMISSIONS / PERFORMANCE EXPECTATIONS
 ───────────────────────────────────────────────
 Does this capture it correctly? Confirm or tell me what to change.
 ```
@@ -360,6 +381,11 @@ status: "scoped"
 ## Explicit Out of Scope
 ## Acceptance Criteria
 ## Open Assumptions
+## Research Commissions
+<!-- Topics where user expressed uncertainty that could influence the design.
+     Each entry: Topic, Key questions, Purpose (how findings affect this feature).
+     Domain Scout will commission /research for each during domain analysis.
+     If none: "None — no research signals identified during scoping." -->
 ## Performance Expectations
 
 ## Project Context
