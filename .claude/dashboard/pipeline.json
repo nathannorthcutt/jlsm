@@ -1,0 +1,88 @@
+{
+  "feature": "striped-block-cache",
+  "version": "0.4.0",
+  "stages": [
+    {
+      "name": "scoping",
+      "icon": "⬡",
+      "status": "pending",
+      "tokens": {
+        "actual": null,
+        "estimate": null,
+        "live": null
+      },
+      "alert": null
+    },
+    {
+      "name": "domains",
+      "icon": "◈",
+      "status": "pending",
+      "tokens": {
+        "actual": null,
+        "estimate": null,
+        "live": null
+      },
+      "alert": null
+    },
+    {
+      "name": "planning",
+      "icon": "▣",
+      "status": "complete",
+      "tokens": {
+        "actual": null,
+        "estimate": null,
+        "live": null
+      },
+      "alert": null
+    },
+    {
+      "name": "testing",
+      "icon": "△",
+      "status": "complete",
+      "tokens": {
+        "actual": null,
+        "estimate": null,
+        "live": null
+      },
+      "alert": null
+    },
+    {
+      "name": "implementation",
+      "icon": "⚙",
+      "status": "complete",
+      "tokens": {
+        "actual": null,
+        "estimate": null,
+        "live": null
+      },
+      "alert": null
+    },
+    {
+      "name": "refactor",
+      "icon": "◆",
+      "status": "complete",
+      "tokens": {
+        "actual": null,
+        "estimate": null,
+        "live": null
+      },
+      "alert": null
+    },
+    {
+      "name": "pr",
+      "icon": "⎘",
+      "status": "complete",
+      "tokens": {
+        "actual": null,
+        "estimate": null,
+        "live": null
+      },
+      "alert": null
+    }
+  ],
+  "units": null,
+  "totals": {
+    "actual": 0,
+    "estimate": null
+  }
+}

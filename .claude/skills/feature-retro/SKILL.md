@@ -1,0 +1,239 @@
+---
+description: "Post-feature retrospective reviewing scope, assumptions, and lessons learned"
+argument-hint: "<feature-slug>"
+---
+
+# /feature-retro "<feature-slug>"
+
+Post-feature retrospective. Reviews what actually happened against what was
+planned: scope divergence, invalidated assumptions, missed domain gaps, and
+lessons learned. Writes findings back to `.decisions/` and `.kb/` so future
+features benefit.
+
+Run after `/feature-pr` or after the PR merges — whenever the feature is fresh
+in memory.
+
+---
+
+## Pre-flight guard
+
+Check that `.feature/<slug>/` exists (or `.feature/_archive/<slug>/`).
+If neither exists: "No feature found for '<slug>'. Check the slug or run
+/feature-resume --list to see active features."
+
+If found in `_archive/`: read from there. The feature is complete but the
+working files are still available locally.
+
+Check that cycle-log.md has at least one `implemented` or `refactor-complete`
+entry. If not: "Feature '<slug>' has not completed implementation. Run the
+retrospective after the TDD cycle finishes."
+
+Display opening header:
+```
+───────────────────────────────────────────────
+🔍 FEATURE RETRO · <slug>
+───────────────────────────────────────────────
+```
+
+---
+
+## Step 1 — Load context
+
+Read in order:
+1. `status.md` — stage completion, cycle count, token usage
+2. `brief.md` — original scope, acceptance criteria, assumptions
+3. `work-plan.md` — planned constructs, contracts, work units
+4. `domains.md` — domain analysis, ADR references, noted gaps
+5. `cycle-log.md` — full history (what actually happened)
+6. `test-plan.md` — what was tested
+
+Do NOT read implementation or test source files.
+
+---
+
+## Step 2 — Analyse divergence
+
+Compare what was planned against what happened. Check each dimension:
+
+### 2a — Scope divergence
+
+Compare brief.md acceptance criteria against cycle-log.md outcomes:
+- Were all acceptance criteria met?
+- Were any criteria added mid-implementation (not in the original brief)?
+- Were any criteria dropped or descoped?
+- Did any escalations (code-escalation, test-to-planner-escalation) indicate
+  scope was wrong?
+
+### 2b — Assumption validation
+
+Read the `## Open Assumptions` section from brief.md. For each assumption:
+- Was it validated during implementation?
+- Was it invalidated? (the implementation had to work around it)
+- Is it still untested?
+
+### 2c — Domain gap review
+
+Read domains.md `## Unresolved Gaps` section and any `gap-noted` domains:
+- Did any noted gaps cause problems during implementation?
+- Were any domains missed entirely that should have been identified?
+- Did any ADRs referenced in domains.md turn out to be wrong or insufficient?
+
+### 2d — Estimation accuracy
+
+Read the Stage Completion table from status.md:
+- Compare Est. Tokens vs Actual Tokens for each stage
+- Identify stages that were significantly over or under (>30% delta)
+- Note the total estimate vs actual
+
+### 2e — TDD cycle efficiency
+
+From cycle-log.md:
+- How many cycles did it take?
+- How many escalations occurred?
+- How many missing tests were found during refactor?
+- Were any contracts revised?
+
+---
+
+## Step 3 — Display the retrospective
+
+```
+── Feature Retrospective · <slug> ─────────────
+
+SCOPE
+  Acceptance criteria: <n met> / <n total>
+  <If any dropped:>  Dropped: <list>
+  <If any added:>    Added mid-flight: <list>
+  Verdict: <on-track | minor drift | significant drift>
+
+ASSUMPTIONS
+  <For each assumption from brief.md:>
+  ✓ <assumption> — validated
+  ✗ <assumption> — invalidated: <what happened>
+  ? <assumption> — untested
+
+DOMAINS
+  <If gaps caused issues:>
+  ⚠ <domain> — gap caused: <issue description>
+  <If domains were missed:>
+  ⚠ Missing domain: <domain that should have been identified>
+  <If ADRs were insufficient:>
+  ⚠ <adr-slug> — insufficient: <what was missing>
+  <If all clean:>
+  ✓ All domains adequately covered
+
+TOKEN ACCURACY
+  | Stage          | Est.   | Actual  | Δ      |
+  |----------------|--------|---------|--------|
+  <from status.md Stage Completion table>
+  | Total          | ~<N>K  | <N>K in | <+/-%> |
+  <If any stage >30% off:>
+  Note: <stage> was <N>% <over|under> estimate.
+
+TDD EFFICIENCY
+  Cycles: <n>
+  Escalations: <n> (<types>)
+  Missing tests found: <n>
+  Contract revisions: <n>
+  Verdict: <clean | minor friction | significant rework>
+
+───────────────────────────────────────────────
+```
+
+---
+
+## Step 4 — Extract actionable findings
+
+For each finding, classify and offer an action:
+
+### Findings that should update `.decisions/`
+
+If an ADR was invalidated or insufficient:
+```
+── ADR Update ─────────────────────────────────
+  <adr-slug> — <what was wrong or missing>
+
+  Type **yes** to open a review · or: skip
+```
+If "yes": invoke `/decisions review "<adr-slug>"` as a sub-agent.
+
+If a design decision was made during implementation without an ADR (detected
+from contract revisions or escalations that changed the approach):
+```
+── Undocumented Decision ──────────────────────
+  <description of what was decided>
+  Source: <escalation / contract revision / scope change>
+
+  Type **yes** to create an ADR · or: skip
+```
+If "yes": invoke `/architect "<decision problem>"` as a sub-agent.
+
+### Findings that should update `.kb/`
+
+If implementation revealed information that would be useful for future features
+(e.g., a library behaved unexpectedly, a pattern worked well, a constraint
+was discovered):
+```
+── KB Finding ─────────────────────────────────
+  <what was learned>
+  Relevant topic: <topic> / <category>
+
+  Type **yes** to research and document · or: skip
+```
+If "yes": invoke `/research <topic> <category> "<subject>"` as a sub-agent.
+
+### Estimation calibration
+
+If token estimates were consistently off in one direction:
+```
+── Estimation Note ────────────────────────────
+  <stage> estimates were consistently <high|low> by ~<N>%.
+  Consider adjusting the per-construct estimate in /feature-plan
+  Step 2b (currently 3.5K per construct).
+```
+This is informational only — no file is written. The user decides whether
+to adjust.
+
+---
+
+## Step 5 — Write retro summary
+
+Append `retro-complete` to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — retro-complete
+**Agent:** 🔍 Retro
+**Scope:** <on-track | minor drift | significant drift>
+**Assumptions:** <n validated> / <n total> (<n invalidated>)
+**Domain gaps:** <n issues found>
+**Token accuracy:** <total est> vs <total actual> (<delta%>)
+**TDD efficiency:** <n cycles>, <n escalations>, <n missing tests>
+**Actions taken:**
+- <ADR reviewed: <slug>> | <ADR created: <slug>> | <KB updated: <topic>>
+- ...
+---
+```
+
+Display:
+```
+───────────────────────────────────────────────
+🔍 FEATURE RETRO complete · <slug>
+───────────────────────────────────────────────
+  Scope: <verdict>
+  Actions: <n ADR reviews> · <n new ADRs> · <n KB updates>
+
+  Retrospective logged in cycle-log.md.
+  <If feature not yet archived:>
+  When the PR merges: /feature-complete "<slug>"
+───────────────────────────────────────────────
+```
+
+---
+
+## Write authority
+
+The retro command writes to:
+- `.feature/<slug>/cycle-log.md` (retro-complete entry only)
+
+It does NOT directly write to `.decisions/` or `.kb/` — it invokes
+`/architect`, `/decisions review`, and `/research` as sub-agents, and those
+commands handle their own writes.

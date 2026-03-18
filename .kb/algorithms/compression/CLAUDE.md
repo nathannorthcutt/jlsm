@@ -1,0 +1,25 @@
+# Compression — Category Index
+*Topic: algorithms*
+
+Lossless compression algorithms used for SSTable data blocks and storage engine I/O reduction.
+Covers speed/ratio tradeoffs, per-block encoding formats, and pure-Java implementation feasibility.
+
+## Contents
+
+| File | Subject | Status | Key Metric | Best For |
+|------|---------|--------|------------|----------|
+| [block-compression-algorithms.md](block-compression-algorithms.md) | Block Compression Algorithms (LZ4, Deflate, Snappy, ZSTD) | mature | LZ4: 780 MB/s compress, 4970 MB/s decompress | SSTable block-level compression |
+
+## Comparison Summary
+
+LZ4 and Deflate are the two viable options for a pure-Java library with no external dependencies.
+LZ4 is ~15x faster but achieves lower ratio (~2:1 vs ~3:1). Deflate is available via `java.util.zip`
+(zero implementation effort). LZ4 is implementable in ~200 lines of pure Java. Snappy is strictly
+dominated by LZ4. ZSTD is too complex for hand-rolling (~5000+ lines).
+
+## Recommended Reading Order
+1. Start: [block-compression-algorithms.md](block-compression-algorithms.md) — survey of all four algorithms
+
+## Research Gaps
+- Pure-Java LZ4 implementation performance benchmarks (JMH on jlsm workloads)
+- Optimal block size for SSTable compression (4 KiB vs 8 KiB vs 16 KiB)

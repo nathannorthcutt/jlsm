@@ -67,6 +67,7 @@ _sum_usage() {
 
 _fmt_tokens() {
     local n="$1"
+    [[ "$n" =~ ^[0-9]+$ ]] || { echo "${n:-0}"; return; }
     if [[ "$n" -ge 1000000 ]]; then
         local whole=$(( n / 1000000 ))
         local frac=$(( (n % 1000000) / 100000 ))
@@ -97,12 +98,9 @@ token_checkpoint() {
     line_count="$(wc -l < "$transcript")"
 
     mkdir -p "$feature_dir"
-    cat > "$feature_dir/.token-checkpoint" <<EOF
-transcript=$transcript
-start_line=$((line_count + 1))
-phase=$phase
-timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-EOF
+    printf 'transcript=%q\nstart_line=%s\nphase=%q\ntimestamp=%s\n' \
+        "$transcript" "$((line_count + 1))" "$phase" \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$feature_dir/.token-checkpoint"
 }
 
 # End a pipeline phase, append usage to token-log.md, return summary string.

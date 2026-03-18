@@ -12,11 +12,12 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 3 | 9 | 2026-03-17 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 4 | 10 | 2026-03-17 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-17 | algorithms | compression | block-compression-algorithms |
 | 2026-03-17 | algorithms | vector-encoding | flat-vector-encoding |
 | 2026-03-17 | algorithms | vector-encoding | sparse-vector-encoding |
 | 2026-03-17 | algorithms | vector-encoding | lossless-vector-compression |
