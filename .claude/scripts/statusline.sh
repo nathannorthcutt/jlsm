@@ -167,25 +167,8 @@ if [[ -f .claude/.token-state ]]; then
 
                 if [[ "$baseline_stage" != "$current_stage" ]]; then
                     # ── Stage transition detected ────────────────────────
-                    # Log the completed stage's token usage
-                    if [[ -n "$baseline_stage" && "$baseline_ctx_tokens" =~ ^[0-9]+$ ]]; then
-                        completed_tokens=$(( current_ctx_tokens - baseline_ctx_tokens ))
-                        [[ "$completed_tokens" -lt 0 ]] && completed_tokens=0
-
-                        log_file="$feature_dir/token-log.md"
-                        if [[ ! -f "$log_file" ]]; then
-                            cat > "$log_file" <<'HEADER'
-# Token Usage Log
-
-| Phase | Context Tokens | Started | Ended |
-|-------|---------------|---------|-------|
-HEADER
-                        fi
-
-                        echo "| $baseline_stage | $completed_tokens | ${baseline_timestamp:-unknown} | $(date -u +%Y-%m-%dT%H:%M:%SZ) |" >> "$log_file"
-                    fi
-
-                    # Set new baseline for the new stage
+                    # Reset baseline for new stage. Token logging is handled
+                    # by token-stop-hook.sh (transcript-based, more accurate).
                     printf 'baseline_stage=%q\nbaseline_ctx_tokens=%s\nbaseline_timestamp=%s\n' \
                         "$current_stage" "$current_ctx_tokens" \
                         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BASELINE_FILE"

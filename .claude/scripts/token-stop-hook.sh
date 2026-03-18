@@ -37,18 +37,21 @@ if [[ -f "$STATE_FILE" ]]; then
     current_stage=$(grep -m1 '^\*\*Stage:\*\*' "$feature_dir/status.md" 2>/dev/null \
         | sed 's/\*\*Stage:\*\* *//' | tr -d '[:space:]')
 
-    # Check for terminal states — clean up tracking
+    # Detect terminal states (but don't bail yet — log the final stage first)
     substage=$(grep -m1 '^\*\*Substage:\*\*' "$feature_dir/status.md" 2>/dev/null \
         | sed 's/\*\*Substage:\*\* *//' | tr -d '[:space:]')
+    is_terminal=0
     case "$current_stage/$substage" in
-        pr/created|pr/complete)
-            rm -f "$STATE_FILE"
-            exit 0
-            ;;
+        pr/created|pr/complete) is_terminal=1 ;;
     esac
 
-    # Same stage = no-op
-    [[ -n "$current_stage" && "$current_stage" != "$cached_stage" ]] || exit 0
+    # Same stage = no-op (terminal states are always a "different" stage
+    # from a non-terminal cached_stage, so they fall through to logging)
+    [[ -n "$current_stage" && "$current_stage" != "$cached_stage" ]] || {
+        # Terminal + same stage means we already logged — just clean up
+        if [[ "$is_terminal" == "1" ]]; then rm -f "$STATE_FILE"; fi
+        exit 0
+    }
 
     # ── Stage transition detected ────────────────────────────────────────────
     source .claude/scripts/token-usage.sh 2>/dev/null || exit 0
@@ -98,6 +101,12 @@ HEADER
                 }
             ' "$feature_dir/status.md" > "$feature_dir/status.md.tmp" && \
                 mv "$feature_dir/status.md.tmp" "$feature_dir/status.md"
+        fi
+
+        # Terminal state — clean up tracking (final stage already logged above)
+        if [[ "$is_terminal" == "1" ]]; then
+            rm -f "$STATE_FILE"
+            exit 0
         fi
 
         # Update state for new stage
