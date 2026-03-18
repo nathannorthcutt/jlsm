@@ -9,7 +9,7 @@
 
 | Feature | Slug | Started | Stage | Last Checkpoint |
 |---------|------|---------|-------|-----------------|
-| Table partitioning | table-partitioning | 2026-03-16 | refactor/complete | 3 WUs done, 85 tests, check clean |
+| Block-level SSTable compression | block-compression | 2026-03-17 | planning | work-plan.md written, 4 stubs created |
 
 ## Completed / Archived
 
@@ -18,3 +18,6 @@
 | Float16 vector support | float16-vector-support | 2026-03-16 | .feature/_archive/float16-vector-support/ |
 | SQL query support | sql-query-support | 2026-03-17 | .feature/_archive/sql-query-support/ |
 | Table indices and queries | table-indices-and-queries | 2026-03-16 | .feature/_archive/table-indices-and-queries/ |
+| Striped block cache | striped-block-cache | 2026-03-17 | .feature/_archive/striped-block-cache/ |
+| Table partitioning | table-partitioning | 2026-03-17 | .feature/_archive/table-partitioning/ |
+| Vector field type | vector-field-type | 2026-03-17 | .feature/_archive/vector-field-type/ |
