@@ -182,6 +182,11 @@ Explored but no regression benchmark yet (scratch-only, 2026-03-16):
 Explored but no regression benchmark yet (scratch-only, 2026-03-17):
 - RangeMap + ResultMerger — partition routing layer (no significant cost found; routing ~106ns, overlap ~1.5μs @64P)
 
+Explored but no regression benchmark yet (scratch-only, 2026-03-19):
+- Encryption primitives — AES-SIV 66K ops/s, AES-GCM 252K ops/s, DCPE-SAP 177K ops/s, OPE 0.028 ops/s (broken — Cipher.getInstance in hot loop)
+- DocumentSerializer encryption — server-side 46.9K ops/s, pre-encrypted 9.01M ops/s, unencrypted 5.65M ops/s
+- CiphertextValidator — 500M ops/s (essentially free)
+
 Not yet explored:
 - BlockedBloomFilter — bloom filter standalone (hash + double-hash loop)
 - LsmVectorIndex — SIMD distance computation (snapshot candidate)
