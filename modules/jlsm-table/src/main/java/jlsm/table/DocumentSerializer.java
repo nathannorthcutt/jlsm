@@ -1,6 +1,8 @@
 package jlsm.table;
 
 import jlsm.core.io.MemorySerializer;
+import jlsm.table.internal.EncryptionKeyHolder;
+import jlsm.table.internal.FieldEncryptionDispatch;
 import jdk.incubator.vector.ByteVector;
 import jdk.incubator.vector.DoubleVector;
 import jdk.incubator.vector.FloatVector;
@@ -46,7 +48,21 @@ public final class DocumentSerializer {
      */
     public static MemorySerializer<JlsmDocument> forSchema(JlsmSchema schema) {
         Objects.requireNonNull(schema, "schema must not be null");
-        return new SchemaSerializer(schema);
+        return new SchemaSerializer(schema, /* keyHolder= */ null);
+    }
+
+    /**
+     * Returns a {@link MemorySerializer} for {@link JlsmDocument} values conforming to the given
+     * schema, with optional field-level encryption.
+     *
+     * @param schema the schema describing the document structure; must not be null
+     * @param keyHolder the key holder for encryption; may be null (no encryption)
+     * @return a MemorySerializer for JlsmDocument
+     */
+    public static MemorySerializer<JlsmDocument> forSchema(JlsmSchema schema,
+            EncryptionKeyHolder keyHolder) {
+        Objects.requireNonNull(schema, "schema must not be null");
+        return new SchemaSerializer(schema, keyHolder);
     }
 
     // =========================================================================
@@ -106,8 +122,9 @@ public final class DocumentSerializer {
         private final int nullMaskBytes;
         private final int boolMaskBytes;
         private final FieldDecoder[] decoders;
+        private final FieldEncryptionDispatch encryptionDispatch;
 
-        SchemaSerializer(JlsmSchema schema) {
+        SchemaSerializer(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
             this.schema = schema;
 
             final List<FieldDefinition> fields = schema.fields();
@@ -139,6 +156,9 @@ public final class DocumentSerializer {
                     decoders[i] = (buf, cursor) -> decodeField(buf, cursor, type);
                 }
             }
+
+            // Build encryption dispatch (null-safe: null keyHolder means no encryption)
+            this.encryptionDispatch = new FieldEncryptionDispatch(schema, keyHolder);
         }
 
         @Override
@@ -160,8 +180,32 @@ public final class DocumentSerializer {
             final int boolMaskBytes = boolCount > 0 ? (boolCount + 7) / 8 : 0;
             final int headerSize = 2 + 2 + nullMaskBytes + boolMaskBytes;
 
+            // Pre-encrypt fields that have encryptors to determine actual payload size.
+            // encryptedPayloads[i] holds the ciphertext for encrypted fields, null otherwise.
+            final byte[][] encryptedPayloads = new byte[fieldCount][];
+            boolean hasEncryptedFields = false;
+            for (int i = 0; i < fieldCount; i++) {
+                final Object val = values[i];
+                if (val == null || isBoolField[i]) {
+                    continue;
+                }
+                final FieldEncryptionDispatch.FieldEncryptor enc = encryptionDispatch
+                        .encryptorFor(i);
+                if (enc != null) {
+                    // Serialize the field value to a temporary buffer, then encrypt
+                    final byte[] plainBytes = serializeFieldToBytes(fields.get(i).type(), val);
+                    encryptedPayloads[i] = enc.encrypt(plainBytes);
+                    hasEncryptedFields = true;
+                }
+            }
+
             // Two-pass: measure then encode
-            final int payloadSize = measureFields(fields, values);
+            final int payloadSize;
+            if (!hasEncryptedFields) {
+                payloadSize = measureFields(fields, values);
+            } else {
+                payloadSize = measureFieldsWithEncryption(fields, values, encryptedPayloads);
+            }
             final int totalSize = headerSize + payloadSize;
 
             final byte[] buf = new byte[totalSize];
@@ -178,7 +222,11 @@ public final class DocumentSerializer {
 
             // Write values
             final Cursor cursor = new Cursor(buf, headerSize);
-            encodeFields(fields, values, cursor);
+            if (!hasEncryptedFields) {
+                encodeFields(fields, values, cursor);
+            } else {
+                encodeFieldsWithEncryption(fields, values, encryptedPayloads, cursor);
+            }
 
             assert cursor.pos == totalSize : "cursor.pos should equal totalSize";
             return MemorySegment.ofArray(buf);
@@ -225,7 +273,20 @@ public final class DocumentSerializer {
                     values[i] = isBoolBit(buf, boolMaskOffset, boolIdx);
                     boolIdx++;
                 } else {
-                    values[i] = decoders[i].decode(buf, cursor);
+                    final FieldEncryptionDispatch.FieldDecryptor dec = encryptionDispatch
+                            .decryptorFor(i);
+                    if (dec != null) {
+                        // Read length-prefixed encrypted blob, decrypt, then decode
+                        final int encLen = readVarInt(buf, cursor);
+                        final byte[] ciphertext = new byte[encLen];
+                        System.arraycopy(buf, cursor.pos, ciphertext, 0, encLen);
+                        cursor.pos += encLen;
+                        final byte[] plainBytes = dec.decrypt(ciphertext);
+                        final Cursor plainCursor = new Cursor(plainBytes, 0);
+                        values[i] = decoders[i].decode(plainBytes, plainCursor);
+                    } else {
+                        values[i] = decoders[i].decode(buf, cursor);
+                    }
                 }
             }
 
@@ -304,6 +365,66 @@ public final class DocumentSerializer {
             }
             encodeField(c, fields.get(i).type(), val);
         }
+    }
+
+    /**
+     * Measures payload size when some fields are pre-encrypted. Encrypted fields are stored as
+     * varint-length-prefixed blobs; unencrypted fields use standard measurement.
+     */
+    private static int measureFieldsWithEncryption(List<FieldDefinition> fields, Object[] values,
+            byte[][] encryptedPayloads) {
+        int total = 0;
+        for (int i = 0; i < fields.size(); i++) {
+            final Object val = values[i];
+            if (val == null) {
+                continue; // null → no value bytes
+            }
+            if (encryptedPayloads[i] != null) {
+                // Length-prefixed encrypted blob
+                total += varIntSize(encryptedPayloads[i].length) + encryptedPayloads[i].length;
+            } else {
+                total += measureField(fields.get(i).type(), val);
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Encodes fields with encryption support. Encrypted fields are written as
+     * varint-length-prefixed blobs from the pre-encrypted payloads; unencrypted fields use the
+     * standard encode path.
+     */
+    private static void encodeFieldsWithEncryption(List<FieldDefinition> fields, Object[] values,
+            byte[][] encryptedPayloads, Cursor c) {
+        for (int i = 0; i < fields.size(); i++) {
+            final Object val = values[i];
+            if (val == null) {
+                continue;
+            }
+            if (encryptedPayloads[i] != null) {
+                // Write length-prefixed encrypted blob
+                final byte[] enc = encryptedPayloads[i];
+                writeVarInt(c, enc.length);
+                System.arraycopy(enc, 0, c.buf, c.pos, enc.length);
+                c.pos += enc.length;
+            } else {
+                encodeField(c, fields.get(i).type(), val);
+            }
+        }
+    }
+
+    /**
+     * Serializes a single field value into a fresh byte array. Used to produce the plaintext bytes
+     * that will be fed to the field encryptor.
+     */
+    private static byte[] serializeFieldToBytes(FieldType type, Object value) {
+        assert value != null : "value must not be null for serialization";
+        final int size = measureField(type, value);
+        final byte[] buf = new byte[size];
+        final Cursor c = new Cursor(buf, 0);
+        encodeField(c, type, value);
+        assert c.pos == size : "encoded size mismatch: expected " + size + ", got " + c.pos;
+        return buf;
     }
 
     private static void encodeField(Cursor c, FieldType type, Object value) {

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import jlsm.table.EncryptionSpec;
 import jlsm.table.FieldDefinition;
 import jlsm.table.FieldType;
 import jlsm.table.IndexDefinition;
@@ -228,6 +229,54 @@ public final class IndexRegistry implements Closeable {
                     throw new IllegalArgumentException(
                             "VECTOR index requires VectorType field, got: " + fieldType
                                     + " for field '" + def.fieldName() + "'");
+                }
+            }
+        }
+
+        // Validate encryption × index compatibility using the capability matrix
+        validateEncryptionCompatibility(fieldDef, def);
+    }
+
+    /**
+     * Validates that the field's encryption specification is compatible with the requested index
+     * type. Uses the capability methods on {@link jlsm.table.EncryptionSpec} to check support.
+     *
+     * @throws IllegalArgumentException if the encryption spec does not support the index type
+     */
+    private static void validateEncryptionCompatibility(FieldDefinition fieldDef,
+            IndexDefinition def) {
+        final EncryptionSpec encryption = fieldDef.encryption();
+        assert encryption != null : "encryption must not be null (FieldDefinition enforces this)";
+
+        final String fieldName = def.fieldName();
+        switch (def.indexType()) {
+            case EQUALITY, UNIQUE -> {
+                if (!encryption.supportsEquality()) {
+                    throw new IllegalArgumentException(def.indexType() + " index on field '"
+                            + fieldName + "' is incompatible with "
+                            + encryption.getClass().getSimpleName()
+                            + " encryption (does not support equality)");
+                }
+            }
+            case RANGE -> {
+                if (!encryption.supportsRange()) {
+                    throw new IllegalArgumentException("RANGE index on field '" + fieldName
+                            + "' is incompatible with " + encryption.getClass().getSimpleName()
+                            + " encryption (does not support range queries)");
+                }
+            }
+            case FULL_TEXT -> {
+                if (!encryption.supportsKeywordSearch()) {
+                    throw new IllegalArgumentException("FULL_TEXT index on field '" + fieldName
+                            + "' is incompatible with " + encryption.getClass().getSimpleName()
+                            + " encryption (does not support keyword search)");
+                }
+            }
+            case VECTOR -> {
+                if (!encryption.supportsANN()) {
+                    throw new IllegalArgumentException("VECTOR index on field '" + fieldName
+                            + "' is incompatible with " + encryption.getClass().getSimpleName()
+                            + " encryption (does not support ANN)");
                 }
             }
         }

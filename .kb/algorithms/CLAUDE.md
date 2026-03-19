@@ -13,6 +13,7 @@ Algorithm designs, complexity analysis, pseudocode, and data structure technique
 | vector-encoding | [vector-encoding/](vector-encoding/CLAUDE.md) | 3 | 2026-03-17 | Serialization formats and lossless encoding for fixed-dimension float arrays |
 | compression | [compression/](compression/CLAUDE.md) | 1 | 2026-03-17 | Lossless block compression algorithms for SSTable storage (LZ4, Deflate, Snappy, ZSTD) |
 | vector-quantization | [vector-quantization/](vector-quantization/CLAUDE.md) | 5 | 2026-03-16 | Compression techniques for high-dimensional vectors in ANN search |
+| encryption | [encryption/](encryption/CLAUDE.md) | 1 | 2026-03-18 | Searchable encryption schemes for field-level database encryption (DET, OPE, SSE) |
 
 ## Navigation
 Read the category CLAUDE.md to see individual subjects and comparisons.
