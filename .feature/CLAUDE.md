@@ -9,12 +9,16 @@
 
 | Feature | Slug | Started | Stage | Last Checkpoint |
 |---------|------|---------|-------|-----------------|
-| Field-level in-memory encryption | encrypt-memory-data | 2026-03-18 | planning | work-plan.md written |
+| In-process database engine | in-process-database-engine | 2026-03-19 | planning complete | work-plan.md written, 13 stubs created |
 
 ## Completed / Archived
 
 | Feature | Slug | Completed | Archive |
 |---------|------|-----------|---------|
+| Field-level in-memory encryption | encrypt-memory-data | 2026-03-19 | .feature/_archive/encrypt-memory-data/ |
+| Extract core encryption primitives | extract-core-encryption | 2026-03-19 | .feature/_archive/extract-core-encryption/ |
+| Fix encryption performance | fix-encryption-performance | 2026-03-19 | .feature/_archive/fix-encryption-performance/ |
+| OPE type-aware bounds + BoundedString + docs | ope-type-aware-bounds | 2026-03-19 | .feature/_archive/ope-type-aware-bounds/ |
 | Optimize DocumentSerializer | optimize-document-serializer | 2026-03-18 | .feature/_archive/optimize-document-serializer/ |
 | Streaming block decompression | streaming-block-decompression | 2026-03-18 | .feature/_archive/streaming-block-decompression/ |
 | Block-level SSTable compression | block-compression | 2026-03-18 | .feature/_archive/block-compression/ |
