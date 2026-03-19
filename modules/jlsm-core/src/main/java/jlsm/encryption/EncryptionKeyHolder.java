@@ -1,4 +1,4 @@
-package jlsm.table.internal;
+package jlsm.encryption;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;

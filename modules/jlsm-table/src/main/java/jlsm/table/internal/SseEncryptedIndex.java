@@ -15,6 +15,8 @@ import javax.crypto.Mac;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import jlsm.encryption.EncryptionKeyHolder;
+
 /**
  * Contract: Tier 3 SSE (Searchable Symmetric Encryption) encrypted inverted index based on Curtmola
  * SSE-2 / Dyn2Lev. For each term, derives a search token {@code Tw = PRF(K, term)}, encrypts the

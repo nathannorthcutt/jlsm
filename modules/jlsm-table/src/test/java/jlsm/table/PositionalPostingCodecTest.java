@@ -8,9 +8,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import jlsm.table.internal.AesSivEncryptor;
-import jlsm.table.internal.BoldyrevaOpeEncryptor;
-import jlsm.table.internal.EncryptionKeyHolder;
+import jlsm.encryption.AesSivEncryptor;
+import jlsm.encryption.BoldyrevaOpeEncryptor;
+import jlsm.encryption.EncryptionKeyHolder;
 import jlsm.table.internal.PositionalPostingCodec;
 
 /**

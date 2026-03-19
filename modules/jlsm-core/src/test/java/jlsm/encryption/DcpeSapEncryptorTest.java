@@ -1,9 +1,6 @@
-package jlsm.table;
+package jlsm.encryption;
 
 import static org.junit.jupiter.api.Assertions.*;
-
-import jlsm.table.internal.DcpeSapEncryptor;
-import jlsm.table.internal.EncryptionKeyHolder;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

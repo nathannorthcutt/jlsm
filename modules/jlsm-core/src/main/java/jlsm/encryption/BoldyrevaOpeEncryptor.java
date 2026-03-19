@@ -1,4 +1,4 @@
-package jlsm.table.internal;
+package jlsm.encryption;
 
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;

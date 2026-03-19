@@ -8,7 +8,8 @@ import java.lang.foreign.ValueLayout;
 import java.util.Arrays;
 
 import jlsm.core.io.MemorySerializer;
-import jlsm.table.internal.EncryptionKeyHolder;
+import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.EncryptionSpec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

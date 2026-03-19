@@ -1,4 +1,4 @@
-package jlsm.table;
+package jlsm.encryption;
 
 /**
  * Contract: Declares the encryption mechanism for a field. Each variant maps 1:1 to an encryption

@@ -2,6 +2,8 @@ package jlsm.table;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import jlsm.encryption.EncryptionSpec;
+
 import org.junit.jupiter.api.Test;
 
 /**

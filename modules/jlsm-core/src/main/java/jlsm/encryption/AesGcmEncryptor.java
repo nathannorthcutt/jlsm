@@ -1,4 +1,4 @@
-package jlsm.table.internal;
+package jlsm.encryption;
 
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;

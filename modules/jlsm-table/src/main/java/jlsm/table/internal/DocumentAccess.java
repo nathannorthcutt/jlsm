@@ -37,6 +37,14 @@ public final class DocumentAccess {
          * @return a new JlsmDocument
          */
         JlsmDocument create(JlsmSchema schema, Object[] values);
+
+        /**
+         * Returns whether the document was constructed with pre-encrypted ciphertext values.
+         *
+         * @param doc the document; must not be null
+         * @return true if the document is pre-encrypted
+         */
+        boolean isPreEncrypted(JlsmDocument doc);
     }
 
     private static volatile Accessor accessor;

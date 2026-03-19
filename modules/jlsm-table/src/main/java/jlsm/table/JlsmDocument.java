@@ -1,5 +1,7 @@
 package jlsm.table;
 
+import jlsm.encryption.EncryptionSpec;
+
 import java.util.Objects;
 
 /**
@@ -23,24 +25,42 @@ public final class JlsmDocument {
                     public JlsmDocument create(jlsm.table.JlsmSchema schema, Object[] values) {
                         return new JlsmDocument(schema, values);
                     }
+
+                    @Override
+                    public boolean isPreEncrypted(JlsmDocument doc) {
+                        return doc.isPreEncrypted();
+                    }
                 });
     }
 
     private final JlsmSchema schema;
     private final Object[] values;
+    private final boolean preEncrypted;
 
     /**
-     * Package-private constructor used by the deserializer.
+     * Package-private constructor used by the deserializer. Creates a non-pre-encrypted document.
      *
      * @param schema the schema describing the document structure; must not be null
      * @param values values in schema-field order; must not be null
      */
     JlsmDocument(JlsmSchema schema, Object[] values) {
+        this(schema, values, false);
+    }
+
+    /**
+     * Package-private constructor with explicit pre-encrypted flag.
+     *
+     * @param schema the schema describing the document structure; must not be null
+     * @param values values in schema-field order; must not be null
+     * @param preEncrypted whether the document's encrypted fields contain pre-encrypted ciphertext
+     */
+    JlsmDocument(JlsmSchema schema, Object[] values, boolean preEncrypted) {
         assert schema != null : "schema must not be null";
         assert values != null : "values must not be null";
         assert values.length == schema.fields().size() : "values length must match field count";
         this.schema = schema;
         this.values = values;
+        this.preEncrypted = preEncrypted;
     }
 
     /**
@@ -86,6 +106,55 @@ public final class JlsmDocument {
         return new JlsmDocument(schema, values);
     }
 
+    /**
+     * Creates a pre-encrypted {@link JlsmDocument} from alternating name/value pairs.
+     *
+     * <p>
+     * Fields with {@code EncryptionSpec != NONE} are expected to hold {@code byte[]} ciphertext
+     * values (not the declared field type). Fields with {@code EncryptionSpec.NONE} are validated
+     * normally. {@code null} is always accepted (absent field).
+     *
+     * @param schema the schema describing valid fields; must not be null
+     * @param nameValuePairs alternating {@code String name, Object value} pairs
+     * @return a new pre-encrypted JlsmDocument
+     * @throws IllegalArgumentException if a field name is unknown, type is mismatched for an
+     *             unencrypted field, or pairs length is odd
+     */
+    public static JlsmDocument preEncrypted(JlsmSchema schema, Object... nameValuePairs) {
+        Objects.requireNonNull(schema, "schema must not be null");
+        assert nameValuePairs != null : "nameValuePairs must not be null";
+        if (nameValuePairs.length % 2 != 0) {
+            throw new IllegalArgumentException(
+                    "nameValuePairs must be an even number of alternating name/value entries");
+        }
+
+        final Object[] values = new Object[schema.fields().size()];
+
+        for (int i = 0; i < nameValuePairs.length; i += 2) {
+            final Object rawName = nameValuePairs[i];
+            if (!(rawName instanceof String fieldName)) {
+                throw new IllegalArgumentException(
+                        "nameValuePairs entry at index " + i + " must be a String field name");
+            }
+            final int idx = schema.fieldIndex(fieldName);
+            if (idx < 0) {
+                throw new IllegalArgumentException("Unknown field: '" + fieldName + "'");
+            }
+            final Object value = nameValuePairs[i + 1];
+            if (value != null) {
+                final FieldDefinition fd = schema.fields().get(idx);
+                if (fd.encryption() instanceof EncryptionSpec.None) {
+                    // Unencrypted field — validate type normally
+                    validateType(fieldName, fd.type(), value);
+                }
+                // Encrypted fields: accept byte[] ciphertext without type validation
+            }
+            values[idx] = value;
+        }
+
+        return new JlsmDocument(schema, values, true);
+    }
+
     // -------------------------------------------------------------------------
     // Typed getters
     // -------------------------------------------------------------------------
@@ -93,6 +162,14 @@ public final class JlsmDocument {
     /** Returns the schema for this document. */
     public JlsmSchema schema() {
         return schema;
+    }
+
+    /**
+     * Returns {@code true} if this document was constructed via {@link #preEncrypted} and its
+     * encrypted fields hold pre-encrypted ciphertext.
+     */
+    boolean isPreEncrypted() {
+        return preEncrypted;
     }
 
     /** Returns the raw value array in schema-field order (package-private for serializer use). */

@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import jlsm.table.EncryptionSpec;
+import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldDefinition;
 import jlsm.table.FieldType;
 import jlsm.table.IndexDefinition;

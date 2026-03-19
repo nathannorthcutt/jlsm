@@ -1,8 +1,9 @@
 package jlsm.table;
 
 import jlsm.core.io.MemorySerializer;
-import jlsm.table.internal.EncryptionKeyHolder;
-import jlsm.table.internal.FieldEncryptionDispatch;
+import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.EncryptionSpec;
+import jlsm.table.internal.CiphertextValidator;
 import jdk.incubator.vector.ByteVector;
 import jdk.incubator.vector.DoubleVector;
 import jdk.incubator.vector.FloatVector;
@@ -170,6 +171,7 @@ public final class DocumentSerializer {
             final List<FieldDefinition> fields = schema.fields();
             final int fieldCount = fields.size();
             final Object[] values = doc.values();
+            final boolean preEnc = doc.isPreEncrypted();
 
             // Count boolean fields
             final int boolCount = countBoolFields(fields);
@@ -179,6 +181,14 @@ public final class DocumentSerializer {
             final int nullMaskBytes = (fieldCount + 7) / 8;
             final int boolMaskBytes = boolCount > 0 ? (boolCount + 7) / 8 : 0;
             final int headerSize = 2 + 2 + nullMaskBytes + boolMaskBytes;
+
+            if (preEnc) {
+                // Pre-encrypted path: skip encryption, validate and write ciphertext directly.
+                // For encrypted fields, values are byte[] ciphertext; validate them.
+                // For unencrypted fields, measure and encode normally.
+                return serializePreEncrypted(fields, fieldCount, values, boolCount, nullMaskBytes,
+                        boolMaskBytes, headerSize);
+            }
 
             // Pre-encrypt fields that have encryptors to determine actual payload size.
             // encryptedPayloads[i] holds the ciphertext for encrypted fields, null otherwise.
@@ -226,6 +236,67 @@ public final class DocumentSerializer {
                 encodeFields(fields, values, cursor);
             } else {
                 encodeFieldsWithEncryption(fields, values, encryptedPayloads, cursor);
+            }
+
+            assert cursor.pos == totalSize : "cursor.pos should equal totalSize";
+            return MemorySegment.ofArray(buf);
+        }
+
+        /**
+         * Serializes a pre-encrypted document. Encrypted fields hold byte[] ciphertext that is
+         * validated and written directly (as varint-length-prefixed blobs). Unencrypted fields are
+         * encoded normally.
+         */
+        private MemorySegment serializePreEncrypted(List<FieldDefinition> fields, int fieldCount,
+                Object[] values, int boolCount, int nullMaskBytes, int boolMaskBytes,
+                int headerSize) {
+
+            // Build the ciphertext payloads array: for encrypted fields, cast to byte[];
+            // for unencrypted fields, leave null.
+            final byte[][] ciphertextPayloads = new byte[fieldCount][];
+            boolean hasEncrypted = false;
+            for (int i = 0; i < fieldCount; i++) {
+                final Object val = values[i];
+                if (val == null || isBoolField[i]) {
+                    continue;
+                }
+                final FieldDefinition fd = fields.get(i);
+                if (!(fd.encryption() instanceof EncryptionSpec.None)) {
+                    // Encrypted field — value should be byte[] ciphertext
+                    assert val instanceof byte[]
+                            : "pre-encrypted field '" + fd.name() + "' must hold byte[]";
+                    final byte[] ciphertext = (byte[]) val;
+                    CiphertextValidator.validate(fd, ciphertext);
+                    ciphertextPayloads[i] = ciphertext;
+                    hasEncrypted = true;
+                }
+            }
+
+            // Measure payload
+            final int payloadSize;
+            if (!hasEncrypted) {
+                payloadSize = measureFields(fields, values);
+            } else {
+                payloadSize = measureFieldsWithEncryption(fields, values, ciphertextPayloads);
+            }
+            final int totalSize = headerSize + payloadSize;
+
+            final byte[] buf = new byte[totalSize];
+
+            // Write header
+            writeShortBE(buf, 0, (short) schema.version());
+            writeShortBE(buf, 2, (short) fieldCount);
+            buildNullMask(fields, values, buf, 4);
+            if (boolCount > 0) {
+                buildBoolMask(fields, values, buf, 4 + nullMaskBytes);
+            }
+
+            // Write values
+            final Cursor cursor = new Cursor(buf, headerSize);
+            if (!hasEncrypted) {
+                encodeFields(fields, values, cursor);
+            } else {
+                encodeFieldsWithEncryption(fields, values, ciphertextPayloads, cursor);
             }
 
             assert cursor.pos == totalSize : "cursor.pos should equal totalSize";

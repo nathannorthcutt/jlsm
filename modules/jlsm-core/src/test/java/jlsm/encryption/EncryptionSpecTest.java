@@ -1,4 +1,4 @@
-package jlsm.table;
+package jlsm.encryption;
 
 import static org.junit.jupiter.api.Assertions.*;
 

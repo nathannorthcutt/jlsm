@@ -6,8 +6,9 @@ import java.util.Arrays;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicReference;
 
-import jlsm.table.internal.EncryptionKeyHolder;
-import jlsm.table.internal.FieldEncryptionDispatch;
+import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.EncryptionSpec;
+import jlsm.table.FieldEncryptionDispatch;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

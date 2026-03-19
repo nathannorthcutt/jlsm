@@ -3,6 +3,9 @@ package jlsm.table.internal;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
+import jlsm.encryption.AesSivEncryptor;
+import jlsm.encryption.BoldyrevaOpeEncryptor;
+
 /**
  * Contract: Tier 2 position-aware posting format for encrypted full-text search. Extends inverted
  * index postings with OPE-encrypted term positions. Encodes a document ID and its term positions

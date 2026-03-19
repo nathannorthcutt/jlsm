@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.util.List;
 
 import jlsm.core.indexing.SimilarityFunction;
+import jlsm.encryption.EncryptionSpec;
 import jlsm.table.internal.IndexRegistry;
 import org.junit.jupiter.api.Test;
 

@@ -1,10 +1,14 @@
-package jlsm.table.internal;
+package jlsm.table;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
-import jlsm.table.EncryptionSpec;
+import jlsm.encryption.AesGcmEncryptor;
+import jlsm.encryption.AesSivEncryptor;
+import jlsm.encryption.BoldyrevaOpeEncryptor;
+import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldDefinition;
 import jlsm.table.JlsmSchema;
 

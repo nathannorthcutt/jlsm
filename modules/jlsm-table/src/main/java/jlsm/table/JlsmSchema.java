@@ -1,5 +1,7 @@
 package jlsm.table;
 
+import jlsm.encryption.EncryptionSpec;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
