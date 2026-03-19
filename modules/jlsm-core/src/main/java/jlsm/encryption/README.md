@@ -99,6 +99,79 @@ bytes participate in ordering.
    without external synchronization. `FieldEncryptionDispatch` creates
    per-field instances.
 
+## Thread Safety
+
+**Current model: single-threaded per encryptor instance.**
+
+All encryptor classes (`AesSivEncryptor`, `AesGcmEncryptor`,
+`BoldyrevaOpeEncryptor`, `DcpeSapEncryptor`) cache `javax.crypto.Cipher`
+instances as fields for performance. `Cipher` is **not thread-safe** —
+concurrent `doFinal()` calls on the same instance will corrupt internal
+state and produce incorrect ciphertext.
+
+### Safe usage patterns
+
+- **JlsmTable (default)**: safe. Each table's serializer creates its own
+  `FieldEncryptionDispatch`, which creates per-field encryptor instances.
+  Writes are single-threaded per partition.
+
+- **Partitioned tables**: safe. Each partition has its own serializer and
+  dispatch. N partitions writing in parallel use N independent encryptor
+  sets with no shared state. Performance scales linearly with cores.
+
+- **Custom direct usage**: **unsafe if shared across threads**. If you
+  create an `AesSivEncryptor` and pass it to multiple threads, you must
+  provide external synchronization.
+
+### What NOT to do
+
+```java
+// WRONG — shared encryptor, concurrent access corrupts Cipher state
+var siv = new AesSivEncryptor(keyHolder);
+executor.submit(() -> siv.encrypt(data1, ad1));  // race condition
+executor.submit(() -> siv.encrypt(data2, ad2));  // race condition
+```
+
+```java
+// CORRECT — one encryptor per thread
+executor.submit(() -> {
+    var siv = new AesSivEncryptor(keyHolder);  // own instance
+    return siv.encrypt(data1, ad1);
+});
+```
+
+### Future: ThreadLocal-based thread safety
+
+A future enhancement could make encryptors thread-safe by wrapping cached
+`Cipher` instances in `ThreadLocal`:
+
+```
+ThreadLocal<Cipher> cmacCipher = ThreadLocal.withInitial(() -> {
+    Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
+    c.init(ENCRYPT_MODE, cmacKeySpec);
+    return c;
+});
+```
+
+This would give zero-contention thread safety (each thread gets its own
+`Cipher`) with identical single-threaded performance. Memory overhead is
+~240 bytes per thread per encryptor (one AES key schedule). The key
+material (`EncryptionKeyHolder`) is already safely shareable (immutable
+off-heap segment).
+
+**Expected performance impact of ThreadLocal**: negligible. `ThreadLocal.get()`
+is a single array lookup in the thread's `threadLocals` map — typically
+<5ns. The AES operations themselves dominate at microsecond scale.
+
+### Performance by concurrency level (current architecture)
+
+| Partitions | OPE INT8 (ops/s) | OPE INT16 (ops/s) | AES-SIV (ops/s) |
+|-----------|-------------------|-------------------|-----------------|
+| 1         | ~7,000            | ~27               | ~1,000,000      |
+| N (parallel) | ~7,000 × N    | ~27 × N           | ~1,000,000 × N  |
+
+Scaling is linear because there is zero shared state between partitions.
+
 ## Key Management
 
 `EncryptionKeyHolder` wraps a byte array key in an Arena-backed
