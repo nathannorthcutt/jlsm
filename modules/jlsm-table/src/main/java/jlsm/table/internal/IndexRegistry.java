@@ -197,6 +197,9 @@ public final class IndexRegistry implements Closeable {
         final FieldDefinition fieldDef = schema.fields().get(fieldIdx);
         final FieldType fieldType = fieldDef.type();
 
+        final boolean isPrimitiveOrBoundedString = fieldType instanceof FieldType.Primitive
+                || fieldType instanceof FieldType.BoundedString;
+
         switch (def.indexType()) {
             case RANGE, UNIQUE -> {
                 if (fieldType == FieldType.Primitive.BOOLEAN) {
@@ -204,21 +207,22 @@ public final class IndexRegistry implements Closeable {
                             "RANGE/UNIQUE index is not supported on BOOLEAN field '"
                                     + def.fieldName() + "'");
                 }
-                if (!(fieldType instanceof FieldType.Primitive)) {
+                if (!isPrimitiveOrBoundedString) {
                     throw new IllegalArgumentException(
                             "RANGE/UNIQUE index requires a primitive field type, got: " + fieldType
                                     + " for field '" + def.fieldName() + "'");
                 }
             }
             case EQUALITY -> {
-                if (!(fieldType instanceof FieldType.Primitive)) {
+                if (!isPrimitiveOrBoundedString) {
                     throw new IllegalArgumentException(
                             "EQUALITY index requires a primitive field type, got: " + fieldType
                                     + " for field '" + def.fieldName() + "'");
                 }
             }
             case FULL_TEXT -> {
-                if (fieldType != FieldType.Primitive.STRING) {
+                if (fieldType != FieldType.Primitive.STRING
+                        && !(fieldType instanceof FieldType.BoundedString)) {
                     throw new IllegalArgumentException(
                             "FULL_TEXT index requires STRING field, got: " + fieldType
                                     + " for field '" + def.fieldName() + "'");
@@ -233,8 +237,45 @@ public final class IndexRegistry implements Closeable {
             }
         }
 
+        // Validate OrderPreserving × field type compatibility
+        validateOrderPreservingFieldType(fieldDef, def);
+
         // Validate encryption × index compatibility using the capability matrix
         validateEncryptionCompatibility(fieldDef, def);
+    }
+
+    /**
+     * Validates that OrderPreserving encryption is only used on compatible field types.
+     * OrderPreserving requires a numeric primitive (INT8, INT16, INT32, INT64, TIMESTAMP) or a
+     * BoundedString. Unbounded STRING, BOOLEAN, FLOAT*, VECTOR, ARRAY, OBJECT are rejected.
+     */
+    private static void validateOrderPreservingFieldType(FieldDefinition fieldDef,
+            IndexDefinition def) {
+        if (!(fieldDef.encryption() instanceof EncryptionSpec.OrderPreserving)) {
+            return; // only relevant for OrderPreserving
+        }
+
+        final FieldType fieldType = fieldDef.type();
+        final String fieldName = def.fieldName();
+
+        if (fieldType instanceof FieldType.BoundedString) {
+            return; // allowed
+        }
+        if (fieldType instanceof FieldType.Primitive p) {
+            switch (p) {
+                case INT8, INT16, INT32, INT64, TIMESTAMP -> {
+                    /* allowed */ }
+                case STRING -> throw new IllegalArgumentException(
+                        "OrderPreserving encryption on unbounded STRING field '" + fieldName
+                                + "' is not supported; use FieldType.string(maxLength) for bounded string");
+                case BOOLEAN, FLOAT16, FLOAT32, FLOAT64 ->
+                    throw new IllegalArgumentException("OrderPreserving encryption on " + p
+                            + " field '" + fieldName + "' is not supported");
+            }
+            return;
+        }
+        throw new IllegalArgumentException("OrderPreserving encryption on " + fieldType + " field '"
+                + fieldName + "' is not supported");
     }
 
     /**
@@ -312,6 +353,8 @@ public final class IndexRegistry implements Closeable {
                 case BOOLEAN -> document.getBoolean(fieldName);
                 case TIMESTAMP -> document.getTimestamp(fieldName);
             };
+        } else if (fieldType instanceof FieldType.BoundedString) {
+            return document.getString(fieldName);
         } else if (fieldType instanceof FieldType.ArrayType) {
             return document.getArray(fieldName);
         } else if (fieldType instanceof FieldType.VectorType) {

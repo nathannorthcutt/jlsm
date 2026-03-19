@@ -189,6 +189,8 @@ public final class QueryExecutor<K> {
                 case BOOLEAN -> document.getBoolean(fieldName);
                 case TIMESTAMP -> document.getTimestamp(fieldName);
             };
+        } else if (fieldType instanceof jlsm.table.FieldType.BoundedString) {
+            return document.getString(fieldName);
         }
         return null;
     }

@@ -182,9 +182,20 @@ public final class JlsmDocument {
         return values[requireIndex(field)] == null;
     }
 
-    /** Returns the STRING value of the named field. */
+    /** Returns the STRING or BoundedString value of the named field. */
     public String getString(String field) {
-        return (String) requireValue(field, FieldType.Primitive.STRING);
+        final int idx = requireIndex(field);
+        final FieldType actualType = schema.fields().get(idx).type();
+        if (actualType != FieldType.Primitive.STRING
+                && !(actualType instanceof FieldType.BoundedString)) {
+            throw new IllegalArgumentException("Field '" + field + "' has type " + actualType
+                    + ", not STRING or BoundedString");
+        }
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return (String) val;
     }
 
     /** Returns the INT8 value of the named field as a {@code byte}. */
@@ -382,6 +393,16 @@ public final class JlsmDocument {
                 }
             }
             case FieldType.ObjectType _ -> expect(fieldName, value, JlsmDocument.class, "OBJECT");
+            case FieldType.BoundedString bs -> {
+                expect(fieldName, value, String.class, "STRING");
+                final int byteLen = ((String) value)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+                if (byteLen > bs.maxLength()) {
+                    throw new IllegalArgumentException(
+                            "Field '" + fieldName + "' value exceeds BoundedString maxLength "
+                                    + bs.maxLength() + " (got " + byteLen + " bytes)");
+                }
+            }
         }
     }
 

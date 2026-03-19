@@ -92,12 +92,13 @@ public final class FieldEncryptionDispatch {
                     decryptors[i] = ciphertext -> siv.decrypt(ciphertext, associatedData);
                 }
                 case EncryptionSpec.OrderPreserving _ -> {
-                    // OrderPreserving requires domain/range configuration.
-                    // For generic byte-level dispatch, use long-based OPE.
+                    // Derive OPE domain/range from the field type for optimal recursion depth.
+                    final long[] bounds = deriveOpeBounds(fd.type());
                     final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder,
-                            Long.MAX_VALUE / 2, Long.MAX_VALUE);
-                    encryptors[i] = plaintext -> opeEncryptBytes(ope, plaintext);
-                    decryptors[i] = ciphertext -> opeDecryptBytes(ope, ciphertext);
+                            bounds[0], bounds[1]);
+                    final int maxBytes = opeMaxBytes(fd.type());
+                    encryptors[i] = plaintext -> opeEncryptTyped(ope, plaintext, maxBytes);
+                    decryptors[i] = ciphertext -> opeDecryptTyped(ope, ciphertext, maxBytes);
                 }
                 case EncryptionSpec.DistancePreserving _ -> {
                     // DistancePreserving operates on float[] vectors, not byte[].
@@ -149,68 +150,142 @@ public final class FieldEncryptionDispatch {
         return decryptors[fieldIndex];
     }
 
-    // -- OPE byte helpers -------------------------------------------------
+    // -- OPE type-aware helpers -----------------------------------------------
 
     /**
-     * Encodes a byte[] as a positive long, encrypts with OPE, returns the encrypted long as bytes.
+     * Type-aware OPE encryption. Encodes the plaintext bytes as a positive long in the natural
+     * domain of the field type (e.g., [1..256] for INT8), encrypts with OPE, and returns the
+     * ciphertext.
+     *
+     * <p>
+     * The ciphertext format is: {@code [1-byte original-length][8-byte encrypted-long]}. The
+     * original length byte enables exact round-trip for variable-length types (strings).
      */
-    private static byte[] opeEncryptBytes(BoldyrevaOpeEncryptor ope, byte[] plaintext) {
-        final long value = bytesToPositiveLong(plaintext);
+    private static byte[] opeEncryptTyped(BoldyrevaOpeEncryptor ope, byte[] plaintext,
+            int maxBytes) {
+        assert plaintext != null : "plaintext must not be null";
+        final int useBytes = Math.min(plaintext.length, maxBytes);
+        final long value = bytesToUnsignedBE(plaintext, useBytes) + 1; // +1: OPE domain starts at 1
         final long encrypted = ope.encrypt(value);
-        return longToBytes(encrypted);
+        final byte[] result = new byte[9]; // 1 byte length + 8 bytes encrypted long
+        result[0] = (byte) plaintext.length;
+        for (int i = 0; i < 8; i++) {
+            result[1 + i] = (byte) (encrypted >>> (56 - i * 8));
+        }
+        return result;
     }
 
     /**
-     * Decrypts OPE ciphertext bytes back to the original byte[] representation.
+     * Type-aware OPE decryption. Reads the original length from byte 0, decrypts the 8-byte
+     * encrypted long, and converts back to a byte array of the original length.
      */
-    private static byte[] opeDecryptBytes(BoldyrevaOpeEncryptor ope, byte[] ciphertext) {
-        final long encValue = bytesTo8ByteLong(ciphertext);
-        final long decrypted = ope.decrypt(encValue);
-        return positiveLongToBytes(decrypted);
+    private static byte[] opeDecryptTyped(BoldyrevaOpeEncryptor ope, byte[] ciphertext,
+            int maxBytes) {
+        assert ciphertext != null && ciphertext.length == 9 : "OPE ciphertext must be 9 bytes";
+        final int originalLen = ciphertext[0] & 0xFF;
+        long encValue = 0;
+        for (int i = 0; i < 8; i++) {
+            encValue |= ((long) (ciphertext[1 + i] & 0xFF)) << (56 - i * 8);
+        }
+        long decrypted = ope.decrypt(encValue) - 1; // undo +1 offset
+        final int useBytes = Math.min(originalLen, maxBytes);
+        // Convert the unsigned long back to bytes in the original representation
+        final byte[] result = new byte[originalLen];
+        for (int i = useBytes - 1; i >= 0; i--) {
+            result[i] = (byte) (decrypted & 0xFF);
+            decrypted >>>= 8;
+        }
+        return result;
     }
 
     /**
-     * Converts up to 6 bytes of data into a positive long in [1..Long.MAX_VALUE/2]. Format: first
-     * byte = original length, followed by up to 6 data bytes packed into a long.
+     * Interprets the first {@code count} bytes of data as an unsigned big-endian integer.
      */
-    private static long bytesToPositiveLong(byte[] data) {
+    private static long bytesToUnsignedBE(byte[] data, int count) {
         assert data != null : "data must not be null";
-        if (data.length > 6) {
-            throw new IllegalArgumentException(
-                    "OPE byte encryption supports at most 6 bytes of data, got " + data.length);
-        }
-        long result = 1; // ensure positive, minimum = 1
-        result += ((long) data.length) << 48;
-        for (int i = 0; i < data.length; i++) {
-            result += ((long) (data[i] & 0xFF)) << (40 - i * 8);
-        }
-        return result;
-    }
-
-    private static byte[] positiveLongToBytes(long value) {
-        value -= 1; // undo the +1 offset
-        final int len = (int) ((value >>> 48) & 0xFF);
-        final byte[] result = new byte[len];
-        for (int i = 0; i < len; i++) {
-            result[i] = (byte) ((value >>> (40 - i * 8)) & 0xFF);
-        }
-        return result;
-    }
-
-    private static byte[] longToBytes(long value) {
-        final byte[] buf = new byte[8];
-        for (int i = 0; i < 8; i++) {
-            buf[i] = (byte) (value >>> (56 - i * 8));
-        }
-        return buf;
-    }
-
-    private static long bytesTo8ByteLong(byte[] buf) {
-        assert buf.length == 8 : "expected 8 bytes for long";
         long result = 0;
-        for (int i = 0; i < 8; i++) {
-            result |= ((long) (buf[i] & 0xFF)) << (56 - i * 8);
+        for (int i = 0; i < count; i++) {
+            result = (result << 8) | (data[i] & 0xFFL);
         }
         return result;
+    }
+
+    // -- OPE domain derivation -----------------------------------------------
+
+    /** Default range/domain ratio. */
+    private static final long OPE_RANGE_RATIO = 10L;
+
+    /**
+     * Maximum OPE byte count. The Boldyreva scheme's hypergeometric sampling is O(range/2) per
+     * recursion level, so the domain (256^bytes) must stay small enough for practical
+     * encrypt/decrypt times. At 2 bytes (domain 65536, range 655360), each level does ~300K AES
+     * operations — acceptable. At 3 bytes (domain 16M), each level would do ~80M operations — too
+     * slow for synchronous use.
+     */
+    private static final int MAX_OPE_BYTES = 2;
+
+    /**
+     * Returns the byte count for OPE encoding of the given field type. This determines how many
+     * bytes of the serialized value are used for OPE ordering. Capped at {@link #MAX_OPE_BYTES} to
+     * keep OPE performance practical.
+     *
+     * <p>
+     * For types wider than MAX_OPE_BYTES (INT32, INT64, TIMESTAMP), only the most-significant bytes
+     * participate in OPE ordering. Values that differ only in their lower bytes may map to the same
+     * ciphertext order.
+     */
+    private static int opeMaxBytes(FieldType type) {
+        if (type instanceof FieldType.Primitive p) {
+            return switch (p) {
+                case INT8 -> 1;
+                case INT16 -> Math.min(2, MAX_OPE_BYTES);
+                case INT32 -> Math.min(4, MAX_OPE_BYTES);
+                case INT64, TIMESTAMP -> Math.min(8, MAX_OPE_BYTES);
+                default -> throw new IllegalArgumentException(
+                        "OrderPreserving encryption is not supported for field type " + p);
+            };
+        } else if (type instanceof FieldType.BoundedString bs) {
+            return Math.min(bs.maxLength(), MAX_OPE_BYTES);
+        }
+        throw new IllegalArgumentException(
+                "OrderPreserving encryption is not supported for field type " + type);
+    }
+
+    /**
+     * Derives the OPE domain and range from the field type.
+     *
+     * <p>
+     * The domain is {@code 256^byteCount} — the number of distinct unsigned values representable in
+     * the field's byte count. We add 1 because OPE operates on [1..domain] and the +1 offset in
+     * encryption maps unsigned 0 to OPE value 1.
+     *
+     * <p>
+     * Range is {@code domain * 10}, capped at Long.MAX_VALUE.
+     *
+     * @param type the field type; must be OPE-compatible
+     * @return a two-element long array {@code [domain, range]}
+     * @throws IllegalArgumentException if the field type is not compatible with OPE
+     */
+    static long[] deriveOpeBounds(FieldType type) {
+        assert type != null : "type must not be null";
+
+        final int byteCount = opeMaxBytes(type);
+
+        // Domain = 256^byteCount (number of distinct unsigned values for byteCount bytes)
+        long domain = 1L;
+        for (int i = 0; i < byteCount; i++) {
+            domain *= 256L;
+            if (domain > (Long.MAX_VALUE / OPE_RANGE_RATIO) - 1) {
+                // Cap to prevent range overflow
+                domain = (Long.MAX_VALUE / OPE_RANGE_RATIO) - 1;
+                break;
+            }
+        }
+        assert domain >= 1 : "domain must be >= 1";
+
+        final long range = domain * OPE_RANGE_RATIO;
+        assert range > domain : "range must be > domain";
+
+        return new long[]{ domain, range };
     }
 }

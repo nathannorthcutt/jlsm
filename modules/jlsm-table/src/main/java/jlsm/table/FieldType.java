@@ -15,7 +15,7 @@ import java.util.Objects;
  * </ul>
  */
 public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayType,
-        FieldType.ObjectType, FieldType.VectorType {
+        FieldType.ObjectType, FieldType.VectorType, FieldType.BoundedString {
 
     /** Scalar primitive field types. */
     enum Primitive implements FieldType {
@@ -62,6 +62,21 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
     }
 
     /**
+     * A string with a declared maximum byte length. Behaves identically to {@link Primitive#STRING}
+     * in all contexts except encryption dispatch (OPE domain derivation) and index validation
+     * (OrderPreserving compatibility).
+     *
+     * @param maxLength the maximum byte length; must be positive
+     */
+    record BoundedString(int maxLength) implements FieldType {
+        public BoundedString {
+            if (maxLength <= 0) {
+                throw new IllegalArgumentException("maxLength must be positive, got: " + maxLength);
+            }
+        }
+    }
+
+    /**
      * A fixed-dimension vector of floating-point elements.
      *
      * @param elementType the element precision; must be {@link Primitive#FLOAT16} or
@@ -84,9 +99,19 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
 
     // --- Static factory shortcuts ---
 
-    /** Returns {@link Primitive#STRING}. */
+    /** Returns {@link Primitive#STRING} (unbounded). */
     static FieldType string() {
         return Primitive.STRING;
+    }
+
+    /**
+     * Returns a {@link BoundedString} with the given max byte length.
+     *
+     * @param maxLength the maximum byte length; must be positive
+     * @return a new BoundedString
+     */
+    static FieldType string(int maxLength) {
+        return new BoundedString(maxLength);
     }
 
     /** Returns {@link Primitive#INT32}. */

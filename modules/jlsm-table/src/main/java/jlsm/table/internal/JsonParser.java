@@ -150,6 +150,8 @@ public final class JsonParser {
 
         return switch (type) {
             case FieldType.Primitive p -> parsePrimitive(src, pos, p, fieldName, b);
+            case FieldType.BoundedString _ ->
+                parsePrimitive(src, pos, FieldType.Primitive.STRING, fieldName, b);
             case FieldType.ArrayType at -> parseArray(src, pos, at, fieldName, parentSchema);
             case FieldType.VectorType vt -> parseVector(src, pos, vt, fieldName);
             case FieldType.ObjectType ot -> {

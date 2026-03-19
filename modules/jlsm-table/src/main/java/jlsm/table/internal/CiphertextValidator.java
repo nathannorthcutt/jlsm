@@ -20,8 +20,8 @@ public final class CiphertextValidator {
     /** Minimum ciphertext length for AES-GCM (12-byte IV + 16-byte tag). */
     private static final int AES_GCM_MIN_LENGTH = 28;
 
-    /** Exact ciphertext length for Boldyreva OPE (always a long). */
-    private static final int OPE_EXACT_LENGTH = 8;
+    /** Exact ciphertext length for Boldyreva OPE (1-byte length prefix + 8-byte encrypted long). */
+    private static final int OPE_EXACT_LENGTH = 9;
 
     private CiphertextValidator() {
         // Utility class

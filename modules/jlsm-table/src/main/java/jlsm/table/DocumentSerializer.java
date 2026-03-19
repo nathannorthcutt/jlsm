@@ -407,6 +407,10 @@ public final class DocumentSerializer {
                 }
                 yield sz;
             }
+            case FieldType.BoundedString _ -> {
+                final byte[] utf8 = ((String) value).getBytes(StandardCharsets.UTF_8);
+                yield varIntSize(utf8.length) + utf8.length;
+            }
             case FieldType.VectorType vt -> {
                 final int elemBytes = vt.elementType() == FieldType.Primitive.FLOAT32 ? 4 : 2;
                 yield vt.dimensions() * elemBytes;
@@ -541,6 +545,12 @@ public final class DocumentSerializer {
                         c.pos += 8;
                     }
                 }
+            }
+            case FieldType.BoundedString _ -> {
+                final byte[] utf8 = ((String) value).getBytes(StandardCharsets.UTF_8);
+                writeVarInt(c, utf8.length);
+                System.arraycopy(utf8, 0, c.buf, c.pos, utf8.length);
+                c.pos += utf8.length;
             }
             case FieldType.ArrayType at -> encodeArray(c, at.elementType(), (Object[]) value);
             case FieldType.VectorType vt -> encodeVector(c, vt, value);
@@ -760,6 +770,12 @@ public final class DocumentSerializer {
                     yield v;
                 }
             };
+            case FieldType.BoundedString _ -> {
+                final int len = readVarInt(buf, cursor);
+                final String s = new String(buf, cursor.pos, len, StandardCharsets.UTF_8);
+                cursor.pos += len;
+                yield s;
+            }
             case FieldType.ArrayType at -> decodeArray(buf, cursor, at);
             case FieldType.VectorType vt -> decodeVector(buf, cursor, vt);
             case FieldType.ObjectType ot -> decodeObject(buf, cursor, ot);

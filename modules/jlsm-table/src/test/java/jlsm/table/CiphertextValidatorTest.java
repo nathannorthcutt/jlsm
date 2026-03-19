@@ -66,32 +66,32 @@ class CiphertextValidatorTest {
         assertTrue(ex.getMessage().contains("28"), "error should include expected constraint");
     }
 
-    // ── OPE (OrderPreserving): accept exactly 8 bytes ───────────────────────
+    // ── OPE (OrderPreserving): accept exactly 9 bytes (1-byte length + 8-byte encrypted long)
 
     @Test
-    void orderPreserving_accepts8Bytes() {
+    void orderPreserving_accepts9Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
                 EncryptionSpec.orderPreserving());
-        byte[] ciphertext = new byte[8];
+        byte[] ciphertext = new byte[9];
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
     @Test
-    void orderPreserving_rejectsNot8Bytes() {
+    void orderPreserving_rejects8Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
                 EncryptionSpec.orderPreserving());
-        byte[] ciphertext = new byte[7];
+        byte[] ciphertext = new byte[8];
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> CiphertextValidator.validate(field, ciphertext));
         assertTrue(ex.getMessage().contains("rank"), "error should include field name");
-        assertTrue(ex.getMessage().contains("8"), "error should include expected constraint");
+        assertTrue(ex.getMessage().contains("9"), "error should include expected constraint");
     }
 
     @Test
-    void orderPreserving_rejects9Bytes() {
+    void orderPreserving_rejects10Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
                 EncryptionSpec.orderPreserving());
-        byte[] ciphertext = new byte[9];
+        byte[] ciphertext = new byte[10];
         assertThrows(IllegalArgumentException.class,
                 () -> CiphertextValidator.validate(field, ciphertext));
     }
