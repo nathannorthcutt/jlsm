@@ -24,10 +24,12 @@ public final class AesSivEncryptor {
     private static final int BLOCK_SIZE = 16;
     private static final int KEY_512_BYTES = 64;
 
-    /** Cached AES/ECB cipher for CMAC — stateless between doFinal calls, safe to reuse. */
-    private final Cipher cmacCipher;
-    /** Cached AES/ECB cipher for CTR keystream — stateless between doFinal calls, safe to reuse. */
-    private final Cipher ctrCipher;
+    /** Per-thread AES/ECB cipher for CMAC — stateless between doFinal calls, safe to reuse. */
+    private final ThreadLocal<Cipher> cmacCipher;
+    /**
+     * Per-thread AES/ECB cipher for CTR keystream — stateless between doFinal calls, safe to reuse.
+     */
+    private final ThreadLocal<Cipher> ctrCipher;
 
     /**
      * Creates an AES-SIV encryptor using the given key holder.
@@ -46,18 +48,29 @@ public final class AesSivEncryptor {
         final byte[] ctrKey = Arrays.copyOfRange(fullKey, 32, 64);
         Arrays.fill(fullKey, (byte) 0);
 
-        try {
-            this.cmacCipher = Cipher.getInstance("AES/ECB/NoPadding");
-            this.cmacCipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(cmacKey, "AES"));
+        final SecretKeySpec cmacKeySpec = new SecretKeySpec(cmacKey, "AES");
+        final SecretKeySpec ctrKeySpec = new SecretKeySpec(ctrKey, "AES");
+        Arrays.fill(cmacKey, (byte) 0);
+        Arrays.fill(ctrKey, (byte) 0);
 
-            this.ctrCipher = Cipher.getInstance("AES/ECB/NoPadding");
-            this.ctrCipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(ctrKey, "AES"));
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Failed to initialize AES-SIV ciphers", e);
-        } finally {
-            Arrays.fill(cmacKey, (byte) 0);
-            Arrays.fill(ctrKey, (byte) 0);
-        }
+        this.cmacCipher = ThreadLocal.withInitial(() -> {
+            try {
+                final Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
+                c.init(Cipher.ENCRYPT_MODE, cmacKeySpec);
+                return c;
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException("Failed to initialize CMAC cipher", e);
+            }
+        });
+        this.ctrCipher = ThreadLocal.withInitial(() -> {
+            try {
+                final Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
+                c.init(Cipher.ENCRYPT_MODE, ctrKeySpec);
+                return c;
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException("Failed to initialize CTR cipher", e);
+            }
+        });
     }
 
     /**
@@ -154,7 +167,7 @@ public final class AesSivEncryptor {
     private byte[] cmac(byte[] message) {
         try {
             // Generate subkeys K1, K2
-            final byte[] l = cmacCipher.doFinal(new byte[BLOCK_SIZE]);
+            final byte[] l = cmacCipher.get().doFinal(new byte[BLOCK_SIZE]);
             final byte[] k1 = dbl(l);
             final byte[] k2 = dbl(k1);
 
@@ -168,7 +181,7 @@ public final class AesSivEncryptor {
                 for (int j = 0; j < BLOCK_SIZE; j++) {
                     x[j] ^= message[i * BLOCK_SIZE + j];
                 }
-                final byte[] enc = cmacCipher.doFinal(x);
+                final byte[] enc = cmacCipher.get().doFinal(x);
                 System.arraycopy(enc, 0, x, 0, BLOCK_SIZE);
             }
 
@@ -192,7 +205,7 @@ public final class AesSivEncryptor {
             }
 
             xorInPlace(x, lastBlock);
-            return cmacCipher.doFinal(x);
+            return cmacCipher.get().doFinal(x);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("AES-CMAC computation failed", e);
         }
@@ -219,7 +232,7 @@ public final class AesSivEncryptor {
             final int remainder = input.length % BLOCK_SIZE;
 
             for (int i = 0; i < fullBlocks; i++) {
-                final byte[] keystream = ctrCipher.doFinal(ctr);
+                final byte[] keystream = ctrCipher.get().doFinal(ctr);
                 for (int j = 0; j < BLOCK_SIZE; j++) {
                     output[i * BLOCK_SIZE + j] = (byte) (input[i * BLOCK_SIZE + j] ^ keystream[j]);
                 }
@@ -227,7 +240,7 @@ public final class AesSivEncryptor {
             }
 
             if (remainder > 0) {
-                final byte[] keystream = ctrCipher.doFinal(ctr);
+                final byte[] keystream = ctrCipher.get().doFinal(ctr);
                 final int offset = fullBlocks * BLOCK_SIZE;
                 for (int j = 0; j < remainder; j++) {
                     output[offset + j] = (byte) (input[offset + j] ^ keystream[j]);

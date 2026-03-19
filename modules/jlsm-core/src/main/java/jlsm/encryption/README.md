@@ -101,67 +101,48 @@ bytes participate in ordering.
 
 ## Thread Safety
 
-**Current model: single-threaded per encryptor instance.**
+**All encryptors are thread-safe.** `Cipher` instances are cached in
+`ThreadLocal` fields — each thread gets its own initialized `Cipher`,
+eliminating both contention and the cost of `Cipher.getInstance()` +
+`Cipher.init()` on every call.
 
-All encryptor classes (`AesSivEncryptor`, `AesGcmEncryptor`,
-`BoldyrevaOpeEncryptor`, `DcpeSapEncryptor`) cache `javax.crypto.Cipher`
-instances as fields for performance. `Cipher` is **not thread-safe** —
-concurrent `doFinal()` calls on the same instance will corrupt internal
-state and produce incorrect ciphertext.
-
-### Safe usage patterns
-
-- **JlsmTable (default)**: safe. Each table's serializer creates its own
-  `FieldEncryptionDispatch`, which creates per-field encryptor instances.
-  Writes are single-threaded per partition.
-
-- **Partitioned tables**: safe. Each partition has its own serializer and
-  dispatch. N partitions writing in parallel use N independent encryptor
-  sets with no shared state. Performance scales linearly with cores.
-
-- **Custom direct usage**: **unsafe if shared across threads**. If you
-  create an `AesSivEncryptor` and pass it to multiple threads, you must
-  provide external synchronization.
-
-### What NOT to do
+### How it works
 
 ```java
-// WRONG — shared encryptor, concurrent access corrupts Cipher state
-var siv = new AesSivEncryptor(keyHolder);
-executor.submit(() -> siv.encrypt(data1, ad1));  // race condition
-executor.submit(() -> siv.encrypt(data2, ad2));  // race condition
-```
-
-```java
-// CORRECT — one encryptor per thread
-executor.submit(() -> {
-    var siv = new AesSivEncryptor(keyHolder);  // own instance
-    return siv.encrypt(data1, ad1);
-});
-```
-
-### Future: ThreadLocal-based thread safety
-
-A future enhancement could make encryptors thread-safe by wrapping cached
-`Cipher` instances in `ThreadLocal`:
-
-```
-ThreadLocal<Cipher> cmacCipher = ThreadLocal.withInitial(() -> {
+// Each encryptor wraps its Cipher in ThreadLocal:
+private final ThreadLocal<Cipher> cmacCipher = ThreadLocal.withInitial(() -> {
     Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
     c.init(ENCRYPT_MODE, cmacKeySpec);
     return c;
 });
 ```
 
-This would give zero-contention thread safety (each thread gets its own
-`Cipher`) with identical single-threaded performance. Memory overhead is
-~240 bytes per thread per encryptor (one AES key schedule). The key
-material (`EncryptionKeyHolder`) is already safely shareable (immutable
-off-heap segment).
+- **Zero contention** — no locks, no synchronization, no shared mutable state
+- **Lazy initialization** — Cipher is created on first use per thread
+- **Memory overhead** — ~240 bytes per thread per encryptor (one AES key schedule)
+- **Performance impact** — `ThreadLocal.get()` is a single array lookup (~5ns),
+  negligible vs the AES operations themselves (microsecond scale)
 
-**Expected performance impact of ThreadLocal**: negligible. `ThreadLocal.get()`
-is a single array lookup in the thread's `threadLocals` map — typically
-<5ns. The AES operations themselves dominate at microsecond scale.
+### Safe usage patterns
+
+- **Single-threaded**: works as expected, same as a plain field
+- **JlsmTable / partitioned tables**: safe. Each partition's serializer has
+  its own encryptor instances, but even sharing a single encryptor across
+  partition threads is now safe
+- **Custom multi-threaded**: safe. A single `AesSivEncryptor` instance can
+  be shared across any number of threads
+
+```java
+// SAFE — shared encryptor, each thread uses its own ThreadLocal Cipher
+var siv = new AesSivEncryptor(keyHolder);
+executor.submit(() -> siv.encrypt(data1, ad1));  // thread A's Cipher
+executor.submit(() -> siv.encrypt(data2, ad2));  // thread B's Cipher
+```
+
+### Note on DcpeSapEncryptor
+
+`DcpeSapEncryptor` uses `SecureRandom` (also wrapped in `ThreadLocal`)
+rather than `Cipher`. The same thread-safety guarantees apply.
 
 ### Performance by concurrency level (current architecture)
 

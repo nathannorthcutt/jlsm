@@ -28,11 +28,11 @@ public final class AesGcmEncryptor {
     private static final int OVERHEAD = IV_LENGTH + TAG_BYTES;
     private static final String ALGORITHM = "AES/GCM/NoPadding";
 
-    /** Cached Cipher instance — GCM requires init per call (new IV), but the object is reusable. */
-    private final Cipher cipher;
-    /** Cached SecretKeySpec — immutable, safe to reuse across init calls. */
+    /** Per-thread Cipher — GCM requires init per call (new IV), but the object is reusable. */
+    private final ThreadLocal<Cipher> cipher;
+    /** Cached SecretKeySpec — immutable, safe to share across threads. */
     private final SecretKeySpec keySpec;
-    private final SecureRandom random;
+    private final ThreadLocal<SecureRandom> random;
 
     /**
      * Creates an AES-GCM encryptor using the given key holder.
@@ -47,12 +47,14 @@ public final class AesGcmEncryptor {
                     "AES-GCM requires a 256-bit (32-byte) key, got " + keyHolder.keyLength());
         }
         this.keySpec = new SecretKeySpec(keyHolder.getKeyBytes(), "AES");
-        this.random = new SecureRandom();
-        try {
-            this.cipher = Cipher.getInstance(ALGORITHM);
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Failed to initialize AES-GCM cipher", e);
-        }
+        this.random = ThreadLocal.withInitial(SecureRandom::new);
+        this.cipher = ThreadLocal.withInitial(() -> {
+            try {
+                return Cipher.getInstance(ALGORITHM);
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException("Failed to initialize AES-GCM cipher", e);
+            }
+        });
     }
 
     /**
@@ -65,12 +67,13 @@ public final class AesGcmEncryptor {
         Objects.requireNonNull(plaintext, "plaintext must not be null");
         try {
             final byte[] iv = new byte[IV_LENGTH];
-            random.nextBytes(iv);
+            random.get().nextBytes(iv);
 
+            final Cipher c = cipher.get();
             final GCMParameterSpec gcmSpec = new GCMParameterSpec(TAG_BITS, iv);
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec);
+            c.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec);
 
-            final byte[] encrypted = cipher.doFinal(plaintext);
+            final byte[] encrypted = c.doFinal(plaintext);
             // encrypted = ciphertext || tag (GCM appends the tag)
             assert encrypted.length == plaintext.length + TAG_BYTES : "GCM output length mismatch";
 
@@ -101,10 +104,11 @@ public final class AesGcmEncryptor {
             final byte[] iv = Arrays.copyOfRange(ciphertext, 0, IV_LENGTH);
             final byte[] encrypted = Arrays.copyOfRange(ciphertext, IV_LENGTH, ciphertext.length);
 
+            final Cipher c = cipher.get();
             final GCMParameterSpec gcmSpec = new GCMParameterSpec(TAG_BITS, iv);
-            cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec);
+            c.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec);
 
-            return cipher.doFinal(encrypted);
+            return c.doFinal(encrypted);
         } catch (javax.crypto.AEADBadTagException e) {
             throw new SecurityException("AES-GCM authentication failed: wrong key or tampered data",
                     e);

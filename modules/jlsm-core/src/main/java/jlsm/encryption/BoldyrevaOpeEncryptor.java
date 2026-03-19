@@ -27,11 +27,13 @@ public final class BoldyrevaOpeEncryptor {
     private final long domainSize;
     private final long rangeSize;
 
-    /** Cached AES/ECB cipher — stateless between doFinal calls, safe to reuse without re-init. */
-    private final Cipher prfCipher;
+    /**
+     * Per-thread AES/ECB cipher — stateless between doFinal calls, safe to reuse without re-init.
+     */
+    private final ThreadLocal<Cipher> prfCipher;
 
-    /** Reusable 16-byte buffer for PRF input assembly. */
-    private final byte[] prfBuffer = new byte[BLOCK_SIZE];
+    /** Per-thread 16-byte buffer for PRF input assembly. */
+    private final ThreadLocal<byte[]> prfBuffer;
 
     /**
      * Creates a Boldyreva OPE encryptor with the given key and domain/range configuration.
@@ -55,14 +57,18 @@ public final class BoldyrevaOpeEncryptor {
         this.domainSize = domainSize;
         this.rangeSize = rangeSize;
 
-        try {
-            this.prfCipher = Cipher.getInstance("AES/ECB/NoPadding");
-            final SecretKeySpec prfKeySpec = new SecretKeySpec(keyBytes, 0,
-                    Math.min(keyBytes.length, 32), "AES");
-            this.prfCipher.init(Cipher.ENCRYPT_MODE, prfKeySpec);
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("Failed to initialize AES PRF cipher", e);
-        }
+        final SecretKeySpec prfKeySpec = new SecretKeySpec(keyBytes, 0,
+                Math.min(keyBytes.length, 32), "AES");
+        this.prfCipher = ThreadLocal.withInitial(() -> {
+            try {
+                final Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
+                c.init(Cipher.ENCRYPT_MODE, prfKeySpec);
+                return c;
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException("Failed to initialize AES PRF cipher", e);
+            }
+        });
+        this.prfBuffer = ThreadLocal.withInitial(() -> new byte[BLOCK_SIZE]);
     }
 
     /**
@@ -195,30 +201,31 @@ public final class BoldyrevaOpeEncryptor {
      */
     private long prfSeed(long dLo, long dHi, long rLo, long rHi) {
         try {
-            // Pack 4 ints into prfBuffer (big-endian, matching original ByteBuffer.putInt behavior)
+            final byte[] buf = prfBuffer.get();
+            // Pack 4 ints into buf (big-endian, matching original ByteBuffer.putInt behavior)
             final int i0 = (int) (dLo ^ (dLo >>> 32));
             final int i1 = (int) (dHi ^ (dHi >>> 32));
             final int i2 = (int) (rLo ^ (rLo >>> 32));
             final int i3 = (int) (rHi ^ (rHi >>> 32));
 
-            prfBuffer[0] = (byte) (i0 >>> 24);
-            prfBuffer[1] = (byte) (i0 >>> 16);
-            prfBuffer[2] = (byte) (i0 >>> 8);
-            prfBuffer[3] = (byte) i0;
-            prfBuffer[4] = (byte) (i1 >>> 24);
-            prfBuffer[5] = (byte) (i1 >>> 16);
-            prfBuffer[6] = (byte) (i1 >>> 8);
-            prfBuffer[7] = (byte) i1;
-            prfBuffer[8] = (byte) (i2 >>> 24);
-            prfBuffer[9] = (byte) (i2 >>> 16);
-            prfBuffer[10] = (byte) (i2 >>> 8);
-            prfBuffer[11] = (byte) i2;
-            prfBuffer[12] = (byte) (i3 >>> 24);
-            prfBuffer[13] = (byte) (i3 >>> 16);
-            prfBuffer[14] = (byte) (i3 >>> 8);
-            prfBuffer[15] = (byte) i3;
+            buf[0] = (byte) (i0 >>> 24);
+            buf[1] = (byte) (i0 >>> 16);
+            buf[2] = (byte) (i0 >>> 8);
+            buf[3] = (byte) i0;
+            buf[4] = (byte) (i1 >>> 24);
+            buf[5] = (byte) (i1 >>> 16);
+            buf[6] = (byte) (i1 >>> 8);
+            buf[7] = (byte) i1;
+            buf[8] = (byte) (i2 >>> 24);
+            buf[9] = (byte) (i2 >>> 16);
+            buf[10] = (byte) (i2 >>> 8);
+            buf[11] = (byte) i2;
+            buf[12] = (byte) (i3 >>> 24);
+            buf[13] = (byte) (i3 >>> 16);
+            buf[14] = (byte) (i3 >>> 8);
+            buf[15] = (byte) i3;
 
-            final byte[] encrypted = prfCipher.doFinal(prfBuffer);
+            final byte[] encrypted = prfCipher.get().doFinal(buf);
             assert encrypted.length == BLOCK_SIZE : "AES block output must be 16 bytes";
             return ((long) (encrypted[0] & 0xFF) << 56) | ((long) (encrypted[1] & 0xFF) << 48)
                     | ((long) (encrypted[2] & 0xFF) << 40) | ((long) (encrypted[3] & 0xFF) << 32)
@@ -235,26 +242,26 @@ public final class BoldyrevaOpeEncryptor {
      */
     private long prfNext(long state, long iteration) {
         try {
-            // Pack 2 longs into prfBuffer (big-endian, matching original ByteBuffer.putLong
-            // behavior)
-            prfBuffer[0] = (byte) (state >>> 56);
-            prfBuffer[1] = (byte) (state >>> 48);
-            prfBuffer[2] = (byte) (state >>> 40);
-            prfBuffer[3] = (byte) (state >>> 32);
-            prfBuffer[4] = (byte) (state >>> 24);
-            prfBuffer[5] = (byte) (state >>> 16);
-            prfBuffer[6] = (byte) (state >>> 8);
-            prfBuffer[7] = (byte) state;
-            prfBuffer[8] = (byte) (iteration >>> 56);
-            prfBuffer[9] = (byte) (iteration >>> 48);
-            prfBuffer[10] = (byte) (iteration >>> 40);
-            prfBuffer[11] = (byte) (iteration >>> 32);
-            prfBuffer[12] = (byte) (iteration >>> 24);
-            prfBuffer[13] = (byte) (iteration >>> 16);
-            prfBuffer[14] = (byte) (iteration >>> 8);
-            prfBuffer[15] = (byte) iteration;
+            final byte[] buf = prfBuffer.get();
+            // Pack 2 longs into buf (big-endian, matching original ByteBuffer.putLong behavior)
+            buf[0] = (byte) (state >>> 56);
+            buf[1] = (byte) (state >>> 48);
+            buf[2] = (byte) (state >>> 40);
+            buf[3] = (byte) (state >>> 32);
+            buf[4] = (byte) (state >>> 24);
+            buf[5] = (byte) (state >>> 16);
+            buf[6] = (byte) (state >>> 8);
+            buf[7] = (byte) state;
+            buf[8] = (byte) (iteration >>> 56);
+            buf[9] = (byte) (iteration >>> 48);
+            buf[10] = (byte) (iteration >>> 40);
+            buf[11] = (byte) (iteration >>> 32);
+            buf[12] = (byte) (iteration >>> 24);
+            buf[13] = (byte) (iteration >>> 16);
+            buf[14] = (byte) (iteration >>> 8);
+            buf[15] = (byte) iteration;
 
-            final byte[] encrypted = prfCipher.doFinal(prfBuffer);
+            final byte[] encrypted = prfCipher.get().doFinal(buf);
             assert encrypted.length == BLOCK_SIZE : "AES block output must be 16 bytes";
             return ((long) (encrypted[0] & 0xFF) << 56) | ((long) (encrypted[1] & 0xFF) << 48)
                     | ((long) (encrypted[2] & 0xFF) << 40) | ((long) (encrypted[3] & 0xFF) << 32)
