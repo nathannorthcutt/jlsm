@@ -219,3 +219,53 @@
 - **Impact:** Medium — ~10-12% scan CPU reduction confirmed, matching target
 - **Detected on commit:** eef5903
 - **Fixed on commit:** 313ad12
+
+## Finding: BoldyrevaOpeEncryptor Cipher.getInstance in hot inner loop
+
+- **Location:** `jlsm.encryption.BoldyrevaOpeEncryptor#prfSeed` (line 183), `#prfNext` (line 206)
+- **Layer:** Encryption / JCE overhead
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Open
+- **Hypothesis:** `Cipher.getInstance("AES/ECB/NoPadding")` + `new SecretKeySpec()` + `Cipher.init()` are called on every PRF evaluation inside the recursive bisection and hypergeometric sampling loops. Each call traverses the JCE security provider HashMap. With large domain/range, this means thousands of provider lookups per encrypt call.
+- **Evidence:** jstack during benchmark showed `Provider$UString.hashCode` → `HashMap.hash` as the active frame. Throughput: 0.028 ops/s with domain=1M/range=10M (~36 seconds per encrypt). `FieldEncryptionDispatch` uses `Long.MAX_VALUE/2` domain — would take minutes per field.
+- **Proposed fix:** Cache `Cipher` instance and `SecretKeySpec` as fields, initialized once in the constructor. AES/ECB/NoPadding is stateless between `doFinal` calls.
+- **Impact:** Critical — OPE is unusable in production
+- **Benchmark to validate:** Re-run EncryptionScratch with cached cipher
+- **Detected on commit:** 89338a9
+
+## Finding: AES-SIV 4x slower than AES-GCM
+
+- **Location:** `jlsm.encryption.AesSivEncryptor#encrypt`
+- **Layer:** Encryption
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Open — investigated, expected behavior
+- **Hypothesis:** AES-SIV requires two passes (CMAC for synthetic IV, then CTR encryption) vs AES-GCM's single authenticated pass. Deterministic encryption for searchability has an inherent CPU cost.
+- **Evidence:** AES-SIV: 66K ops/s @64B (15μs/op). AES-GCM: 252K ops/s @64B (4μs/op). 3.8x difference consistent across input sizes (256B: 56K vs 246K).
+- **Impact:** Low — algorithmic cost, not implementation defect. Worth investigating whether Cipher reuse or CMAC caching could reduce the gap.
+- **Detected on commit:** 89338a9
+
+## Finding: Server-side encryption 120x slower than unencrypted serialization
+
+- **Location:** `jlsm.table.DocumentSerializer$SchemaSerializer#serialize` (encryption path)
+- **Layer:** Encoding / Encryption
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Open
+- **Hypothesis:** Per-field AES-SIV + AES-GCM encryption during serialization dominates the serialize path. The 120x overhead (5.65M → 46.9K ops/s) is consistent with two field encryptions at ~15μs + ~4μs = ~19μs overhead on a ~177ns baseline.
+- **Evidence:** Unencrypted: 5.65M ops/s. Server-side encrypt: 46.9K ops/s. Pre-encrypted validate: 9.01M ops/s (192x faster than server-side). CiphertextValidator: ~2ns/call (essentially free).
+- **Impact:** Medium — expected trade-off, but confirms client-side pre-encryption is the preferred path for throughput-sensitive workloads
+- **Detected on commit:** 89338a9
+
+## Finding: Pre-encrypted validation faster than unencrypted serialization
+
+- **Location:** `jlsm.table.DocumentSerializer$SchemaSerializer#serialize` (pre-encrypted path)
+- **Layer:** Encoding
+- **Run mode:** Snapshot
+- **Tier:** Scratch
+- **Status:** Open — investigated, positive result
+- **Hypothesis:** Pre-encrypted documents skip field encoding entirely — ciphertext bytes are copied directly. This shorter code path is faster than the unencrypted field-by-field encoding.
+- **Evidence:** Pre-encrypted: 9.01M ops/s. Unencrypted: 5.65M ops/s (+59% faster). CiphertextValidator adds ~2ns overhead per field (negligible).
+- **Impact:** Low — positive finding, validates the pre-encrypted design
+- **Detected on commit:** 89338a9

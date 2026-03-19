@@ -1,6 +1,5 @@
 package jlsm.encryption;
 
-import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.util.Objects;
 
@@ -23,10 +22,16 @@ import javax.crypto.spec.SecretKeySpec;
 public final class BoldyrevaOpeEncryptor {
 
     private static final int MAX_RECURSION_DEPTH = 128;
+    private static final int BLOCK_SIZE = 16;
 
-    private final byte[] keyBytes;
     private final long domainSize;
     private final long rangeSize;
+
+    /** Cached AES/ECB cipher — stateless between doFinal calls, safe to reuse without re-init. */
+    private final Cipher prfCipher;
+
+    /** Reusable 16-byte buffer for PRF input assembly. */
+    private final byte[] prfBuffer = new byte[BLOCK_SIZE];
 
     /**
      * Creates a Boldyreva OPE encryptor with the given key and domain/range configuration.
@@ -46,9 +51,18 @@ public final class BoldyrevaOpeEncryptor {
             throw new IllegalArgumentException("rangeSize must be > domainSize, got rangeSize="
                     + rangeSize + " domainSize=" + domainSize);
         }
-        this.keyBytes = keyHolder.getKeyBytes();
+        final byte[] keyBytes = keyHolder.getKeyBytes();
         this.domainSize = domainSize;
         this.rangeSize = rangeSize;
+
+        try {
+            this.prfCipher = Cipher.getInstance("AES/ECB/NoPadding");
+            final SecretKeySpec prfKeySpec = new SecretKeySpec(keyBytes, 0,
+                    Math.min(keyBytes.length, 32), "AES");
+            this.prfCipher.init(Cipher.ENCRYPT_MODE, prfKeySpec);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Failed to initialize AES PRF cipher", e);
+        }
     }
 
     /**
@@ -176,44 +190,76 @@ public final class BoldyrevaOpeEncryptor {
     }
 
     /**
-     * Derives a deterministic seed from the key and node parameters using AES encryption.
+     * Derives a deterministic seed from the key and node parameters using AES encryption. Uses
+     * cached prfCipher — AES/ECB is stateless between doFinal calls.
      */
     private long prfSeed(long dLo, long dHi, long rLo, long rHi) {
         try {
-            final Cipher aes = Cipher.getInstance("AES/ECB/NoPadding");
-            final SecretKeySpec keySpec = new SecretKeySpec(keyBytes, 0,
-                    Math.min(keyBytes.length, 32), "AES");
-            aes.init(Cipher.ENCRYPT_MODE, keySpec);
+            // Pack 4 ints into prfBuffer (big-endian, matching original ByteBuffer.putInt behavior)
+            final int i0 = (int) (dLo ^ (dLo >>> 32));
+            final int i1 = (int) (dHi ^ (dHi >>> 32));
+            final int i2 = (int) (rLo ^ (rLo >>> 32));
+            final int i3 = (int) (rHi ^ (rHi >>> 32));
 
-            final ByteBuffer buf = ByteBuffer.allocate(16);
-            buf.putInt((int) (dLo ^ (dLo >>> 32)));
-            buf.putInt((int) (dHi ^ (dHi >>> 32)));
-            buf.putInt((int) (rLo ^ (rLo >>> 32)));
-            buf.putInt((int) (rHi ^ (rHi >>> 32)));
+            prfBuffer[0] = (byte) (i0 >>> 24);
+            prfBuffer[1] = (byte) (i0 >>> 16);
+            prfBuffer[2] = (byte) (i0 >>> 8);
+            prfBuffer[3] = (byte) i0;
+            prfBuffer[4] = (byte) (i1 >>> 24);
+            prfBuffer[5] = (byte) (i1 >>> 16);
+            prfBuffer[6] = (byte) (i1 >>> 8);
+            prfBuffer[7] = (byte) i1;
+            prfBuffer[8] = (byte) (i2 >>> 24);
+            prfBuffer[9] = (byte) (i2 >>> 16);
+            prfBuffer[10] = (byte) (i2 >>> 8);
+            prfBuffer[11] = (byte) i2;
+            prfBuffer[12] = (byte) (i3 >>> 24);
+            prfBuffer[13] = (byte) (i3 >>> 16);
+            prfBuffer[14] = (byte) (i3 >>> 8);
+            prfBuffer[15] = (byte) i3;
 
-            final byte[] encrypted = aes.doFinal(buf.array());
-            return ByteBuffer.wrap(encrypted).getLong();
+            final byte[] encrypted = prfCipher.doFinal(prfBuffer);
+            assert encrypted.length == BLOCK_SIZE : "AES block output must be 16 bytes";
+            return ((long) (encrypted[0] & 0xFF) << 56) | ((long) (encrypted[1] & 0xFF) << 48)
+                    | ((long) (encrypted[2] & 0xFF) << 40) | ((long) (encrypted[3] & 0xFF) << 32)
+                    | ((long) (encrypted[4] & 0xFF) << 24) | ((long) (encrypted[5] & 0xFF) << 16)
+                    | ((long) (encrypted[6] & 0xFF) << 8) | ((long) (encrypted[7] & 0xFF));
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("AES PRF failed", e);
         }
     }
 
     /**
-     * Derives the next PRF state from current state and iteration.
+     * Derives the next PRF state from current state and iteration. Uses cached prfCipher — AES/ECB
+     * is stateless between doFinal calls.
      */
     private long prfNext(long state, long iteration) {
         try {
-            final Cipher aes = Cipher.getInstance("AES/ECB/NoPadding");
-            final SecretKeySpec keySpec = new SecretKeySpec(keyBytes, 0,
-                    Math.min(keyBytes.length, 32), "AES");
-            aes.init(Cipher.ENCRYPT_MODE, keySpec);
+            // Pack 2 longs into prfBuffer (big-endian, matching original ByteBuffer.putLong
+            // behavior)
+            prfBuffer[0] = (byte) (state >>> 56);
+            prfBuffer[1] = (byte) (state >>> 48);
+            prfBuffer[2] = (byte) (state >>> 40);
+            prfBuffer[3] = (byte) (state >>> 32);
+            prfBuffer[4] = (byte) (state >>> 24);
+            prfBuffer[5] = (byte) (state >>> 16);
+            prfBuffer[6] = (byte) (state >>> 8);
+            prfBuffer[7] = (byte) state;
+            prfBuffer[8] = (byte) (iteration >>> 56);
+            prfBuffer[9] = (byte) (iteration >>> 48);
+            prfBuffer[10] = (byte) (iteration >>> 40);
+            prfBuffer[11] = (byte) (iteration >>> 32);
+            prfBuffer[12] = (byte) (iteration >>> 24);
+            prfBuffer[13] = (byte) (iteration >>> 16);
+            prfBuffer[14] = (byte) (iteration >>> 8);
+            prfBuffer[15] = (byte) iteration;
 
-            final ByteBuffer buf = ByteBuffer.allocate(16);
-            buf.putLong(state);
-            buf.putLong(iteration);
-
-            final byte[] encrypted = aes.doFinal(buf.array());
-            return ByteBuffer.wrap(encrypted).getLong();
+            final byte[] encrypted = prfCipher.doFinal(prfBuffer);
+            assert encrypted.length == BLOCK_SIZE : "AES block output must be 16 bytes";
+            return ((long) (encrypted[0] & 0xFF) << 56) | ((long) (encrypted[1] & 0xFF) << 48)
+                    | ((long) (encrypted[2] & 0xFF) << 40) | ((long) (encrypted[3] & 0xFF) << 32)
+                    | ((long) (encrypted[4] & 0xFF) << 24) | ((long) (encrypted[5] & 0xFF) << 16)
+                    | ((long) (encrypted[6] & 0xFF) << 8) | ((long) (encrypted[7] & 0xFF));
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("AES PRF failed", e);
         }

@@ -12,7 +12,7 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 12 | 2026-03-18 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 13 | 2026-03-19 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 1 | 2026-03-17 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 1 | 2 | 2026-03-16 |
 | systems | [systems/](systems/CLAUDE.md) | 3 | 7 | 2026-03-18 |
@@ -20,6 +20,7 @@
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-19 | algorithms | encryption | deterministic-encryption-performance |
 | 2026-03-18 | systems | security | jvm-key-handling-patterns |
 | 2026-03-18 | algorithms | encryption | vector-encryption-approaches |
 | 2026-03-18 | algorithms | encryption | searchable-encryption-schemes |

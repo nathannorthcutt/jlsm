@@ -28,7 +28,10 @@ public final class AesGcmEncryptor {
     private static final int OVERHEAD = IV_LENGTH + TAG_BYTES;
     private static final String ALGORITHM = "AES/GCM/NoPadding";
 
-    private final byte[] keyBytes;
+    /** Cached Cipher instance — GCM requires init per call (new IV), but the object is reusable. */
+    private final Cipher cipher;
+    /** Cached SecretKeySpec — immutable, safe to reuse across init calls. */
+    private final SecretKeySpec keySpec;
     private final SecureRandom random;
 
     /**
@@ -43,8 +46,13 @@ public final class AesGcmEncryptor {
             throw new IllegalArgumentException(
                     "AES-GCM requires a 256-bit (32-byte) key, got " + keyHolder.keyLength());
         }
-        this.keyBytes = keyHolder.getKeyBytes();
+        this.keySpec = new SecretKeySpec(keyHolder.getKeyBytes(), "AES");
         this.random = new SecureRandom();
+        try {
+            this.cipher = Cipher.getInstance(ALGORITHM);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("Failed to initialize AES-GCM cipher", e);
+        }
     }
 
     /**
@@ -59,8 +67,6 @@ public final class AesGcmEncryptor {
             final byte[] iv = new byte[IV_LENGTH];
             random.nextBytes(iv);
 
-            final Cipher cipher = Cipher.getInstance(ALGORITHM);
-            final SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
             final GCMParameterSpec gcmSpec = new GCMParameterSpec(TAG_BITS, iv);
             cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec);
 
@@ -95,8 +101,6 @@ public final class AesGcmEncryptor {
             final byte[] iv = Arrays.copyOfRange(ciphertext, 0, IV_LENGTH);
             final byte[] encrypted = Arrays.copyOfRange(ciphertext, IV_LENGTH, ciphertext.length);
 
-            final Cipher cipher = Cipher.getInstance(ALGORITHM);
-            final SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
             final GCMParameterSpec gcmSpec = new GCMParameterSpec(TAG_BITS, iv);
             cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec);
 

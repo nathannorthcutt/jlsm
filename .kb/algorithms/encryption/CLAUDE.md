@@ -11,6 +11,7 @@ schemes implementable in pure Java for use in jlsm's document model.
 |------|---------|--------|------------|----------|
 | [searchable-encryption-schemes.md](searchable-encryption-schemes.md) | Searchable Encryption Schemes | active | DET: O(n) enc, +16B expansion | Field-level encryption with query support |
 | [vector-encryption-approaches.md](vector-encryption-approaches.md) | Vector Encryption Approaches | active | DCPE: ~1x plaintext query perf | Encrypted ANN search |
+| [deterministic-encryption-performance.md](deterministic-encryption-performance.md) | Deterministic Encryption Performance | active | AES-SIV: 66K->~130K ops/s optimized | Narrowing DET vs AEAD perf gap |
 
 ## Comparison Summary
 
@@ -28,5 +29,4 @@ Both are implementable in pure Java with zero external dependencies.
 2. Then: [vector-encryption-approaches.md](vector-encryption-approaches.md) — DCPE and alternatives for vectors
 
 ## Research Gaps
-- In-memory key handling patterns for JVM
 - Homomorphic encryption practical feasibility assessment (likely won't-use but worth documenting)
