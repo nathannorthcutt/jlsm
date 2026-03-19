@@ -1,0 +1,320 @@
+package jlsm.engine.internal;
+
+import jlsm.bloom.blocked.BlockedBloomFilter;
+import jlsm.core.io.MemorySerializer;
+import jlsm.core.memtable.MemTable;
+import jlsm.core.model.Level;
+import jlsm.core.tree.TypedLsmTree;
+import jlsm.engine.AllocationTracking;
+import jlsm.engine.Engine;
+import jlsm.engine.EngineMetrics;
+import jlsm.engine.HandleEvictedException;
+import jlsm.engine.Table;
+import jlsm.engine.TableMetadata;
+import jlsm.memtable.ConcurrentSkipListMemTable;
+import jlsm.sstable.TrieSSTableReader;
+import jlsm.sstable.TrieSSTableWriter;
+import jlsm.table.DocumentSerializer;
+import jlsm.table.JlsmDocument;
+import jlsm.table.JlsmSchema;
+import jlsm.table.JlsmTable;
+import jlsm.table.StandardJlsmTable;
+import jlsm.tree.SSTableReaderFactory;
+import jlsm.tree.SSTableWriterFactory;
+import jlsm.tree.TypedStandardLsmTree;
+import jlsm.wal.local.LocalWriteAheadLog;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
+import java.util.function.Supplier;
+
+/**
+ * Embedded (local filesystem) implementation of {@link Engine}.
+ *
+ * <p>
+ * Manages a {@link TableCatalog} for metadata persistence and a {@link HandleTracker} for handle
+ * lifecycle. Each table is backed by its own subdirectory containing WAL, SSTable, and metadata
+ * files.
+ *
+ * <p>
+ * Governed by: {@code .decisions/engine-api-surface-design/adr.md},
+ * {@code .decisions/table-catalog-persistence/adr.md}
+ */
+final class LocalEngine implements Engine {
+
+    private final Path rootDirectory;
+    private final TableCatalog catalog;
+    private final HandleTracker handleTracker;
+    private final long memTableFlushThresholdBytes;
+
+    /** Live tables: tableName -> JlsmTable.StringKeyed. Lazily populated. */
+    private final ConcurrentHashMap<String, JlsmTable.StringKeyed> liveTables = new ConcurrentHashMap<>();
+
+    /** Per-table SSTable ID counters. */
+    private final ConcurrentHashMap<String, AtomicLong> idCounters = new ConcurrentHashMap<>();
+
+    private LocalEngine(Builder builder) throws IOException {
+        this.rootDirectory = Objects.requireNonNull(builder.rootDirectory,
+                "rootDirectory must not be null");
+        this.memTableFlushThresholdBytes = builder.memTableFlushThresholdBytes;
+
+        this.catalog = new TableCatalog(rootDirectory);
+        this.catalog.open();
+
+        this.handleTracker = HandleTracker.builder()
+                .maxHandlesPerSourcePerTable(builder.maxHandlesPerSourcePerTable)
+                .maxHandlesPerTable(builder.maxHandlesPerTable)
+                .maxTotalHandles(builder.maxTotalHandles)
+                .allocationTracking(builder.allocationTracking).build();
+    }
+
+    /**
+     * Returns a new builder for constructing a LocalEngine.
+     *
+     * @return a new builder; never null
+     */
+    static Builder builder() {
+        return new Builder();
+    }
+
+    @Override
+    public Table createTable(String name, JlsmSchema schema) throws IOException {
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(schema, "schema must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+
+        // Register in catalog (throws if already exists)
+        final TableMetadata metadata = catalog.register(name, schema);
+
+        // Create the live JlsmTable.StringKeyed for this table
+        final JlsmTable.StringKeyed jlsmTable = createJlsmTable(name, schema);
+        liveTables.put(name, jlsmTable);
+
+        // Register handle
+        final String sourceId = Thread.currentThread().getName();
+        final HandleRegistration registration = handleTracker.register(name, sourceId);
+
+        return new LocalTable(jlsmTable, registration, handleTracker, metadata);
+    }
+
+    @Override
+    public Table getTable(String name) throws IOException {
+        Objects.requireNonNull(name, "name must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+
+        final TableMetadata metadata = catalog.get(name)
+                .orElseThrow(() -> new IOException("Table does not exist: " + name));
+
+        // Get or lazily create the live table
+        final JlsmTable.StringKeyed jlsmTable = liveTables.computeIfAbsent(name, k -> {
+            try {
+                return createJlsmTable(k, metadata.schema());
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to initialize table: " + k, e);
+            }
+        });
+
+        // Register handle
+        final String sourceId = Thread.currentThread().getName();
+        final HandleRegistration registration = handleTracker.register(name, sourceId);
+
+        return new LocalTable(jlsmTable, registration, handleTracker, metadata);
+    }
+
+    @Override
+    public void dropTable(String name) throws IOException {
+        Objects.requireNonNull(name, "name must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+
+        // Close the live table if it exists
+        final JlsmTable.StringKeyed removed = liveTables.remove(name);
+        if (removed != null) {
+            removed.close();
+        }
+
+        // Invalidate all handles for this table
+        handleTracker.invalidateTable(name, HandleEvictedException.Reason.TABLE_DROPPED);
+
+        // Unregister from catalog (deletes directory; throws if not found)
+        catalog.unregister(name);
+
+        // Clean up ID counter
+        idCounters.remove(name);
+    }
+
+    @Override
+    public Collection<TableMetadata> listTables() {
+        return catalog.list();
+    }
+
+    @Override
+    public TableMetadata tableMetadata(String name) {
+        Objects.requireNonNull(name, "name must not be null");
+        return catalog.get(name).orElse(null);
+    }
+
+    @Override
+    public EngineMetrics metrics() {
+        final EngineMetrics snapshot = handleTracker.snapshot();
+        // Override tableCount with actual catalog count
+        final int catalogTableCount = catalog.list().size();
+        return new EngineMetrics(catalogTableCount, snapshot.totalOpenHandles(),
+                snapshot.handlesPerTable(), snapshot.handlesPerSourcePerTable());
+    }
+
+    @Override
+    public void close() throws IOException {
+        // Invalidate all handles
+        handleTracker.invalidateAll(HandleEvictedException.Reason.ENGINE_SHUTDOWN);
+
+        // Close all live tables, accumulating exceptions
+        final List<IOException> errors = new ArrayList<>();
+        for (final var entry : liveTables.entrySet()) {
+            try {
+                entry.getValue().close();
+            } catch (IOException e) {
+                errors.add(e);
+            }
+        }
+        liveTables.clear();
+        idCounters.clear();
+
+        // Close catalog
+        try {
+            catalog.close();
+        } catch (IOException e) {
+            errors.add(e);
+        }
+
+        // Close handle tracker
+        try {
+            handleTracker.close();
+        } catch (IOException e) {
+            errors.add(e);
+        }
+
+        if (!errors.isEmpty()) {
+            final IOException primary = errors.getFirst();
+            for (int i = 1; i < errors.size(); i++) {
+                primary.addSuppressed(errors.get(i));
+            }
+            throw primary;
+        }
+    }
+
+    // ---- Private helpers ----
+
+    /**
+     * Creates the full LSM stack for a named table.
+     */
+    private JlsmTable.StringKeyed createJlsmTable(String tableName, JlsmSchema schema)
+            throws IOException {
+        assert tableName != null : "tableName must not be null";
+        assert schema != null : "schema must not be null";
+
+        final Path tableDir = catalog.tableDirectory(tableName);
+
+        // WAL
+        final var wal = LocalWriteAheadLog.builder().directory(tableDir).build();
+
+        // MemTable factory
+        final Supplier<MemTable> memTableFactory = ConcurrentSkipListMemTable::new;
+
+        // SSTable writer/reader factories
+        final SSTableWriterFactory writerFactory = TrieSSTableWriter::new;
+        final SSTableReaderFactory readerFactory = path -> TrieSSTableReader.open(path,
+                BlockedBloomFilter.deserializer());
+
+        // Per-table ID counter
+        final AtomicLong idCounter = idCounters.computeIfAbsent(tableName, k -> new AtomicLong(0));
+
+        // Path function for SSTables within the table directory
+        final BiFunction<Long, Level, Path> pathFn = (id, level) -> tableDir
+                .resolve("sst-" + id + "-L" + level.index() + ".sst");
+
+        // Document serializer
+        final MemorySerializer<JlsmDocument> codec = DocumentSerializer.forSchema(schema);
+
+        // Build the typed tree
+        final TypedLsmTree.StringKeyed<JlsmDocument> tree = TypedStandardLsmTree
+                .<JlsmDocument>stringKeyedBuilder().wal(wal).memTableFactory(memTableFactory)
+                .sstableWriterFactory(writerFactory).sstableReaderFactory(readerFactory)
+                .idSupplier(idCounter::getAndIncrement).pathFn(pathFn)
+                .memTableFlushThresholdBytes(memTableFlushThresholdBytes).valueSerializer(codec)
+                .build();
+
+        // Build the JlsmTable.StringKeyed
+        return StandardJlsmTable.stringKeyedBuilder().lsmTree(tree).schema(schema).build();
+    }
+
+    /**
+     * Builder for {@link LocalEngine}.
+     */
+    static final class Builder {
+
+        private Path rootDirectory;
+        private int maxHandlesPerSourcePerTable = 16;
+        private int maxHandlesPerTable = 64;
+        private int maxTotalHandles = 1024;
+        private AllocationTracking allocationTracking = AllocationTracking.OFF;
+        private long memTableFlushThresholdBytes = 64L * 1024 * 1024;
+
+        private Builder() {
+        }
+
+        Builder rootDirectory(Path rootDirectory) {
+            this.rootDirectory = Objects.requireNonNull(rootDirectory,
+                    "rootDirectory must not be null");
+            return this;
+        }
+
+        Builder maxHandlesPerSourcePerTable(int max) {
+            assert max > 0 : "max must be positive";
+            this.maxHandlesPerSourcePerTable = max;
+            return this;
+        }
+
+        Builder maxHandlesPerTable(int max) {
+            assert max > 0 : "max must be positive";
+            this.maxHandlesPerTable = max;
+            return this;
+        }
+
+        Builder maxTotalHandles(int max) {
+            assert max > 0 : "max must be positive";
+            this.maxTotalHandles = max;
+            return this;
+        }
+
+        Builder allocationTracking(AllocationTracking tracking) {
+            this.allocationTracking = Objects.requireNonNull(tracking, "tracking must not be null");
+            return this;
+        }
+
+        Builder memTableFlushThresholdBytes(long bytes) {
+            assert bytes > 0 : "bytes must be positive";
+            this.memTableFlushThresholdBytes = bytes;
+            return this;
+        }
+
+        LocalEngine build() throws IOException {
+            if (rootDirectory == null) {
+                throw new IllegalStateException("rootDirectory must be set");
+            }
+            return new LocalEngine(this);
+        }
+    }
+}
