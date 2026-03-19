@@ -10,3 +10,7 @@ Before marking a PR ready for review, complete all of the following:
 - TDD cycle is complete — tests were written before implementation and all pass
 - Run `/update-module-docs` if any module's public API, exported packages, or
   dependencies changed; commit the result on the same branch
+- Update `CHANGELOG.md` with an entry for this PR — see `.claude/rules/documentation.md`
+  for format and content guidelines
+- Review `README.md` and update if the change adds a module, changes the
+  dependency graph, or adds a significant new capability
