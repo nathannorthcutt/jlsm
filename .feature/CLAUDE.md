@@ -9,7 +9,7 @@
 
 | Feature | Slug | Started | Stage | Last Checkpoint |
 |---------|------|---------|-------|-----------------|
-
+| Field-level in-memory encryption | encrypt-memory-data | 2026-03-18 | planning | work-plan.md written |
 
 ## Completed / Archived
 

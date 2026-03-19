@@ -39,7 +39,12 @@ public final class FieldValueCodec {
 
     public static MemorySegment encode(Object value, FieldType fieldType) {
         Objects.requireNonNull(fieldType, "fieldType");
-        if (!(fieldType instanceof FieldType.Primitive p)) {
+        final FieldType.Primitive p;
+        if (fieldType instanceof FieldType.Primitive prim) {
+            p = prim;
+        } else if (fieldType instanceof FieldType.BoundedString) {
+            p = FieldType.Primitive.STRING;
+        } else {
             throw new IllegalArgumentException(
                     "Only primitive field types can be encoded, got: " + fieldType);
         }
@@ -61,7 +66,12 @@ public final class FieldValueCodec {
     public static Object decode(MemorySegment encoded, FieldType fieldType) {
         Objects.requireNonNull(encoded, "encoded");
         Objects.requireNonNull(fieldType, "fieldType");
-        if (!(fieldType instanceof FieldType.Primitive p)) {
+        final FieldType.Primitive p;
+        if (fieldType instanceof FieldType.Primitive prim) {
+            p = prim;
+        } else if (fieldType instanceof FieldType.BoundedString) {
+            p = FieldType.Primitive.STRING;
+        } else {
             throw new IllegalArgumentException(
                     "Only primitive field types can be decoded, got: " + fieldType);
         }

@@ -137,6 +137,13 @@ public final class YamlParser {
                 }
                 yield parsePrimitiveValue(valuePart, p, fd.name());
             }
+            case FieldType.BoundedString _ -> {
+                if ( valuePart.isEmpty()) {
+                    throw new IllegalArgumentException("Expected value for bounded string field '"
+                            + fd.name() + "' at line " + lineRef[0]);
+                }
+                yield parsePrimitiveValue(valuePart, FieldType.Primitive.STRING, fd.name());
+            }
             case FieldType.ArrayType at -> {
                 // Value should be empty (array items follow on next lines)
                 if (!valuePart.isEmpty() && !"null".equals(valuePart)) {

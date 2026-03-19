@@ -1,5 +1,7 @@
 package jlsm.table;
 
+import jlsm.encryption.EncryptionSpec;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -129,6 +131,25 @@ public final class JlsmSchema {
             assert name != null : "name must not be null";
             assert type != null : "type must not be null";
             fields.add(new FieldDefinition(name, type));
+            return this;
+        }
+
+        /**
+         * Adds a primitive or array field with an explicit encryption specification.
+         *
+         * @param name the field name; must not be null
+         * @param type the field type; must not be null
+         * @param encryption the encryption spec; must not be null
+         * @return this builder
+         */
+        public Builder field(String name, FieldType type, EncryptionSpec encryption) {
+            Objects.requireNonNull(name, "name must not be null");
+            Objects.requireNonNull(type, "type must not be null");
+            Objects.requireNonNull(encryption, "encryption must not be null");
+            assert name != null : "name must not be null";
+            assert type != null : "type must not be null";
+            assert encryption != null : "encryption must not be null";
+            fields.add(new FieldDefinition(name, type, encryption));
             return this;
         }
 
