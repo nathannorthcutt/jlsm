@@ -4,6 +4,7 @@ import jlsm.engine.cluster.NodeAddress;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,7 +50,9 @@ public final class GracePeriodManager {
      * @param departedAt the instant of departure; must not be null
      */
     public void recordDeparture(NodeAddress node, Instant departedAt) {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(node, "node must not be null");
+        Objects.requireNonNull(departedAt, "departedAt must not be null");
+        departures.put(node, departedAt);
     }
 
     /**
@@ -59,7 +62,13 @@ public final class GracePeriodManager {
      * @return {@code true} if the node departed and the grace period has not expired
      */
     public boolean isInGracePeriod(NodeAddress node) {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(node, "node must not be null");
+        final Instant departedAt = departures.get(node);
+        if (departedAt == null) {
+            return false;
+        }
+        final Instant expiry = departedAt.plus(gracePeriod);
+        return Instant.now().isBefore(expiry);
     }
 
     /**
@@ -68,7 +77,16 @@ public final class GracePeriodManager {
      * @return a set of node addresses with expired grace periods; never null
      */
     public Set<NodeAddress> expiredDepartures() {
-        throw new UnsupportedOperationException("Not implemented");
+        final Instant now = Instant.now();
+        final Set<NodeAddress> expired = new HashSet<>();
+        for (var entry : departures.entrySet()) {
+            final Instant expiry = entry.getValue().plus(gracePeriod);
+            assert expiry != null : "expiry must not be null";
+            if (!now.isBefore(expiry)) {
+                expired.add(entry.getKey());
+            }
+        }
+        return expired;
     }
 
     /**
@@ -77,6 +95,7 @@ public final class GracePeriodManager {
      * @param node the returning node's address; must not be null
      */
     public void recordReturn(NodeAddress node) {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(node, "node must not be null");
+        departures.remove(node);
     }
 }

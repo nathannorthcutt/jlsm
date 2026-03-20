@@ -28,23 +28,25 @@ public final class InJvmDiscoveryProvider implements DiscoveryProvider {
 
     @Override
     public Set<NodeAddress> discoverSeeds() {
-        throw new UnsupportedOperationException("Not implemented");
+        return Set.copyOf(REGISTERED.keySet());
     }
 
     @Override
     public void register(NodeAddress self) {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(self, "self must not be null");
+        REGISTERED.put(self, Boolean.TRUE);
     }
 
     @Override
     public void deregister(NodeAddress self) {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(self, "self must not be null");
+        REGISTERED.remove(self);
     }
 
     /**
      * Clears the global registration set. For test cleanup only.
      */
-    static void clearRegistrations() {
+    public static void clearRegistrations() {
         REGISTERED.clear();
     }
 }

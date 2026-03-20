@@ -9,8 +9,12 @@ import jlsm.engine.cluster.internal.RendezvousOwnership;
 import jlsm.table.JlsmSchema;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Cluster-aware engine that distributes tables and partitions across cluster members.
@@ -44,6 +48,8 @@ public final class ClusteredEngine implements Engine {
     private final ClusterTransport transport;
     private final ClusterConfig config;
     private final NodeAddress localAddress;
+    private final ConcurrentHashMap<String, ClusteredTable> clusteredTables =
+            new ConcurrentHashMap<>();
     private volatile boolean closed;
 
     private ClusteredEngine(Builder builder) {
@@ -55,6 +61,9 @@ public final class ClusteredEngine implements Engine {
         this.transport = Objects.requireNonNull(builder.transport, "transport");
         this.config = Objects.requireNonNull(builder.config, "config");
         this.localAddress = Objects.requireNonNull(builder.localAddress, "localAddress");
+
+        // Register as a membership listener to trigger rebalancing on view changes
+        membership.addListener(new ClusterMembershipListener());
     }
 
     /**
@@ -68,37 +77,192 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public Table createTable(String name, JlsmSchema schema) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        if (name == null) {
+            throw new IllegalArgumentException("name must not be null");
+        }
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+        if (schema == null) {
+            throw new IllegalArgumentException("schema must not be null");
+        }
+        checkNotClosed();
+
+        // Create locally first
+        final Table localTable = localEngine.createTable(name, schema);
+        assert localTable != null : "localEngine.createTable must return non-null";
+
+        // Create a clustered proxy for distributed access
+        final TableMetadata metadata = localTable.metadata();
+        final ClusteredTable clustered = new ClusteredTable(metadata, transport, membership);
+        clusteredTables.put(name, clustered);
+
+        return localTable;
     }
 
     @Override
     public Table getTable(String name) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        if (name == null) {
+            throw new IllegalArgumentException("name must not be null");
+        }
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+        checkNotClosed();
+
+        // Delegate to local engine — the table must exist locally
+        return localEngine.getTable(name);
     }
 
     @Override
     public void dropTable(String name) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        if (name == null) {
+            throw new IllegalArgumentException("name must not be null");
+        }
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+        checkNotClosed();
+
+        // Remove clustered proxy
+        final ClusteredTable removed = clusteredTables.remove(name);
+        if (removed != null) {
+            removed.close();
+        }
+
+        // Delegate to local engine
+        localEngine.dropTable(name);
     }
 
     @Override
     public Collection<TableMetadata> listTables() {
-        throw new UnsupportedOperationException("Not implemented");
+        checkNotClosedUnchecked();
+        return localEngine.listTables();
     }
 
     @Override
     public TableMetadata tableMetadata(String name) {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(name, "name must not be null");
+        return localEngine.tableMetadata(name);
     }
 
     @Override
     public EngineMetrics metrics() {
-        throw new UnsupportedOperationException("Not implemented");
+        checkNotClosedUnchecked();
+        return localEngine.metrics();
     }
 
     @Override
     public void close() throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        if (closed) {
+            return;
+        }
+        closed = true;
+
+        final List<IOException> errors = new ArrayList<>();
+
+        // Close all clustered table proxies
+        for (final ClusteredTable ct : clusteredTables.values()) {
+            ct.close();
+        }
+        clusteredTables.clear();
+
+        // Leave the cluster gracefully
+        try {
+            membership.leave();
+        } catch (IOException e) {
+            errors.add(e);
+        }
+
+        // Close membership protocol
+        try {
+            membership.close();
+        } catch (Exception e) {
+            if (e instanceof IOException ioe) {
+                errors.add(ioe);
+            } else {
+                errors.add(new IOException("Failed to close membership protocol", e));
+            }
+        }
+
+        // Close local engine
+        try {
+            localEngine.close();
+        } catch (IOException e) {
+            errors.add(e);
+        }
+
+        if (!errors.isEmpty()) {
+            final IOException primary = errors.getFirst();
+            for (int i = 1; i < errors.size(); i++) {
+                primary.addSuppressed(errors.get(i));
+            }
+            throw primary;
+        }
+    }
+
+    // ---- Private helpers ----
+
+    private void checkNotClosed() throws IOException {
+        if (closed) {
+            throw new IOException("ClusteredEngine is closed");
+        }
+    }
+
+    private void checkNotClosedUnchecked() {
+        if (closed) {
+            throw new IllegalStateException("ClusteredEngine is closed");
+        }
+    }
+
+    /**
+     * Handles membership view changes by triggering ownership rebalancing.
+     */
+    private void onViewChanged(MembershipView oldView, MembershipView newView) {
+        assert oldView != null : "oldView must not be null";
+        assert newView != null : "newView must not be null";
+
+        // Evict stale ownership cache entries
+        ownership.evictBefore(newView.epoch());
+
+        // Record departures for grace period tracking
+        for (final Member oldMember : oldView.members()) {
+            if (oldMember.state() == MemberState.ALIVE && !newView.isMember(oldMember.address())) {
+                gracePeriodManager.recordDeparture(oldMember.address(), Instant.now());
+            }
+        }
+
+        // Record returns for nodes that rejoin
+        for (final Member newMember : newView.members()) {
+            if (newMember.state() == MemberState.ALIVE) {
+                gracePeriodManager.recordReturn(newMember.address());
+            }
+        }
+    }
+
+    /**
+     * Internal membership listener that delegates to the engine's rebalancing logic.
+     */
+    private final class ClusterMembershipListener implements MembershipListener {
+        @Override
+        public void onViewChanged(MembershipView oldView, MembershipView newView) {
+            ClusteredEngine.this.onViewChanged(oldView, newView);
+        }
+
+        @Override
+        public void onMemberJoined(Member member) {
+            // Handled by onViewChanged
+        }
+
+        @Override
+        public void onMemberLeft(Member member) {
+            // Handled by onViewChanged
+        }
+
+        @Override
+        public void onMemberSuspected(Member member) {
+            // No action on suspicion — wait for confirmed departure
+        }
     }
 
     /**

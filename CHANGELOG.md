@@ -10,7 +10,22 @@ semver release cadence is established.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+- Engine clustering: peer-to-peer cluster membership, table/partition ownership, and scatter-gather queries in `jlsm-engine`
+- `jlsm.engine.cluster` package: `ClusteredEngine`, `ClusteredTable`, `NodeAddress`, `ClusterConfig`, `Message`, `MembershipView`, `PartialResultMetadata`
+- SPI interfaces: `ClusterTransport`, `DiscoveryProvider`, `MembershipProtocol`, `MembershipListener`
+- `RapidMembership` — Rapid protocol with phi accrual failure detection
+- `RendezvousOwnership` — HRW hashing for stateless partition-to-node assignment
+- `GracePeriodManager` — configurable grace period before rebalancing on node departure
+- `RemotePartitionClient` — serializes CRUD operations over cluster transport
+- In-JVM test implementations: `InJvmTransport`, `InJvmDiscoveryProvider`
+- 6 ADRs: cluster-membership-protocol, partition-to-node-ownership, rebalancing-grace-period-strategy, scatter-gather-query-execution, discovery-spi-design, transport-abstraction-design
+- KB: cluster-membership-protocols (SWIM, Rapid, phi accrual)
+- 172 new tests (340 total in jlsm-engine)
+
+### Known Gaps
+- `ClusteredTable.scan()` returns empty iterators — full document serialization over transport deferred
+- `Table.query()` and `insert(JlsmDocument)` throw `UnsupportedOperationException` in clustered mode
 
 ---
 

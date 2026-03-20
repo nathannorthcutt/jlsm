@@ -53,22 +53,58 @@ public final class InJvmTransport implements ClusterTransport {
 
     @Override
     public void send(NodeAddress target, Message msg) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(target, "target must not be null");
+        Objects.requireNonNull(msg, "msg must not be null");
+        if (closed) {
+            throw new IOException("Transport is closed");
+        }
+        final var targetTransport = REGISTRY.get(target);
+        if (targetTransport == null) {
+            throw new IOException("No transport registered for target: " + target);
+        }
+        final var handler = targetTransport.handlers.get(msg.type());
+        if (handler != null) {
+            handler.handle(localAddress, msg);
+        }
+        // Fire-and-forget: no handler means silent drop
     }
 
     @Override
     public CompletableFuture<Message> request(NodeAddress target, Message msg) {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(target, "target must not be null");
+        Objects.requireNonNull(msg, "msg must not be null");
+        if (closed) {
+            return CompletableFuture.failedFuture(new IOException("Transport is closed"));
+        }
+        final var targetTransport = REGISTRY.get(target);
+        if (targetTransport == null) {
+            return CompletableFuture.failedFuture(
+                    new IOException("No transport registered for target: " + target));
+        }
+        final var handler = targetTransport.handlers.get(msg.type());
+        if (handler == null) {
+            return CompletableFuture.failedFuture(
+                    new IOException("No handler registered for type: " + msg.type()));
+        }
+        return handler.handle(localAddress, msg);
     }
 
     @Override
     public void registerHandler(MessageType type, MessageHandler handler) {
-        throw new UnsupportedOperationException("Not implemented");
+        Objects.requireNonNull(type, "type must not be null");
+        Objects.requireNonNull(handler, "handler must not be null");
+        assert !closed : "Cannot register handler on closed transport";
+        handlers.put(type, handler);
     }
 
     @Override
     public void close() {
-        throw new UnsupportedOperationException("Not implemented");
+        if (closed) {
+            return;
+        }
+        closed = true;
+        REGISTRY.remove(localAddress);
+        handlers.clear();
     }
 
     /**
@@ -85,7 +121,7 @@ public final class InJvmTransport implements ClusterTransport {
     /**
      * Clears the global registry. For test cleanup only.
      */
-    static void clearRegistry() {
+    public static void clearRegistry() {
         REGISTRY.clear();
     }
 }
