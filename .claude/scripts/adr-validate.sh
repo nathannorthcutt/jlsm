@@ -45,6 +45,6 @@ while IFS= read -r slug; do
     count="$(echo "$accepted_slugs" | grep -c "^${slug}$")"
     echo "   - $slug ($count accepted entries)"
 done <<< "$duplicates"
-echo "   Review with: /decisions review <slug>"
+echo "   Review with: /decisions revisit <slug>"
 
 exit 0

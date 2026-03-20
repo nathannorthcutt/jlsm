@@ -162,6 +162,17 @@ From "Backfill Candidates" in the scan summary:
 4. This subsumes the standalone `/decisions backfill` command — curate is the
    single entry point for finding undocumented decisions
 
+### 2g — Out-of-scope items (deferred work in accepted ADRs)
+
+From "Out-of-Scope Items" in the scan summary:
+1. Items from "What This Decision Does NOT Solve" sections of confirmed ADRs
+   that have no corresponding deferred decision stub
+2. These are architectural concerns the team explicitly scoped out when making
+   a decision — they are effectively deferred work invisible to `/decisions triage`
+3. Group items by parent ADR for presentation
+4. For each item, the user can: create a deferred stub, skip, or create all
+   stubs from that parent ADR at once
+
 ---
 
 ## Step 3 — Present findings as a numbered pick list
@@ -226,6 +237,9 @@ I scanned <N> commits since last review and found <N> items:
 
   8. <Orphaned files> — <N> commits, no KB or decision coverage
      → I'll research this area so future work has context
+
+  9. <parent-adr-slug> — <N> out-of-scope items with no deferred stubs
+     → I'll show them and you can choose which to track as deferred decisions
 
 Pick a number to start, or:
   all   — work through each item in order
@@ -333,6 +347,37 @@ from the archived feature. Offer the same actions as the old `/decisions backfil
 - **draft** → write a draft ADR (status: draft, source: backfill)
 - **defer** → write a deferred stub
 - **dismiss** → append to `.decisions/.backfill-dismissed`, won't resurface
+
+**Out-of-scope items (deferred work in accepted ADRs):** Present items grouped
+by parent ADR:
+
+```
+── Out-of-scope items from <parent-slug> ──────
+This ADR (accepted <date>) scoped out these items:
+
+  [1] <item text> — <reason>
+  [2] <item text> — <reason>
+  ...
+
+For each: create-stub · skip
+Or: create-all · skip-all
+```
+
+- **create-stub** → Write a deferred decision stub using the Step 0D template
+  from `/architect`:
+  - Slugify the concern (first ~5 words, kebab-case)
+  - Problem: the concern text
+  - Why Deferred: "Scoped out during `<parent-slug>` decision. `<reason>`."
+  - Resume When: "When `<parent-slug>` implementation is stable and this
+    concern becomes blocking."
+  - What Is Known So Far: "See `.decisions/<parent-slug>/adr.md` for the
+    architectural context that excluded this concern."
+  - Next Step: "Run `/architect "<concern>"` when ready to evaluate."
+  - Add a row to the Deferred section of `.decisions/CLAUDE.md`
+  - Append an `out-of-scope-promoted` event to the parent ADR's `log.md`
+- **create-all** → Apply create-stub to all items from that parent ADR
+- **skip** → Items resurface on next `/curate` run (no dismiss needed — once
+  a stub exists, the scan deduplicates automatically)
 
 After completing the action, mark it `resolved` in the review log. Then
 **ALWAYS re-present the remaining items** (renumbered) so the user can

@@ -189,7 +189,7 @@ resolution. If no ADR exists, the domain is not resolved.
   ⚠ DRAFT ADR    <domain> — .decisions/<slug>/adr.md (draft — not yet deliberated)
 ```
 Classify the domain as `pending-decision`. The user can proceed (the draft
-provides context) or formalize first via `/decisions review "<slug>"`.
+provides context) or formalize first via `/decisions revisit "<slug>"`.
 
 **`pending-decision`** — any domain that involves a design choice, even if the
 answer seems obvious. Specifically:

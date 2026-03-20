@@ -54,7 +54,7 @@ Display opening header immediately:
 ## Step 1 — Read project config
 
 Read `.feature/project-config.md`. If missing: stop and say
-  "Run /feature-init to set up the project profile first."
+  "Run /setup-vallorcine to set up the project profile first."
 
 If `PROJECT-CONTEXT.md` exists in the project root: read the `## Active` section.
 Use global entries and any scoped entries matching the feature description to

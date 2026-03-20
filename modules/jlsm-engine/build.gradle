@@ -10,6 +10,7 @@ tasks.withType(JavaCompile).configureEach {
 
 test {
     jvmArgs '--add-exports', 'jlsm.engine/jlsm.engine.internal=ALL-UNNAMED'
+    jvmArgs '--add-exports', 'jlsm.engine/jlsm.engine.cluster.internal=ALL-UNNAMED'
     jvmArgs '--add-modules', 'jdk.incubator.vector'
     jvmArgs '-ea'
 }

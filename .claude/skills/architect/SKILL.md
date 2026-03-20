@@ -258,6 +258,11 @@ Keyword-matched candidates are shown with the matching term so the user can
 quickly judge relevance. The user can exclude any candidate before subject
 files are loaded in Step 4.
 
+**Neutral presentation:** list candidates without editorial commentary.
+Do not indicate which candidate you expect to win, which seems "natural,"
+or which is "obviously" best. The user reviews the list and decides what
+to evaluate. Evaluation happens at Step 4, recommendation at Step 6.
+
 ---
 
 ## Step 2d — Coverage gap check
@@ -365,7 +370,7 @@ flag it:
   ℹ ADR <slug> (accepted <date>) has not evaluated <n> newer entries:
       <entry-1>.md (added <date>)
       <entry-2>.md (added <date>)
-    Consider: /decisions review "<slug>" after this session.
+    Consider: /decisions revisit "<slug>" after this session.
 ```
 This is informational — it does not block the current decision.
 
@@ -391,6 +396,102 @@ For each loaded candidate:
 | 1 | Disqualifying — cannot satisfy this constraint |
 
 Weight scores by the user's stated priorities. Never override user priorities with generic defaults.
+
+**Neutral scoring:** record scores factually. Do not declare a winner or
+express a preference during scoring. The scores speak for themselves — the
+recommendation is presented at Step 6a after all candidates (including
+composites) have been scored and the user can see the full comparison matrix.
+Even if one candidate dominates every dimension, the user confirms at Step 6.
+
+### 4b2 — Identify composite candidates
+
+After individual scoring, check whether **combinations** of candidates would
+satisfy constraints better than any single candidate. This is common when:
+
+- Two candidates have complementary strengths (one scores 5 on performance,
+  another scores 5 on memory — together they cover both)
+- The problem has distinct sub-problems that map to different approaches
+  (e.g., hot vs cold data paths, read-heavy vs write-heavy workloads,
+  different data types or access patterns)
+- No single candidate scores 4+ across all high-priority constraints, but
+  a pair does when each handles the sub-problem it's best suited for
+
+**How to identify composites:**
+
+1. For each pair of candidates where both score 3+ on at least one dimension:
+   check whether their strengths are complementary (high scores on different
+   constraint dimensions, or different sub-problems within the design space)
+2. If a complementary pair exists, define the **composition boundary** — the
+   rule that routes work to each approach (e.g., "vectors < 10K dimensions use
+   approach A, vectors ≥ 10K use approach B")
+3. Score the composite as a single candidate: for each constraint dimension,
+   take the score from whichever component handles that sub-problem
+
+**Present composites alongside individual candidates:**
+
+```
+── Composite candidate identified ─────────────
+  <Candidate A> + <Candidate B>
+  Boundary: <routing rule — e.g. "A for hot path, B for cold storage">
+  Why: <A scores 5 on X but 2 on Y; B scores 2 on X but 5 on Y; together they cover both>
+
+  Include this composite in the evaluation?  Type **yes**  ·  or: skip
+```
+
+If "yes": add the composite to evaluation.md as a candidate row with a
+`(composite)` marker. Score each dimension using the component that handles
+that sub-problem. The ADR's Decision section should describe both components
+and the boundary rule.
+
+Do NOT force composites — if a single candidate scores 4+ across all
+high-priority constraints, a composite adds complexity without benefit.
+Only propose composites when no individual candidate adequately covers
+the full problem space.
+
+### 4c — Assess coverage adequacy (iterate if thin)
+
+After scoring all loaded candidates, assess whether the evaluation has enough
+coverage to make a confident recommendation. Check for these signals:
+
+1. **No candidate scores 4+ on all high-priority constraints** — the best
+   option still has significant gaps
+2. **Fewer than 3 viable candidates** (score 3+ across the board) — the
+   evaluation lacks meaningful alternatives to compare against
+3. **A constraint dimension has no strong signal in any candidate** — the KB
+   may be missing an entire class of approaches
+4. **The top candidate is only marginally better than rejected ones** — a
+   better alternative may exist outside the current KB coverage
+
+If any of these signals fire, **commission a targeted follow-up research pass**
+before writing evaluation.md:
+
+```
+── Coverage gap detected ────────────────────────────────
+The current candidates don't fully cover this problem:
+  <signal — e.g. "No candidate scores above 3 on the performance constraint">
+
+I'd like to research additional approaches before making a recommendation:
+  - <subject 1> (<topic>/<category>) — <why this might help>
+  - <subject 2> (<topic>/<category>) — <why this might help>
+
+Commission research?  Type **yes**  ·  or: proceed with current candidates
+```
+
+If "yes":
+- Write `research-brief.md` (append to existing if one was written at Step 3)
+- Invoke `/research` as a sub-agent for each subject
+- After research completes, re-run Step 4b (score the new candidates)
+- Re-run Step 4c (check coverage again — allows multiple iterations)
+- Cap at 3 research iterations total (Steps 3 + 4c combined) to prevent
+  unbounded loops. After 3 iterations, proceed with what's available and
+  note the gap in the CONFIDENCE section.
+
+If "proceed": continue to Step 5 with current candidates. Note the coverage
+gap in the evaluation's confidence assessment.
+
+Append a log entry for each follow-up: event `research-commissioned`,
+noting this is an iterative pass (e.g. "follow-up research after thin
+initial coverage").
 
 ---
 
@@ -549,10 +650,10 @@ Decision written: .decisions/<slug>/adr.md
 ```
 Feature "<slug>" is paused waiting for this decision.
 
-  ↵  Resume scoping  ·  or type: stop
+  Type **yes**  to resume scoping  ·  or: stop
 ```
 
-If Enter/yes: invoke `/feature "<original description>"` to resume the scoping
+If yes: invoke `/feature "<original description>"` to resume the scoping
 interview where it left off (the scoping agent reads status.md and continues
 from its checkpoint).
 
@@ -579,7 +680,34 @@ If stop: display the manual command and stop.
      > See [evaluation.md](evaluation.md) for the original scoring.
      ```
 4. Write the deliberation log entry to `log.md` using the **Deliberation Log Entry Template**
-5. Proceed to Step 7
+5. For each item listed in the "What This Decision Does NOT Solve" section
+   of the ADR just written, create a deferred decision stub:
+   - Slugify the concern (first ~5 words, kebab-case)
+   - Check if `.decisions/<slug>/` already exists — skip if so
+   - Write `.decisions/<slug>/adr.md` using the Step 0D deferred template:
+     - Problem: the concern text
+     - Why Deferred: "Scoped out during `<current-problem-slug>` decision.
+       `<reason from the NOT Solve item>`."
+     - Resume When: "When `<current-problem-slug>` implementation is stable
+       and this concern becomes blocking."
+     - What Is Known So Far: "Identified during architecture evaluation of
+       `<current-problem-slug>`. See `.decisions/<current-slug>/adr.md` for
+       the architectural context."
+     - Next Step: "Run `/architect "<concern>"` when ready to evaluate."
+   - Add a row to the Deferred section of `.decisions/CLAUDE.md`
+   - Create a minimal `log.md` with a `deferred` event entry
+
+   Display what was created:
+   ```
+   Out-of-scope items tracked as deferred decisions:
+     ✓ <slug-1> — "<concern-1>"
+     ✓ <slug-2> — "<concern-2>"
+     ✗ <slug-3> — already exists (skipped)
+
+   These will appear in /decisions triage.
+   ```
+   If zero items are in the NOT Solve section: skip this step silently.
+6. Proceed to Step 7
 
 ---
 
@@ -589,9 +717,12 @@ If stop: display the manual command and stop.
 2. Create or update `.decisions/<problem-slug>/CLAUDE.md` using the **Problem Index Template**
 3. Update `.decisions/CLAUDE.md` master index:
    - Add the problem to the Active Decisions table
-   - Check "Recently Accepted": if it exceeds 5 rows, move the oldest row to `history.md`
-   - Check total line count: if over 80 lines, continue moving oldest accepted rows to `history.md`
-   - If `history.md` does not exist, create it from the **History File Template** first
+   - Check "Recently Accepted": if it exceeds 5 rows, archive the oldest row.
+     Check total line count: if over 80 lines, continue archiving oldest accepted rows.
+     **Archive order (crash-safe):**
+     1. If `history.md` does not exist, create it from the **History File Template** first
+     2. Append the row to `history.md` (write-first — survives crash)
+     3. Remove the row from `CLAUDE.md`
    - Ensure `Archived: [history.md](history.md)` pointer line is present
 
 ---
@@ -688,6 +819,10 @@ candidates:
     name: "<Subject 1>"
   - path: ".kb/<topic>/<category>/<subject2>.md"
     name: "<Subject 2>"
+  # Composite candidates (if identified at Step 4b2):
+  # - paths: [".kb/<topic>/<category>/<subjectA>.md", ".kb/<topic>/<category>/<subjectB>.md"]
+  #   name: "<Subject A> + <Subject B> (composite)"
+  #   boundary: "<routing rule>"
 constraint_weights:
   scale: <1-3>
   resources: <1-3>
@@ -765,15 +900,39 @@ constraint_weights:
 
 ---
 
+## Composite Candidate (if identified at Step 4b2)
+
+*Omit this section entirely if no composite was proposed or accepted.*
+
+**Components:** [<Subject A>](<kb-path-A>) + [<Subject B>](<kb-path-B>)
+**Boundary rule:** <what routes work to each component — e.g. "A handles hot path, B handles cold storage">
+
+| Constraint | Weight | Component | Score (1–5) | Weighted | Evidence from KB |
+|------------|--------|-----------|-------------|----------|-----------------|
+| Scale | | <A or B> | | | <which component handles this, and why> |
+| Resources | | <A or B> | | | |
+| Complexity | | <A+B combined> | | | <note integration overhead> |
+| Accuracy | | <A or B> | | | |
+| Operational | | <A+B combined> | | | <note operational complexity of running both> |
+| Fit | | <A+B combined> | | | |
+| **Total** | | | | **<sum>** | |
+
+**Integration cost:** <what's needed to combine them — routing logic, abstraction layer, etc.>
+**When this composite is better than either alone:** <which constraint dimensions it unlocks>
+
+---
+
 ## Comparison Matrix
 
 | Candidate | KB Source | Scale | Resources | Complexity | Accuracy | Operational | Fit | Weighted Total |
 |-----------|-----------|-------|-----------|------------|----------|-------------|-----|----------------|
 | [<name>](<relative-kb-path>) | | | | | | | | |
 | [<name>](<relative-kb-path>) | | | | | | | | |
+| [<A + B> (composite)]() | | | | | | | | |
 
 ## Preliminary Recommendation
-<Which candidate wins on weighted total, and a one-sentence plain-language reason>
+<Which candidate wins on weighted total, and a one-sentence plain-language reason.
+If the composite wins, state both components and the boundary rule.>
 
 ## Risks and Open Questions
 - <Risk 1: what assumption could be wrong>
@@ -945,13 +1104,13 @@ Written to `log.md` at Step 6c immediately after the user confirms.
 | `research-commissioned` | research-brief.md written, Research Agent requested |
 | `research-received` | Architect re-run after Research Agent completed |
 | `decision-confirmed` | User confirmed in deliberation — adr.md written immediately after |
-| `review-requested` | /decisions review invoked |
-| `review-deliberation-confirmed` | User confirmed review outcome in deliberation |
-| `review-completed` | Review concluded with no change after deliberation |
+| `revisit-requested` | /decisions revisit invoked — includes user's stated motivation |
+| `revisit-confirmed` | Decision reaffirmed after revisit deliberation |
 | `revision-confirmed` | New adr-v<N>.md written after deliberation confirmed revision |
 | `deferred` | /decisions defer invoked — lightweight adr.md written with status deferred |
 | `closed` | /decisions close invoked — lightweight adr.md written with status closed |
 | `tangent-captured` | Topic raised and set aside during deliberation on another problem |
+| `out-of-scope-promoted` | Out-of-scope item from accepted ADR promoted to deferred stub via /curate or auto-created at Step 6c |
 
 ---
 
@@ -1071,3 +1230,5 @@ last_updated: "<YYYY-MM-DD>"
 - [ ] Any closed problem: adr.md written with status `closed`, Closed row in CLAUDE.md
 - [ ] Any tangent captured during deliberation: `tangent-captured` log entry written,
       stub adr.md written, row added to parent problem's Tangents table in CLAUDE.md
+- [ ] Any out-of-scope item in adr.md "What This Decision Does NOT Solve": deferred
+      stub written, Deferred row in CLAUDE.md, `out-of-scope-promoted` log entry

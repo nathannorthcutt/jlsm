@@ -483,6 +483,62 @@ if [[ -d ".feature/_archive" ]]; then
     done
 fi
 
+# ── Analysis 9: Out-of-scope items from accepted ADRs ──────────────────────
+# Extract "What This Decision Does NOT Solve" items from confirmed ADRs.
+# These are deferred work that was never tracked as deferred decision stubs.
+# Items are skipped if a deferred stub with a matching slug already exists.
+
+> "$TMPDIR_SCAN/out-of-scope.txt"
+
+if [[ -d ".decisions" ]]; then
+    find .decisions -name 'adr.md' -path '*/*/adr.md' 2>/dev/null | while IFS= read -r adr_file; do
+        # Only scan confirmed/accepted ADRs
+        status="$(grep -m1 '^status:' "$adr_file" 2>/dev/null | sed 's/^status:[[:space:]]*//' | tr -d '"' || true)"
+        if [[ "$status" != "confirmed" && "$status" != "accepted" ]]; then
+            continue
+        fi
+
+        parent_slug="$(basename "$(dirname "$adr_file")")"
+
+        # Extract "What This Decision Does NOT Solve" section
+        in_section=0
+        while IFS= read -r line; do
+            if [[ "$line" == "## What This Decision Does NOT Solve"* ]]; then
+                in_section=1
+                continue
+            fi
+            # Stop at next heading
+            if [[ $in_section -eq 1 && "$line" == "## "* ]]; then
+                break
+            fi
+            if [[ $in_section -eq 1 && "$line" == "- "* ]]; then
+                item="${line#- }"
+                # Skip template placeholders (contain < and >)
+                if [[ "$item" == *"<"*">"* ]]; then
+                    continue
+                fi
+                # Split on " — " to get concern and reason
+                if [[ "$item" == *" — "* ]]; then
+                    concern="${item%% — *}"
+                    reason="${item#* — }"
+                else
+                    concern="$item"
+                    reason=""
+                fi
+                # Derive a slug for deduplication: first 5 words, kebab-case
+                candidate_slug="$(echo "$concern" | tr '[:upper:]' '[:lower:]' | \
+                    sed 's/[^a-z0-9 ]//g' | awk '{for(i=1;i<=5&&i<=NF;i++) printf "%s-",$i}' | \
+                    sed 's/-$//')"
+                # Skip if a deferred stub already exists
+                if [[ -d ".decisions/$candidate_slug" ]]; then
+                    continue
+                fi
+                echo "OUTOFSCOPE|$parent_slug|$concern|$reason" >> "$TMPDIR_SCAN/out-of-scope.txt"
+            fi
+        done < "$adr_file"
+    done
+fi
+
 # ── Write summary file ──────────────────────────────────────────────────────
 
 SCAN_DATE="$(date +%Y-%m-%d)"
@@ -649,6 +705,19 @@ if [[ -s "$TMPDIR_SCAN/backfill-candidates.txt" ]]; then
     echo "" >> "$SUMMARY_FILE"
 fi
 
+# Out-of-scope items
+if [[ -s "$TMPDIR_SCAN/out-of-scope.txt" ]]; then
+    echo "## Out-of-Scope Items (from accepted ADRs)" >> "$SUMMARY_FILE"
+    echo 'Items from "What This Decision Does NOT Solve" sections with no corresponding deferred stub:' >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Parent ADR | Item | Reason |" >> "$SUMMARY_FILE"
+    echo "|------------|------|--------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ parent concern reason; do
+        echo "| $parent | $concern | $reason |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/out-of-scope.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
 # ── Report ───────────────────────────────────────────────────────────────────
 
 echo "Scan complete: $COMMIT_COUNT commits analyzed"
@@ -664,3 +733,4 @@ echo "  Stale KB entries: $(wc -l < "$TMPDIR_SCAN/stale-kb.txt" 2>/dev/null || e
 echo "  ADRs to revisit: $(wc -l < "$TMPDIR_SCAN/adr-revisit.txt" 2>/dev/null || echo 0)"
 echo "  Test-source drift: $(wc -l < "$TMPDIR_SCAN/test-drift.txt" 2>/dev/null || echo 0)"
 echo "  Backfill candidates: $(wc -l < "$TMPDIR_SCAN/backfill-candidates.txt" 2>/dev/null || echo 0)"
+echo "  Out-of-scope items: $(wc -l < "$TMPDIR_SCAN/out-of-scope.txt" 2>/dev/null || echo 0)"

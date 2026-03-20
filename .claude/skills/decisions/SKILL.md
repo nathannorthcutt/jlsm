@@ -12,7 +12,7 @@ Single entry point for all architecture decision operations.
 | Invocation | What it does |
 |------------|-------------|
 | `/decisions "<question>"` | Query decisions in plain language |
-| `/decisions review "<slug>"` | Revisit a confirmed decision with deliberation |
+| `/decisions revisit "<slug or topic>"` | Revisit decisions — find by topic or slug, understand why, check conditions, deliberate, optionally kick off a feature |
 | `/decisions defer "<problem>" [--until <condition>]` | Park a topic for later |
 | `/decisions close "<problem>" [--reason <text>]` | Rule a topic out permanently |
 | `/decisions triage` | Review all deferred items and act on them |
@@ -76,7 +76,7 @@ No decisions found matching "<question>".
 The decisions store contains:
   <n> confirmed · <n> deferred · <n> closed
 
-Try a broader term, or run /decisions review "<slug>" for a specific one.
+Try a broader term, or run /decisions revisit "<slug>" for a specific one.
 ```
 Stop.
 
@@ -115,7 +115,7 @@ TANGENTS (set aside during deliberation)
 
 ───────────────────────────────────────────────
 <n> decision(s) found.
-Want more detail? /decisions review "<most-relevant-slug>"
+Want more detail? /decisions revisit "<most-relevant-slug>"
 ───────────────────────────────────────────────
 ```
 
@@ -127,60 +127,149 @@ Want more detail? /decisions review "<most-relevant-slug>"
 
 ---
 
-## decisions review "<slug>" — deliberation review
+## decisions revisit "<slug or topic>" — revisit and re-evaluate decisions
 
-Revisits an existing confirmed ADR. Uses the deliberation loop — no file is
-written until the user confirms.
+Revisits existing decisions. Accepts a slug for a specific decision, a topic
+keyword, or a free text description to search across all accepted ADRs.
+Understands why the user wants to revisit before checking conditions or
+starting deliberation. May commission follow-up research if the user's
+concern points to a gap in the KB.
 
 Display opening header:
 ```
 ───────────────────────────────────────────────
-🏛️  DECISIONS REVIEW · <slug>
+🏛️  DECISIONS REVISIT
 ───────────────────────────────────────────────
 ```
 
-If slug not found: "No decision found for '<slug>'. Use /architect to start a new one."
+### Step 1 — Find matching decisions
 
-### Step 1 — Load
+The argument can be:
+- A **slug** — exact match against `.decisions/<slug>/`
+- A **topic keyword** — matched against problem slugs, recommendation text,
+  and constraint descriptions in the index
+- A **free text description** — matched against ADR content (problem statement,
+  decision text, constraints, conditions for revision)
 
-Read in order:
-1. `.decisions/<slug>/adr.md` — current decision and KB links
+Read `.decisions/CLAUDE.md` (and `history.md` if it exists). Find all accepted
+decisions that match the argument. For each match, read the `adr.md` to get
+the full decision and "Conditions for Revision" section.
+
+If no matches: "No accepted decisions match '<argument>'. Try /decisions list
+to browse all decisions."
+
+If one match: proceed directly to Step 2 with that decision.
+
+If multiple matches, present them:
+```
+Found <N> decisions matching "<argument>":
+
+  [1] <slug-1> — <recommendation summary> (accepted <date>)
+  [2] <slug-2> — <recommendation summary> (accepted <date>)
+
+Pick a number to start with, or: all
+```
+
+### Step 2 — Understand the motivation
+
+Before checking conditions or loading evaluation data, ask the user why they
+want to revisit. This conversation shapes the entire re-evaluation — a concern
+about performance at scale leads to different analysis than discovering a new
+algorithm.
+
+```
+── <slug> ─────────────────────────────────────
+Decision: <recommendation> (accepted <date>)
+
+What's prompting you to revisit this?
+
+For example:
+  • Constraints have changed (scale, resources, team, timeline)
+  • You've seen or learned about an alternative approach
+  • Implementation revealed unexpected problems
+  • It's been a while and you want to sanity-check
+  • You want to change direction regardless
+
+Or just describe what's on your mind.
+```
+
+Wait for the user's response. Use their answer to:
+
+1. **Identify which constraint dimensions are affected** — if they mention
+   performance, that maps to Scale or Accuracy. If they mention a new library,
+   that's new research. If they say "it feels wrong," probe once for specifics
+   before proceeding.
+
+2. **Determine if follow-up research is needed** — if the user mentions a
+   technology, approach, or paper that isn't in the KB, offer to commission
+   research before re-evaluating:
+   ```
+   I don't see <topic> in the KB. Want me to research it first so we can
+   evaluate it properly against the current decision?
+
+     yes  — I'll run /research and then come back to re-evaluate
+     no   — proceed with what we have
+   ```
+   If "yes": invoke `/research` as a sub-agent, then continue to Step 3 with
+   the new KB entry available.
+
+3. **Determine if the user already knows the answer** — if they say "I want
+   to change to X regardless," skip condition checking and go straight to
+   Step 4 as an override.
+
+Append a `revisit-requested` log entry with the user's stated motivation.
+
+### Step 3 — Check revision conditions
+
+Read:
+1. `.decisions/<slug>/adr.md` — "Conditions for Revision" section
 2. `.decisions/<slug>/constraints.md` — original constraints
-3. `.decisions/<slug>/log.md` — full history
-4. `.decisions/<slug>/evaluation.md` — scoring and KB evidence
+3. `.decisions/<slug>/evaluation.md` — candidate scoring
 
-Append a `review-requested` log entry immediately (before any analysis).
+Check each revision condition against the current state of the codebase and KB,
+**informed by the user's motivation from Step 2**:
+- **Scale thresholds** — read relevant source files or configs to check if
+  thresholds have been crossed
+- **New research available** — check `.kb/` for entries added after the ADR's
+  accepted date that are in the same topic/category as the ADR's candidates
+- **Time-based review** — check if the ADR's age exceeds any stated review
+  interval
+- **Technology changes** — check if the ADR references technologies or
+  constraints that may have evolved
+- **User's concern** — map their motivation to the relevant conditions and
+  highlight which ones are affected
 
-### Step 2 — Open deliberation
-
+Present the assessment:
 ```
-───────────────────────────────────────────────
-🏛️  DECISIONS REVIEW · <slug>
-Current recommendation: <from adr.md>
-Status: <from frontmatter>
-Last activity: <most recent log entry>
-Original decision date: <from adr.md>
+Revision conditions for <slug>:
+  ✓ <condition 1> — triggered: <evidence>
+  ✗ <condition 2> — not triggered: <current state>
+  ? <condition 3> — unknown: <what would need checking>
 
-What prompted this review?
-  1. Constraints have changed
-  2. New research is available in the KB
-  3. Implementation revealed unexpected problems
-  4. Scheduled review
-  5. Want to change the decision regardless of scoring
-
-Or just describe what has changed.
-───────────────────────────────────────────────
+Based on your concern about <user's motivation>:
+  <Which conditions are relevant and what the evidence suggests>
 ```
 
-### Step 3 — Analyse and re-evaluate
+If no conditions are triggered AND the user's concern doesn't point to a
+gap: present this and offer to proceed anyway or confirm the decision still
+holds.
 
-Branch based on response:
+### Step 4 — Deliberate
+
+Load the full decision context:
+1. `.decisions/<slug>/adr.md`
+2. `.decisions/<slug>/constraints.md`
+3. `.decisions/<slug>/evaluation.md`
+4. `.decisions/<slug>/log.md`
+
+Branch based on the user's motivation and condition assessment:
 
 **Constraints changed:** ask for updated values, re-score changed dimensions,
 determine if recommendation changes.
 
 **New KB research:** read new subject file(s), score against current constraints,
-add to candidate pool, re-run comparison.
+add to candidate pool, re-run comparison. Apply composite candidate detection
+(Step 4b2 from `/architect`) if the new research opens combination possibilities.
 
 **Implementation problems:** ask user to describe specifically, map to a
 constraint dimension, determine if ADR remains valid.
@@ -188,22 +277,27 @@ constraint dimension, determine if ADR remains valid.
 **Override:** ask one question only — "Can you tell me why? I'll record it."
 Accept any reason or none. Proceed with override noted.
 
-### Step 4 — Present and confirm
+**Sanity check (no specific concern):** present a brief summary of the decision,
+its constraints, and its conditions. Ask: "Does this still match your
+understanding of the problem? Anything feel off?" If the user confirms it's
+fine, mark as reviewed and move on.
 
-Present the review outcome as a defence summary in chat (same format as
+### Step 5 — Present and confirm
+
+Present the outcome as a defence summary in chat (same format as
 `/architect` Step 6a) with one of these headers:
-- `[NO CHANGE]` — recommendation holds; explain with KB evidence
+- `[STILL VALID]` — recommendation holds; explain with KB evidence
 - `[REVISED]` — recommendation changes; explain what changed
 - `[OVERRIDE]` — user-directed change; state what changed and the reason
 
 Follow all deliberation chat rules from `/architect` Step 6b.
 
-### Step 5 — Write confirmed outcome
+### Step 6 — Write confirmed outcome
 
-**No change:**
+**Still valid (no change):**
 - Update `adr.md` frontmatter: `last_reviewed: YYYY-MM-DD`
-- Append `review-deliberation-confirmed` log entry
-- Append `review-completed` log entry
+- Append `revisit-confirmed` log entry (includes user's motivation and
+  "decision reaffirmed" outcome)
 
 **Revision:**
 1. Mark current `adr.md`: `status: superseded`, `superseded_by: adr-v<N>.md`
@@ -213,14 +307,55 @@ Follow all deliberation chat rules from `/architect` Step 6b.
 5. Update `.decisions/<slug>/CLAUDE.md` ADR Version History
 6. Update `.decisions/CLAUDE.md` master index
 
-Every invocation produces at minimum a `review-requested` and a
-`review-deliberation-confirmed` or `review-completed` log entry.
+After writing the outcome, check whether implementation work is needed:
 
-Display on completion:
+**If the decision was revised:**
+```
+── Decision revised: <slug> ────────────────────
+Previous: <old recommendation>
+Revised:  <new recommendation>
+Reason:   <user's motivation from Step 2>
+
+This revision may require implementation changes.
+
+  feature  — start /feature to implement the change
+             (enters pipeline at planning — architecture context already loaded)
+  later    — note it and move on
+```
+
+**feature** — Generate a feature from the revision:
+- Slug: `revise-<adr-slug>` (e.g., `revise-session-storage`)
+- Description: "Implement revised architecture decision: <new recommendation>.
+  Previous approach was <old recommendation>. Changed because: <revision reason>."
+- Create `.feature/<slug>/` directory and write `brief.md` with:
+  - The revision context (what changed, why)
+  - The new ADR as the governing decision
+  - Acceptance criteria derived from the ADR's "Implementation Guidance" section
+- Write `status.md` with stage set to `domains` (skip scoping — the brief is
+  the ADR revision itself)
+- Write `domains.md` with the ADR already marked as `resolved` (it was just
+  confirmed via deliberation)
+- Invoke `/feature-plan` as the next step — the feature enters the pipeline
+  at planning, skipping scoping and domains since the architectural context
+  is already established
+
+**later** — note in the review log and continue to next matched decision.
+
+**If the decision is still valid:**
+```
+  ✓ Decision holds — reaffirmed <today's date>.
+```
+Continue to next matched decision or finish.
+
+Every invocation produces at minimum a `revisit-requested` and a
+`revisit-confirmed` or `revision-confirmed` log entry.
+
+### Step 7 — Summary
+
 ```
 ───────────────────────────────────────────────
-🏛️  DECISIONS REVIEW complete · <slug>
-⏱  Token estimate: ~<N>K
+🏛️  DECISIONS REVISIT complete
+  Revisited: <n>   Still valid: <n>   Revised: <n>   Features started: <n>
 ───────────────────────────────────────────────
 ```
 
@@ -415,8 +550,9 @@ Deferred remaining: <n>
 If the Deferred section is now empty, add a `<!-- Last cleared: YYYY-MM-DD -->`
 comment to that section in `.decisions/CLAUDE.md`.
 
-Check total line count: if over 80 lines, move oldest Recently Accepted rows
-to `history.md` (same rule as `/architect` Step 7).
+Check total line count: if over 80 lines, archive oldest Recently Accepted rows
+to `history.md` (same crash-safe order as `/architect` Step 7: create history.md
+if needed → append row to history.md → remove row from CLAUDE.md).
 
 ---
 
@@ -469,7 +605,7 @@ If both flags are provided, apply both (intersection).
   ────────────────────────────────────────────────
   Total: <n accepted> accepted · <n draft> draft · <n deferred> deferred · <n closed> closed
 
-  Details: /decisions review "<slug>"
+  Details: /decisions revisit "<slug>"
   Query:   /decisions "<question>"
 ```
 
@@ -544,7 +680,7 @@ SUPPORTING RESEARCH
 
 <If status is draft:>
 NOTE: This is a draft — the rationale above has not been through formal
-deliberation. Run /decisions review "<slug>" to formalize.
+deliberation. Run /decisions revisit "<slug>" to formalize.
 
 <If status is deferred:>
 NOTE: This topic is deferred. Resume condition: <condition or "not specified">.
@@ -557,7 +693,7 @@ NOTE: This topic is deferred. Resume condition: <condition or "not specified">.
 ```
   Copy this summary into a PR description or share with your team.
 
-  To revisit: /decisions review "<slug>"
+  To revisit: /decisions revisit "<slug>"
   To see all:  /decisions list
 ```
 
@@ -900,7 +1036,7 @@ source: "backfill"
  "Identified from source structure at <path>">
 
 ## Next Step
-Run `/decisions review "<slug>"` to formalize through deliberation.
+Run `/decisions revisit "<slug>"` to formalize through deliberation.
 ```
 
 Create `log.md` with a `backfill-draft` entry. Add a row to `.decisions/CLAUDE.md`
@@ -909,7 +1045,7 @@ in the Active section with status `draft`.
 Display:
 ```
   ✓ Draft written: .decisions/<slug>/adr.md
-    To formalize: /decisions review "<slug>"
+    To formalize: /decisions revisit "<slug>"
 ```
 
 **defer** → prompt:
@@ -963,7 +1099,7 @@ a domain, it displays a warning but does NOT block:
   ⚠ DRAFT ADR    <domain> — .decisions/<slug>/adr.md (draft — not yet deliberated)
 ```
 The domain is classified as `pending-decision` (not `resolved`). The user can
-choose to proceed or formalize the draft first via `/decisions review`.
+choose to proceed or formalize the draft first via `/decisions revisit`.
 
 **`/decisions triage` behaviour:** draft ADRs appear alongside deferred items.
 Same action options: evaluate, update, close, delete, skip.

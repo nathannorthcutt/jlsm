@@ -10,6 +10,7 @@
 | Feature | Slug | Started | Stage | Last Checkpoint |
 |---------|------|---------|-------|-----------------|
 | In-process database engine | in-process-database-engine | 2026-03-19 | planning complete | work-plan.md written, 13 stubs created |
+| Engine clustering | engine-clustering | 2026-03-20 | planning complete | work-plan.md written, 22 stubs created |
 
 ## Completed / Archived
 
