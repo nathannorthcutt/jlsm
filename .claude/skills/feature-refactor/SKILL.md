@@ -293,7 +293,7 @@ directories or files commonly used for them:
 If found:
 ```
 Integration test files found at <path> but no run command is configured
-in project-config.md. Add one with /feature-init to enable automatic
+in project-config.md. Add one with /setup-vallorcine to enable automatic
 integration test runs during refactor.
 
 Manual check needed before merging: <path>

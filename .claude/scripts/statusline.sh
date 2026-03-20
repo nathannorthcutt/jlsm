@@ -15,9 +15,10 @@
 # and resets the baseline for the new stage. Per-stage tokens are derived from
 # context_window.used_percentage * context_window_size (from session JSON).
 #
-# State files:
-#   .claude/.token-state          — feature_dir (written by Stop hook on cold start)
-#   .claude/.statusline-baseline  — baseline_stage, baseline_ctx_tokens (written here)
+# State files (JSON format, backwards-compatible with shell variable format):
+#   .claude/.token-state          — {"feature_dir":"...","cached_stage":"...",...}
+#   .claude/.statusline-baseline  — {"baseline_stage":"...","baseline_ctx_tokens":N,...}
+#   .claude/.subagent-state       — {"active":true,"agent_id":"...","description":"..."}
 #   .feature/<slug>/token-log.md  — per-stage token log (appended here)
 #
 # Performance: <10ms typical (reads 2-3 small files + stdin JSON).
@@ -25,6 +26,62 @@
 # Zero token cost — runs locally by Claude Code.
 
 input=$(cat)
+
+# ── JSON state file helpers ───────────────────────────────────────────────────
+# Reads a value from a flat JSON object without jq.
+# Usage: _json_val '{"key":"value"}' "key" → value
+_json_val() {
+    local json="$1" key="$2"
+    echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | sed 's/.*:.*"\([^"]*\)"/\1/'
+}
+
+# Read a numeric value from flat JSON (unquoted numbers)
+_json_num() {
+    local json="$1" key="$2"
+    echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*[0-9]*" | head -1 | grep -o '[0-9]*$'
+}
+
+# Detect whether a file is JSON (starts with {) or shell variables (has = without {)
+_is_json() {
+    [[ -f "$1" ]] || return 1
+    local first_char
+    first_char=$(head -c1 "$1" 2>/dev/null)
+    [[ "$first_char" == "{" ]]
+}
+
+# Read .token-state — works with both JSON and legacy shell variable format
+_read_token_state() {
+    local file="$1"
+    feature_dir=""
+    cached_stage=""
+    if _is_json "$file"; then
+        local content
+        content=$(cat "$file" 2>/dev/null)
+        feature_dir=$(_json_val "$content" "feature_dir")
+        cached_stage=$(_json_val "$content" "cached_stage")
+    else
+        # Legacy shell variable format
+        source "$file" 2>/dev/null
+    fi
+}
+
+# Read .statusline-baseline — works with both JSON and legacy shell variable format
+_read_baseline() {
+    local file="$1"
+    baseline_stage=""
+    baseline_ctx_tokens=""
+    baseline_timestamp=""
+    if _is_json "$file"; then
+        local content
+        content=$(cat "$file" 2>/dev/null)
+        baseline_stage=$(_json_val "$content" "baseline_stage")
+        baseline_ctx_tokens=$(_json_num "$content" "baseline_ctx_tokens")
+        baseline_timestamp=$(_json_val "$content" "baseline_timestamp")
+    else
+        # Legacy shell variable format
+        source "$file" 2>/dev/null
+    fi
+}
 
 # ── Extract session info from stdin JSON ─────────────────────────────────────
 
@@ -68,9 +125,7 @@ stage_tokens=""
 BASELINE_FILE=".claude/.statusline-baseline"
 
 if [[ -f .claude/.token-state ]]; then
-    feature_dir=""
-    cached_stage=""
-    source .claude/.token-state 2>/dev/null
+    _read_token_state .claude/.token-state
 
     if [[ -n "$feature_dir" && -f "$feature_dir/status.md" ]]; then
         slug=$(basename "$feature_dir")
@@ -163,20 +218,20 @@ if [[ -f .claude/.token-state ]]; then
                 baseline_stage=""
                 baseline_ctx_tokens=""
                 baseline_timestamp=""
-                [[ -f "$BASELINE_FILE" ]] && source "$BASELINE_FILE" 2>/dev/null
+                [[ -f "$BASELINE_FILE" ]] && _read_baseline "$BASELINE_FILE"
 
                 if [[ "$baseline_stage" != "$current_stage" ]]; then
                     # ── Stage transition detected ────────────────────────
                     # Reset baseline for new stage. Token logging is handled
                     # by token-stop-hook.sh (transcript-based, more accurate).
-                    printf 'baseline_stage=%q\nbaseline_ctx_tokens=%s\nbaseline_timestamp=%s\n' \
+                    printf '{"baseline_stage":"%s","baseline_ctx_tokens":%s,"baseline_timestamp":"%s"}\n' \
                         "$current_stage" "$current_ctx_tokens" \
                         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BASELINE_FILE"
                     baseline_ctx_tokens="$current_ctx_tokens"
 
                 elif [[ ! "$baseline_ctx_tokens" =~ ^[0-9]+$ ]]; then
                     # No valid baseline — initialize
-                    printf 'baseline_stage=%q\nbaseline_ctx_tokens=%s\nbaseline_timestamp=%s\n' \
+                    printf '{"baseline_stage":"%s","baseline_ctx_tokens":%s,"baseline_timestamp":"%s"}\n' \
                         "$current_stage" "$current_ctx_tokens" \
                         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BASELINE_FILE"
                     baseline_ctx_tokens="$current_ctx_tokens"
@@ -196,12 +251,30 @@ else
     rm -f "$BASELINE_FILE"
 fi
 
+# ── Read subagent state ──────────────────────────────────────────────────────
+
+subagent_display=""
+SUBAGENT_FILE=".claude/.subagent-state"
+if [[ -f "$SUBAGENT_FILE" ]]; then
+    subagent_content=$(cat "$SUBAGENT_FILE" 2>/dev/null)
+    # File existence = subagent active (SubagentStop removes it)
+    subagent_desc=$(_json_val "$subagent_content" "description")
+    if [[ -n "$subagent_desc" ]]; then
+        subagent_display="agent: $subagent_desc"
+    fi
+fi
+
 # ── Build output line ────────────────────────────────────────────────────────
 
 parts=()
 
 if [[ -n "$stage_display" ]]; then
     parts+=("\033[36m$stage_display\033[0m")
+fi
+
+# Show active subagent if any
+if [[ -n "$subagent_display" ]]; then
+    parts+=("\033[35m$subagent_display\033[0m")
 fi
 
 # Show per-stage tokens if available

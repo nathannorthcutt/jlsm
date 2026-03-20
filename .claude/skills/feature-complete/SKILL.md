@@ -71,7 +71,7 @@ automatically — no special handling needed.)
 as a short-term reference but does not go into the repository.
 
 If `.feature/_archive/` does not exist, create it (it should have been created
-by /feature-init, but create it if missing).
+by /setup-vallorcine, but create it if missing).
 
 ---
 

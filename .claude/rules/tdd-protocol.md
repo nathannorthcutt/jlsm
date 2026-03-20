@@ -51,7 +51,7 @@ No command re-does completed work without explicit user confirmation.
                        .feature/<slug>/units/WU-N/cycle-log.md (parallel: refactor entries)
   PR command         → .feature/<slug>/pr-draft.md
   Retro command      → .feature/<slug>/cycle-log.md (retro-complete entry)
-                       (invokes /architect, /decisions review, /research as sub-agents)
+                       (invokes /architect, /decisions revisit, /research as sub-agents)
 
 ## Shared read
   All TDD agents read: .feature/project-config.md, .feature/<slug>/status.md,
