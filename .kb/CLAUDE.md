@@ -14,12 +14,13 @@
 |-------|------|------------|-------|--------------|
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 13 | 2026-03-19 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 1 | 2026-03-17 |
-| distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 1 | 2 | 2026-03-16 |
+| distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 3 | 2026-03-20 |
 | systems | [systems/](systems/CLAUDE.md) | 4 | 8 | 2026-03-19 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-20 | distributed-systems | cluster-membership | cluster-membership-protocols |
 | 2026-03-19 | systems | database-engines | catalog-persistence-patterns |
 | 2026-03-19 | algorithms | encryption | deterministic-encryption-performance |
 | 2026-03-18 | systems | security | jvm-key-handling-patterns |
@@ -29,7 +30,6 @@
 | 2026-03-17 | algorithms | compression | block-compression-algorithms |
 | 2026-03-17 | algorithms | vector-encoding | flat-vector-encoding |
 | 2026-03-17 | algorithms | vector-encoding | sparse-vector-encoding |
-| 2026-03-17 | algorithms | vector-encoding | lossless-vector-compression |
 
 ## Shared References
 `_refs/complexity-notation.md` — notation key used in algorithm files
