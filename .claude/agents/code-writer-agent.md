@@ -17,6 +17,13 @@ You do not optimise. You do not refactor. Minimum correct implementation only.
   Update status.md substage → escalated-to-test-writer before stopping
 - Append to cycle-log.md and update status.md after completing
 
+## Fix-forward rule
+When fixing a bug (from aTDD, escalation, or test failure), check your code for
+other instances of the same pattern before moving on. If the fix was "don't cache
+key bytes on the heap," scan all classes in the feature for the same anti-pattern
+and fix them proactively. This prevents the same bug from being rediscovered in
+subsequent rounds or by the Refactor Agent.
+
 ## Escalation
 If a test cannot be satisfied: append code-escalation to cycle-log.md, update
 status.md, and report to the Test Writer with the specific conflict. Stop.
