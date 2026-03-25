@@ -14,6 +14,8 @@ optimization decisions.
 | [composite-key-reindex-orphan.md](composite-key-reindex-orphan.md) | Composite-key re-index orphan (adversarial) | active | data-integrity bug class | Any index using composite keys with mutable assignment |
 | [runtime-type-inference-ambiguity.md](runtime-type-inference-ambiguity.md) | Runtime type inference ambiguity (adversarial) | active | data-integrity bug class | Any index that infers FieldType from Java runtime type |
 | [multi-index-atomicity.md](multi-index-atomicity.md) | Multi-index atomicity (adversarial) | active | data-integrity bug class | Any registry managing multiple unique indices |
+| [between-mixed-type-mismatch.md](between-mixed-type-mismatch.md) | Between predicate mixed-type mismatch (adversarial) | active | data-integrity bug class | Any Between/range predicate accepting Comparable<?> |
+| [between-inverted-range.md](between-inverted-range.md) | Between predicate inverted range (adversarial) | active | data-integrity bug class | Any range lookup using TreeMap.subMap or similar |
 | [table-indices-and-queries.md](table-indices-and-queries.md) | table-indices-and-queries (feature footprint) | stable | feature audit record | Secondary index + query API overview |
 
 ## Comparison Summary

@@ -12,6 +12,7 @@ standard SQL SELECT semantics.
 | [vector-similarity-sql-syntax.md](vector-similarity-sql-syntax.md) | Vector Similarity Search SQL Syntax | active | N/A (survey) | Choosing SQL syntax for vector nearest-neighbor queries |
 | [asymmetric-operand-assumption.md](asymmetric-operand-assumption.md) | Asymmetric operand assumption (adversarial) | active | data-integrity tendency | SQL translator operand handling |
 | [unchecked-parse-propagation.md](unchecked-parse-propagation.md) | Unchecked parse exception propagation (adversarial) | active | data-integrity tendency | Numeric parsing in translators |
+| [bind-parameter-comparable-gap.md](bind-parameter-comparable-gap.md) | Bind parameter Comparable gap (adversarial) | active | data-integrity confirmed | Bind params with range operators |
 | [sql-query-support.md](sql-query-support.md) | sql-query-support (feature footprint) | stable | feature audit record | SQL parser/translator overview |
 
 ## Comparison Summary

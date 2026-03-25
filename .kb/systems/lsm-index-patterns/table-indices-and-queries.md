@@ -40,6 +40,8 @@ available indices, falling back to scan-and-filter for unindexed predicates.
 - Runtime type inference ambiguity: Short→INT16 vs FLOAT16 → [KB entry](runtime-type-inference-ambiguity.md)
 - Multi-index atomicity: sequential unique checks leave orphan entries → [KB entry](multi-index-atomicity.md)
 - Mutable array in record: float[] not cloned in Predicate.VectorNearest → [KB entry](../../data-structures/mutable-array-in-record.md)
+- Between mixed-type mismatch: Integer/Long mix crashed codec → [KB entry](between-mixed-type-mismatch.md)
+- Between inverted range: low > high crashed TreeMap.subMap → [KB entry](between-inverted-range.md)
 
 ## Cross-references
 - Related features: sql-query-support (depends on Predicate AST), float16-vector-support (FLOAT16 encoding)

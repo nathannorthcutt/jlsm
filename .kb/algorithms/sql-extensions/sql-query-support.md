@@ -28,6 +28,7 @@ VECTOR_DISTANCE() in ORDER BY, LIMIT/OFFSET, and positional bind parameters.
 ## Adversarial findings
 - Asymmetric operand assumption: translator assumed field-left/value-right → [KB entry](asymmetric-operand-assumption.md)
 - Unchecked parse propagation: `Long.parseLong` overflow bypassed checked exception contract → [KB entry](unchecked-parse-propagation.md)
+- Bind parameter Comparable gap: `?` failed with range operators → [KB entry](bind-parameter-comparable-gap.md)
 
 ## Cross-references
 - KB: .kb/algorithms/sql-extensions/vector-similarity-sql-syntax.md

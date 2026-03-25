@@ -10,7 +10,7 @@ Infrastructure, databases, distributed systems, caching, and data management str
 | Category | Path | Files | Last Updated | Description |
 |----------|------|-------|--------------|-------------|
 | vector-partitioning | [vector-partitioning/](vector-partitioning/CLAUDE.md) | 5 | 2026-03-16 | Strategies for partitioning large vector datasets across bounded-memory partitions |
-| lsm-index-patterns | [lsm-index-patterns/](lsm-index-patterns/CLAUDE.md) | 2 | 2026-03-25 | How index types (inverted, vector, secondary) use LSM scan paths and cache |
+| lsm-index-patterns | [lsm-index-patterns/](lsm-index-patterns/CLAUDE.md) | 7 | 2026-03-25 | How index types (inverted, vector, secondary) use LSM scan paths and cache |
 | security | [security/](security/CLAUDE.md) | 1 | 2026-03-18 | Key management, encryption integration, in-memory data protection for JVM |
 | database-engines | [database-engines/](database-engines/CLAUDE.md) | 1 | 2026-03-19 | Persistence patterns, metadata management, and recovery strategies for database engines |
 
