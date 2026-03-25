@@ -13,13 +13,17 @@
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 14 | 2026-03-25 |
-| data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 1 | 2026-03-17 |
+| data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 2 | 2026-03-25 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 3 | 2026-03-20 |
-| systems | [systems/](systems/CLAUDE.md) | 4 | 9 | 2026-03-25 |
+| systems | [systems/](systems/CLAUDE.md) | 4 | 12 | 2026-03-25 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | systems | lsm-index-patterns | table-indices-and-queries (footprint) |
+| 2026-03-25 | systems | lsm-index-patterns | multi-index-atomicity |
+| 2026-03-25 | systems | lsm-index-patterns | runtime-type-inference-ambiguity |
+| 2026-03-25 | data-structures | (root) | mutable-array-in-record |
 | 2026-03-25 | systems | lsm-index-patterns | composite-key-reindex-orphan |
 | 2026-03-25 | algorithms | vector-encoding | float16-vector-support |
 | 2026-03-20 | distributed-systems | cluster-membership | cluster-membership-protocols |

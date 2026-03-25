@@ -42,7 +42,9 @@ public final class IndexRegistry implements Closeable {
 
         for (IndexDefinition def : definitions) {
             validate(schema, def);
-            this.indices.add(createIndex(def));
+            final int fieldIdx = schema.fieldIndex(def.fieldName());
+            final FieldType fieldType = schema.fields().get(fieldIdx).type();
+            this.indices.add(createIndex(def, fieldType));
         }
     }
 
@@ -51,19 +53,20 @@ public final class IndexRegistry implements Closeable {
         Objects.requireNonNull(primaryKey, "primaryKey");
         Objects.requireNonNull(document, "document");
 
-        // Unique checks first
+        // Phase 1: validate ALL unique constraints before any mutation.
+        // This prevents orphan entries if the Nth unique check fails after
+        // the first N-1 unique indices already inserted.
         for (final SecondaryIndex idx : indices) {
-            if (idx.definition().indexType() == IndexType.UNIQUE) {
-                final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
-                idx.onInsert(primaryKey, fieldValue);
+            if (idx instanceof FieldIndex fi && fi.definition().indexType() == IndexType.UNIQUE) {
+                final Object fieldValue = extractFieldValue(document, fi.definition().fieldName());
+                fi.checkUnique(fieldValue);
             }
         }
-        // Non-unique inserts
+
+        // Phase 2: all unique checks passed — now insert into all indices
         for (final SecondaryIndex idx : indices) {
-            if (idx.definition().indexType() != IndexType.UNIQUE) {
-                final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
-                idx.onInsert(primaryKey, fieldValue);
-            }
+            final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
+            idx.onInsert(primaryKey, fieldValue);
         }
 
         documentStore.put(toPkKey(primaryKey), new StoredEntry(copySegment(primaryKey), document));
@@ -72,6 +75,25 @@ public final class IndexRegistry implements Closeable {
     public void onUpdate(MemorySegment primaryKey, JlsmDocument oldDocument,
             JlsmDocument newDocument) throws IOException {
         assert !closed : "Registry is closed";
+
+        // Phase 1: validate ALL unique constraints for the new values before any mutation.
+        // This prevents partial updates if the Nth unique check fails after the first
+        // N-1 indices have already been updated.
+        for (final SecondaryIndex idx : indices) {
+            if (idx instanceof FieldIndex fi && fi.definition().indexType() == IndexType.UNIQUE) {
+                final String fieldName = fi.definition().fieldName();
+                final Object oldValue = oldDocument != null
+                        ? extractFieldValue(oldDocument, fieldName)
+                        : null;
+                final Object newValue = extractFieldValue(newDocument, fieldName);
+                // Only check uniqueness if the value actually changed
+                if (newValue != null && !newValue.equals(oldValue)) {
+                    fi.checkUnique(newValue);
+                }
+            }
+        }
+
+        // Phase 2: all unique checks passed — now apply updates to all indices
         for (final SecondaryIndex idx : indices) {
             final String fieldName = idx.definition().fieldName();
             final Object oldValue = oldDocument != null ? extractFieldValue(oldDocument, fieldName)
@@ -323,9 +345,10 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    private static SecondaryIndex createIndex(IndexDefinition def) throws IOException {
+    private static SecondaryIndex createIndex(IndexDefinition def, FieldType fieldType)
+            throws IOException {
         return switch (def.indexType()) {
-            case EQUALITY, RANGE, UNIQUE -> new FieldIndex(def);
+            case EQUALITY, RANGE, UNIQUE -> new FieldIndex(def, fieldType);
             case FULL_TEXT -> new FullTextFieldIndex(def);
             case VECTOR -> new VectorFieldIndex(def);
         };

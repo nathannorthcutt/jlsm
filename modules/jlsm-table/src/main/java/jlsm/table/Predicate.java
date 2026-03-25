@@ -99,6 +99,15 @@ public sealed interface Predicate {
             if (topK <= 0) {
                 throw new IllegalArgumentException("topK must be positive");
             }
+            queryVector = queryVector.clone();
+        }
+
+        /**
+         * Returns a defensive copy of the query vector.
+         */
+        @Override
+        public float[] queryVector() {
+            return queryVector.clone();
         }
     }
 

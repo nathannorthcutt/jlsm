@@ -12,6 +12,9 @@ optimization decisions.
 |------|---------|--------|------------|----------|
 | [index-scan-patterns.md](index-scan-patterns.md) | Index Scan Patterns over LSM Storage | active | per-index access pattern taxonomy | Scan optimization, cache strategy |
 | [composite-key-reindex-orphan.md](composite-key-reindex-orphan.md) | Composite-key re-index orphan (adversarial) | active | data-integrity bug class | Any index using composite keys with mutable assignment |
+| [runtime-type-inference-ambiguity.md](runtime-type-inference-ambiguity.md) | Runtime type inference ambiguity (adversarial) | active | data-integrity bug class | Any index that infers FieldType from Java runtime type |
+| [multi-index-atomicity.md](multi-index-atomicity.md) | Multi-index atomicity (adversarial) | active | data-integrity bug class | Any registry managing multiple unique indices |
+| [table-indices-and-queries.md](table-indices-and-queries.md) | table-indices-and-queries (feature footprint) | stable | feature audit record | Secondary index + query API overview |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->
