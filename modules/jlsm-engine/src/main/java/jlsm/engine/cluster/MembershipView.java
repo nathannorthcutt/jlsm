@@ -8,9 +8,9 @@ import java.util.Set;
  * An immutable snapshot of the cluster membership at a specific epoch.
  *
  * <p>
- * Contract: Captures the set of known members, the view epoch (monotonically increasing),
- * and the timestamp when this view was created. Provides convenience methods for querying
- * membership state. Comparable by epoch for ordering views chronologically.
+ * Contract: Captures the set of known members, the view epoch (monotonically increasing), and the
+ * timestamp when this view was created. Provides convenience methods for querying membership state.
+ * Comparable by epoch for ordering views chronologically.
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
@@ -24,8 +24,8 @@ public final class MembershipView implements Comparable<MembershipView> {
     /**
      * Creates a new membership view.
      *
-     * @param epoch     the view epoch; must be non-negative
-     * @param members   the set of members in this view; must not be null
+     * @param epoch the view epoch; must be non-negative
+     * @param members the set of members in this view; must not be null
      * @param timestamp the instant this view was created; must not be null
      */
     public MembershipView(long epoch, Set<Member> members, Instant timestamp) {
@@ -123,8 +123,10 @@ public final class MembershipView implements Comparable<MembershipView> {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof MembershipView that)) return false;
+        if (this == o)
+            return true;
+        if (!(o instanceof MembershipView that))
+            return false;
         return epoch == that.epoch && members.equals(that.members)
                 && timestamp.equals(that.timestamp);
     }
@@ -136,7 +138,7 @@ public final class MembershipView implements Comparable<MembershipView> {
 
     @Override
     public String toString() {
-        return "MembershipView[epoch=" + epoch + ", members=" + members.size()
-                + ", timestamp=" + timestamp + "]";
+        return "MembershipView[epoch=" + epoch + ", members=" + members.size() + ", timestamp="
+                + timestamp + "]";
     }
 }

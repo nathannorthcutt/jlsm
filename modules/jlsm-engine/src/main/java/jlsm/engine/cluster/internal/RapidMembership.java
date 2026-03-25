@@ -35,19 +35,19 @@ import java.util.concurrent.locks.ReentrantLock;
  * <p>
  * Contract: Implements the Rapid membership protocol with:
  * <ul>
- *   <li>Expander graph monitoring overlay (K observers per node)</li>
- *   <li>Multi-process cut detection (alerts from multiple observers before suspecting)</li>
- *   <li>Leaderless 75% consensus for view changes</li>
- *   <li>Adaptive phi accrual edge failure detection via {@link PhiAccrualFailureDetector}</li>
+ * <li>Expander graph monitoring overlay (K observers per node)</li>
+ * <li>Multi-process cut detection (alerts from multiple observers before suspecting)</li>
+ * <li>Leaderless 75% consensus for view changes</li>
+ * <li>Adaptive phi accrual edge failure detection via {@link PhiAccrualFailureDetector}</li>
  * </ul>
  *
  * <p>
- * Uses {@link ClusterTransport} for messaging, {@link DiscoveryProvider} for bootstrap,
- * and {@link PhiAccrualFailureDetector} for edge failure detection.
+ * Uses {@link ClusterTransport} for messaging, {@link DiscoveryProvider} for bootstrap, and
+ * {@link PhiAccrualFailureDetector} for edge failure detection.
  *
  * <p>
- * Side effects: Starts background threads for the protocol period loop. Modifies the
- * membership view on consensus. Notifies registered listeners of view changes.
+ * Side effects: Starts background threads for the protocol period loop. Modifies the membership
+ * view on consensus. Notifies registered listeners of view changes.
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
@@ -77,10 +77,10 @@ public final class RapidMembership implements MembershipProtocol {
     /**
      * Creates a new Rapid membership protocol instance.
      *
-     * @param localAddress    the address of this node; must not be null
-     * @param transport       the cluster transport; must not be null
-     * @param discovery       the discovery provider; must not be null
-     * @param config          the cluster configuration; must not be null
+     * @param localAddress the address of this node; must not be null
+     * @param transport the cluster transport; must not be null
+     * @param discovery the discovery provider; must not be null
+     * @param config the cluster configuration; must not be null
      * @param failureDetector the phi accrual failure detector; must not be null
      */
     public RapidMembership(NodeAddress localAddress, ClusterTransport transport,
@@ -157,10 +157,8 @@ public final class RapidMembership implements MembershipProtocol {
             t.setDaemon(true);
             return t;
         });
-        scheduler.scheduleAtFixedRate(this::protocolTick,
-                config.protocolPeriod().toMillis(),
-                config.protocolPeriod().toMillis(),
-                TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(this::protocolTick, config.protocolPeriod().toMillis(),
+                config.protocolPeriod().toMillis(), TimeUnit.MILLISECONDS);
     }
 
     @Override
@@ -194,11 +192,8 @@ public final class RapidMembership implements MembershipProtocol {
                 continue;
             }
             try {
-                transport.send(member.address(), new Message(
-                        MessageType.VIEW_CHANGE,
-                        localAddress,
-                        sequenceCounter.getAndIncrement(),
-                        payload));
+                transport.send(member.address(), new Message(MessageType.VIEW_CHANGE, localAddress,
+                        sequenceCounter.getAndIncrement(), payload));
             } catch (IOException e) {
                 // Best effort — some members may be unreachable
                 assert e != null : "exception should not be null";
@@ -240,11 +235,8 @@ public final class RapidMembership implements MembershipProtocol {
         failureDetector.recordHeartbeat(sender);
 
         // Respond with ACK
-        return CompletableFuture.completedFuture(new Message(
-                MessageType.ACK,
-                localAddress,
-                sequenceCounter.getAndIncrement(),
-                new byte[0]));
+        return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
+                sequenceCounter.getAndIncrement(), new byte[0]));
     }
 
     private CompletableFuture<Message> handleViewChange(NodeAddress sender, Message msg) {
@@ -253,8 +245,7 @@ public final class RapidMembership implements MembershipProtocol {
 
         final byte[] payload = msg.payload();
         if (payload.length == 0) {
-            return CompletableFuture.completedFuture(new Message(
-                    MessageType.ACK, localAddress,
+            return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
                     sequenceCounter.getAndIncrement(), new byte[0]));
         }
 
@@ -264,18 +255,15 @@ public final class RapidMembership implements MembershipProtocol {
             return handleJoinRequest(sender, payload);
         } else if (subType == MSG_LEAVE) {
             handleLeaveNotification(sender);
-            return CompletableFuture.completedFuture(new Message(
-                    MessageType.ACK, localAddress,
+            return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
                     sequenceCounter.getAndIncrement(), new byte[0]));
         } else if (subType == MSG_VIEW_CHANGE_PROPOSAL) {
             handleViewChangeProposal(sender, payload);
-            return CompletableFuture.completedFuture(new Message(
-                    MessageType.ACK, localAddress,
+            return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
                     sequenceCounter.getAndIncrement(), new byte[0]));
         }
 
-        return CompletableFuture.completedFuture(new Message(
-                MessageType.ACK, localAddress,
+        return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
                 sequenceCounter.getAndIncrement(), new byte[0]));
     }
 
@@ -283,8 +271,7 @@ public final class RapidMembership implements MembershipProtocol {
         // Decode the joining node's address from payload
         final NodeAddress joiningNode = decodeNodeAddress(payload, 1);
         if (joiningNode == null) {
-            return CompletableFuture.completedFuture(new Message(
-                    MessageType.ACK, localAddress,
+            return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
                     sequenceCounter.getAndIncrement(), new byte[0]));
         }
 
@@ -296,18 +283,16 @@ public final class RapidMembership implements MembershipProtocol {
 
             if (oldView.isMember(joiningNode)) {
                 // Already a member, respond with current view
-                return CompletableFuture.completedFuture(new Message(
-                        MessageType.VIEW_CHANGE,
-                        localAddress,
-                        sequenceCounter.getAndIncrement(),
+                return CompletableFuture.completedFuture(new Message(MessageType.VIEW_CHANGE,
+                        localAddress, sequenceCounter.getAndIncrement(),
                         encodeViewResponse(currentView)));
             }
 
             final Set<Member> newMembers = new HashSet<>(oldView.members());
             final var newMember = new Member(joiningNode, MemberState.ALIVE, 0);
             newMembers.add(newMember);
-            final MembershipView newView = new MembershipView(
-                    oldView.epoch() + 1, newMembers, Instant.now());
+            final MembershipView newView = new MembershipView(oldView.epoch() + 1, newMembers,
+                    Instant.now());
             currentView = newView;
 
             // Notify listeners
@@ -317,11 +302,8 @@ public final class RapidMembership implements MembershipProtocol {
             // Propagate the view change to other members
             propagateViewChange(newView, oldView);
 
-            return CompletableFuture.completedFuture(new Message(
-                    MessageType.VIEW_CHANGE,
-                    localAddress,
-                    sequenceCounter.getAndIncrement(),
-                    encodeViewResponse(newView)));
+            return CompletableFuture.completedFuture(new Message(MessageType.VIEW_CHANGE,
+                    localAddress, sequenceCounter.getAndIncrement(), encodeViewResponse(newView)));
         } finally {
             viewLock.unlock();
         }
@@ -348,8 +330,8 @@ public final class RapidMembership implements MembershipProtocol {
                 }
             }
 
-            final MembershipView newView = new MembershipView(
-                    oldView.epoch() + 1, newMembers, Instant.now());
+            final MembershipView newView = new MembershipView(oldView.epoch() + 1, newMembers,
+                    Instant.now());
             currentView = newView;
 
             notifyViewChanged(oldView, newView);
@@ -399,15 +381,13 @@ public final class RapidMembership implements MembershipProtocol {
 
     private boolean tryJoin(NodeAddress seed) throws IOException {
         final byte[] joinPayload = encodeJoinPayload();
-        final CompletableFuture<Message> future = transport.request(seed, new Message(
-                MessageType.VIEW_CHANGE,
-                localAddress,
-                sequenceCounter.getAndIncrement(),
-                joinPayload));
+        final CompletableFuture<Message> future = transport.request(seed,
+                new Message(MessageType.VIEW_CHANGE, localAddress,
+                        sequenceCounter.getAndIncrement(), joinPayload));
 
         try {
-            final Message response = future.get(
-                    config.pingTimeout().toMillis() * 3, TimeUnit.MILLISECONDS);
+            final Message response = future.get(config.pingTimeout().toMillis() * 3,
+                    TimeUnit.MILLISECONDS);
 
             if (response != null && response.payload().length > 0) {
                 final byte[] respPayload = response.payload();
@@ -423,8 +403,8 @@ public final class RapidMembership implements MembershipProtocol {
                             if (!receivedView.isMember(localAddress)) {
                                 members.add(new Member(localAddress, MemberState.ALIVE, 0));
                             }
-                            currentView = new MembershipView(
-                                    receivedView.epoch(), members, Instant.now());
+                            currentView = new MembershipView(receivedView.epoch(), members,
+                                    Instant.now());
                             notifyViewChanged(oldView, currentView);
                         } finally {
                             viewLock.unlock();
@@ -460,11 +440,8 @@ public final class RapidMembership implements MembershipProtocol {
             }
 
             try {
-                transport.send(member.address(), new Message(
-                        MessageType.PING,
-                        localAddress,
-                        sequenceCounter.getAndIncrement(),
-                        new byte[0]));
+                transport.send(member.address(), new Message(MessageType.PING, localAddress,
+                        sequenceCounter.getAndIncrement(), new byte[0]));
             } catch (IOException e) {
                 // Member may be unreachable — failure detector will handle it
                 assert e != null : "exception should not be null";
@@ -501,15 +478,16 @@ public final class RapidMembership implements MembershipProtocol {
             Member suspectedMember = null;
             for (Member m : oldView.members()) {
                 if (m.address().equals(suspected.address())) {
-                    suspectedMember = new Member(m.address(), MemberState.SUSPECTED, m.incarnation());
+                    suspectedMember = new Member(m.address(), MemberState.SUSPECTED,
+                            m.incarnation());
                     newMembers.add(suspectedMember);
                 } else {
                     newMembers.add(m);
                 }
             }
 
-            final MembershipView newView = new MembershipView(
-                    oldView.epoch() + 1, newMembers, Instant.now());
+            final MembershipView newView = new MembershipView(oldView.epoch() + 1, newMembers,
+                    Instant.now());
             currentView = newView;
 
             notifyViewChanged(oldView, newView);
@@ -531,11 +509,8 @@ public final class RapidMembership implements MembershipProtocol {
                 continue;
             }
             try {
-                transport.send(member.address(), new Message(
-                        MessageType.VIEW_CHANGE,
-                        localAddress,
-                        sequenceCounter.getAndIncrement(),
-                        payload));
+                transport.send(member.address(), new Message(MessageType.VIEW_CHANGE, localAddress,
+                        sequenceCounter.getAndIncrement(), payload));
             } catch (IOException e) {
                 // Best effort propagation
                 assert e != null : "exception should not be null";
@@ -591,8 +566,8 @@ public final class RapidMembership implements MembershipProtocol {
         final byte[] nodeIdBytes = localAddress.nodeId().getBytes(StandardCharsets.UTF_8);
         final byte[] hostBytes = localAddress.host().getBytes(StandardCharsets.UTF_8);
         // [subType:1][nodeIdLen:4][nodeId:n][hostLen:4][host:n][port:4]
-        final ByteBuffer buf = ByteBuffer.allocate(
-                1 + 4 + nodeIdBytes.length + 4 + hostBytes.length + 4);
+        final ByteBuffer buf = ByteBuffer
+                .allocate(1 + 4 + nodeIdBytes.length + 4 + hostBytes.length + 4);
         buf.put(MSG_JOIN_REQUEST);
         buf.putInt(nodeIdBytes.length);
         buf.put(nodeIdBytes);
@@ -603,7 +578,7 @@ public final class RapidMembership implements MembershipProtocol {
     }
 
     private byte[] encodeLeavePayload() {
-        return new byte[]{MSG_LEAVE};
+        return new byte[]{ MSG_LEAVE };
     }
 
     private byte[] encodeViewResponse(MembershipView view) {
@@ -662,10 +637,8 @@ public final class RapidMembership implements MembershipProtocol {
             final byte[] hostBytes = new byte[hostLen];
             buf.get(hostBytes);
             final int port = buf.getInt();
-            return new NodeAddress(
-                    new String(nodeIdBytes, StandardCharsets.UTF_8),
-                    new String(hostBytes, StandardCharsets.UTF_8),
-                    port);
+            return new NodeAddress(new String(nodeIdBytes, StandardCharsets.UTF_8),
+                    new String(hostBytes, StandardCharsets.UTF_8), port);
         } catch (Exception e) {
             return null;
         }
@@ -694,8 +667,7 @@ public final class RapidMembership implements MembershipProtocol {
 
                 final NodeAddress addr = new NodeAddress(
                         new String(nodeIdBytes, StandardCharsets.UTF_8),
-                        new String(hostBytes, StandardCharsets.UTF_8),
-                        port);
+                        new String(hostBytes, StandardCharsets.UTF_8), port);
                 final MemberState state = MemberState.values()[stateOrd];
                 members.add(new Member(addr, state, incarnation));
             }

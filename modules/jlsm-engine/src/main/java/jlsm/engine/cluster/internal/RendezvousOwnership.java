@@ -16,10 +16,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * Deterministic partition-to-node ownership via Rendezvous (Highest Random Weight) hashing.
  *
  * <p>
- * Contract: Pure function of (identifier, membership view). Given the same view, all nodes
- * compute the same ownership assignment. For each table or partition ID, computes
- * hash(id, node_id) for all live nodes in the view and assigns to the node with the
- * highest weight. Results are cached keyed on view epoch to avoid redundant computation.
+ * Contract: Pure function of (identifier, membership view). Given the same view, all nodes compute
+ * the same ownership assignment. For each table or partition ID, computes hash(id, node_id) for all
+ * live nodes in the view and assigns to the node with the highest weight. Results are cached keyed
+ * on view epoch to avoid redundant computation.
  *
  * <p>
  * Thread-safe: uses concurrent cache and pure computations.
@@ -29,13 +29,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class RendezvousOwnership {
 
-    private final ConcurrentHashMap<Long, ConcurrentHashMap<String, NodeAddress>> cache =
-            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, ConcurrentHashMap<String, NodeAddress>> cache = new ConcurrentHashMap<>();
 
     /**
      * Assigns a single owner for the given identifier within the current membership view.
      *
-     * @param id   the table or partition identifier; must not be null or empty
+     * @param id the table or partition identifier; must not be null or empty
      * @param view the current membership view; must not be null
      * @return the owning node's address; never null
      * @throws IllegalStateException if the view contains no live members
@@ -47,8 +46,8 @@ public final class RendezvousOwnership {
             throw new IllegalArgumentException("id must not be empty");
         }
 
-        final ConcurrentHashMap<String, NodeAddress> epochCache =
-                cache.computeIfAbsent(view.epoch(), _ -> new ConcurrentHashMap<>());
+        final ConcurrentHashMap<String, NodeAddress> epochCache = cache
+                .computeIfAbsent(view.epoch(), _ -> new ConcurrentHashMap<>());
 
         final NodeAddress cached = epochCache.get(id);
         if (cached != null) {
@@ -66,11 +65,11 @@ public final class RendezvousOwnership {
     /**
      * Assigns multiple owners (for future replication) ranked by weight.
      *
-     * @param id       the table or partition identifier; must not be null or empty
-     * @param view     the current membership view; must not be null
+     * @param id the table or partition identifier; must not be null or empty
+     * @param view the current membership view; must not be null
      * @param replicas the number of owners to assign; must be >= 1
-     * @return a list of node addresses ranked by weight, up to {@code replicas} or the number
-     *         of live members, whichever is smaller; never null or empty
+     * @return a list of node addresses ranked by weight, up to {@code replicas} or the number of
+     *         live members, whichever is smaller; never null or empty
      * @throws IllegalStateException if the view contains no live members
      */
     public List<NodeAddress> assignOwners(String id, MembershipView view, int replicas) {
@@ -100,8 +99,8 @@ public final class RendezvousOwnership {
     }
 
     /**
-     * Computes the full ranking of live members for the given id, sorted by descending
-     * HRW weight. Ties are broken by nodeId for determinism.
+     * Computes the full ranking of live members for the given id, sorted by descending HRW weight.
+     * Ties are broken by nodeId for determinism.
      */
     private List<NodeAddress> computeRankedOwners(String id, MembershipView view) {
         final List<WeightedNode> weighted = new ArrayList<>();
@@ -133,14 +132,14 @@ public final class RendezvousOwnership {
     }
 
     /**
-     * Computes a hash weight for the (id, nodeId) pair using a SipHash-inspired mixing
-     * function. The result is deterministic and uniformly distributed.
+     * Computes a hash weight for the (id, nodeId) pair using a SipHash-inspired mixing function.
+     * The result is deterministic and uniformly distributed.
      */
     private static long hrwHash(byte[] idBytes, byte[] nodeBytes) {
         // Combine id and nodeId bytes with a simple but effective mixing strategy.
         // Use FNV-1a variant for fast, well-distributed hashing.
         long hash = 0xcbf29ce484222325L; // FNV offset basis
-        final long prime = 0x100000001b3L;  // FNV prime
+        final long prime = 0x100000001b3L; // FNV prime
 
         for (byte b : idBytes) {
             hash ^= (b & 0xffL);
@@ -165,5 +164,6 @@ public final class RendezvousOwnership {
         return hash;
     }
 
-    private record WeightedNode(NodeAddress address, long weight) {}
+    private record WeightedNode(NodeAddress address, long weight) {
+    }
 }

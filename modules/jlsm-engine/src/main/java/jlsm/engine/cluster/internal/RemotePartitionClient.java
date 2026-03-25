@@ -35,8 +35,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@link ClusterTransport#request}, and deserializing the {@code QUERY_RESPONSE}.
  *
  * <p>
- * Side effects: Sends messages via the cluster transport. Blocks on the response future
- * with a configurable timeout.
+ * Side effects: Sends messages via the cluster transport. Blocks on the response future with a
+ * configurable timeout.
  *
  * <p>
  * Governed by: {@code .decisions/transport-abstraction-design/adr.md}
@@ -65,9 +65,9 @@ public final class RemotePartitionClient implements PartitionClient {
     /**
      * Creates a remote partition client with the default timeout.
      *
-     * @param descriptor   the partition descriptor; must not be null
-     * @param owner        the address of the partition owner; must not be null
-     * @param transport    the cluster transport; must not be null
+     * @param descriptor the partition descriptor; must not be null
+     * @param owner the address of the partition owner; must not be null
+     * @param transport the cluster transport; must not be null
      * @param localAddress the local node address (for message sender field); must not be null
      */
     public RemotePartitionClient(PartitionDescriptor descriptor, NodeAddress owner,
@@ -78,11 +78,11 @@ public final class RemotePartitionClient implements PartitionClient {
     /**
      * Creates a remote partition client with a custom timeout.
      *
-     * @param descriptor   the partition descriptor; must not be null
-     * @param owner        the address of the partition owner; must not be null
-     * @param transport    the cluster transport; must not be null
+     * @param descriptor the partition descriptor; must not be null
+     * @param owner the address of the partition owner; must not be null
+     * @param transport the cluster transport; must not be null
      * @param localAddress the local node address (for message sender field); must not be null
-     * @param timeoutMs    timeout in milliseconds for request-response; must be positive
+     * @param timeoutMs timeout in milliseconds for request-response; must be positive
      */
     public RemotePartitionClient(PartitionDescriptor descriptor, NodeAddress owner,
             ClusterTransport transport, NodeAddress localAddress, long timeoutMs) {
@@ -209,8 +209,8 @@ public final class RemotePartitionClient implements PartitionClient {
     }
 
     /**
-     * Sends a QUERY_REQUEST to the remote owner and blocks until the response arrives
-     * or the timeout elapses.
+     * Sends a QUERY_REQUEST to the remote owner and blocks until the response arrives or the
+     * timeout elapses.
      *
      * @param payload the request payload
      * @return the response message
@@ -220,8 +220,7 @@ public final class RemotePartitionClient implements PartitionClient {
         assert payload != null : "payload must not be null";
 
         final long seq = sequenceCounter.getAndIncrement();
-        final Message request = new Message(
-                MessageType.QUERY_REQUEST, localAddress, seq, payload);
+        final Message request = new Message(MessageType.QUERY_REQUEST, localAddress, seq, payload);
 
         final CompletableFuture<Message> future = transport.request(owner, request);
         assert future != null : "transport.request must return a non-null future";

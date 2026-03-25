@@ -4,8 +4,8 @@ package jlsm.engine.cluster;
  * Listener for cluster membership events.
  *
  * <p>
- * Contract: Receives callbacks when the cluster membership changes. All callbacks are
- * invoked on the membership protocol's internal thread; implementations must not block.
+ * Contract: Receives callbacks when the cluster membership changes. All callbacks are invoked on
+ * the membership protocol's internal thread; implementations must not block.
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}

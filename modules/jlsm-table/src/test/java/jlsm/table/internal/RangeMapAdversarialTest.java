@@ -33,9 +33,9 @@ class RangeMapAdversarialTest {
     // --- RM-1: overlapping() with inverted range (from > to) ---
 
     /**
-     * Finding RM-1: overlapping() does not validate fromKey < toKey.
-     * KB match: between-inverted-range — inverted bounds passed without validation.
-     * An inverted range should either throw IAE or return an empty list.
+     * Finding RM-1: overlapping() does not validate fromKey < toKey. KB match:
+     * between-inverted-range — inverted bounds passed without validation. An inverted range should
+     * either throw IAE or return an empty list.
      */
     @Test
     void overlapping_invertedRange_returnsEmptyOrThrows() {
@@ -58,10 +58,10 @@ class RangeMapAdversarialTest {
     }
 
     /**
-     * Finding RM-1: overlapping() with fromKey == toKey (empty range).
-     * An empty query range should return no partitions.
+     * Finding RM-1: overlapping() with fromKey == toKey (empty range). An empty query range should
+     * return no partitions.
      */
-    @Test
+    @ Test
     void overlapping_emptyRange_returnsEmpty() {
         final var p1 = desc(1L, 0x00, 0x40);
         final var p2 = desc(2L, 0x40, 0x80);

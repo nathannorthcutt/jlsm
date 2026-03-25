@@ -16,8 +16,8 @@ import jlsm.table.internal.QueryExecutor;
 import org.junit.jupiter.api.Test;
 
 /**
- * Adversarial tests for table-indices-and-queries audit round 1.
- * Each test targets a specific finding from spec-analysis.md.
+ * Adversarial tests for table-indices-and-queries audit round 1. Each test targets a specific
+ * finding from spec-analysis.md.
  */
 class TableIndicesAdversarialTest {
 
@@ -39,10 +39,8 @@ class TableIndicesAdversarialTest {
     private static int compareBytewise(MemorySegment a, MemorySegment b) {
         long len = Math.min(a.byteSize(), b.byteSize());
         for (long i = 0; i < len; i++) {
-            int cmp = Byte.toUnsignedInt(
-                    a.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i))
-                    - Byte.toUnsignedInt(
-                            b.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i));
+            int cmp = Byte.toUnsignedInt(a.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i))
+                    - Byte.toUnsignedInt(b.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i));
             if (cmp != 0)
                 return cmp;
         }
@@ -97,8 +95,8 @@ class TableIndicesAdversarialTest {
         index.onInsert(stringKey("pk4"), pos1);
 
         // Query: temp > -2.5 should return -2.0, -1.0, 1.0
-        short neg2_5 = Float16.fromFloat(-2.5f);
-        var results = collect(index.lookup(new Predicate.Gt("temp", neg2_5)));
+        short negTwoPointFive = Float16.fromFloat(-2.5f);
+        var results = collect(index.lookup(new Predicate.Gt("temp", negTwoPointFive)));
         assertEquals(3, results.size(),
                 "Range query 'temp > -2.5' should find 3 entries (-2.0, -1.0, 1.0) "
                         + "but FLOAT16 values encoded as INT16 give wrong sort order");
@@ -112,13 +110,10 @@ class TableIndicesAdversarialTest {
 
     @Test
     void testMultipleUniqueIndicesAtomicity() throws IOException {
-        var schema = JlsmSchema.builder("test", 1)
-                .field("email", FieldType.string())
-                .field("username", FieldType.string())
-                .build();
+        var schema = JlsmSchema.builder("test", 1).field("email", FieldType.string())
+                .field("username", FieldType.string()).build();
 
-        var defs = List.of(
-                new IndexDefinition("email", IndexType.UNIQUE),
+        var defs = List.of(new IndexDefinition("email", IndexType.UNIQUE),
                 new IndexDefinition("username", IndexType.UNIQUE));
 
         var registry = new IndexRegistry(schema, defs);
@@ -129,8 +124,7 @@ class TableIndicesAdversarialTest {
 
         // Insert second document — different email, same username → should fail
         var doc2 = JlsmDocument.of(schema, "email", "b@test.com", "username", "alice");
-        assertThrows(DuplicateKeyException.class,
-                () -> registry.onInsert(stringKey("pk2"), doc2),
+        assertThrows(DuplicateKeyException.class, () -> registry.onInsert(stringKey("pk2"), doc2),
                 "Should reject duplicate username");
 
         // After the failed insert, the email index should NOT contain "b@test.com"
@@ -151,7 +145,7 @@ class TableIndicesAdversarialTest {
 
     @Test
     void testVectorNearestQueryVectorNotDefensivelyCopied() {
-        float[] original = {1.0f, 2.0f, 3.0f};
+        float[] original = { 1.0f, 2.0f, 3.0f };
         var vn = new Predicate.VectorNearest("embedding", original, 5);
 
         // Mutate the original array after construction
@@ -166,7 +160,7 @@ class TableIndicesAdversarialTest {
 
     @Test
     void testVectorNearestAccessorReturnsDefensiveCopy() {
-        float[] original = {1.0f, 2.0f, 3.0f};
+        float[] original = { 1.0f, 2.0f, 3.0f };
         var vn = new Predicate.VectorNearest("embedding", original, 5);
 
         // Mutate via the accessor
@@ -194,8 +188,7 @@ class TableIndicesAdversarialTest {
 
         // Should throw IAE with a clear message about type mismatch,
         // not crash deep in the codec layer
-        assertThrows(IllegalArgumentException.class,
-                () -> collect(index.lookup(predicate)),
+        assertThrows(IllegalArgumentException.class, () -> collect(index.lookup(predicate)),
                 "Between with mixed types (Integer low, Long high) should throw IAE");
 
         index.close();
@@ -231,10 +224,8 @@ class TableIndicesAdversarialTest {
 
     @Test
     void testNeScanAndFilterExcludesNulls() throws IOException {
-        var schema = JlsmSchema.builder("test", 1)
-                .field("name", FieldType.string())
-                .field("age", FieldType.int32())
-                .build();
+        var schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())
+                .field("age", FieldType.int32()).build();
 
         // No index on "name" — forces scan-and-filter path
         var registry = new IndexRegistry(schema, List.of());
@@ -267,10 +258,8 @@ class TableIndicesAdversarialTest {
 
     @Test
     void testNeIndexBackedExcludesNulls() throws IOException {
-        var schema = JlsmSchema.builder("test", 1)
-                .field("name", FieldType.string())
-                .field("age", FieldType.int32())
-                .build();
+        var schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())
+                .field("age", FieldType.int32()).build();
 
         var defs = List.of(new IndexDefinition("name", IndexType.EQUALITY));
         var registry = new IndexRegistry(schema, defs);
@@ -309,7 +298,8 @@ class TableIndicesAdversarialTest {
 
         // Verify the entry is still correctly indexed
         var results = collect(index.lookup(new Predicate.Eq("email", "alice@test.com")));
-        assertEquals(1, results.size(), "Should still have exactly one entry after idempotent update");
+        assertEquals(1, results.size(),
+                "Should still have exactly one entry after idempotent update");
 
         index.close();
     }
@@ -319,13 +309,10 @@ class TableIndicesAdversarialTest {
 
     @Test
     void testMultipleUniqueIndicesAtomicityOnUpdate() throws IOException {
-        var schema = JlsmSchema.builder("test", 1)
-                .field("email", FieldType.string())
-                .field("username", FieldType.string())
-                .build();
+        var schema = JlsmSchema.builder("test", 1).field("email", FieldType.string())
+                .field("username", FieldType.string()).build();
 
-        var defs = List.of(
-                new IndexDefinition("email", IndexType.UNIQUE),
+        var defs = List.of(new IndexDefinition("email", IndexType.UNIQUE),
                 new IndexDefinition("username", IndexType.UNIQUE));
 
         var registry = new IndexRegistry(schema, defs);
@@ -351,9 +338,8 @@ class TableIndicesAdversarialTest {
                         + "— username unique violation should roll back all index changes");
 
         // Original entries should be unchanged
-        var emailA = collect(
-                registry.findIndex(new Predicate.Eq("email", "a@test.com"))
-                        .lookup(new Predicate.Eq("email", "a@test.com")));
+        var emailA = collect(registry.findIndex(new Predicate.Eq("email", "a@test.com"))
+                .lookup(new Predicate.Eq("email", "a@test.com")));
         assertEquals(1, emailA.size(), "Original email 'a@test.com' should still be indexed");
 
         registry.close();

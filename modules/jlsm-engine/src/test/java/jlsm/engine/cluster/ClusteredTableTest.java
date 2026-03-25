@@ -2,12 +2,9 @@ package jlsm.engine.cluster;
 
 import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.InJvmTransport;
-import jlsm.engine.cluster.internal.RemotePartitionClient;
-import jlsm.engine.cluster.internal.RendezvousOwnership;
 import jlsm.table.FieldType;
 import jlsm.table.JlsmDocument;
 import jlsm.table.JlsmSchema;
-import jlsm.table.PartitionDescriptor;
 import jlsm.table.TableEntry;
 import jlsm.table.UpdateMode;
 
@@ -16,10 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.lang.foreign.MemorySegment;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
@@ -29,8 +23,8 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for {@link ClusteredTable} — partition-aware proxy that scatters queries
- * across remote partition owners and gathers results.
+ * Tests for {@link ClusteredTable} — partition-aware proxy that scatters queries across remote
+ * partition owners and gathers results.
  */
 final class ClusteredTableTest {
 
@@ -39,11 +33,10 @@ final class ClusteredTableTest {
     private static final NodeAddress REMOTE_B = new NodeAddress("remote-b", "localhost", 9003);
     private static final Instant NOW = Instant.parse("2026-03-20T00:00:00Z");
     private static final JlsmSchema SCHEMA = JlsmSchema.builder("test", 1)
-            .field("id", FieldType.Primitive.STRING)
-            .field("value", FieldType.Primitive.STRING)
+            .field("id", FieldType.Primitive.STRING).field("value", FieldType.Primitive.STRING)
             .build();
-    private static final TableMetadata TABLE_META = new TableMetadata(
-            "users", SCHEMA, NOW, TableMetadata.TableState.READY);
+    private static final TableMetadata TABLE_META = new TableMetadata("users", SCHEMA, NOW,
+            TableMetadata.TableState.READY);
 
     private InJvmTransport localTransport;
     private InJvmTransport remoteATransport;
@@ -61,11 +54,10 @@ final class ClusteredTableTest {
 
         // Set up a view with local and remote nodes alive
         membership.view = new MembershipView(1,
-                Set.of(
-                        new Member(LOCAL, MemberState.ALIVE, 0),
+                Set.of(new Member(LOCAL, MemberState.ALIVE, 0),
                         new Member(REMOTE_A, MemberState.ALIVE, 0),
-                        new Member(REMOTE_B, MemberState.ALIVE, 0)
-                ), NOW);
+                        new Member(REMOTE_B, MemberState.ALIVE, 0)),
+                NOW);
 
         table = new ClusteredTable(TABLE_META, localTransport, membership);
     }
@@ -83,20 +75,20 @@ final class ClusteredTableTest {
 
     @Test
     void constructor_nullTableMetadata_throws() {
-        assertThrows(NullPointerException.class, () ->
-                new ClusteredTable(null, localTransport, membership));
+        assertThrows(NullPointerException.class,
+                () -> new ClusteredTable(null, localTransport, membership));
     }
 
     @Test
     void constructor_nullTransport_throws() {
-        assertThrows(NullPointerException.class, () ->
-                new ClusteredTable(TABLE_META, null, membership));
+        assertThrows(NullPointerException.class,
+                () -> new ClusteredTable(TABLE_META, null, membership));
     }
 
     @Test
     void constructor_nullMembership_throws() {
-        assertThrows(NullPointerException.class, () ->
-                new ClusteredTable(TABLE_META, localTransport, null));
+        assertThrows(NullPointerException.class,
+                () -> new ClusteredTable(TABLE_META, localTransport, null));
     }
 
     // --- metadata() ---
@@ -168,7 +160,8 @@ final class ClusteredTableTest {
         // and report partial results
         try {
             final Iterator<TableEntry<String>> it = table.scan("a", "z");
-            // After a scan with unavailable partitions, lastPartialResultMetadata should be non-null
+            // After a scan with unavailable partitions, lastPartialResultMetadata should be
+            // non-null
             final PartialResultMetadata partial = table.lastPartialResultMetadata();
             if (partial != null) {
                 assertFalse(partial.isComplete());
@@ -207,10 +200,8 @@ final class ClusteredTableTest {
 
     private static void registerSuccessHandler(InJvmTransport transport) {
         transport.registerHandler(MessageType.QUERY_REQUEST, (sender, msg) -> {
-            final Message response = new Message(
-                    MessageType.QUERY_RESPONSE,
-                    new NodeAddress(transport.toString(), "localhost", 9999),
-                    msg.sequenceNumber(),
+            final Message response = new Message(MessageType.QUERY_RESPONSE,
+                    new NodeAddress(transport.toString(), "localhost", 9999), msg.sequenceNumber(),
                     new byte[0]);
             return CompletableFuture.completedFuture(response);
         });

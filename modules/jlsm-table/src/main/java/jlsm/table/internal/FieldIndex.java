@@ -31,8 +31,8 @@ public final class FieldIndex implements SecondaryIndex {
     private volatile boolean closed;
 
     /**
-     * Creates a FieldIndex with explicit schema field type for correct encoding.
-     * Prefer this constructor when the schema field type is known (e.g., from IndexRegistry).
+     * Creates a FieldIndex with explicit schema field type for correct encoding. Prefer this
+     * constructor when the schema field type is known (e.g., from IndexRegistry).
      */
     public FieldIndex(IndexDefinition definition, FieldType schemaFieldType) throws IOException {
         Objects.requireNonNull(definition, "definition");
@@ -45,8 +45,8 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     /**
-     * Creates a FieldIndex without explicit schema field type. Falls back to runtime type
-     * inference which is ambiguous for Short (INT16 vs FLOAT16).
+     * Creates a FieldIndex without explicit schema field type. Falls back to runtime type inference
+     * which is ambiguous for Short (INT16 vs FLOAT16).
      */
     public FieldIndex(IndexDefinition definition) throws IOException {
         this(definition, null);
@@ -58,8 +58,8 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     /**
-     * Checks the unique constraint for the given field value without modifying the index.
-     * Only meaningful for UNIQUE indices — no-op for others.
+     * Checks the unique constraint for the given field value without modifying the index. Only
+     * meaningful for UNIQUE indices — no-op for others.
      *
      * @throws DuplicateKeyException if the value already exists in a UNIQUE index
      */
@@ -216,9 +216,8 @@ public final class FieldIndex implements SecondaryIndex {
         FieldType lowType = resolveFieldType(low);
         FieldType highType = resolveFieldType(high);
         if (!lowType.equals(highType)) {
-            throw new IllegalArgumentException(
-                    "Between low and high must have the same type, got: " + lowType + " and "
-                            + highType);
+            throw new IllegalArgumentException("Between low and high must have the same type, got: "
+                    + lowType + " and " + highType);
         }
         ByteArrayKey lowKey = encodeKey(low, lowType);
         ByteArrayKey highKey = encodeKey(high, lowType);
@@ -269,9 +268,9 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     /**
-     * Resolves the field type for encoding. Prefers the schema field type when available,
-     * falling back to runtime type inference. This is critical for Short values which are
-     * ambiguous between INT16 and FLOAT16.
+     * Resolves the field type for encoding. Prefers the schema field type when available, falling
+     * back to runtime type inference. This is critical for Short values which are ambiguous between
+     * INT16 and FLOAT16.
      */
     private FieldType resolveFieldType(Object value) {
         if (schemaFieldType != null) {

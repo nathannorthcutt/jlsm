@@ -16,8 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>
  * Contract: Maintains a static registry of all in-JVM transport instances keyed by
- * {@link NodeAddress}. Messages are delivered by directly invoking the target's registered
- * handler — no serialization or networking occurs. Thread-safe via concurrent data structures.
+ * {@link NodeAddress}. Messages are delivered by directly invoking the target's registered handler
+ * — no serialization or networking occurs. Thread-safe via concurrent data structures.
  *
  * <p>
  * Side effects: Modifies the static transport registry on creation and {@link #close()}.
@@ -27,12 +27,10 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class InJvmTransport implements ClusterTransport {
 
-    private static final ConcurrentHashMap<NodeAddress, InJvmTransport> REGISTRY =
-            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<NodeAddress, InJvmTransport> REGISTRY = new ConcurrentHashMap<>();
 
     private final NodeAddress localAddress;
-    private final ConcurrentHashMap<MessageType, MessageHandler> handlers =
-            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<MessageType, MessageHandler> handlers = new ConcurrentHashMap<>();
     private volatile boolean closed;
 
     /**
@@ -46,8 +44,7 @@ public final class InJvmTransport implements ClusterTransport {
         this.localAddress = localAddress;
         final var previous = REGISTRY.putIfAbsent(localAddress, this);
         if (previous != null) {
-            throw new IllegalArgumentException(
-                    "Address already registered: " + localAddress);
+            throw new IllegalArgumentException("Address already registered: " + localAddress);
         }
     }
 
@@ -78,13 +75,13 @@ public final class InJvmTransport implements ClusterTransport {
         }
         final var targetTransport = REGISTRY.get(target);
         if (targetTransport == null) {
-            return CompletableFuture.failedFuture(
-                    new IOException("No transport registered for target: " + target));
+            return CompletableFuture
+                    .failedFuture(new IOException("No transport registered for target: " + target));
         }
         final var handler = targetTransport.handlers.get(msg.type());
         if (handler == null) {
-            return CompletableFuture.failedFuture(
-                    new IOException("No handler registered for type: " + msg.type()));
+            return CompletableFuture
+                    .failedFuture(new IOException("No handler registered for type: " + msg.type()));
         }
         return handler.handle(localAddress, msg);
     }
@@ -108,8 +105,8 @@ public final class InJvmTransport implements ClusterTransport {
     }
 
     /**
-     * Returns the handler registered for the given type, or null if none.
-     * Package-private for testing.
+     * Returns the handler registered for the given type, or null if none. Package-private for
+     * testing.
      *
      * @param type the message type
      * @return the registered handler, or null

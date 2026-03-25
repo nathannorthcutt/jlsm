@@ -11,29 +11,24 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class PhiAccrualFailureDetectorTest {
 
-    private static final NodeAddress NODE_A =
-            new NodeAddress("node-a", "localhost", 7001);
-    private static final NodeAddress NODE_B =
-            new NodeAddress("node-b", "localhost", 7002);
+    private static final NodeAddress NODE_A = new NodeAddress("node-a", "localhost", 7001);
+    private static final NodeAddress NODE_B = new NodeAddress("node-b", "localhost", 7002);
 
     // --- Constructor validation ---
 
     @Test
     void constructorRejectsWindowSizeBelowTwo() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new PhiAccrualFailureDetector(1));
+        assertThrows(IllegalArgumentException.class, () -> new PhiAccrualFailureDetector(1));
     }
 
     @Test
     void constructorRejectsWindowSizeZero() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new PhiAccrualFailureDetector(0));
+        assertThrows(IllegalArgumentException.class, () -> new PhiAccrualFailureDetector(0));
     }
 
     @Test
     void constructorRejectsNegativeWindowSize() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new PhiAccrualFailureDetector(-5));
+        assertThrows(IllegalArgumentException.class, () -> new PhiAccrualFailureDetector(-5));
     }
 
     @Test
@@ -61,31 +56,26 @@ class PhiAccrualFailureDetectorTest {
     @Test
     void recordHeartbeatRejectsNull() {
         var detector = new PhiAccrualFailureDetector(10);
-        assertThrows(NullPointerException.class,
-                () -> detector.recordHeartbeat(null));
+        assertThrows(NullPointerException.class, () -> detector.recordHeartbeat(null));
     }
 
     @Test
     void phiRejectsNull() {
         var detector = new PhiAccrualFailureDetector(10);
-        assertThrows(NullPointerException.class,
-                () -> detector.phi(null));
+        assertThrows(NullPointerException.class, () -> detector.phi(null));
     }
 
     @Test
     void isAvailableRejectsNullNode() {
         var detector = new PhiAccrualFailureDetector(10);
-        assertThrows(NullPointerException.class,
-                () -> detector.isAvailable(null, 8.0));
+        assertThrows(NullPointerException.class, () -> detector.isAvailable(null, 8.0));
     }
 
     @Test
     void isAvailableRejectsNonPositiveThreshold() {
         var detector = new PhiAccrualFailureDetector(10);
-        assertThrows(IllegalArgumentException.class,
-                () -> detector.isAvailable(NODE_A, 0.0));
-        assertThrows(IllegalArgumentException.class,
-                () -> detector.isAvailable(NODE_A, -1.0));
+        assertThrows(IllegalArgumentException.class, () -> detector.isAvailable(NODE_A, 0.0));
+        assertThrows(IllegalArgumentException.class, () -> detector.isAvailable(NODE_A, -1.0));
     }
 
     // --- phi computation with known intervals ---
@@ -143,8 +133,8 @@ class PhiAccrualFailureDetectorTest {
         double phiA = detector.phi(NODE_A);
         double phiB = detector.phi(NODE_B);
 
-        assertTrue(phiA > phiB,
-                "NODE_A should have higher phi (no recent heartbeats): phiA=" + phiA + ", phiB=" + phiB);
+        assertTrue(phiA > phiB, "NODE_A should have higher phi (no recent heartbeats): phiA=" + phiA
+                + ", phiB=" + phiB);
     }
 
     // --- isAvailable ---

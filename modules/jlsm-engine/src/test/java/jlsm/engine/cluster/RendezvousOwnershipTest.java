@@ -13,8 +13,8 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for {@link RendezvousOwnership} — deterministic partition-to-node assignment
- * via Rendezvous (Highest Random Weight) hashing.
+ * Tests for {@link RendezvousOwnership} — deterministic partition-to-node assignment via Rendezvous
+ * (Highest Random Weight) hashing.
  */
 final class RendezvousOwnershipTest {
 
@@ -123,24 +123,21 @@ final class RendezvousOwnershipTest {
     @Test
     void assignOwner_emptyViewThrows() {
         MembershipView view = new MembershipView(1, Set.of(), NOW);
-        assertThrows(IllegalStateException.class,
-                () -> ownership.assignOwner("table-1", view));
+        assertThrows(IllegalStateException.class, () -> ownership.assignOwner("table-1", view));
     }
 
     @Test
     void assignOwner_onlySuspectedMembersThrows() {
         Member suspected = new Member(NODE_A, MemberState.SUSPECTED, 0);
         MembershipView view = new MembershipView(1, Set.of(suspected), NOW);
-        assertThrows(IllegalStateException.class,
-                () -> ownership.assignOwner("table-1", view));
+        assertThrows(IllegalStateException.class, () -> ownership.assignOwner("table-1", view));
     }
 
     @Test
     void assignOwner_onlyDeadMembersThrows() {
         Member dead = new Member(NODE_A, MemberState.DEAD, 0);
         MembershipView view = new MembershipView(1, Set.of(dead), NOW);
-        assertThrows(IllegalStateException.class,
-                () -> ownership.assignOwner("table-1", view));
+        assertThrows(IllegalStateException.class, () -> ownership.assignOwner("table-1", view));
     }
 
     // --- Input validation ---
@@ -148,21 +145,18 @@ final class RendezvousOwnershipTest {
     @Test
     void assignOwner_nullIdThrows() {
         MembershipView view = viewOf(1, NODE_A);
-        assertThrows(NullPointerException.class,
-                () -> ownership.assignOwner(null, view));
+        assertThrows(NullPointerException.class, () -> ownership.assignOwner(null, view));
     }
 
     @Test
     void assignOwner_emptyIdThrows() {
         MembershipView view = viewOf(1, NODE_A);
-        assertThrows(IllegalArgumentException.class,
-                () -> ownership.assignOwner("", view));
+        assertThrows(IllegalArgumentException.class, () -> ownership.assignOwner("", view));
     }
 
     @Test
     void assignOwner_nullViewThrows() {
-        assertThrows(NullPointerException.class,
-                () -> ownership.assignOwner("table-1", null));
+        assertThrows(NullPointerException.class, () -> ownership.assignOwner("table-1", null));
     }
 
     // --- assignOwners (replica ranking) ---
@@ -201,8 +195,7 @@ final class RendezvousOwnershipTest {
     @Test
     void assignOwners_noLiveMembersThrows() {
         MembershipView view = new MembershipView(1, Set.of(), NOW);
-        assertThrows(IllegalStateException.class,
-                () -> ownership.assignOwners("table-1", view, 1));
+        assertThrows(IllegalStateException.class, () -> ownership.assignOwners("table-1", view, 1));
     }
 
     @Test

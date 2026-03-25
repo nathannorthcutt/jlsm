@@ -24,8 +24,8 @@ class PartitionedTableAdversarialTest {
     // --- PT-1: Builder.build() leaks clients on factory failure ---
 
     /**
-     * Finding PT-1: If the factory throws for partition N, clients 0..N-1 are leaked.
-     * KB match: multi-index-atomicity — sequential operations leave inconsistent state on Nth failure.
+     * Finding PT-1: If the factory throws for partition N, clients 0..N-1 are leaked. KB match:
+     * multi-index-atomicity — sequential operations leave inconsistent state on Nth failure.
      */
     @Test
     void build_factoryThrowsOnSecondPartition_closesAlreadyCreatedClients() throws IOException {
@@ -38,24 +38,22 @@ class PartitionedTableAdversarialTest {
         final AtomicInteger closeCount = new AtomicInteger(0);
 
         // Factory: first partition returns a tracking stub, second throws
-        final var ex = assertThrows(RuntimeException.class,
-                () -> PartitionedTable.builder().partitionConfig(config)
-                        .partitionClientFactory(desc -> {
-                            if (desc.id() == 1L) {
-                                return new TrackingStubClient(desc, closeCount);
-                            }
-                            throw new RuntimeException("simulated factory failure");
-                        }).build());
+        final var ex = assertThrows(RuntimeException.class, () -> PartitionedTable.builder()
+                .partitionConfig(config).partitionClientFactory(desc -> {
+                    if (desc.id() == 1L) {
+                        return new TrackingStubClient(desc, closeCount);
+                    }
+                    throw new RuntimeException("simulated factory failure");
+                }).build());
 
-        assertTrue(ex.getMessage().contains("simulated"),
-                "should propagate factory exception");
+        assertTrue(ex.getMessage().contains("simulated"), "should propagate factory exception");
         assertEquals(1, closeCount.get(),
                 "client created for partition 1 must be closed when partition 2 factory fails");
     }
 
     /**
-     * Finding PT-1: Variant with 3 partitions — factory fails on the 3rd.
-     * Clients 1 and 2 must both be closed.
+     * Finding PT-1: Variant with 3 partitions — factory fails on the 3rd. Clients 1 and 2 must both
+     * be closed.
      */
     @Test
     void build_factoryThrowsOnThirdPartition_closesAllPriorClients() throws IOException {
@@ -69,14 +67,13 @@ class PartitionedTableAdversarialTest {
 
         final AtomicInteger closeCount = new AtomicInteger(0);
 
-        assertThrows(RuntimeException.class,
-                () -> PartitionedTable.builder().partitionConfig(config)
-                        .partitionClientFactory(desc -> {
-                            if (desc.id() == 3L) {
-                                throw new RuntimeException("fail on third");
-                            }
-                            return new TrackingStubClient(desc, closeCount);
-                        }).build());
+        assertThrows(RuntimeException.class, () -> PartitionedTable.builder()
+                .partitionConfig(config).partitionClientFactory(desc -> {
+                    if (desc.id() == 3L) {
+                        throw new RuntimeException("fail on third");
+                    }
+                    return new TrackingStubClient(desc, closeCount);
+                }).build());
 
         assertEquals(2, closeCount.get(),
                 "both prior clients must be closed when 3rd factory call fails");
@@ -85,8 +82,8 @@ class PartitionedTableAdversarialTest {
     // --- PT-2: Builder.build() with duplicate descriptor IDs ---
 
     /**
-     * Finding PT-2: If two descriptors share the same id, the second client overwrites the first
-     * in the map, leaking the first client.
+     * Finding PT-2: If two descriptors share the same id, the second client overwrites the first in
+     * the map, leaking the first client.
      */
     @Test
     void build_duplicateDescriptorIds_rejectsOrHandlesGracefully() throws IOException {

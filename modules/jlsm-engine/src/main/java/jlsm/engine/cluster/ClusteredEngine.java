@@ -21,15 +21,14 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>
  * Contract: Wraps a local {@link Engine} instance and adds cluster membership, ownership
- * assignment, and distributed query routing. On {@link #createTable}, creates the table
- * locally and announces it to the cluster. On {@link #getTable}, returns a
- * {@link ClusteredTable} proxy for partitioned tables or delegates to the local engine
- * for locally-owned tables. Listens for membership changes to trigger rebalancing of
- * table and partition ownership.
+ * assignment, and distributed query routing. On {@link #createTable}, creates the table locally and
+ * announces it to the cluster. On {@link #getTable}, returns a {@link ClusteredTable} proxy for
+ * partitioned tables or delegates to the local engine for locally-owned tables. Listens for
+ * membership changes to trigger rebalancing of table and partition ownership.
  *
  * <p>
- * Side effects: Starts membership protocol on build. Modifies ownership assignments
- * on membership changes. Creates and manages {@link ClusteredTable} proxies.
+ * Side effects: Starts membership protocol on build. Modifies ownership assignments on membership
+ * changes. Creates and manages {@link ClusteredTable} proxies.
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md},
@@ -48,8 +47,7 @@ public final class ClusteredEngine implements Engine {
     private final ClusterTransport transport;
     private final ClusterConfig config;
     private final NodeAddress localAddress;
-    private final ConcurrentHashMap<String, ClusteredTable> clusteredTables =
-            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
     private volatile boolean closed;
 
     private ClusteredEngine(Builder builder) {
@@ -278,7 +276,8 @@ public final class ClusteredEngine implements Engine {
         private ClusterConfig config;
         private NodeAddress localAddress;
 
-        private Builder() {}
+        private Builder() {
+        }
 
         public Builder localEngine(Engine localEngine) {
             this.localEngine = Objects.requireNonNull(localEngine, "localEngine must not be null");

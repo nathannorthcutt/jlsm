@@ -13,11 +13,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * Tracks departed nodes and manages the grace period before permanent removal.
  *
  * <p>
- * Contract: Records node departures with timestamps. A departed node is considered in
- * grace period if the configured duration has not elapsed since departure. After grace
- * period expiry, the departure is permanent. If a node returns during grace, its
- * departure record is cleared. Grace period controls cleanup timing, not ownership
- * assignment — partitions are eagerly reassigned on departure.
+ * Contract: Records node departures with timestamps. A departed node is considered in grace period
+ * if the configured duration has not elapsed since departure. After grace period expiry, the
+ * departure is permanent. If a node returns during grace, its departure record is cleared. Grace
+ * period controls cleanup timing, not ownership assignment — partitions are eagerly reassigned on
+ * departure.
  *
  * <p>
  * Thread-safe: uses concurrent data structures.
@@ -46,7 +46,7 @@ public final class GracePeriodManager {
     /**
      * Records the departure of a node at the given time.
      *
-     * @param node       the departed node's address; must not be null
+     * @param node the departed node's address; must not be null
      * @param departedAt the instant of departure; must not be null
      */
     public void recordDeparture(NodeAddress node, Instant departedAt) {

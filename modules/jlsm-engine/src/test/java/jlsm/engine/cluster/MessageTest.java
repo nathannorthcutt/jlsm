@@ -13,11 +13,11 @@ class MessageTest {
 
     @Test
     void validConstruction() {
-        var msg = new Message(MessageType.PING, SENDER, 0, new byte[]{1, 2, 3});
+        var msg = new Message(MessageType.PING, SENDER, 0, new byte[]{ 1, 2, 3 });
         assertEquals(MessageType.PING, msg.type());
         assertEquals(SENDER, msg.sender());
         assertEquals(0, msg.sequenceNumber());
-        assertArrayEquals(new byte[]{1, 2, 3}, msg.payload());
+        assertArrayEquals(new byte[]{ 1, 2, 3 }, msg.payload());
     }
 
     @Test
@@ -28,31 +28,30 @@ class MessageTest {
 
     @Test
     void nullTypeThrows() {
-        assertThrows(NullPointerException.class, () ->
-                new Message(null, SENDER, 0, new byte[0]));
+        assertThrows(NullPointerException.class, () -> new Message(null, SENDER, 0, new byte[0]));
     }
 
     @Test
     void nullSenderThrows() {
-        assertThrows(NullPointerException.class, () ->
-                new Message(MessageType.PING, null, 0, new byte[0]));
+        assertThrows(NullPointerException.class,
+                () -> new Message(MessageType.PING, null, 0, new byte[0]));
     }
 
     @Test
     void nullPayloadThrows() {
-        assertThrows(NullPointerException.class, () ->
-                new Message(MessageType.PING, SENDER, 0, null));
+        assertThrows(NullPointerException.class,
+                () -> new Message(MessageType.PING, SENDER, 0, null));
     }
 
     @Test
     void negativeSequenceNumberThrows() {
-        assertThrows(IllegalArgumentException.class, () ->
-                new Message(MessageType.PING, SENDER, -1, new byte[0]));
+        assertThrows(IllegalArgumentException.class,
+                () -> new Message(MessageType.PING, SENDER, -1, new byte[0]));
     }
 
     @Test
     void defensiveCopyOnConstruction() {
-        byte[] original = {1, 2, 3};
+        byte[] original = { 1, 2, 3 };
         var msg = new Message(MessageType.PING, SENDER, 0, original);
         original[0] = 99;
         // Should not affect internal state
@@ -61,7 +60,7 @@ class MessageTest {
 
     @Test
     void defensiveCopyOnAccess() {
-        var msg = new Message(MessageType.PING, SENDER, 0, new byte[]{1, 2, 3});
+        var msg = new Message(MessageType.PING, SENDER, 0, new byte[]{ 1, 2, 3 });
         byte[] firstAccess = msg.payload();
         firstAccess[0] = 99;
         // Second access should still see original value

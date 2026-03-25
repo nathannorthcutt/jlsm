@@ -7,11 +7,11 @@ import java.util.Set;
  * SPI for discovering seed nodes during cluster bootstrap.
  *
  * <p>
- * Contract: Provides a pluggable mechanism for engines to discover initial cluster members.
- * The required method {@link #discoverSeeds()} returns a set of known seed addresses.
- * Optional {@link #register}/{@link #deregister} methods support self-announcement in
- * environments without managed service discovery. Stale registrations from crashed nodes
- * are harmless — the membership protocol handles liveness.
+ * Contract: Provides a pluggable mechanism for engines to discover initial cluster members. The
+ * required method {@link #discoverSeeds()} returns a set of known seed addresses. Optional
+ * {@link #register}/{@link #deregister} methods support self-announcement in environments without
+ * managed service discovery. Stale registrations from crashed nodes are harmless — the membership
+ * protocol handles liveness.
  *
  * <p>
  * Governed by: {@code .decisions/discovery-spi-design/adr.md}
@@ -35,7 +35,8 @@ public interface DiscoveryProvider {
      *
      * @param self the address of this node; must not be null
      */
-    default void register(NodeAddress self) {}
+    default void register(NodeAddress self) {
+    }
 
     /**
      * Deregisters this node's address from the discovery service.
@@ -45,5 +46,6 @@ public interface DiscoveryProvider {
      *
      * @param self the address of this node; must not be null
      */
-    default void deregister(NodeAddress self) {}
+    default void deregister(NodeAddress self) {
+    }
 }

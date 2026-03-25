@@ -11,9 +11,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Contract: Maintains a sliding window of heartbeat inter-arrival times per monitored node.
  * Computes phi = -log10(1 - CDF(timeSinceLastHeartbeat)) where CDF is based on a normal
- * distribution fitted to the heartbeat history. A higher phi value indicates a greater
- * likelihood that the node has failed. The detector is stateless for unknown nodes (returns
- * phi = 0.0 until at least two heartbeats have been recorded).
+ * distribution fitted to the heartbeat history. A higher phi value indicates a greater likelihood
+ * that the node has failed. The detector is stateless for unknown nodes (returns phi = 0.0 until at
+ * least two heartbeats have been recorded).
  *
  * <p>
  * Thread-safe: uses concurrent data structures for per-node state.
@@ -24,8 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PhiAccrualFailureDetector {
 
     private final int windowSize;
-    private final ConcurrentHashMap<NodeAddress, HeartbeatHistory> heartbeatHistory =
-            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<NodeAddress, HeartbeatHistory> heartbeatHistory = new ConcurrentHashMap<>();
 
     /**
      * Creates a failure detector with the specified sliding window size.
@@ -34,8 +33,7 @@ public final class PhiAccrualFailureDetector {
      */
     public PhiAccrualFailureDetector(int windowSize) {
         if (windowSize < 2) {
-            throw new IllegalArgumentException(
-                    "windowSize must be >= 2, got: " + windowSize);
+            throw new IllegalArgumentException("windowSize must be >= 2, got: " + windowSize);
         }
         this.windowSize = windowSize;
     }
@@ -86,24 +84,25 @@ public final class PhiAccrualFailureDetector {
     /**
      * Returns whether the specified node is considered available at the given threshold.
      *
-     * @param node      the address of the node to check; must not be null
-     * @param threshold the phi threshold above which the node is considered failed; must be positive
+     * @param node the address of the node to check; must not be null
+     * @param threshold the phi threshold above which the node is considered failed; must be
+     *            positive
      * @return {@code true} if phi(node) is below the threshold
      */
     public boolean isAvailable(NodeAddress node, double threshold) {
         Objects.requireNonNull(node, "node must not be null");
         if (threshold <= 0.0) {
-            throw new IllegalArgumentException(
-                    "threshold must be positive, got: " + threshold);
+            throw new IllegalArgumentException("threshold must be positive, got: " + threshold);
         }
         return phi(node) < threshold;
     }
 
     /**
-     * Computes phi = -log10(1 - CDF(elapsed)) using a normal distribution
-     * with the given mean and standard deviation.
+     * Computes phi = -log10(1 - CDF(elapsed)) using a normal distribution with the given mean and
+     * standard deviation.
      *
-     * <p>The CDF is approximated using the complementary error function.
+     * <p>
+     * The CDF is approximated using the complementary error function.
      */
     private static double computePhi(double elapsedMs, double mean, double stddev) {
         assert stddev > 0 : "stddev must be positive";
@@ -122,9 +121,8 @@ public final class PhiAccrualFailureDetector {
     }
 
     /**
-     * Approximation of the complementary error function erfc(x).
-     * Uses Abramowitz and Stegun approximation 7.1.26, accurate to ~1.5e-7.
-     * Iterative — no recursion per coding guidelines.
+     * Approximation of the complementary error function erfc(x). Uses Abramowitz and Stegun
+     * approximation 7.1.26, accurate to ~1.5e-7. Iterative — no recursion per coding guidelines.
      */
     private static double erfc(double x) {
         // Handle negative x iteratively: erfc(-x) = 2 - erfc(|x|)
@@ -136,18 +134,15 @@ public final class PhiAccrualFailureDetector {
         final double t3 = t2 * t;
         final double t4 = t3 * t;
         final double t5 = t4 * t;
-        final double poly = 0.254829592 * t
-                - 0.284496736 * t2
-                + 1.421413741 * t3
-                - 1.453152027 * t4
+        final double poly = 0.254829592 * t - 0.284496736 * t2 + 1.421413741 * t3 - 1.453152027 * t4
                 + 1.061405429 * t5;
         final double result = poly * Math.exp(-absX * absX);
         return negative ? 2.0 - result : result;
     }
 
     /**
-     * Sliding window of heartbeat inter-arrival times for a single node.
-     * Not thread-safe — callers must synchronize via ConcurrentHashMap.compute().
+     * Sliding window of heartbeat inter-arrival times for a single node. Not thread-safe — callers
+     * must synchronize via ConcurrentHashMap.compute().
      */
     private static final class HeartbeatHistory {
         private final double[] intervals;

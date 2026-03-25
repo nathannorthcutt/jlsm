@@ -59,7 +59,7 @@ class InJvmTransportTest {
                     new Message(MessageType.ACK, ADDR_B, msg.sequenceNumber(), new byte[0]));
         });
 
-        var ping = new Message(MessageType.PING, ADDR_A, 1, new byte[]{42});
+        var ping = new Message(MessageType.PING, ADDR_A, 1, new byte[]{ 42 });
         transportA.send(ADDR_B, ping);
 
         // Handler should have been invoked
@@ -68,21 +68,22 @@ class InJvmTransportTest {
     }
 
     @Test
-    void requestReturnsResponse() throws ExecutionException, InterruptedException, TimeoutException {
+    void requestReturnsResponse()
+            throws ExecutionException, InterruptedException, TimeoutException {
         var transportA = new InJvmTransport(ADDR_A);
         var transportB = new InJvmTransport(ADDR_B);
 
-        transportB.registerHandler(MessageType.QUERY_REQUEST, (sender, msg) ->
-                CompletableFuture.completedFuture(
-                        new Message(MessageType.QUERY_RESPONSE, ADDR_B, msg.sequenceNumber(),
-                                new byte[]{99})));
+        transportB.registerHandler(MessageType.QUERY_REQUEST,
+                (sender, msg) -> CompletableFuture
+                        .completedFuture(new Message(MessageType.QUERY_RESPONSE, ADDR_B,
+                                msg.sequenceNumber(), new byte[]{ 99 })));
 
-        var request = new Message(MessageType.QUERY_REQUEST, ADDR_A, 5, new byte[]{1});
+        var request = new Message(MessageType.QUERY_REQUEST, ADDR_A, 5, new byte[]{ 1 });
         var responseFuture = transportA.request(ADDR_B, request);
         var response = responseFuture.get(5, TimeUnit.SECONDS);
 
         assertEquals(MessageType.QUERY_RESPONSE, response.type());
-        assertArrayEquals(new byte[]{99}, response.payload());
+        assertArrayEquals(new byte[]{ 99 }, response.payload());
     }
 
     @Test
@@ -127,15 +128,15 @@ class InJvmTransportTest {
     @Test
     void registerHandlerNullTypeThrows() {
         var transport = new InJvmTransport(ADDR_A);
-        assertThrows(NullPointerException.class, () ->
-                transport.registerHandler(null, (s, m) -> CompletableFuture.completedFuture(m)));
+        assertThrows(NullPointerException.class, () -> transport.registerHandler(null,
+                (s, m) -> CompletableFuture.completedFuture(m)));
     }
 
     @Test
     void registerHandlerNullHandlerThrows() {
         var transport = new InJvmTransport(ADDR_A);
-        assertThrows(NullPointerException.class, () ->
-                transport.registerHandler(MessageType.PING, null));
+        assertThrows(NullPointerException.class,
+                () -> transport.registerHandler(MessageType.PING, null));
     }
 
     @Test

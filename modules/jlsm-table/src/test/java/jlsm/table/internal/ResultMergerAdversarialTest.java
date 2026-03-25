@@ -28,9 +28,9 @@ class ResultMergerAdversarialTest {
     // --- RM-2: mergeTopK with NaN scores ---
 
     /**
-     * Finding RM-2: NaN scores corrupt PriorityQueue ordering — NaN-scored entries
-     * are incorrectly ranked above real results.
-     * ScoredEntry allows NaN scores; mergeTopK should either reject them or handle correctly.
+     * Finding RM-2: NaN scores corrupt PriorityQueue ordering — NaN-scored entries are incorrectly
+     * ranked above real results. ScoredEntry allows NaN scores; mergeTopK should either reject them
+     * or handle correctly.
      */
     @Test
     void mergeTopK_nanScores_doNotCorruptOrdering() {
@@ -48,15 +48,14 @@ class ResultMergerAdversarialTest {
         // That's incorrect behavior — high (0.9) should be first.
         assertEquals("high", result.get(0).key(),
                 "highest real score should be ranked first, not NaN");
-        assertFalse(Double.isNaN(result.get(0).score()),
-                "first result must not have NaN score");
+        assertFalse(Double.isNaN(result.get(0).score()), "first result must not have NaN score");
     }
 
     // --- RM-3: mergeTopK with null inner list ---
 
     /**
-     * Finding RM-3: Null element in partitionResults only checked by assert, not runtime validation.
-     * Should throw a descriptive exception, not raw NPE from addAll(null).
+     * Finding RM-3: Null element in partitionResults only checked by assert, not runtime
+     * validation. Should throw a descriptive exception, not raw NPE from addAll(null).
      */
     @Test
     void mergeTopK_nullInnerList_throwsDescriptiveException() {
@@ -67,9 +66,9 @@ class ResultMergerAdversarialTest {
         // Should throw NPE or IAE with a message about null partition result
         final var ex = assertThrows(NullPointerException.class,
                 () -> ResultMerger.mergeTopK(input, 5));
-        assertNotNull(ex.getMessage(),
-                "exception should have a descriptive message, not null");
-        assertTrue(ex.getMessage().toLowerCase().contains("partition")
+        assertNotNull(ex.getMessage(), "exception should have a descriptive message, not null");
+        assertTrue(
+                ex.getMessage().toLowerCase().contains("partition")
                         || ex.getMessage().toLowerCase().contains("null"),
                 "exception message should indicate which partition result was null");
     }

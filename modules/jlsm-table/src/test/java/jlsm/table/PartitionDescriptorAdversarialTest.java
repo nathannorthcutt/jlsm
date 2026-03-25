@@ -19,9 +19,9 @@ class PartitionDescriptorAdversarialTest {
     // --- PD-1: MemorySegment not defensively copied ---
 
     /**
-     * Finding PD-1: MemorySegment.ofArray wraps the backing byte[] without copying.
-     * Mutating the original array after construction corrupts the descriptor's key range.
-     * KB match: mutable-array-in-record
+     * Finding PD-1: MemorySegment.ofArray wraps the backing byte[] without copying. Mutating the
+     * original array after construction corrupts the descriptor's key range. KB match:
+     * mutable-array-in-record
      */
     @Test
     void lowKey_mutationOfBackingArray_doesNotCorruptDescriptor() {
@@ -60,7 +60,8 @@ class PartitionDescriptorAdversarialTest {
         // Mutate the backing array after construction
         highBytes[0] = (byte) 'a';
 
-        final byte[] afterMutation = desc.highKey().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
+        final byte[] afterMutation = desc.highKey()
+                .toArray(java.lang.foreign.ValueLayout.JAVA_BYTE);
         assertArrayEquals(originalHigh, afterMutation,
                 "PartitionDescriptor highKey must be defensively copied — "
                         + "mutating the original backing array should not change the descriptor");
@@ -69,8 +70,8 @@ class PartitionDescriptorAdversarialTest {
     // --- PD-2: No validation that lowKey < highKey ---
 
     /**
-     * Finding PD-2: Constructor does not validate that lowKey is strictly less than highKey.
-     * A descriptor with lowKey == highKey represents an empty range — meaningless partition.
+     * Finding PD-2: Constructor does not validate that lowKey is strictly less than highKey. A
+     * descriptor with lowKey == highKey represents an empty range — meaningless partition.
      */
     @Test
     void constructor_lowKeyEqualsHighKey_throwsIllegalArgumentException() {
@@ -81,8 +82,8 @@ class PartitionDescriptorAdversarialTest {
     }
 
     /**
-     * Finding PD-2: Constructor does not validate that lowKey < highKey.
-     * A descriptor with lowKey > highKey represents an inverted range.
+     * Finding PD-2: Constructor does not validate that lowKey < highKey. A descriptor with lowKey >
+     * highKey represents an inverted range.
      */
     @Test
     void constructor_lowKeyGreaterThanHighKey_throwsIllegalArgumentException() {

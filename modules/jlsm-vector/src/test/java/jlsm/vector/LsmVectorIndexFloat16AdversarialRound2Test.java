@@ -96,7 +96,8 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
             index.index(1L, new float[]{ 0.7f, 0.7f });
 
             // Search — doc 1 should appear in results
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 0.7f, 0.7f }, 2);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 0.7f, 0.7f },
+                    2);
 
             boolean doc1Found = results.stream().anyMatch(r -> r.docId().equals(1L));
             assertTrue(doc1Found,
@@ -106,7 +107,8 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
 
     @Test
     void hnsw_float32_removeAndReindex_docVisibleInSearch() throws IOException {
-        // F13 (fix-forward): Same bug exists in float32 path — verify fix applies to both precisions.
+        // F13 (fix-forward): Same bug exists in float32 path — verify fix applies to both
+        // precisions.
         try (VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
                 .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .dimensions(2).similarityFunction(SimilarityFunction.COSINE)
@@ -118,7 +120,8 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
             index.remove(1L);
             index.index(1L, new float[]{ 0.7f, 0.7f });
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 0.7f, 0.7f }, 2);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 0.7f, 0.7f },
+                    2);
 
             boolean doc1Found = results.stream().anyMatch(r -> r.docId().equals(1L));
             assertTrue(doc1Found,
@@ -146,7 +149,8 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
             index.index(2L, new float[]{ Float.NaN, 0.0f });
 
             // Search with a normal query
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f }, 2);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    2);
 
             assertFalse(results.isEmpty(), "search should return results");
 
@@ -171,7 +175,8 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
             index.index(1L, new float[]{ 1.0f, 0.0f });
             index.index(2L, new float[]{ Float.NaN, 0.0f });
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f }, 2);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    2);
 
             assertFalse(results.isEmpty(), "search should return results");
             VectorIndex.SearchResult<Long> top = results.get(0);
@@ -201,7 +206,8 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
             // Overflow vector: 100000 → infinity in float16
             index.index(2L, new float[]{ 100000.0f, 0.0f });
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f }, 2);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    2);
 
             assertFalse(results.isEmpty(), "search should return results");
             VectorIndex.SearchResult<Long> top = results.get(0);
@@ -223,14 +229,14 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
             index.index(1L, new float[]{ 1.0f, 0.0f });
             index.index(2L, new float[]{ 100000.0f, 0.0f });
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f }, 2);
+            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
+                    2);
 
             assertFalse(results.isEmpty(), "search should return results");
             VectorIndex.SearchResult<Long> top = results.get(0);
             assertFalse(Float.isNaN(top.score()),
                     "top result should not have NaN score from Hnsw overflow path");
-            assertEquals(1L, top.docId(),
-                    "normal vector (doc 1) should be top result");
+            assertEquals(1L, top.docId(), "normal vector (doc 1) should be top result");
         }
     }
 
@@ -251,8 +257,8 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
             index.index(2L, new float[]{ 0.0f, 1.0f });
 
             // Query with NaN — all scores will be NaN
-            List<VectorIndex.SearchResult<Long>> results =
-                    index.search(new float[]{ Float.NaN, 0.0f }, 2);
+            List<VectorIndex.SearchResult<Long>> results = index
+                    .search(new float[]{ Float.NaN, 0.0f }, 2);
 
             // With NaN query, all scores are NaN. We accept results being returned,
             // but verify they are not ranked above a hypothetical finite score.

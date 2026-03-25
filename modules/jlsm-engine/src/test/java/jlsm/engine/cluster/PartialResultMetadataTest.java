@@ -28,8 +28,7 @@ class PartialResultMetadataTest {
 
     @Test
     void nullUnavailablePartitionsThrows() {
-        assertThrows(NullPointerException.class, () ->
-                new PartialResultMetadata(null, true));
+        assertThrows(NullPointerException.class, () -> new PartialResultMetadata(null, true));
     }
 
     @Test
@@ -44,7 +43,7 @@ class PartialResultMetadataTest {
     @Test
     void returnedSetIsImmutable() {
         var meta = new PartialResultMetadata(Set.of("p1"), false);
-        assertThrows(UnsupportedOperationException.class, () ->
-                meta.unavailablePartitions().add("p2"));
+        assertThrows(UnsupportedOperationException.class,
+                () -> meta.unavailablePartitions().add("p2"));
     }
 }
