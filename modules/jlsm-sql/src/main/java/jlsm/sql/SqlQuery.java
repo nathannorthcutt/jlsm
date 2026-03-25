@@ -57,6 +57,24 @@ public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
     }
 
     /**
+     * A placeholder for a positional bind parameter ({@code ?}) in a predicate value position.
+     * Implements {@link Comparable} so it can be used in range predicates (Gt, Gte, Lt, Lte,
+     * Between) as well as equality predicates (Eq, Ne).
+     *
+     * @param index the zero-based parameter index
+     */
+    public record BindMarker(int index) implements Comparable<BindMarker> {
+        public BindMarker {
+            assert index >= 0 : "bind marker index must be >= 0";
+        }
+
+        @Override
+        public int compareTo(BindMarker other) {
+            return Integer.compare(index, other.index);
+        }
+    }
+
+    /**
      * Describes a VECTOR_DISTANCE function call in ORDER BY position.
      *
      * @param field the vector field name

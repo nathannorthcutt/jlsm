@@ -145,17 +145,57 @@ public final class SqlTranslator {
 
     private Predicate translateComparison(SqlAst.Expression.Comparison cmp, JlsmSchema schema)
             throws SqlParseException {
-        final String field = extractFieldName(cmp.left());
-        validateField(field, schema);
-        final Object value = extractValue(cmp.right());
+        // Support both "field op value" and "value op field" (reversed) comparisons
+        final String field;
+        final Object value;
+        final SqlAst.ComparisonOp op;
 
-        return switch (cmp.op()) {
+        if (isValueExpression(cmp.left()) && isFieldExpression(cmp.right())) {
+            // Reversed: literal on left, column on right — swap and flip operator
+            field = extractFieldName(cmp.right());
+            value = extractValue(cmp.left());
+            op = flipOp(cmp.op());
+        } else {
+            field = extractFieldName(cmp.left());
+            value = extractValue(cmp.right());
+            op = cmp.op();
+        }
+
+        validateField(field, schema);
+
+        return switch (op) {
             case EQ -> new Predicate.Eq(field, value);
             case NE -> new Predicate.Ne(field, value);
             case GT -> new Predicate.Gt(field, toComparable(value));
             case GTE -> new Predicate.Gte(field, toComparable(value));
             case LT -> new Predicate.Lt(field, toComparable(value));
             case LTE -> new Predicate.Lte(field, toComparable(value));
+        };
+    }
+
+    private boolean isValueExpression(SqlAst.Expression expr) {
+        return expr instanceof SqlAst.Expression.StringLiteral
+                || expr instanceof SqlAst.Expression.NumberLiteral
+                || expr instanceof SqlAst.Expression.BooleanLiteral
+                || expr instanceof SqlAst.Expression.Parameter;
+    }
+
+    private boolean isFieldExpression(SqlAst.Expression expr) {
+        return expr instanceof SqlAst.Expression.ColumnRef;
+    }
+
+    /**
+     * Flips a comparison operator for reversed comparisons (e.g., {@code 5 < age} →
+     * {@code age > 5}).
+     */
+    private SqlAst.ComparisonOp flipOp(SqlAst.ComparisonOp op) {
+        return switch (op) {
+            case EQ -> SqlAst.ComparisonOp.EQ;
+            case NE -> SqlAst.ComparisonOp.NE;
+            case GT -> SqlAst.ComparisonOp.LT;
+            case GTE -> SqlAst.ComparisonOp.LTE;
+            case LT -> SqlAst.ComparisonOp.GT;
+            case LTE -> SqlAst.ComparisonOp.GTE;
         };
     }
 
@@ -247,21 +287,25 @@ public final class SqlTranslator {
             case SqlAst.Expression.StringLiteral lit -> lit.value();
             case SqlAst.Expression.NumberLiteral num -> parseNumber(num.text());
             case SqlAst.Expression.BooleanLiteral bool -> bool.value();
-            case SqlAst.Expression.Parameter param -> param;
+            case SqlAst.Expression.Parameter param -> new SqlQuery.BindMarker(param.index());
             default -> throw new SqlParseException(
                     "Unsupported value expression: " + expr.getClass().getSimpleName(), -1);
         };
     }
 
-    private Number parseNumber(String text) {
+    private Number parseNumber(String text) throws SqlParseException {
         assert text != null : "numeric text must not be null";
-        if (text.contains(".")) {
-            return Double.parseDouble(text);
-        }
         try {
-            return Integer.parseInt(text);
+            if (text.contains(".")) {
+                return Double.parseDouble(text);
+            }
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException _) {
+                return Long.parseLong(text);
+            }
         } catch (NumberFormatException e) {
-            return Long.parseLong(text);
+            throw new SqlParseException("Numeric literal out of range: '" + text + "'", -1, e);
         }
     }
 

@@ -10,6 +10,9 @@ standard SQL SELECT semantics.
 | File | Subject | Status | Key Metric | Best For |
 |------|---------|--------|------------|----------|
 | [vector-similarity-sql-syntax.md](vector-similarity-sql-syntax.md) | Vector Similarity Search SQL Syntax | active | N/A (survey) | Choosing SQL syntax for vector nearest-neighbor queries |
+| [asymmetric-operand-assumption.md](asymmetric-operand-assumption.md) | Asymmetric operand assumption (adversarial) | active | data-integrity tendency | SQL translator operand handling |
+| [unchecked-parse-propagation.md](unchecked-parse-propagation.md) | Unchecked parse exception propagation (adversarial) | active | data-integrity tendency | Numeric parsing in translators |
+| [sql-query-support.md](sql-query-support.md) | sql-query-support (feature footprint) | stable | feature audit record | SQL parser/translator overview |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

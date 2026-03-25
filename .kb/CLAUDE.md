@@ -12,7 +12,7 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 14 | 2026-03-25 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 17 | 2026-03-25 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 2 | 2026-03-25 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 3 | 2026-03-20 |
 | systems | [systems/](systems/CLAUDE.md) | 4 | 12 | 2026-03-25 |
@@ -20,6 +20,9 @@
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | algorithms | sql-extensions | sql-query-support (footprint) |
+| 2026-03-25 | algorithms | sql-extensions | asymmetric-operand-assumption (adversarial) |
+| 2026-03-25 | algorithms | sql-extensions | unchecked-parse-propagation (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | table-indices-and-queries (footprint) |
 | 2026-03-25 | systems | lsm-index-patterns | multi-index-atomicity |
 | 2026-03-25 | systems | lsm-index-patterns | runtime-type-inference-ambiguity |
