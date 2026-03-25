@@ -29,6 +29,8 @@ VECTOR_DISTANCE() in ORDER BY, LIMIT/OFFSET, and positional bind parameters.
 - Asymmetric operand assumption: translator assumed field-left/value-right → [KB entry](asymmetric-operand-assumption.md)
 - Unchecked parse propagation: `Long.parseLong` overflow bypassed checked exception contract → [KB entry](unchecked-parse-propagation.md)
 - Bind parameter Comparable gap: `?` failed with range operators → [KB entry](bind-parameter-comparable-gap.md)
+- Missing field-type validation: translator accepted mismatched literal types for fields → [KB entry](missing-field-type-validation.md)
+- Unbounded recursion depth: parser had no nesting depth limit → [KB entry](unbounded-recursion-depth.md)
 
 ## Cross-references
 - KB: .kb/algorithms/sql-extensions/vector-similarity-sql-syntax.md

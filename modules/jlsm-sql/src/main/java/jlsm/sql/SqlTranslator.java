@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 
+import jlsm.table.FieldType;
 import jlsm.table.JlsmSchema;
 import jlsm.table.Predicate;
 
@@ -162,6 +163,7 @@ public final class SqlTranslator {
         }
 
         validateField(field, schema);
+        validateValueType(field, value, schema);
 
         return switch (op) {
             case EQ -> new Predicate.Eq(field, value);
@@ -214,8 +216,12 @@ public final class SqlTranslator {
             throws SqlParseException {
         final String field = extractFieldName(bet.field());
         validateField(field, schema);
-        final Comparable<?> low = toComparable(extractValue(bet.low()));
-        final Comparable<?> high = toComparable(extractValue(bet.high()));
+        final Object lowValue = extractValue(bet.low());
+        final Object highValue = extractValue(bet.high());
+        validateValueType(field, lowValue, schema);
+        validateValueType(field, highValue, schema);
+        final Comparable<?> low = toComparable(lowValue);
+        final Comparable<?> high = toComparable(highValue);
 
         return new Predicate.Between(field, low, high);
     }
@@ -230,6 +236,7 @@ public final class SqlTranslator {
                 }
                 final String field = extractFieldName(fn.arguments().get(0));
                 validateField(field, schema);
+                validateFieldIsString(field, schema);
                 final Object queryValue = extractValue(fn.arguments().get(1));
                 if (!(queryValue instanceof String queryText)) {
                     throw new SqlParseException("MATCH query argument must be a string literal",
@@ -253,6 +260,7 @@ public final class SqlTranslator {
 
         final String field = extractFieldName(fn.arguments().get(0));
         validateField(field, schema);
+        validateFieldIsVector(field, schema);
 
         final SqlAst.Expression vecExpr = fn.arguments().get(1);
         final int paramIndex;
@@ -322,6 +330,57 @@ public final class SqlTranslator {
         if (schema.fieldIndex(fieldName) < 0) {
             throw new SqlParseException("Unknown field '" + fieldName + "' — not found in schema '"
                     + schema.name() + "'", -1);
+        }
+    }
+
+    private FieldType resolveFieldType(String fieldName, JlsmSchema schema) {
+        final int idx = schema.fieldIndex(fieldName);
+        assert idx >= 0 : "field must exist — call validateField first";
+        return schema.fields().get(idx).type();
+    }
+
+    private void validateValueType(String fieldName, Object value, JlsmSchema schema)
+            throws SqlParseException {
+        // Bind markers are resolved at execution time — skip type checking
+        if (value instanceof SqlQuery.BindMarker) {
+            return;
+        }
+
+        final FieldType fieldType = resolveFieldType(fieldName, schema);
+        final boolean compatible = switch (fieldType) {
+            case FieldType.Primitive p -> switch (p) {
+                case STRING -> value instanceof String;
+                case INT8, INT16, INT32, INT64 -> value instanceof Number;
+                case FLOAT16, FLOAT32, FLOAT64 -> value instanceof Number;
+                case BOOLEAN -> value instanceof Boolean;
+                case TIMESTAMP -> value instanceof Number || value instanceof String;
+            };
+            case FieldType.BoundedString _ -> value instanceof String;
+            case FieldType.ArrayType _, FieldType.ObjectType _, FieldType.VectorType _ -> false;
+        };
+
+        if (! compatible) {
+            throw new SqlParseException("Type mismatch: field '" + fieldName + "' is " + fieldType
+                    + " but value is " + value.getClass().getSimpleName(), -1);
+        }
+    }
+
+    private void validateFieldIsString(String fieldName, JlsmSchema schema)
+            throws SqlParseException {
+        final FieldType type = resolveFieldType(fieldName, schema);
+        if (!(type == FieldType.Primitive.STRING || type instanceof FieldType.BoundedString)) {
+            throw new SqlParseException(
+                    "MATCH requires a STRING field but '" + fieldName + "' is " + type, -1);
+        }
+    }
+
+    private void validateFieldIsVector(String fieldName, JlsmSchema schema)
+            throws SqlParseException {
+        final FieldType type = resolveFieldType(fieldName, schema);
+        if (!(type instanceof FieldType.VectorType || type instanceof FieldType.ArrayType)) {
+            throw new SqlParseException(
+                    "VECTOR_DISTANCE requires a vector field but '" + fieldName + "' is " + type,
+                    -1);
         }
     }
 }

@@ -47,9 +47,13 @@ import java.util.Optional;
  */
 public final class SqlParser {
 
+    /** Maximum allowed expression nesting depth to prevent stack overflow from crafted input. */
+    private static final int MAX_EXPRESSION_DEPTH = 128;
+
     private List<Token> tokens;
     private int pos;
     private int parameterIndex;
+    private int expressionDepth;
 
     /**
      * Parses a list of tokens into a SQL AST.
@@ -67,6 +71,7 @@ public final class SqlParser {
         this.tokens = tokens;
         this.pos = 0;
         this.parameterIndex = 0;
+        this.expressionDepth = 0;
 
         return parseSelectStatement();
     }
@@ -366,9 +371,16 @@ public final class SqlParser {
                 yield new SqlAst.Expression.ColumnRef(token.text());
             }
             case LPAREN -> {
+                expressionDepth++;
+                if (expressionDepth > MAX_EXPRESSION_DEPTH) {
+                    throw new SqlParseException("Expression nesting depth exceeds maximum of "
+                            + MAX_EXPRESSION_DEPTH + " at position " + token.position(),
+                            token.position());
+                }
                 advance(); // consume (
                 final SqlAst.Expression expr = parseExpression();
                 expect(TokenType.RPAREN);
+                expressionDepth--;
                 yield expr;
             }
             default -> throw new SqlParseException("Unexpected token " + token.type() + " '"

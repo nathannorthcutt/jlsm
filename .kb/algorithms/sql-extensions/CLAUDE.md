@@ -13,6 +13,8 @@ standard SQL SELECT semantics.
 | [asymmetric-operand-assumption.md](asymmetric-operand-assumption.md) | Asymmetric operand assumption (adversarial) | active | data-integrity tendency | SQL translator operand handling |
 | [unchecked-parse-propagation.md](unchecked-parse-propagation.md) | Unchecked parse exception propagation (adversarial) | active | data-integrity tendency | Numeric parsing in translators |
 | [bind-parameter-comparable-gap.md](bind-parameter-comparable-gap.md) | Bind parameter Comparable gap (adversarial) | active | data-integrity confirmed | Bind params with range operators |
+| [missing-field-type-validation.md](missing-field-type-validation.md) | Missing field-type validation (adversarial) | active | data-integrity confirmed | Type checking in SQL translators |
+| [unbounded-recursion-depth.md](unbounded-recursion-depth.md) | Unbounded recursion depth (adversarial) | active | security tendency | Recursive descent parsers |
 | [sql-query-support.md](sql-query-support.md) | sql-query-support (feature footprint) | stable | feature audit record | SQL parser/translator overview |
 
 ## Comparison Summary

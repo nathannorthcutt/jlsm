@@ -42,6 +42,10 @@ public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
         projections = List.copyOf(projections);
         aliases = List.copyOf(aliases);
         orderBy = List.copyOf(orderBy);
+        if (!aliases.isEmpty() && projections.size() != aliases.size()) {
+            throw new IllegalArgumentException("projections and aliases must have the same size: "
+                    + projections.size() + " vs " + aliases.size());
+        }
     }
 
     /**
