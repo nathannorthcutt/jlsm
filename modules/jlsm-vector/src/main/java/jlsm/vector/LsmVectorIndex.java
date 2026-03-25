@@ -495,6 +495,10 @@ public final class LsmVectorIndex {
                             dimensions, precision);
                     float s = score(query, vec, similarityFunction);
 
+                    // Skip NaN scores — they corrupt Float.compare-based ordering
+                    if (Float.isNaN(s))
+                        continue;
+
                     heap.add(new ScoredCandidate(docIdBytes, s));
                     if (heap.size() > topK)
                         heap.poll(); // evict worst
@@ -738,6 +742,10 @@ public final class LsmVectorIndex {
             }
 
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
+
+            // Clear any soft-delete tombstone from a prior remove() so re-indexed docs are visible
+            lsmTree.delete(MemorySegment.ofArray(softDeleteKey(docIdBytes)));
+
             int newLevel = randomLevel();
 
             EntryPoint ep = readEntryPoint();
@@ -948,7 +956,10 @@ public final class LsmVectorIndex {
 
             ScoredCandidate entry = new ScoredCandidate(entryDocId, entryScore);
             frontier.add(entry);
-            results.add(entry);
+            // Only add to results if score is not NaN
+            if (!Float.isNaN(entryScore)) {
+                results.add(entry);
+            }
 
             while (!frontier.isEmpty()) {
                 ScoredCandidate best = frontier.poll();
@@ -965,6 +976,11 @@ public final class LsmVectorIndex {
                         continue; // already visited
 
                     float nbScore = scoreNode(nbId, query);
+
+                    // Skip NaN scores — they corrupt Float.compare-based ordering
+                    if (Float.isNaN(nbScore))
+                        continue;
+
                     float currentWorst = results.isEmpty() ? Float.NEGATIVE_INFINITY
                             : results.peek().score();
 

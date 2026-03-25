@@ -24,3 +24,4 @@ When scored results (vector similarity, full-text relevance) contain NaN scores,
 
 ## Found in
 - table-partitioning (audit round 1, 2026-03-25): ResultMerger.mergeTopK ranked NaN-scored entries above all finite scores
+- float16-vector-support (audit round 2, 2026-03-25): IvfFlat.search() and Hnsw.searchLayer() min-heaps never evicted NaN-scored entries, corrupting topK results

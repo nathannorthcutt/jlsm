@@ -20,6 +20,7 @@ optimization decisions.
 | [builder-resource-leak-on-failure.md](builder-resource-leak-on-failure.md) | Builder resource leak on partial failure (adversarial) | active | memory-safety bug class | Any builder creating multiple closeable resources |
 | [nan-score-ordering-corruption.md](nan-score-ordering-corruption.md) | NaN score ordering corruption (adversarial) | active | data-integrity bug class | Any scored result merge using Double.compare |
 | [range-query-inverted-bounds.md](range-query-inverted-bounds.md) | Range query inverted bounds (adversarial) | active | data-integrity tendency | Any range query accepting (from, to) key pairs |
+| [soft-delete-reindex-tombstone.md](soft-delete-reindex-tombstone.md) | Soft-delete reindex tombstone persistence (adversarial) | active | data-integrity bug class | Any index using soft-delete tombstones for lazy removal |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->
