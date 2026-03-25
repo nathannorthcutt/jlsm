@@ -105,6 +105,30 @@ public final class LsmVectorIndex {
     // -----------------------------------------------------------------------
 
     /**
+     * Validates that all components of a float vector are representable in float16 without
+     * overflow. Finite float32 values with magnitude greater than 65504 overflow to Infinity in
+     * float16, which produces NaN scores with cosine similarity and makes vectors invisible in
+     * search.
+     *
+     * @param vector the float vector to validate; must not be null
+     * @throws IllegalArgumentException if any component overflows float16
+     */
+    static void validateFloat16Components(float[] vector) {
+        assert vector != null : "vector must not be null";
+        for (int i = 0; i < vector.length; i++) {
+            float f = vector[i];
+            if (Float.isNaN(f) || Float.isInfinite(f)) {
+                continue; // NaN and Infinity are representable in float16
+            }
+            short fp16 = Float.floatToFloat16(f);
+            if (!Float.isFinite(Float.float16ToFloat(fp16))) {
+                throw new IllegalArgumentException("vector component " + i + " (" + f
+                        + ") overflows float16 range (max finite: ±65504)");
+            }
+        }
+    }
+
+    /**
      * Encodes a float array to float16 (IEEE 754 binary16) big-endian bytes. Contract: each float
      * is converted via {@link Float#floatToFloat16(float)} and stored as 2 bytes big-endian. Output
      * length is {@code floats.length * 2}. Side effects: none.
@@ -391,6 +415,9 @@ public final class LsmVectorIndex {
             if (vector.length != dimensions) {
                 throw new IllegalArgumentException(
                         "vector.length=" + vector.length + " != dimensions=" + dimensions);
+            }
+            if (precision == VectorPrecision.FLOAT16) {
+                validateFloat16Components(vector);
             }
 
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
@@ -739,6 +766,9 @@ public final class LsmVectorIndex {
             if (vector.length != dimensions) {
                 throw new IllegalArgumentException(
                         "vector.length=" + vector.length + " != dimensions=" + dimensions);
+            }
+            if (precision == VectorPrecision.FLOAT16) {
+                validateFloat16Components(vector);
             }
 
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);

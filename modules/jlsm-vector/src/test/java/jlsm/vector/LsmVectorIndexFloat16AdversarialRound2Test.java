@@ -192,51 +192,37 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
     // =======================================================================
 
     @Test
-    void ivfFlat_float16_overflowVectorDoesNotCorruptSearchResults() throws IOException {
-        // F15: A vector with components > 65504 overflows to infinity in float16.
-        // cosine([inf, 0], [inf, 0]) = inf/inf = NaN. This triggers F14.
+    void ivfFlat_float16_overflowVectorRejectedEagerly() throws IOException {
+        // F15 (superseded by F17): Overflow values (> 65504) are now rejected at index time
+        // with IllegalArgumentException per coding-guidelines (eager input validation).
+        // Original test verified NaN filtering prevented corruption; now validation prevents
+        // the overflow vector from being indexed at all.
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
                 .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .dimensions(2).similarityFunction(SimilarityFunction.COSINE)
                 .precision(VectorPrecision.FLOAT16).build()) {
 
-            // Normal vector
             index.index(1L, new float[]{ 1.0f, 0.0f });
 
-            // Overflow vector: 100000 → infinity in float16
-            index.index(2L, new float[]{ 100000.0f, 0.0f });
-
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
-                    2);
-
-            assertFalse(results.isEmpty(), "search should return results");
-            VectorIndex.SearchResult<Long> top = results.get(0);
-            assertFalse(Float.isNaN(top.score()),
-                    "top result should not have NaN score from overflow → infinity → NaN cosine");
-            assertEquals(1L, top.docId(),
-                    "normal vector (doc 1) should be top result, not overflow-corrupted doc 2");
+            assertThrows(IllegalArgumentException.class,
+                    () -> index.index(2L, new float[]{ 100000.0f, 0.0f }),
+                    "overflow values should be rejected eagerly at index time");
         }
     }
 
     @Test
-    void hnsw_float16_overflowVectorDoesNotCorruptSearchResults() throws IOException {
-        // F15: Same overflow → NaN cosine check for Hnsw.
+    void hnsw_float16_overflowVectorRejectedEagerly() throws IOException {
+        // F15 (superseded by F17): Overflow values now rejected at index time.
         try (VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
                 .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .dimensions(2).similarityFunction(SimilarityFunction.COSINE)
                 .precision(VectorPrecision.FLOAT16).build()) {
 
             index.index(1L, new float[]{ 1.0f, 0.0f });
-            index.index(2L, new float[]{ 100000.0f, 0.0f });
 
-            List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
-                    2);
-
-            assertFalse(results.isEmpty(), "search should return results");
-            VectorIndex.SearchResult<Long> top = results.get(0);
-            assertFalse(Float.isNaN(top.score()),
-                    "top result should not have NaN score from Hnsw overflow path");
-            assertEquals(1L, top.docId(), "normal vector (doc 1) should be top result");
+            assertThrows(IllegalArgumentException.class,
+                    () -> index.index(2L, new float[]{ 100000.0f, 0.0f }),
+                    "overflow values should be rejected eagerly at index time");
         }
     }
 

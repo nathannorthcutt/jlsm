@@ -15,6 +15,7 @@ SIMD compatibility.
 | [sparse-vector-encoding.md](sparse-vector-encoding.md) | COO / bitmap sparse encoding | mature | O(nnz) storage | Vectors with >50% zeros |
 | [lossless-vector-compression.md](lossless-vector-compression.md) | Byte-split + entropy coding | active | 30–60% reduction | I/O-bound workloads, archival |
 | [float16-vector-support.md](float16-vector-support.md) | Float16 vector support (feature footprint) | stable | 50% storage reduction | Feature history, adversarial findings |
+| [precision-overflow-silent-data-loss.md](precision-overflow-silent-data-loss.md) | Precision overflow → invisible vectors (adversarial) | active | data-integrity | Float16/quantized index validation |
 
 ## Comparison Summary
 

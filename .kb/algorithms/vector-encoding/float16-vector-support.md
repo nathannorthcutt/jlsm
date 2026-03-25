@@ -30,6 +30,7 @@ via VectorPrecision enum.
 - composite-key-reindex-orphan: IvfFlat.index() left orphan posting under old centroid on re-index -> [KB entry](../../systems/lsm-index-patterns/composite-key-reindex-orphan.md)
 - soft-delete-reindex-tombstone: Hnsw.index() did not clear soft-delete tombstone after remove(), making re-indexed docs invisible -> [KB entry](../../systems/lsm-index-patterns/soft-delete-reindex-tombstone.md)
 - nan-score-ordering-corruption: NaN scores from NaN/overflow vectors corrupted PriorityQueue ordering in search -> [KB entry](../../systems/lsm-index-patterns/nan-score-ordering-corruption.md)
+- precision-overflow-silent-data-loss: Float32 values > 65504 overflowed to Infinity in float16, making vectors invisible in cosine search -> [KB entry](precision-overflow-silent-data-loss.md)
 
 ## Cross-references
 - KB: algorithms/vector-encoding/flat-vector-encoding.md (float32 baseline)

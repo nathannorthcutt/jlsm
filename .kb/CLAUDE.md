@@ -12,7 +12,7 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 20 | 2026-03-25 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 21 | 2026-03-25 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 2 | 2026-03-25 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 4 | 2026-03-25 |
 | systems | [systems/](systems/CLAUDE.md) | 4 | 23 | 2026-03-25 |
@@ -20,6 +20,7 @@
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | algorithms | vector-encoding | precision-overflow-silent-data-loss (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | segment-identity-equality (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | deferred-close-catch-scope (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | nan-at-construction (adversarial) |
