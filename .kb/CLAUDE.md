@@ -14,12 +14,16 @@
 |-------|------|------------|-------|--------------|
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 18 | 2026-03-25 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 2 | 2026-03-25 |
-| distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 3 | 2026-03-20 |
-| systems | [systems/](systems/CLAUDE.md) | 4 | 14 | 2026-03-25 |
+| distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 4 | 2026-03-25 |
+| systems | [systems/](systems/CLAUDE.md) | 4 | 17 | 2026-03-25 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | distributed-systems | data-partitioning | table-partitioning (footprint) |
+| 2026-03-25 | systems | lsm-index-patterns | builder-resource-leak-on-failure (adversarial) |
+| 2026-03-25 | systems | lsm-index-patterns | nan-score-ordering-corruption (adversarial) |
+| 2026-03-25 | systems | lsm-index-patterns | range-query-inverted-bounds (adversarial) |
 | 2026-03-25 | algorithms | sql-extensions | bind-parameter-comparable-gap (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | between-mixed-type-mismatch (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | between-inverted-range (adversarial) |

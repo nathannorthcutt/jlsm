@@ -7,6 +7,7 @@ applies_to:
   - "modules/jlsm-*/src/main/**"
 research_status: active
 last_researched: "2026-03-25"
+# Note: this finding also applies to MemorySegment fields — see below
 ---
 
 # Mutable array in Java record
@@ -29,6 +30,10 @@ that don't mutate inputs after construction.
   construction does not affect the record's state
 - Test that mutating the array returned by the accessor does not affect the record
 - Both the constructor clone AND the accessor defensive copy are needed
+- For MemorySegment fields: `MemorySegment.ofArray(byte[])` wraps the backing array
+  without copying — same mutation risk as direct array fields. Copy in compact
+  constructor via `MemorySegment.ofArray(src.toArray(ValueLayout.JAVA_BYTE))`
 
 ## Found in
 - table-indices-and-queries (audit round 1, 2026-03-25): Predicate.VectorNearest stored float[] queryVector without cloning
+- table-partitioning (audit round 1, 2026-03-25): PartitionDescriptor stored MemorySegment lowKey/highKey without copying — backing array mutation corrupted range routing

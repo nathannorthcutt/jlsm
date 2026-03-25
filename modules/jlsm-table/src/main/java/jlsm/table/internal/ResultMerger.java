@@ -53,12 +53,28 @@ public final class ResultMerger {
             throw new IllegalArgumentException("k must be positive, got: " + k);
         }
 
-        // Max-heap: highest score polled first
-        final PriorityQueue<ScoredEntry<K>> heap = new PriorityQueue<>(
-                Comparator.<ScoredEntry<K>>comparingDouble(e -> e.score()).reversed());
+        // Max-heap: highest finite score polled first.
+        // NaN scores are ranked below all finite scores to prevent corruption of result ordering.
+        final Comparator<ScoredEntry<K>> byScore = (a, b) -> {
+            final boolean aNaN = Double.isNaN(a.score());
+            final boolean bNaN = Double.isNaN(b.score());
+            if (aNaN && bNaN) {
+                return 0;
+            }
+            if (aNaN) {
+                return 1; // NaN sorts after (lower priority than) finite values
+            }
+            if (bNaN) {
+                return -1;
+            }
+            return Double.compare(b.score(), a.score()); // descending for max-heap
+        };
+        final PriorityQueue<ScoredEntry<K>> heap = new PriorityQueue<>(byScore);
 
-        for (final List<ScoredEntry<K>> partition : partitionResults) {
-            assert partition != null : "individual partition result list must not be null";
+        for (int i = 0; i < partitionResults.size(); i++) {
+            final List<ScoredEntry<K>> partition = partitionResults.get(i);
+            Objects.requireNonNull(partition,
+                    "partition result list must not be null (index " + i + ")");
             heap.addAll(partition);
         }
 

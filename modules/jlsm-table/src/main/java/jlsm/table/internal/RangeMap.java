@@ -111,6 +111,10 @@ public final class RangeMap {
     public List<PartitionDescriptor> overlapping(MemorySegment fromKey, MemorySegment toKey) {
         Objects.requireNonNull(fromKey, "fromKey must not be null");
         Objects.requireNonNull(toKey, "toKey must not be null");
+        // Empty or inverted range [from, to) where from >= to has no overlap
+        if (compareKeys(fromKey, toKey) >= 0) {
+            return List.of();
+        }
         // A partition [pLow, pHigh) overlaps query [from, to) iff:
         // pLow < to AND pHigh > from
         List<PartitionDescriptor> result = new ArrayList<>();

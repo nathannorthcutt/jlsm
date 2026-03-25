@@ -202,6 +202,29 @@ public final class PartitionedTable implements Closeable {
     }
 
     // -------------------------------------------------------------------------
+    // Internal helpers — resource cleanup
+    // -------------------------------------------------------------------------
+
+    /**
+     * Closes all clients in the map using the deferred close pattern.
+     */
+    private static void closeAllClients(Map<Long, PartitionClient> clients) {
+        IOException firstException = null;
+        for (final PartitionClient client : clients.values()) {
+            try {
+                client.close();
+            } catch (final IOException e) {
+                if (firstException == null) {
+                    firstException = e;
+                } else {
+                    firstException.addSuppressed(e);
+                }
+            }
+        }
+        // Best-effort cleanup — don't throw from here since we're in a catch block
+    }
+
+    // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------
 
@@ -306,13 +329,24 @@ public final class PartitionedTable implements Closeable {
 
             final RangeMap rangeMap = new RangeMap(config);
 
-            // Build clients in config order, using LinkedHashMap to preserve insertion order
+            // Build clients in config order, using LinkedHashMap to preserve insertion order.
+            // If factory throws for partition N, close all previously created clients.
             final Map<Long, PartitionClient> clients = new LinkedHashMap<>();
-            for (final PartitionDescriptor desc : config.descriptors()) {
-                final PartitionClient client = factory.apply(desc);
-                Objects.requireNonNull(client,
-                        "partitionClientFactory returned null for descriptor id " + desc.id());
-                clients.put(desc.id(), client);
+            try {
+                for (final PartitionDescriptor desc : config.descriptors()) {
+                    if (clients.containsKey(desc.id())) {
+                        throw new IllegalStateException(
+                                "duplicate partition descriptor id: " + desc.id());
+                    }
+                    final PartitionClient client = factory.apply(desc);
+                    Objects.requireNonNull(client,
+                            "partitionClientFactory returned null for descriptor id " + desc.id());
+                    clients.put(desc.id(), client);
+                }
+            } catch (Exception e) {
+                // Close all already-created clients before propagating the exception
+                closeAllClients(clients);
+                throw e;
             }
 
             assert clients.size() == config.partitionCount()
