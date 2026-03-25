@@ -21,6 +21,8 @@ optimization decisions.
 | [nan-score-ordering-corruption.md](nan-score-ordering-corruption.md) | NaN score ordering corruption (adversarial) | active | data-integrity bug class | Any scored result merge using Double.compare |
 | [range-query-inverted-bounds.md](range-query-inverted-bounds.md) | Range query inverted bounds (adversarial) | active | data-integrity tendency | Any range query accepting (from, to) key pairs |
 | [soft-delete-reindex-tombstone.md](soft-delete-reindex-tombstone.md) | Soft-delete reindex tombstone persistence (adversarial) | active | data-integrity bug class | Any index using soft-delete tombstones for lazy removal |
+| [hardcoded-key-decoder.md](hardcoded-key-decoder.md) | Hardcoded key decoder in query executor (adversarial) | active | data-integrity bug class | Any generic executor decoding typed keys from bytes |
+| [scan-filter-unchecked-compareto.md](scan-filter-unchecked-compareto.md) | Scan-and-filter unchecked compareTo (adversarial) | active | data-integrity bug class | Any scan-filter using Comparable.compareTo on untyped values |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

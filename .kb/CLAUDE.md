@@ -15,11 +15,13 @@
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 18 | 2026-03-25 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 2 | 2026-03-25 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 4 | 2026-03-25 |
-| systems | [systems/](systems/CLAUDE.md) | 4 | 18 | 2026-03-25 |
+| systems | [systems/](systems/CLAUDE.md) | 4 | 20 | 2026-03-25 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | systems | lsm-index-patterns | scan-filter-unchecked-compareto (adversarial) |
+| 2026-03-25 | systems | lsm-index-patterns | hardcoded-key-decoder (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | soft-delete-reindex-tombstone (adversarial) |
 | 2026-03-25 | distributed-systems | data-partitioning | table-partitioning (footprint) |
 | 2026-03-25 | systems | lsm-index-patterns | builder-resource-leak-on-failure (adversarial) |

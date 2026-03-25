@@ -42,6 +42,8 @@ available indices, falling back to scan-and-filter for unindexed predicates.
 - Mutable array in record: float[] not cloned in Predicate.VectorNearest → [KB entry](../../data-structures/mutable-array-in-record.md)
 - Between mixed-type mismatch: Integer/Long mix crashed codec → [KB entry](between-mixed-type-mismatch.md)
 - Between inverted range: low > high crashed TreeMap.subMap → [KB entry](between-inverted-range.md)
+- Hardcoded key decoder: QueryExecutor always decoded keys as String → [KB entry](hardcoded-key-decoder.md)
+- Scan-filter unchecked compareTo: cross-type compareTo crashed with ClassCastException → [KB entry](scan-filter-unchecked-compareto.md)
 
 ## Cross-references
 - Related features: sql-query-support (depends on Predicate AST), float16-vector-support (FLOAT16 encoding)

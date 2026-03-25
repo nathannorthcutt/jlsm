@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 import jlsm.table.JlsmSchema;
 import jlsm.table.Predicate;
@@ -37,18 +38,35 @@ public final class QueryExecutor<K> {
 
     private final JlsmSchema schema;
     private final IndexRegistry indexRegistry;
+    private final Function<MemorySegment, K> keyDecoder;
 
     /**
-     * Creates a query executor.
+     * Creates a query executor with an explicit key decoder.
+     *
+     * @param schema the table's schema (for field type resolution)
+     * @param indexRegistry the table's index registry
+     * @param keyDecoder function to decode primary key bytes into the key type
+     */
+    public QueryExecutor(JlsmSchema schema, IndexRegistry indexRegistry,
+            Function<MemorySegment, K> keyDecoder) {
+        Objects.requireNonNull(schema, "schema");
+        Objects.requireNonNull(indexRegistry, "indexRegistry");
+        Objects.requireNonNull(keyDecoder, "keyDecoder");
+        this.schema = schema;
+        this.indexRegistry = indexRegistry;
+        this.keyDecoder = keyDecoder;
+    }
+
+    /**
+     * Creates a query executor that decodes primary keys as UTF-8 strings. Use the three-argument
+     * constructor for Long-keyed tables or custom key encodings.
      *
      * @param schema the table's schema (for field type resolution)
      * @param indexRegistry the table's index registry
      */
+    @SuppressWarnings("unchecked")
     public QueryExecutor(JlsmSchema schema, IndexRegistry indexRegistry) {
-        Objects.requireNonNull(schema, "schema");
-        Objects.requireNonNull(indexRegistry, "indexRegistry");
-        this.schema = schema;
-        this.indexRegistry = indexRegistry;
+        this(schema, indexRegistry, pk -> (K) decodeStringKey(pk));
     }
 
     /**
@@ -65,8 +83,7 @@ public final class QueryExecutor<K> {
         for (PkKey pk : matchingKeys) {
             IndexRegistry.StoredEntry stored = indexRegistry.resolveEntry(toSegment(pk));
             if (stored != null) {
-                @SuppressWarnings("unchecked")
-                K key = (K) decodeKey(stored.primaryKey());
+                K key = keyDecoder.apply(stored.primaryKey());
                 results.add(new TableEntry<>(key, stored.document()));
             }
         }
@@ -142,24 +159,34 @@ public final class QueryExecutor<K> {
             }
             case Predicate.Gt gt -> {
                 Object fieldValue = extractFieldValue(entry, gt.field());
-                yield fieldValue instanceof Comparable c && c.compareTo(gt.value()) > 0;
+                yield fieldValue instanceof Comparable c
+                        && fieldValue.getClass() == gt.value().getClass()
+                        && c.compareTo(gt.value()) > 0;
             }
             case Predicate.Gte gte -> {
                 Object fieldValue = extractFieldValue(entry, gte.field());
-                yield fieldValue instanceof Comparable c && c.compareTo(gte.value()) >= 0;
+                yield fieldValue instanceof Comparable c
+                        && fieldValue.getClass() == gte.value().getClass()
+                        && c.compareTo(gte.value()) >= 0;
             }
             case Predicate.Lt lt -> {
                 Object fieldValue = extractFieldValue(entry, lt.field());
-                yield fieldValue instanceof Comparable c && c.compareTo(lt.value()) < 0;
+                yield fieldValue instanceof Comparable c
+                        && fieldValue.getClass() == lt.value().getClass()
+                        && c.compareTo(lt.value()) < 0;
             }
             case Predicate.Lte lte -> {
                 Object fieldValue = extractFieldValue(entry, lte.field());
-                yield fieldValue instanceof Comparable c && c.compareTo(lte.value()) <= 0;
+                yield fieldValue instanceof Comparable c
+                        && fieldValue.getClass() == lte.value().getClass()
+                        && c.compareTo(lte.value()) <= 0;
             }
             case Predicate.Between between -> {
                 Object fieldValue = extractFieldValue(entry, between.field());
-                yield fieldValue instanceof Comparable c && c.compareTo(between.low()) >= 0
-                        && c.compareTo(between.high()) <= 0;
+                yield fieldValue instanceof Comparable c
+                        && fieldValue.getClass() == between.low().getClass()
+                        && fieldValue.getClass() == between.high().getClass()
+                        && c.compareTo(between.low()) >= 0 && c.compareTo(between.high()) <= 0;
             }
             case Predicate.FullTextMatch _, Predicate.VectorNearest _ -> false;
             case Predicate.And _, Predicate.Or _ -> false;
@@ -197,7 +224,7 @@ public final class QueryExecutor<K> {
 
     // ── Key encoding helpers ────────────────────────────────────────────
 
-    private static Object decodeKey(MemorySegment pk) {
+    private static String decodeStringKey(MemorySegment pk) {
         return new String(pk.toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
     }
 
