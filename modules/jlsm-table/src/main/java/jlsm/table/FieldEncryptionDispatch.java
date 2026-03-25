@@ -3,6 +3,7 @@ package jlsm.table;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
@@ -52,7 +53,7 @@ public final class FieldEncryptionDispatch {
      * @param keyHolder the key holder providing encryption keys; may be null (no encryption)
      */
     public FieldEncryptionDispatch(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
-        assert schema != null : "schema must not be null";
+        Objects.requireNonNull(schema, "schema must not be null");
 
         final List<FieldDefinition> fields = schema.fields();
         final int fieldCount = fields.size();
@@ -75,23 +76,26 @@ public final class FieldEncryptionDispatch {
                 case EncryptionSpec.Deterministic _ -> {
                     // AES-SIV requires a 64-byte key. If the table key is 32 bytes,
                     // derive a 64-byte key by repeating it.
-                    final EncryptionKeyHolder sivKeyHolder;
+                    final AesSivEncryptor siv;
                     if (keyHolder.keyLength() == 32) {
                         final byte[] halfKey = keyHolder.getKeyBytes();
                         final byte[] sivKey = new byte[64];
                         System.arraycopy(halfKey, 0, sivKey, 0, 32);
                         System.arraycopy(halfKey, 0, sivKey, 32, 32);
                         Arrays.fill(halfKey, (byte) 0);
-                        sivKeyHolder = EncryptionKeyHolder.of(sivKey);
+                        final EncryptionKeyHolder sivKeyHolder = EncryptionKeyHolder.of(sivKey);
+                        siv = new AesSivEncryptor(sivKeyHolder);
+                        sivKeyHolder.close(); // encryptor copied key material at construction
                     } else {
-                        sivKeyHolder = keyHolder;
+                        siv = new AesSivEncryptor(keyHolder);
                     }
-                    final AesSivEncryptor siv = new AesSivEncryptor(sivKeyHolder);
                     final byte[] associatedData = fd.name().getBytes(StandardCharsets.UTF_8);
                     encryptors[i] = plaintext -> siv.encrypt(plaintext, associatedData);
                     decryptors[i] = ciphertext -> siv.decrypt(ciphertext, associatedData);
                 }
                 case EncryptionSpec.OrderPreserving _ -> {
+                    // Validate field type is narrow enough for lossless OPE round-trip
+                    validateOpeFieldType(fd);
                     // Derive OPE domain/range from the field type for optimal recursion depth.
                     final long[] bounds = deriveOpeBounds(fd.type());
                     final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder,
@@ -107,16 +111,17 @@ public final class FieldEncryptionDispatch {
                 case EncryptionSpec.Opaque _ -> {
                     // AES-GCM requires a 32-byte key. If the table key is 64 bytes,
                     // derive a 32-byte sub-key from the first half.
-                    final EncryptionKeyHolder gcmKeyHolder;
+                    final AesGcmEncryptor gcm;
                     if (keyHolder.keyLength() == 64) {
                         final byte[] fullKey = keyHolder.getKeyBytes();
                         final byte[] gcmKey = Arrays.copyOfRange(fullKey, 0, 32);
                         Arrays.fill(fullKey, (byte) 0);
-                        gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
+                        final EncryptionKeyHolder gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
+                        gcm = new AesGcmEncryptor(gcmKeyHolder);
+                        gcmKeyHolder.close(); // encryptor copied key material at construction
                     } else {
-                        gcmKeyHolder = keyHolder;
+                        gcm = new AesGcmEncryptor(keyHolder);
                     }
-                    final AesGcmEncryptor gcm = new AesGcmEncryptor(gcmKeyHolder);
                     encryptors[i] = gcm::encrypt;
                     decryptors[i] = gcm::decrypt;
                 }
@@ -148,6 +153,37 @@ public final class FieldEncryptionDispatch {
         assert fieldIndex >= 0 && fieldIndex < decryptors.length
                 : "fieldIndex out of bounds: " + fieldIndex;
         return decryptors[fieldIndex];
+    }
+
+    /**
+     * Validates that the field type is narrow enough for lossless OPE round-trip. OPE is capped at
+     * {@code MAX_OPE_BYTES=2}, so types wider than 2 bytes would suffer silent data truncation.
+     */
+    private static void validateOpeFieldType(FieldDefinition fd) {
+        final FieldType type = fd.type();
+        if (type instanceof FieldType.Primitive p) {
+            switch (p) {
+                case INT8, INT16 -> {
+                    /* allowed — fits in 2 bytes */ }
+                case INT32, INT64, TIMESTAMP -> throw new IllegalArgumentException(
+                        "OrderPreserving encryption on " + p + " field '" + fd.name()
+                                + "' is not supported — OPE is limited to 2-byte values; "
+                                + "wider types would suffer silent data truncation on round-trip");
+                default -> throw new IllegalArgumentException("OrderPreserving encryption on " + p
+                        + " field '" + fd.name() + "' is not supported");
+            }
+        } else if (type instanceof FieldType.BoundedString bs) {
+            if (bs.maxLength() > MAX_OPE_BYTES) {
+                throw new IllegalArgumentException(
+                        "OrderPreserving encryption on BoundedString(maxLength=" + bs.maxLength()
+                                + ") field '" + fd.name()
+                                + "' is not supported — maxLength exceeds OPE limit of "
+                                + MAX_OPE_BYTES);
+            }
+        } else {
+            throw new IllegalArgumentException("OrderPreserving encryption on " + type + " field '"
+                    + fd.name() + "' is not supported");
+        }
     }
 
     // -- OPE type-aware helpers -----------------------------------------------

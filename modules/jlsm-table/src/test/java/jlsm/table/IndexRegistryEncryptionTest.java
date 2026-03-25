@@ -43,7 +43,8 @@ class IndexRegistryEncryptionTest {
     @Test
     void rangeIndex_orderPreservingField_allowed() throws IOException {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("score", FieldType.int64(), EncryptionSpec.orderPreserving()).build();
+                .field("score", FieldType.Primitive.INT16, EncryptionSpec.orderPreserving())
+                .build();
 
         var defs = List.of(new IndexDefinition("score", IndexType.RANGE));
         var registry = new IndexRegistry(schema, defs);
@@ -69,7 +70,7 @@ class IndexRegistryEncryptionTest {
     @Test
     void uniqueIndex_orderPreservingField_allowed() throws IOException {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("id", FieldType.int64(), EncryptionSpec.orderPreserving()).build();
+                .field("id", FieldType.Primitive.INT16, EncryptionSpec.orderPreserving()).build();
 
         var defs = List.of(new IndexDefinition("id", IndexType.UNIQUE));
         var registry = new IndexRegistry(schema, defs);
@@ -172,7 +173,7 @@ class IndexRegistryEncryptionTest {
     @Test
     void equalityIndex_orderPreservingField_allowed() throws IOException {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("rank", FieldType.int32(), EncryptionSpec.orderPreserving()).build();
+                .field("rank", FieldType.Primitive.INT16, EncryptionSpec.orderPreserving()).build();
 
         var defs = List.of(new IndexDefinition("rank", IndexType.EQUALITY));
         var registry = new IndexRegistry(schema, defs);

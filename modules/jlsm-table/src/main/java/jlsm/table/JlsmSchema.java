@@ -37,10 +37,15 @@ public final class JlsmSchema {
         this.fields = List.copyOf(fields);
         this.maxDepth = maxDepth;
 
-        // Build field index map for O(1) lookup
+        // Build field index map for O(1) lookup — reject duplicates
         final Map<String, Integer> indexMap = new HashMap<>(fields.size() * 2);
         for (int i = 0; i < fields.size(); i++) {
-            indexMap.put(fields.get(i).name(), i);
+            final String fieldName = fields.get(i).name();
+            if (indexMap.containsKey(fieldName)) {
+                throw new IllegalArgumentException(
+                        "Duplicate field name '" + fieldName + "' in schema '" + name + "'");
+            }
+            indexMap.put(fieldName, i);
         }
         this.fieldIndexMap = Map.copyOf(indexMap);
     }

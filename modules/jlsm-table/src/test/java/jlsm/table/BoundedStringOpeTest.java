@@ -120,38 +120,33 @@ class BoundedStringOpeTest {
     }
 
     @Test
-    void opeDispatch_int32Field_encryptDecryptRoundTrip_topBytes() {
-        // INT32 OPE uses only the top 2 bytes (MAX_OPE_BYTES=2) for practical performance.
-        // Lower bytes are zeroed in the round-trip.
+    void opeDispatch_int32Field_rejectedToPreventTruncation() {
+        // INT32 with OPE would silently truncate to 2 bytes — must be rejected
         JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("val", FieldType.Primitive.INT32, EncryptionSpec.orderPreserving()).build();
 
-        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
-        // Use a value where the significant data is in the top 2 bytes
-        byte[] plaintext = new byte[]{ 0x01, 0x23, 0x00, 0x00 };
-        byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
-        byte[] recovered = dispatch.decryptorFor(0).decrypt(ciphertext);
-        assertArrayEquals(plaintext, recovered,
-                "INT32 OPE round-trip must recover original (top 2 bytes precision)");
+        assertThrows(IllegalArgumentException.class,
+                () -> new FieldEncryptionDispatch(schema, keyHolder),
+                "INT32 OPE must be rejected — would cause data truncation");
     }
 
     @Test
-    void opeDispatch_int32Field_completesQuickly() {
+    void opeDispatch_int16Field_completesQuickly() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("val", FieldType.Primitive.INT32, EncryptionSpec.orderPreserving()).build();
+                .field("val", FieldType.Primitive.INT16, EncryptionSpec.orderPreserving()).build();
 
         var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
         var encryptor = dispatch.encryptorFor(0);
 
-        // With type-aware bounds (domain=65536 for top 2 bytes),
+        // With type-aware bounds (domain=65536 for 2 bytes),
         // OPE should complete in well under 1 second.
         long start = System.nanoTime();
-        byte[] pt = new byte[]{ 0x00, 0x01, 0x00, 0x00 };
+        byte[] pt = new byte[]{ 0x00, 0x01 };
         encryptor.encrypt(pt);
         long elapsed = System.nanoTime() - start;
 
         assertTrue(elapsed < 5_000_000_000L, // 5 seconds max — generous timeout
-                "INT32 OPE should complete in under 5s, took " + (elapsed / 1_000_000) + "ms");
+                "INT16 OPE should complete in under 5s, took " + (elapsed / 1_000_000) + "ms");
     }
 
     @Test
@@ -168,31 +163,26 @@ class BoundedStringOpeTest {
     }
 
     @Test
-    void opeDispatch_boundedString6_encryptDecryptRoundTrip() {
-        // BoundedString(6) with MAX_OPE_BYTES=2 uses only the first 2 bytes for ordering.
-        // A 2-byte string round-trips exactly.
+    void opeDispatch_boundedString6_rejectedToPreventTruncation() {
+        // BoundedString(6) exceeds MAX_OPE_BYTES=2 — must be rejected
         JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("code", FieldType.string(6), EncryptionSpec.orderPreserving()).build();
 
-        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
-        byte[] plaintext = new byte[]{ 0x41, 0x42 }; // "AB" — 2 bytes, within OPE precision
-        byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
-        byte[] recovered = dispatch.decryptorFor(0).decrypt(ciphertext);
-        assertArrayEquals(plaintext, recovered,
-                "BoundedString(6) OPE round-trip with 2-byte value");
+        assertThrows(IllegalArgumentException.class,
+                () -> new FieldEncryptionDispatch(schema, keyHolder),
+                "BoundedString(6) OPE must be rejected — maxLength exceeds OPE limit of 2");
     }
 
     @Test
-    void opeDispatch_orderPreserved_int32() {
+    void opeDispatch_orderPreserved_int16() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .field("val", FieldType.Primitive.INT32, EncryptionSpec.orderPreserving()).build();
+                .field("val", FieldType.Primitive.INT16, EncryptionSpec.orderPreserving()).build();
 
         var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
         var encryptor = dispatch.encryptorFor(0);
 
-        // Values that differ in the top 2 bytes (OPE precision range)
-        byte[] low = new byte[]{ 0x00, 0x01, 0x00, 0x00 };
-        byte[] high = new byte[]{ 0x00, 0x10, 0x00, 0x00 };
+        byte[] low = new byte[]{ 0x00, 0x01 };
+        byte[] high = new byte[]{ 0x00, 0x10 };
 
         byte[] ctLow = encryptor.encrypt(low);
         byte[] ctHigh = encryptor.encrypt(high);
@@ -234,14 +224,13 @@ class BoundedStringOpeTest {
     }
 
     @Test
-    void rangeIndex_int32_orderPreserving_allowed() throws IOException {
+    void rangeIndex_int32_orderPreserving_rejected() {
+        // INT32 with OPE is now rejected to prevent data truncation
         JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("score", FieldType.int32(), EncryptionSpec.orderPreserving()).build();
 
         var defs = List.of(new IndexDefinition("score", IndexType.RANGE));
-        var registry = new IndexRegistry(schema, defs);
-        assertFalse(registry.isEmpty());
-        registry.close();
+        assertThrows(IllegalArgumentException.class, () -> new IndexRegistry(schema, defs));
     }
 
     @Test

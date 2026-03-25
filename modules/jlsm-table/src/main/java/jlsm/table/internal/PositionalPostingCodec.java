@@ -134,5 +134,34 @@ public final class PositionalPostingCodec {
      * @param encryptedPositions the OPE-encrypted term positions (order-preserved)
      */
     public record DecodedPosting(byte[] docId, long[] encryptedPositions) {
+        public DecodedPosting {
+            Objects.requireNonNull(docId, "docId must not be null");
+            Objects.requireNonNull(encryptedPositions, "encryptedPositions must not be null");
+            docId = docId.clone();
+            encryptedPositions = encryptedPositions.clone();
+        }
+
+        @Override
+        public byte[] docId() {
+            return docId.clone();
+        }
+
+        @Override
+        public long[] encryptedPositions() {
+            return encryptedPositions.clone();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof DecodedPosting other
+                    && java.util.Arrays.equals(docId, other.docId)
+                    && java.util.Arrays.equals(encryptedPositions, other.encryptedPositions);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * java.util.Arrays.hashCode(docId)
+                    + java.util.Arrays.hashCode(encryptedPositions);
+        }
     }
 }

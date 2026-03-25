@@ -285,8 +285,14 @@ public final class IndexRegistry implements Closeable {
         }
         if (fieldType instanceof FieldType.Primitive p) {
             switch (p) {
-                case INT8, INT16, INT32, INT64, TIMESTAMP -> {
-                    /* allowed */ }
+                case INT8, INT16 -> {
+                    /* allowed — fits in MAX_OPE_BYTES (2) */ }
+                case INT32, INT64,
+                        TIMESTAMP ->
+                    throw new IllegalArgumentException(
+                            "OrderPreserving encryption on " + p + " field '" + fieldName
+                                    + "' is not supported — OPE is limited to 2-byte values; "
+                                    + "wider types would suffer silent data truncation");
                 case STRING -> throw new IllegalArgumentException(
                         "OrderPreserving encryption on unbounded STRING field '" + fieldName
                                 + "' is not supported; use FieldType.string(maxLength) for bounded string");

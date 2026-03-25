@@ -83,6 +83,10 @@ public final class DcpeSapEncryptor {
      */
     public float[] decrypt(float[] encrypted, long seed) {
         Objects.requireNonNull(encrypted, "encrypted must not be null");
+        if (encrypted.length != dimensions) {
+            throw new IllegalArgumentException(
+                    "Encrypted vector length must be " + dimensions + ", got " + encrypted.length);
+        }
         final float[] noise = generateNoise(seed);
 
         final float[] result = new float[encrypted.length];
@@ -133,5 +137,25 @@ public final class DcpeSapEncryptor {
      * @param seed the perturbation seed used during encryption
      */
     public record EncryptedVector(float[] values, long seed) {
+        public EncryptedVector {
+            Objects.requireNonNull(values, "values must not be null");
+            values = values.clone();
+        }
+
+        @Override
+        public float[] values() {
+            return values.clone();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof EncryptedVector other && seed == other.seed
+                    && java.util.Arrays.equals(values, other.values);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * java.util.Arrays.hashCode(values) + Long.hashCode(seed);
+        }
     }
 }

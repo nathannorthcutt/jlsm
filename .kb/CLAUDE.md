@@ -12,7 +12,7 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 27 | 2026-03-25 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 30 | 2026-03-25 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 5 | 2026-03-25 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 4 | 2026-03-25 |
 | systems | [systems/](systems/CLAUDE.md) | 4 | 30 | 2026-03-25 |
@@ -20,6 +20,9 @@
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | algorithms | encryption | encrypt-memory-data (footprint) |
+| 2026-03-25 | algorithms | encryption | ope-width-truncation (adversarial) |
+| 2026-03-25 | algorithms | encryption | key-bytes-on-heap (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | optimize-document-serializer (footprint) |
 | 2026-03-25 | systems | lsm-index-patterns | mutable-array-getter-return (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | inconsistent-null-getter-contract (adversarial) |
