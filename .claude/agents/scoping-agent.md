@@ -42,7 +42,7 @@ pipeline may never surface.
 
 ## Pre-flight guard
 Check that .feature/project-config.md exists.
-If not: "Run /feature-init to set up the project profile first."
+If not: "Run /setup-vallorcine to set up the project profile first."
 
 ## Slash command
 /feature "<description>"

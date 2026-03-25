@@ -22,6 +22,24 @@ fi
 command -v jq &>/dev/null || exit 0
 [[ -f .claude/scripts/token-usage.sh ]] || exit 0
 
+# ── JSON state file helpers ──────────────────────────────────────────────────
+_json_val() {
+    local json="$1" key="$2"
+    echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | sed 's/.*:.*"\([^"]*\)"/\1/'
+}
+
+_json_num() {
+    local json="$1" key="$2"
+    echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*[0-9]*" | head -1 | grep -o '[0-9]*$'
+}
+
+_is_json() {
+    [[ -f "$1" ]] || return 1
+    local first_char
+    first_char=$(head -c1 "$1" 2>/dev/null)
+    [[ "$first_char" == "{" ]]
+}
+
 # ── Tracking active: check for stage transition ─────────────────────────────
 if [[ -f "$STATE_FILE" ]]; then
     feature_dir=""
@@ -29,7 +47,17 @@ if [[ -f "$STATE_FILE" ]]; then
     transcript=""
     start_line=""
     timestamp=""
-    source "$STATE_FILE" 2>/dev/null || { rm -f "$STATE_FILE"; exit 0; }
+    if _is_json "$STATE_FILE"; then
+        state_content=$(cat "$STATE_FILE" 2>/dev/null) || { rm -f "$STATE_FILE"; exit 0; }
+        feature_dir=$(_json_val "$state_content" "feature_dir")
+        cached_stage=$(_json_val "$state_content" "cached_stage")
+        transcript=$(_json_val "$state_content" "transcript")
+        start_line=$(_json_num "$state_content" "start_line")
+        timestamp=$(_json_val "$state_content" "timestamp")
+    else
+        # Legacy shell variable format
+        source "$STATE_FILE" 2>/dev/null || { rm -f "$STATE_FILE"; exit 0; }
+    fi
 
     [[ -n "$feature_dir" && -f "$feature_dir/status.md" ]] || { rm -f "$STATE_FILE"; exit 0; }
 
@@ -111,7 +139,7 @@ HEADER
 
         # Update state for new stage
         current_line=$(wc -l < "$transcript" 2>/dev/null || echo "1")
-        printf 'feature_dir=%q\ncached_stage=%q\ntranscript=%q\nstart_line=%s\ntimestamp=%s\n' \
+        printf '{"feature_dir":"%s","cached_stage":"%s","transcript":"%s","start_line":%s,"timestamp":"%s"}\n' \
             "$feature_dir" "$current_stage" "$transcript" "$((current_line + 1))" \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATE_FILE"
     fi
@@ -145,7 +173,7 @@ for status_file in .feature/*/status.md; do
     current_line=$(wc -l < "$transcript" 2>/dev/null || echo "1")
 
     mkdir -p .claude
-    printf 'feature_dir=%q\ncached_stage=%q\ntranscript=%q\nstart_line=%s\ntimestamp=%s\n' \
+    printf '{"feature_dir":"%s","cached_stage":"%s","transcript":"%s","start_line":%s,"timestamp":"%s"}\n' \
         "$feature_dir" "$stage" "$transcript" "$((current_line + 1))" \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATE_FILE"
 

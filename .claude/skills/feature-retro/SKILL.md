@@ -155,7 +155,7 @@ If an ADR was invalidated or insufficient:
 
   Type **yes** to open a review · or: skip
 ```
-If "yes": invoke `/decisions review "<adr-slug>"` as a sub-agent.
+If "yes": invoke `/decisions revisit "<adr-slug>"` as a sub-agent.
 
 If a design decision was made during implementation without an ADR (detected
 from contract revisions or escalations that changed the approach):
@@ -229,11 +229,42 @@ Display:
 
 ---
 
+## Step 6 — Generate narrative article (enhanced, optional)
+
+After the retro summary is written, attempt to generate a rich narrative
+markdown article showing the full feature story — pipeline phases, token
+usage per stage, conversations, escalations, TDD cycles, and crash recovery.
+
+Run:
+```bash
+bash .claude/scripts/narrative-wrapper.sh "<slug>" ".feature/<slug>"
+```
+
+The wrapper tries Python, then Node.js, then exits silently if neither is
+available. The narrative is an enhancement — retro is complete without it.
+
+If the script writes `.feature/<slug>/narrative.md`:
+```
+  📖 Narrative article generated: .feature/<slug>/narrative.md
+```
+
+If the script exits without producing a file, say nothing — the retro
+is complete regardless.
+
+The narrative article includes:
+- shields.io badges (duration, tokens, model, vallorcine version)
+- Mermaid gantt chart of pipeline phases
+- Phase-by-phase breakdown with conversations, escalations, TDD cycles
+- Progressive disclosure for background narration
+
+---
+
 ## Write authority
 
 The retro command writes to:
 - `.feature/<slug>/cycle-log.md` (retro-complete entry only)
+- `.feature/<slug>/narrative.md` (via narrative-wrapper.sh, optional)
 
 It does NOT directly write to `.decisions/` or `.kb/` — it invokes
-`/architect`, `/decisions review`, and `/research` as sub-agents, and those
+`/architect`, `/decisions revisit`, and `/research` as sub-agents, and those
 commands handle their own writes.

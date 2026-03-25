@@ -229,11 +229,11 @@ Title: <title>
 
 <checklist>
 ─────────────────────────────────────────────────────────────
-Looks good, or anything to adjust?
+  Type **yes**  to finalize this draft  ·  or: describe adjustments
 ─────────────────────────────────────────────────────────────
 ```
 
-Iterate on feedback. When confirmed, write to disk.
+Iterate on feedback. When the user types **yes**, write to disk.
 
 ---
 

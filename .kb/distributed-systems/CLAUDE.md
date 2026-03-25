@@ -8,4 +8,5 @@ LSM-tree backed storage systems.
 
 | Category | Path | Files | Last Updated | Covers |
 |----------|------|-------|--------------|--------|
+| cluster-membership | [cluster-membership/](cluster-membership/CLAUDE.md) | 1 | 2026-03-20 | SWIM protocol, failure detection, split-brain detection, gossip dissemination |
 | data-partitioning | [data-partitioning/](data-partitioning/CLAUDE.md) | 2 | 2026-03-16 | Partitioning strategies, vector search topology, hybrid filtering |

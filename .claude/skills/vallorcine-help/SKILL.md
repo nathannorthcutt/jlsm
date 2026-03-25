@@ -59,7 +59,7 @@ command to run, then explain what it does and what the user can expect.
 - `/architect "<problem>"` — run an architecture decision session with full deliberation
 - `/decisions "<question>"` — query existing decisions in plain language
 - `/decisions backfill [<path>]` — surface implicit decisions from past work (prefer `/curate` for broader review)
-- `/decisions review "<slug>"` — revisit a confirmed decision
+- `/decisions revisit "<slug>"` — revisit a confirmed decision
 - `/decisions triage` — review all deferred/draft items
 - `/decisions defer "<problem>"` — park a topic for later
 - `/decisions close "<problem>"` — rule out permanently
@@ -73,9 +73,8 @@ command to run, then explain what it does and what the user can expect.
 - `/project-context add "<entry>"` — add team-shared knowledge about the codebase
 - `/project-context cleanup` — review expired context entries
 - `/project-context` — display all active context entries
-- `/feature-init` — one-time project setup (language, test framework, conventions)
+- `/setup-vallorcine` — one-time project setup (KB, decisions, feature pipeline, project profile)
 - `/feature-cleanup` — interactive walkthrough of stale feature directories
-- `/setup-vallorcine` — initialise `.kb/` and `.decisions/` directories
 - `/upgrade-vallorcine` — check for and apply kit updates
 
 **Pipeline stages (usually invoked automatically, not manually):**
@@ -133,7 +132,7 @@ Welcome! This project hasn't been set up for the feature pipeline yet.
 Run this first — it's a one-time setup that reads your project files
 and configures everything automatically:
 
-  /feature-init
+  /setup-vallorcine
 
 Then come back and run /vallorcine-help again.
 ```
@@ -300,7 +299,7 @@ After any routing decision, add:
 ```
 Other commands you might want:
   /feature-resume "<slug>" --status  — detailed progress summary for any active feature
-  /feature-init                      — update the project profile
+  /setup-vallorcine                   — update the project profile
   /kb "<question>"                   — query the knowledge base
   /decisions "<question>"            — query architecture decisions
   /curate                            — review codebase quality, find gaps, and surface undocumented decisions

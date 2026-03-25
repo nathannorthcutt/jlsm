@@ -8,39 +8,38 @@ Never ask more than one question in a single response. If multiple things are
 unclear, rank them by impact on the outcome and ask the highest-priority one
 first. Ask the next question only after receiving an answer.
 
-## Enter to proceed — always
+## Explicit yes to proceed — always
 
 For any prompt where the user is continuing forward (next stage, confirm,
-acknowledge, proceed), pressing Enter with no input means yes/proceed.
-The user only needs to type something if they want to stop, change something,
-or respond with detail.
+acknowledge, proceed), require `Type **yes**` to continue. Claude Code does
+not support empty-Enter submission — users must always type something. Never
+show `↵ to continue` because it does not work.
 
 Display this consistently:
 ```
-  ↵  to continue  ·  or type a response
+  Type **yes**  to proceed to <next step>  ·  or: stop
 ```
 
-Never require the user to type "yes", "confirm", "ok", "acknowledge", or any
-other affirmation word to move forward. An empty Enter is always sufficient.
+The user can also type feedback or adjustments instead of "yes" — that triggers
+a revision loop. "stop" halts the pipeline.
 
 ## Branching prompts (where the path genuinely differs)
 
 When the outcome depends on the user's choice — not just "continue or stop" —
-show the options explicitly. Keep them short. Enter still means the first/default
-option.
+show the options explicitly. Keep them short.
 
 ```
-  ↵  <default action>  ·  or type: <alternative>
+  Type **yes**  to <default action>  ·  or type: <alternative>
 ```
 
 Example — continue vs stop:
 ```
-  ↵  continue to implementation  ·  or type: stop
+  Type **yes**  to proceed to implementation  ·  or: stop
 ```
 
 Example — split vs single:
 ```
-  ↵  split into work units  ·  or type: single
+  Type **yes**  to split into work units  ·  or type: single
 ```
 
 Example — genuine divergence (no safe default, explicit choice required):
