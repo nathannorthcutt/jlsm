@@ -13,13 +13,16 @@
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 21 | 2026-03-25 |
-| data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 2 | 2026-03-25 |
+| data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 5 | 2026-03-25 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 4 | 2026-03-25 |
 | systems | [systems/](systems/CLAUDE.md) | 4 | 24 | 2026-03-25 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | data-structures | caching | striped-block-cache (footprint) |
+| 2026-03-25 | data-structures | caching | capacity-truncation-on-sharding (adversarial) |
+| 2026-03-25 | data-structures | caching | int-backed-long-api (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | record-result-missing-validation (adversarial) |
 | 2026-03-25 | algorithms | vector-encoding | precision-overflow-silent-data-loss (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | segment-identity-equality (adversarial) |

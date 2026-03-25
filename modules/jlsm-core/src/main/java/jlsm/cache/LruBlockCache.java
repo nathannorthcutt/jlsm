@@ -147,6 +147,11 @@ public final class LruBlockCache implements BlockCache {
             if (capacity <= 0) {
                 throw new IllegalArgumentException("capacity must be positive, got: " + capacity);
             }
+            if (capacity > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("capacity must not exceed Integer.MAX_VALUE ("
+                        + Integer.MAX_VALUE
+                        + ") because the backing LinkedHashMap uses int size(); got: " + capacity);
+            }
             return new LruBlockCache(this);
         }
     }

@@ -34,10 +34,10 @@ public final class StripedBlockCache implements BlockCache {
         assert builder.capacity >= builder.stripeCount : "capacity must be >= stripeCount";
 
         this.stripeCount = builder.stripeCount;
-        this.capacity = builder.capacity;
         this.stripes = new LruBlockCache[stripeCount];
 
-        final long perStripeCapacity = capacity / stripeCount;
+        final long perStripeCapacity = builder.capacity / stripeCount;
+        this.capacity = perStripeCapacity * stripeCount;
         for (int i = 0; i < stripeCount; i++) {
             stripes[i] = LruBlockCache.builder().capacity(perStripeCapacity).build();
         }
@@ -240,6 +240,14 @@ public final class StripedBlockCache implements BlockCache {
             if (capacity < stripeCount) {
                 throw new IllegalArgumentException("capacity must be at least stripeCount ("
                         + stripeCount + "), got: " + capacity);
+            }
+            long perStripeCapacity = capacity / stripeCount;
+            if (perStripeCapacity > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException(
+                        "per-stripe capacity must not exceed Integer.MAX_VALUE ("
+                                + Integer.MAX_VALUE
+                                + ") because the backing LinkedHashMap uses int size(); got: "
+                                + perStripeCapacity);
             }
             return new StripedBlockCache(this);
         }
