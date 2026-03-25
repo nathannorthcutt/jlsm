@@ -11,6 +11,7 @@ optimization decisions.
 | File | Subject | Status | Key Metric | Best For |
 |------|---------|--------|------------|----------|
 | [index-scan-patterns.md](index-scan-patterns.md) | Index Scan Patterns over LSM Storage | active | per-index access pattern taxonomy | Scan optimization, cache strategy |
+| [composite-key-reindex-orphan.md](composite-key-reindex-orphan.md) | Composite-key re-index orphan (adversarial) | active | data-integrity bug class | Any index using composite keys with mutable assignment |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

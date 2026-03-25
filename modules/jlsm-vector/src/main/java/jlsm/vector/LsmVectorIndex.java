@@ -396,7 +396,17 @@ public final class LsmVectorIndex {
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
             byte[] vectorBytes = encodeVector(vector, precision);
 
+            // Clean up old posting if this docId was previously indexed under a different centroid
+            byte[] revKey = reverseKey(docIdBytes);
+            Optional<MemorySegment> oldRev = lsmTree.get(MemorySegment.ofArray(revKey));
             int centroidId = assignCentroid(vector);
+            if (oldRev.isPresent()) {
+                int oldCentroidId = decodeCentroidId(oldRev.get().toArray(ValueLayout.JAVA_BYTE),
+                        0);
+                if (oldCentroidId != centroidId) {
+                    lsmTree.delete(MemorySegment.ofArray(postingKey(oldCentroidId, docIdBytes)));
+                }
+            }
 
             // Store posting: [0x01][centroid_id][docId] → vector
             lsmTree.put(MemorySegment.ofArray(postingKey(centroidId, docIdBytes)),

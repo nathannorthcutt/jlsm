@@ -14,6 +14,7 @@ SIMD compatibility.
 | [flat-vector-encoding.md](flat-vector-encoding.md) | Flat contiguous encoding | stable | O(1) access, 0 overhead | Dense vectors, speed-critical reads |
 | [sparse-vector-encoding.md](sparse-vector-encoding.md) | COO / bitmap sparse encoding | mature | O(nnz) storage | Vectors with >50% zeros |
 | [lossless-vector-compression.md](lossless-vector-compression.md) | Byte-split + entropy coding | active | 30–60% reduction | I/O-bound workloads, archival |
+| [float16-vector-support.md](float16-vector-support.md) | Float16 vector support (feature footprint) | stable | 50% storage reduction | Feature history, adversarial findings |
 
 ## Comparison Summary
 

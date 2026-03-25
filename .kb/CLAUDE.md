@@ -12,14 +12,16 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 13 | 2026-03-19 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 14 | 2026-03-25 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 1 | 2026-03-17 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 1 | 2 | 2026-03-16 |
-| systems | [systems/](systems/CLAUDE.md) | 4 | 8 | 2026-03-19 |
+| systems | [systems/](systems/CLAUDE.md) | 4 | 9 | 2026-03-25 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | systems | lsm-index-patterns | composite-key-reindex-orphan |
+| 2026-03-25 | algorithms | vector-encoding | float16-vector-support |
 | 2026-03-19 | systems | database-engines | catalog-persistence-patterns |
 | 2026-03-19 | algorithms | encryption | deterministic-encryption-performance |
 | 2026-03-18 | systems | security | jvm-key-handling-patterns |
