@@ -384,6 +384,10 @@ public final class TrieSSTableReader implements SSTableReader {
 
     private static Map<Byte, CompressionCodec> buildCodecMap(CompressionCodec... codecs) {
         Map<Byte, CompressionCodec> map = new HashMap<>();
+        // Always include NoneCodec — the writer falls back to NONE for incompressible blocks,
+        // so any v2 file may contain codec ID 0x00 regardless of the configured codec.
+        CompressionCodec none = CompressionCodec.none();
+        map.put(none.codecId(), none);
         for (CompressionCodec codec : codecs) {
             map.put(codec.codecId(), codec);
         }

@@ -41,6 +41,20 @@ public final class CompressionMap {
      * @param codecId identifier of the codec used (0x00 = none, 0x02 = deflate)
      */
     public record Entry(long blockOffset, int compressedSize, int uncompressedSize, byte codecId) {
+        public Entry {
+            if (blockOffset < 0) {
+                throw new IllegalArgumentException(
+                        "blockOffset must be non-negative, got: " + blockOffset);
+            }
+            if (compressedSize < 0) {
+                throw new IllegalArgumentException(
+                        "compressedSize must be non-negative, got: " + compressedSize);
+            }
+            if (uncompressedSize < 0) {
+                throw new IllegalArgumentException(
+                        "uncompressedSize must be non-negative, got: " + uncompressedSize);
+            }
+        }
     }
 
     private final List<Entry> entries;
@@ -120,6 +134,9 @@ public final class CompressionMap {
                     "compression map data too short: %d bytes (minimum 4)".formatted(data.length));
         }
         int blockCount = readInt(data, 0);
+        if (blockCount < 0) {
+            throw new IllegalArgumentException("negative block count: " + blockCount);
+        }
         int expectedLength = 4 + blockCount * ENTRY_SIZE;
         if (data.length < expectedLength) {
             throw new IllegalArgumentException(

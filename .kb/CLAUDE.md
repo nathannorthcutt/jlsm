@@ -12,7 +12,7 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 22 | 2026-03-25 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 25 | 2026-03-25 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 5 | 2026-03-25 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 4 | 2026-03-25 |
 | systems | [systems/](systems/CLAUDE.md) | 4 | 26 | 2026-03-25 |
@@ -20,6 +20,9 @@
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-25 | algorithms | compression | bounds-check-overflow (adversarial) |
+| 2026-03-25 | algorithms | compression | negative-size-unvalidated (adversarial) |
+| 2026-03-25 | algorithms | compression | block-compression (footprint) |
 | 2026-03-25 | algorithms | vector-encoding | non-finite-vector-element (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | vector-mutable-array-input (adversarial) |
 | 2026-03-25 | systems | lsm-index-patterns | vector-field-type (footprint) |
