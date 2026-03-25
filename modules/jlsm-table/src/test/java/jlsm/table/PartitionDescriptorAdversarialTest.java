@@ -2,7 +2,9 @@ package jlsm.table;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -90,5 +92,110 @@ class PartitionDescriptorAdversarialTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new PartitionDescriptor(1L, seg("zzz"), seg("aaa"), "local", 0L),
                 "PartitionDescriptor should reject lowKey > highKey (inverted range)");
+    }
+
+    // --- PD-3: ACCESSOR-MUTATION (Round 2) ---
+
+    private static MemorySegment segOf(byte... bytes) {
+        var arena = Arena.ofAuto();
+        var s = arena.allocate(bytes.length, 1);
+        MemorySegment.copy(bytes, 0, s, ValueLayout.JAVA_BYTE, 0, bytes.length);
+        return s;
+    }
+
+    /**
+     * Finding PD-3: lowKey() returns a mutable MemorySegment. Callers can corrupt the descriptor's
+     * internal state via desc.lowKey().set(...). The accessor should either return a read-only
+     * segment or an independent copy.
+     */
+    @Test
+    void lowKey_mutationViaAccessor_doesNotCorruptDescriptor() {
+        var low = segOf((byte) 0x10);
+        var high = segOf((byte) 0x20);
+        var desc = new PartitionDescriptor(1L, low, high, "node-1", 0L);
+
+        byte originalByte = desc.lowKey().get(ValueLayout.JAVA_BYTE, 0);
+
+        // Attempt to mutate via the returned segment
+        try {
+            desc.lowKey().set(ValueLayout.JAVA_BYTE, 0, (byte) 0xFF);
+        } catch (UnsupportedOperationException | IllegalStateException
+                | IllegalArgumentException e) {
+            // Read-only segment correctly rejected the mutation — pass
+            return;
+        }
+
+        // If mutation didn't throw, verify the descriptor's state is unchanged
+        byte afterByte = desc.lowKey().get(ValueLayout.JAVA_BYTE, 0);
+        assertEquals(originalByte, afterByte,
+                "lowKey must not be mutated via accessor — descriptor state corrupted");
+    }
+
+    /**
+     * Finding PD-3: Same as above but for highKey().
+     */
+    @Test
+    void highKey_mutationViaAccessor_doesNotCorruptDescriptor() {
+        var low = segOf((byte) 0x10);
+        var high = segOf((byte) 0x20);
+        var desc = new PartitionDescriptor(1L, low, high, "node-1", 0L);
+
+        byte originalByte = desc.highKey().get(ValueLayout.JAVA_BYTE, 0);
+
+        try {
+            desc.highKey().set(ValueLayout.JAVA_BYTE, 0, (byte) 0x00);
+        } catch (UnsupportedOperationException | IllegalStateException
+                | IllegalArgumentException e) {
+            return;
+        }
+
+        byte afterByte = desc.highKey().get(ValueLayout.JAVA_BYTE, 0);
+        assertEquals(originalByte, afterByte,
+                "highKey must not be mutated via accessor — descriptor state corrupted");
+    }
+
+    // --- PD-4: DESCRIPTOR-EQUALITY (Round 2) ---
+
+    /**
+     * Finding PD-4: Two PartitionDescriptors constructed with identical parameters must be equal.
+     * Record auto-generated equals uses MemorySegment identity (address + size), not content
+     * comparison. This breaks the record contract that identity is determined by fields alone.
+     */
+    @Test
+    void equals_identicalParameters_areEqual() {
+        var desc1 = new PartitionDescriptor(1L, segOf((byte) 0x00), segOf((byte) 0xFF), "node-1",
+                0L);
+        var desc2 = new PartitionDescriptor(1L, segOf((byte) 0x00), segOf((byte) 0xFF), "node-1",
+                0L);
+
+        assertEquals(desc1, desc2,
+                "Two descriptors with identical fields must be equal (content equality)");
+    }
+
+    /**
+     * Finding PD-4: hashCode must be consistent with equals.
+     */
+    @Test
+    void hashCode_identicalParameters_areEqual() {
+        var desc1 = new PartitionDescriptor(1L, segOf((byte) 0x00), segOf((byte) 0xFF), "node-1",
+                0L);
+        var desc2 = new PartitionDescriptor(1L, segOf((byte) 0x00), segOf((byte) 0xFF), "node-1",
+                0L);
+
+        assertEquals(desc1.hashCode(), desc2.hashCode(),
+                "Two equal descriptors must produce the same hashCode");
+    }
+
+    /**
+     * Finding PD-4: Descriptors with different key content must NOT be equal.
+     */
+    @Test
+    void equals_differentKeys_areNotEqual() {
+        var desc1 = new PartitionDescriptor(1L, segOf((byte) 0x00), segOf((byte) 0x80), "node-1",
+                0L);
+        var desc2 = new PartitionDescriptor(1L, segOf((byte) 0x00), segOf((byte) 0xFF), "node-1",
+                0L);
+
+        assertNotEquals(desc1, desc2, "Descriptors with different high keys must not be equal");
     }
 }

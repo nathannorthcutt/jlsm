@@ -28,27 +28,15 @@ class ResultMergerAdversarialTest {
     // --- RM-2: mergeTopK with NaN scores ---
 
     /**
-     * Finding RM-2: NaN scores corrupt PriorityQueue ordering — NaN-scored entries are incorrectly
-     * ranked above real results. ScoredEntry allows NaN scores; mergeTopK should either reject them
-     * or handle correctly.
+     * Finding RM-2 (updated after SE-1 fix): NaN scores are now rejected at ScoredEntry
+     * construction. This test verifies the defense-in-depth: NaN cannot reach mergeTopK because
+     * ScoredEntry rejects it at the source.
      */
     @Test
-    void mergeTopK_nanScores_doNotCorruptOrdering() {
-        final List<ScoredEntry<String>> partition = List.of(
-                new ScoredEntry<>("high", doc("High"), 0.9),
-                new ScoredEntry<>("nan", doc("NaN"), Double.NaN),
-                new ScoredEntry<>("low", doc("Low"), 0.1));
-
-        final List<ScoredEntry<String>> result = ResultMerger.mergeTopK(List.of(partition), 3);
-
-        // NaN should NOT appear above valid scores. Either:
-        // (a) NaN entries are filtered out, or
-        // (b) NaN entries are ranked last (below all real scores)
-        // Currently, Double.compare treats NaN > everything, so reversed comparator puts NaN first.
-        // That's incorrect behavior — high (0.9) should be first.
-        assertEquals("high", result.get(0).key(),
-                "highest real score should be ranked first, not NaN");
-        assertFalse(Double.isNaN(result.get(0).score()), "first result must not have NaN score");
+    void scoredEntry_rejectsNaN_preventingMergeCorruption() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new ScoredEntry<>("nan", doc("NaN"), Double.NaN),
+                "ScoredEntry must reject NaN — prevents NaN from reaching mergeTopK");
     }
 
     // --- RM-3: mergeTopK with null inner list ---

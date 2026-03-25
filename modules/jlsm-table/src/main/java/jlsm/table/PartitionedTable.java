@@ -129,8 +129,7 @@ public final class PartitionedTable implements Closeable {
         final MemorySegment fromSeg = toSegment(fromKey);
         final MemorySegment toSeg = toSegment(toKey);
         final List<PartitionDescriptor> overlapping = rangeMap.overlapping(fromSeg, toSeg);
-        assert !overlapping.isEmpty() || true
-                : "overlapping may be empty for non-overlapping range";
+        // overlapping may be empty when query range does not intersect any partition
 
         final List<Iterator<TableEntry<String>>> iterators = new ArrayList<>(overlapping.size());
         for (final PartitionDescriptor desc : overlapping) {
@@ -184,11 +183,11 @@ public final class PartitionedTable implements Closeable {
      */
     @Override
     public void close() throws IOException {
-        IOException firstException = null;
+        Exception firstException = null;
         for (final PartitionClient client : clients.values()) {
             try {
                 client.close();
-            } catch (final IOException e) {
+            } catch (final Exception e) {
                 if (firstException == null) {
                     firstException = e;
                 } else {
@@ -197,7 +196,10 @@ public final class PartitionedTable implements Closeable {
             }
         }
         if (firstException != null) {
-            throw firstException;
+            if (firstException instanceof IOException ioe) {
+                throw ioe;
+            }
+            throw new IOException("partition client close failed", firstException);
         }
     }
 
@@ -206,22 +208,22 @@ public final class PartitionedTable implements Closeable {
     // -------------------------------------------------------------------------
 
     /**
-     * Closes all clients in the map using the deferred close pattern.
+     * Closes all clients in the map using the deferred close pattern. Any exceptions thrown during
+     * close are added as suppressed exceptions to the given cause.
+     *
+     * @param clients the clients to close
+     * @param cause the original exception that triggered cleanup; close exceptions are added as
+     *            suppressed
      */
-    private static void closeAllClients(Map<Long, PartitionClient> clients) {
-        IOException firstException = null;
+    private static void closeAllClients(Map<Long, PartitionClient> clients, Exception cause) {
+        assert cause != null : "cause must not be null";
         for (final PartitionClient client : clients.values()) {
             try {
                 client.close();
-            } catch (final IOException e) {
-                if (firstException == null) {
-                    firstException = e;
-                } else {
-                    firstException.addSuppressed(e);
-                }
+            } catch (final Exception e) {
+                cause.addSuppressed(e);
             }
         }
-        // Best-effort cleanup — don't throw from here since we're in a catch block
     }
 
     // -------------------------------------------------------------------------
@@ -344,8 +346,9 @@ public final class PartitionedTable implements Closeable {
                     clients.put(desc.id(), client);
                 }
             } catch (Exception e) {
-                // Close all already-created clients before propagating the exception
-                closeAllClients(clients);
+                // Close all already-created clients before propagating the exception.
+                // Any close failures are added as suppressed to the original exception.
+                closeAllClients(clients, e);
                 throw e;
             }
 

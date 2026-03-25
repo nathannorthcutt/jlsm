@@ -23,6 +23,9 @@ optimization decisions.
 | [soft-delete-reindex-tombstone.md](soft-delete-reindex-tombstone.md) | Soft-delete reindex tombstone persistence (adversarial) | active | data-integrity bug class | Any index using soft-delete tombstones for lazy removal |
 | [hardcoded-key-decoder.md](hardcoded-key-decoder.md) | Hardcoded key decoder in query executor (adversarial) | active | data-integrity bug class | Any generic executor decoding typed keys from bytes |
 | [scan-filter-unchecked-compareto.md](scan-filter-unchecked-compareto.md) | Scan-and-filter unchecked compareTo (adversarial) | active | data-integrity bug class | Any scan-filter using Comparable.compareTo on untyped values |
+| [segment-identity-equality.md](segment-identity-equality.md) | MemorySegment identity equality in records (adversarial) | active | data-integrity bug class | Any record with MemorySegment component fields |
+| [deferred-close-catch-scope.md](deferred-close-catch-scope.md) | Deferred close loops catch only IOException (adversarial) | active | memory-safety bug class | Any deferred-close loop over Closeable resources |
+| [nan-at-construction.md](nan-at-construction.md) | NaN score accepted at construction (adversarial) | active | data-integrity bug class | Any value type carrying numeric score for ordering |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

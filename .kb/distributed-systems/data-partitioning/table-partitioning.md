@@ -11,6 +11,7 @@ applies_to:
   - "modules/jlsm-table/src/main/java/jlsm/table/internal/ResultMerger.java"
 research_status: stable
 last_researched: "2026-03-25"
+audit_rounds: 2
 ---
 
 # table-partitioning
@@ -29,10 +30,19 @@ Range-based table partitioning for jlsm-table via PartitionedTable coordinator. 
 - `PartitionedTable` — coordinator: routing + scatter-gather + lifecycle
 
 ## Adversarial findings
+
+### Round 1
 - mutable-array-in-record (MemorySegment variant): PartitionDescriptor stored MemorySegment without copying → [KB entry](../../data-structures/mutable-array-in-record.md)
 - builder-resource-leak-on-failure: PartitionedTable.Builder leaked clients on partial failure → [KB entry](../../systems/lsm-index-patterns/builder-resource-leak-on-failure.md)
 - nan-score-ordering-corruption: ResultMerger ranked NaN above finite scores → [KB entry](../../systems/lsm-index-patterns/nan-score-ordering-corruption.md)
 - range-query-inverted-bounds: RangeMap.overlapping returned results for empty range → [KB entry](../../systems/lsm-index-patterns/range-query-inverted-bounds.md)
+
+### Round 2
+- mutable-array-in-record (accessor variant): PartitionDescriptor.lowKey()/highKey() returned mutable segments → [KB entry](../../data-structures/mutable-array-in-record.md)
+- segment-identity-equality: PartitionDescriptor equals/hashCode used MemorySegment address identity → [KB entry](../../systems/lsm-index-patterns/segment-identity-equality.md)
+- deferred-close-catch-scope: PartitionedTable.close() only caught IOException, skipped remaining clients on RuntimeException → [KB entry](../../systems/lsm-index-patterns/deferred-close-catch-scope.md)
+- nan-at-construction: ScoredEntry allowed NaN score at construction → [KB entry](../../systems/lsm-index-patterns/nan-at-construction.md)
+- duplicate-id-no-validation: PartitionConfig.of() did not validate unique partition IDs
 
 ## Cross-references
 - ADR: .decisions/table-partitioning/adr.md

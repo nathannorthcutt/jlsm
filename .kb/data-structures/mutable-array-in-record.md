@@ -13,11 +13,18 @@ last_researched: "2026-03-25"
 # Mutable array in Java record
 
 ## What happens
+
+### Constructor mutation (round 1)
+Java records store the caller's array reference without cloning in the compact
+constructor, so the caller can mutate the record's state by modifying the original
+array after construction.
+
+### Accessor mutation (round 2)
 Java records generate accessors that return the field reference directly. For array
 fields (byte[], float[], int[]), the caller receives a reference to the record's
 internal array and can mutate it, violating the record's immutability contract.
-The compact constructor also stores the caller's array reference without cloning,
-so the caller can mutate the record's state by modifying the original array.
+Even if the constructor defensively copies, a raw accessor still exposes the internal
+copy. Both the constructor clone AND the accessor defensive copy are needed.
 
 ## Why implementations default to this
 Records are designed for immutable value types, and the language doesn't auto-clone
@@ -37,3 +44,4 @@ that don't mutate inputs after construction.
 ## Found in
 - table-indices-and-queries (audit round 1, 2026-03-25): Predicate.VectorNearest stored float[] queryVector without cloning
 - table-partitioning (audit round 1, 2026-03-25): PartitionDescriptor stored MemorySegment lowKey/highKey without copying — backing array mutation corrupted range routing
+- table-partitioning (audit round 2, 2026-03-25): PartitionConfig.partitions() accessor returned mutable array reference — caller could replace PartitionDescriptor entries, corrupting routing table; fixed with defensive copy in accessor

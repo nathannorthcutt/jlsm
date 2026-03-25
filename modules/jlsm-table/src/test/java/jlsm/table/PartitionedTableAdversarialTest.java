@@ -83,33 +83,103 @@ class PartitionedTableAdversarialTest {
 
     /**
      * Finding PT-2: If two descriptors share the same id, the second client overwrites the first in
-     * the map, leaking the first client.
+     * the map, leaking the first client. After PC-3 fix, PartitionConfig.of() now rejects duplicate
+     * IDs at the config layer, providing defense-in-depth.
      */
     @Test
-    void build_duplicateDescriptorIds_rejectsOrHandlesGracefully() throws IOException {
-        // Two descriptors with the same id but different ranges
+    void build_duplicateDescriptorIds_rejectedAtConfigLayer() {
+        // Two descriptors with the same id but different ranges — rejected by PartitionConfig.of()
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
                 0L);
         final PartitionDescriptor desc2 = new PartitionDescriptor(1L, seg("m"), seg("{"), "local",
+                0L);
+        assertThrows(IllegalArgumentException.class,
+                () -> PartitionConfig.of(List.of(desc1, desc2)),
+                "PartitionConfig must reject duplicate partition IDs");
+    }
+
+    // --- PT-3: close() does not catch RuntimeException (Round 2) ---
+
+    /**
+     * Finding PT-3: PartitionedTable.close() only catches IOException. If a PartitionClient.close()
+     * throws RuntimeException, remaining clients are never closed — resource leak. project-rule:
+     * coding-guidelines (deferred close pattern must accumulate all exceptions).
+     */
+    @Test
+    void close_clientThrowsRuntimeException_remainingClientsStillClosed() throws IOException {
+        final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
+                0L);
+        final PartitionDescriptor desc2 = new PartitionDescriptor(2L, seg("m"), seg("{"), "local",
                 0L);
         final PartitionConfig config = PartitionConfig.of(List.of(desc1, desc2));
 
         final AtomicInteger closeCount = new AtomicInteger(0);
 
-        // Should either reject duplicate IDs or close the overwritten client
+        final PartitionedTable table = PartitionedTable.builder().partitionConfig(config)
+                .partitionClientFactory(desc -> {
+                    if (desc.id() == 1L) {
+                        // Client 1 throws RuntimeException on close
+                        return new TrackingStubClient(desc, closeCount) {
+                            @Override
+                            public void close() {
+                                closeCount.incrementAndGet();
+                                throw new RuntimeException("simulated runtime close failure");
+                            }
+                        };
+                    }
+                    return new TrackingStubClient(desc, closeCount);
+                }).build();
+
+        // close() should still close client 2 even though client 1 threw RuntimeException.
+        // The RuntimeException is wrapped in IOException by the deferred-close pattern.
         try {
-            final var table = PartitionedTable.builder().partitionConfig(config)
-                    .partitionClientFactory(desc -> new TrackingStubClient(desc, closeCount))
-                    .build();
-            // If build succeeds, verify both clients aren't silently lost
             table.close();
-            // The first client should have been closed either during build (replaced) or on
-            // table.close()
-            assertEquals(2, closeCount.get(),
-                    "both clients must be closed — the overwritten one must not be leaked");
-        } catch (IllegalArgumentException | IllegalStateException _) {
-            // Rejecting duplicate IDs at build time is also acceptable
+        } catch (IOException _) {
+            // Expected — we just need to verify both clients were closed
         }
+
+        assertEquals(2, closeCount.get(),
+                "All clients must be closed even when one throws RuntimeException");
+    }
+
+    // --- PT-4: closeAllClients() swallows close exceptions (Round 2) ---
+
+    /**
+     * Finding PT-4: When the factory fails and previously-created clients are cleaned up, any
+     * IOException from their close() is silently swallowed by closeAllClients(). These should be
+     * added as suppressed exceptions to the original failure. project-rule: coding-guidelines
+     * (deferred close pattern).
+     */
+    @Test
+    void build_factoryFails_closeExceptionsAddedAsSuppressed() {
+        final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
+                0L);
+        final PartitionDescriptor desc2 = new PartitionDescriptor(2L, seg("m"), seg("{"), "local",
+                0L);
+        final PartitionConfig config = PartitionConfig.of(List.of(desc1, desc2));
+
+        final RuntimeException thrown = assertThrows(RuntimeException.class, () -> PartitionedTable
+                .builder().partitionConfig(config).partitionClientFactory(desc -> {
+                    if (desc.id() == 1L) {
+                        // Client 1 will fail on close during cleanup
+                        return new TrackingStubClient(desc, new AtomicInteger(0)) {
+                            @Override
+                            public void close() throws IOException {
+                                throw new IOException("cleanup close failed");
+                            }
+                        };
+                    }
+                    throw new RuntimeException("factory failure on partition 2");
+                }).build());
+
+        assertTrue(thrown.getMessage().contains("factory failure"),
+                "original exception should propagate");
+
+        // The close exception from client 1 should be attached as suppressed
+        final Throwable[] suppressed = thrown.getSuppressed();
+        assertTrue(suppressed.length > 0,
+                "close exceptions during cleanup must be added as suppressed, "
+                        + "not silently swallowed");
     }
 
     // -------------------------------------------------------------------------
