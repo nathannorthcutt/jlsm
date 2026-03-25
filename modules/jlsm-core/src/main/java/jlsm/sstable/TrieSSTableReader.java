@@ -699,6 +699,9 @@ public final class TrieSSTableReader implements SSTableReader {
 
         private void advance() {
             next = null;
+            if (closed) {
+                throw new IllegalStateException("reader is closed");
+            }
             while (true) {
                 if (entryIdx < blockEntries.size()) {
                     next = blockEntries.get(entryIdx++);
@@ -766,6 +769,9 @@ public final class TrieSSTableReader implements SSTableReader {
 
         private void advance() {
             next = null;
+            if (closed) {
+                throw new IllegalStateException("reader is closed");
+            }
             if (!indexIter.hasNext())
                 return;
             KeyIndex.Entry ie = indexIter.next();

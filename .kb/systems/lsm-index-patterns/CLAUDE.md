@@ -29,6 +29,7 @@ optimization decisions.
 | [record-result-missing-validation.md](record-result-missing-validation.md) | Public record result missing compact constructor validation (adversarial) | active | data-integrity tendency | Any public record carrying score or required reference |
 | [vector-mutable-array-input.md](vector-mutable-array-input.md) | Mutable vector array stored by reference at construction (adversarial) | active | data-integrity bug class | Any construct accepting float[]/short[] across trust boundary |
 | [vector-field-type.md](vector-field-type.md) | vector-field-type (feature footprint) | stable | feature audit record | VectorType field + index + serialization overview |
+| [iterator-use-after-close.md](iterator-use-after-close.md) | Iterator use-after-close on non-static inner class iterators (adversarial) | active | data-integrity bug class | Any reader returning iterators from close-guarded methods |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->
