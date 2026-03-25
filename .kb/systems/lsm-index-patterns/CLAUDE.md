@@ -30,6 +30,9 @@ optimization decisions.
 | [vector-mutable-array-input.md](vector-mutable-array-input.md) | Mutable vector array stored by reference at construction (adversarial) | active | data-integrity bug class | Any construct accepting float[]/short[] across trust boundary |
 | [vector-field-type.md](vector-field-type.md) | vector-field-type (feature footprint) | stable | feature audit record | VectorType field + index + serialization overview |
 | [iterator-use-after-close.md](iterator-use-after-close.md) | Iterator use-after-close on non-static inner class iterators (adversarial) | active | data-integrity bug class | Any reader returning iterators from close-guarded methods |
+| [mutable-array-getter-return.md](mutable-array-getter-return.md) | Mutable array getter return (adversarial) | active | data-integrity bug class | Any public getter returning Object[]/float[]/short[] |
+| [inconsistent-null-getter-contract.md](inconsistent-null-getter-contract.md) | Inconsistent null getter contract (adversarial) | active | data-integrity bug class | Any document type with multiple typed getters |
+| [optimize-document-serializer.md](optimize-document-serializer.md) | optimize-document-serializer (feature footprint) | stable | feature audit record | Serializer deserialization optimization overview |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

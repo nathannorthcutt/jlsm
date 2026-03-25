@@ -260,7 +260,11 @@ public final class JlsmDocument {
         if (!(schema.fields().get(idx).type() instanceof FieldType.ArrayType)) {
             throw new IllegalArgumentException("Field '" + field + "' is not an array type");
         }
-        return (Object[]) values[idx];
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return ((Object[]) val).clone();
     }
 
     /** Returns the nested document (ObjectType) value of the named field. */
@@ -269,7 +273,11 @@ public final class JlsmDocument {
         if (!(schema.fields().get(idx).type() instanceof FieldType.ObjectType)) {
             throw new IllegalArgumentException("Field '" + field + "' is not an object type");
         }
-        return (JlsmDocument) values[idx];
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return (JlsmDocument) val;
     }
 
     // -------------------------------------------------------------------------
