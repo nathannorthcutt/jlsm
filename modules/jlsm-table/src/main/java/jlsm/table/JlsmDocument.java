@@ -100,7 +100,7 @@ public final class JlsmDocument {
             if (value != null) {
                 validateType(fieldName, schema.fields().get(idx).type(), value);
             }
-            values[idx] = value;
+            values[idx] = defensiveCopyIfVector(schema.fields().get(idx).type(), value);
         }
 
         return new JlsmDocument(schema, values);
@@ -382,6 +382,13 @@ public final class JlsmDocument {
                                 + "' expects VECTOR(FLOAT32, " + vt.dimensions() + ") but got "
                                 + fArr.length + " elements");
                     }
+                    for (int i = 0; i < fArr.length; i++) {
+                        if (!Float.isFinite(fArr[i])) {
+                            throw new IllegalArgumentException(
+                                    "Field '" + fieldName + "' VECTOR(FLOAT32) element [" + i
+                                            + "] is non-finite: " + fArr[i]);
+                        }
+                    }
                 } else {
                     expect(fieldName, value, short[].class, "VECTOR(FLOAT16)");
                     final short[] sArr = (short[]) value;
@@ -389,6 +396,13 @@ public final class JlsmDocument {
                         throw new IllegalArgumentException("Field '" + fieldName
                                 + "' expects VECTOR(FLOAT16, " + vt.dimensions() + ") but got "
                                 + sArr.length + " elements");
+                    }
+                    for (int i = 0; i < sArr.length; i++) {
+                        if ((sArr[i] & 0x7C00) == 0x7C00) {
+                            throw new IllegalArgumentException(
+                                    "Field '" + fieldName + "' VECTOR(FLOAT16) element [" + i
+                                            + "] is non-finite (NaN or Infinity)");
+                        }
                     }
                 }
             }
@@ -413,5 +427,23 @@ public final class JlsmDocument {
                     + " (" + expectedClass.getSimpleName() + "), got "
                     + value.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Returns a defensive copy of the value if it is a mutable vector array (float[] or short[]).
+     * Other types are returned as-is (immutable or not a vector).
+     */
+    private static Object defensiveCopyIfVector(FieldType type, Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (type instanceof FieldType.VectorType vt) {
+            if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+                return ((float[]) value).clone();
+            } else {
+                return ((short[]) value).clone();
+            }
+        }
+        return value;
     }
 }

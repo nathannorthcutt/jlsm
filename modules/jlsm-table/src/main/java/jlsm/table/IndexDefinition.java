@@ -43,6 +43,9 @@ public record IndexDefinition(String fieldName, IndexType indexType,
         if (indexType == IndexType.VECTOR) {
             Objects.requireNonNull(similarityFunction,
                     "similarityFunction required for VECTOR indices");
+        } else if (similarityFunction != null) {
+            throw new IllegalArgumentException(
+                    "similarityFunction must be null for non-VECTOR index type " + indexType);
         }
     }
 }
