@@ -26,6 +26,7 @@ optimization decisions.
 | [segment-identity-equality.md](segment-identity-equality.md) | MemorySegment identity equality in records (adversarial) | active | data-integrity bug class | Any record with MemorySegment component fields |
 | [deferred-close-catch-scope.md](deferred-close-catch-scope.md) | Deferred close loops catch only IOException (adversarial) | active | memory-safety bug class | Any deferred-close loop over Closeable resources |
 | [nan-at-construction.md](nan-at-construction.md) | NaN score accepted at construction (adversarial) | active | data-integrity bug class | Any value type carrying numeric score for ordering |
+| [record-result-missing-validation.md](record-result-missing-validation.md) | Public record result missing compact constructor validation (adversarial) | active | data-integrity tendency | Any public record carrying score or required reference |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

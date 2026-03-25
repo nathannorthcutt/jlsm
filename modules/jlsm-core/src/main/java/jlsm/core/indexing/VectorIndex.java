@@ -3,6 +3,7 @@ package jlsm.core.indexing;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A similarity-search index that stores float vectors keyed by document IDs and supports
@@ -72,6 +73,19 @@ public sealed interface VectorIndex<D> extends Closeable
      * @param <D> the document ID type
      */
     record SearchResult<D>(D docId, float score) {
+
+        /**
+         * Validates that the search result has a non-null document ID and a non-NaN score.
+         *
+         * @throws NullPointerException if {@code docId} is null
+         * @throws IllegalArgumentException if {@code score} is NaN
+         */
+        public SearchResult {
+            Objects.requireNonNull(docId, "docId must not be null");
+            if (Float.isNaN(score)) {
+                throw new IllegalArgumentException("score must not be NaN");
+            }
+        }
     }
 
     /** Inverted File with Flat re-scoring similarity search. */

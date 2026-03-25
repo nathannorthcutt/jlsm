@@ -31,6 +31,7 @@ via VectorPrecision enum.
 - soft-delete-reindex-tombstone: Hnsw.index() did not clear soft-delete tombstone after remove(), making re-indexed docs invisible -> [KB entry](../../systems/lsm-index-patterns/soft-delete-reindex-tombstone.md)
 - nan-score-ordering-corruption: NaN scores from NaN/overflow vectors corrupted PriorityQueue ordering in search -> [KB entry](../../systems/lsm-index-patterns/nan-score-ordering-corruption.md)
 - precision-overflow-silent-data-loss: Float32 values > 65504 overflowed to Infinity in float16, making vectors invisible in cosine search -> [KB entry](precision-overflow-silent-data-loss.md)
+- record-result-missing-validation: VectorIndex.SearchResult accepted null docId and NaN score without validation -> [KB entry](../../systems/lsm-index-patterns/record-result-missing-validation.md)
 
 ## Cross-references
 - KB: algorithms/vector-encoding/flat-vector-encoding.md (float32 baseline)
