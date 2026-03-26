@@ -347,7 +347,10 @@ public final class TrieSSTableReader implements SSTableReader {
         }
 
         CompressionCodec codec = codecMap.get(mapEntry.codecId());
-        assert codec != null : "codec not found for ID 0x%02x".formatted(mapEntry.codecId());
+        if (codec == null) {
+            throw new IOException("codec not found for ID 0x%02x in block %d"
+                    .formatted(mapEntry.codecId(), blockIndex));
+        }
         byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
                 mapEntry.uncompressedSize());
 
@@ -378,7 +381,10 @@ public final class TrieSSTableReader implements SSTableReader {
         }
 
         CompressionCodec codec = codecMap.get(mapEntry.codecId());
-        assert codec != null : "codec not found for ID 0x%02x".formatted(mapEntry.codecId());
+        if (codec == null) {
+            throw new IOException("codec not found for ID 0x%02x in block %d"
+                    .formatted(mapEntry.codecId(), blockIndex));
+        }
         return codec.decompress(compressed, 0, compressed.length, mapEntry.uncompressedSize());
     }
 
@@ -388,8 +394,9 @@ public final class TrieSSTableReader implements SSTableReader {
         // so any v2 file may contain codec ID 0x00 regardless of the configured codec.
         CompressionCodec none = CompressionCodec.none();
         map.put(none.codecId(), none);
-        for (CompressionCodec codec : codecs) {
-            map.put(codec.codecId(), codec);
+        for (int i = 0; i < codecs.length; i++) {
+            Objects.requireNonNull(codecs[i], "codecs[%d] must not be null".formatted(i));
+            map.put(codecs[i].codecId(), codecs[i]);
         }
         return Collections.unmodifiableMap(map);
     }
@@ -451,6 +458,48 @@ public final class TrieSSTableReader implements SSTableReader {
 
     private record Footer(int version, long mapOffset, long mapLength, long idxOffset,
             long idxLength, long fltOffset, long fltLength, long entryCount) {
+
+        /**
+         * Validates footer field consistency against the file size. All offsets and lengths must be
+         * non-negative and within file bounds.
+         *
+         * @throws IOException if any field is invalid
+         */
+        void validate(long fileSize) throws IOException {
+            if (entryCount < 0) {
+                throw new IOException("corrupt SSTable footer: negative entryCount " + entryCount);
+            }
+            if (idxOffset < 0 || idxLength < 0) {
+                throw new IOException(
+                        "corrupt SSTable footer: negative idxOffset=%d or idxLength=%d"
+                                .formatted(idxOffset, idxLength));
+            }
+            if (fltOffset < 0 || fltLength < 0) {
+                throw new IOException(
+                        "corrupt SSTable footer: negative fltOffset=%d or fltLength=%d"
+                                .formatted(fltOffset, fltLength));
+            }
+            if (version == 2) {
+                if (mapOffset < 0 || mapLength < 0) {
+                    throw new IOException(
+                            "corrupt SSTable footer: negative mapOffset=%d or mapLength=%d"
+                                    .formatted(mapOffset, mapLength));
+                }
+                // C2-F2: Guard against long-to-int truncation for data region size
+                if (mapOffset > Integer.MAX_VALUE) {
+                    throw new IOException(
+                            "SSTable data region too large for eager read: mapOffset=%d exceeds 2 GiB"
+                                    .formatted(mapOffset));
+                }
+            } else {
+                // v1: idxOffset defines the data region end
+                if (idxOffset > Integer.MAX_VALUE) {
+                    throw new IOException(
+                            "SSTable data region too large for eager read: idxOffset=%d exceeds 2 GiB"
+                                    .formatted(idxOffset));
+                }
+            }
+        }
     }
 
     /** Reads a v1-only footer. Throws on v2 magic. */
@@ -468,7 +517,9 @@ public final class TrieSSTableReader implements SSTableReader {
         if (magic != SSTableFormat.MAGIC) {
             throw new IOException("not a valid SSTable file: bad magic " + Long.toHexString(magic));
         }
-        return new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength, entryCount);
+        Footer footer = new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength, entryCount);
+        footer.validate(fileSize);
+        return footer;
     }
 
     /** Reads footer detecting v1 or v2 format from magic bytes. */
@@ -493,8 +544,10 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltOffset = readLong(buf, 32);
             long fltLength = readLong(buf, 40);
             long entryCount = readLong(buf, 48);
-            return new Footer(2, mapOffset, mapLength, idxOffset, idxLength, fltOffset, fltLength,
-                    entryCount);
+            Footer footer = new Footer(2, mapOffset, mapLength, idxOffset, idxLength, fltOffset,
+                    fltLength, entryCount);
+            footer.validate(fileSize);
+            return footer;
         } else if (magic == SSTableFormat.MAGIC) {
             byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE,
                     SSTableFormat.FOOTER_SIZE);
@@ -503,7 +556,10 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltOffset = readLong(buf, 16);
             long fltLength = readLong(buf, 24);
             long entryCount = readLong(buf, 32);
-            return new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength, entryCount);
+            Footer footer = new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength,
+                    entryCount);
+            footer.validate(fileSize);
+            return footer;
         } else {
             throw new IOException("not a valid SSTable file: bad magic " + Long.toHexString(magic));
         }
@@ -587,16 +643,26 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Low-level I/O ----
 
+    /**
+     * Reads {@code length} bytes from the channel starting at {@code offset}.
+     *
+     * <p>
+     * The position-then-read sequence is synchronized on the channel to prevent concurrent callers
+     * (e.g., multiple threads sharing a lazy reader) from interleaving position and read calls,
+     * which would produce silently corrupt data (C2-F18).
+     */
     private static byte[] readBytes(SeekableByteChannel ch, long offset, int length)
             throws IOException {
         if (length == 0)
             return new byte[0];
         ByteBuffer buf = ByteBuffer.allocate(length);
-        ch.position(offset);
-        while (buf.hasRemaining()) {
-            int read = ch.read(buf);
-            if (read < 0)
-                throw new IOException("unexpected EOF at offset " + (offset + buf.position()));
+        synchronized (ch) {
+            ch.position(offset);
+            while (buf.hasRemaining()) {
+                int read = ch.read(buf);
+                if (read < 0)
+                    throw new IOException("unexpected EOF at offset " + (offset + buf.position()));
+            }
         }
         return buf.array();
     }

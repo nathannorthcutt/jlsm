@@ -54,6 +54,20 @@ public final class CompressionMap {
                 throw new IllegalArgumentException(
                         "uncompressedSize must be non-negative, got: " + uncompressedSize);
             }
+            // C1-F8: Reject physically impossible size combinations.
+            // compressedSize=0 with uncompressedSize>0 means "decompress nothing into something"
+            // — no codec can do this. The reverse (compressedSize>0, uncompressedSize=0) with a
+            // non-none codec is similarly invalid.
+            if (compressedSize == 0 && uncompressedSize > 0) {
+                throw new IllegalArgumentException(
+                        "compressedSize=0 with uncompressedSize=%d is physically impossible"
+                                .formatted(uncompressedSize));
+            }
+            if (uncompressedSize == 0 && compressedSize > 0 && codecId != 0x00) {
+                throw new IllegalArgumentException(
+                        "uncompressedSize=0 with compressedSize=%d and codecId=0x%02x is invalid"
+                                .formatted(compressedSize, codecId));
+            }
         }
     }
 
@@ -105,7 +119,13 @@ public final class CompressionMap {
      * @return byte array in the format described in the class javadoc
      */
     public byte[] serialize() {
-        int size = 4 + entries.size() * ENTRY_SIZE;
+        long longSize = 4L + (long) entries.size() * ENTRY_SIZE;
+        if (longSize > Integer.MAX_VALUE) {
+            throw new IllegalStateException(
+                    "compression map too large to serialize: %d entries require %d bytes"
+                            .formatted(entries.size(), longSize));
+        }
+        int size = (int) longSize;
         byte[] buf = new byte[size];
         int off = 0;
         off = writeInt(buf, off, entries.size());
@@ -137,7 +157,14 @@ public final class CompressionMap {
         if (blockCount < 0) {
             throw new IllegalArgumentException("negative block count: " + blockCount);
         }
-        int expectedLength = 4 + blockCount * ENTRY_SIZE;
+        // Use long arithmetic to avoid integer overflow: blockCount * ENTRY_SIZE can
+        // overflow int when blockCount is large (e.g., Integer.MAX_VALUE * 17 wraps negative).
+        long expectedLength = 4L + (long) blockCount * ENTRY_SIZE;
+        if (expectedLength > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                    "block count %d requires %d bytes, exceeds maximum array size"
+                            .formatted(blockCount, expectedLength));
+        }
         if (data.length < expectedLength) {
             throw new IllegalArgumentException(
                     "compression map data too short: %d bytes (expected %d for %d blocks)"

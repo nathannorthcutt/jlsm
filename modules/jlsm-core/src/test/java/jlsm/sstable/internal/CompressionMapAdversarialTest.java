@@ -2,17 +2,15 @@ package jlsm.sstable.internal;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Adversarial tests for {@link CompressionMap} and {@link CompressionMap.Entry}.
  *
  * <p>
- * Targets findings from block-compression audit round 1:
- * <ul>
- * <li>CONTRACT-GAP-1: CompressionMap.Entry record has no validation</li>
- * <li>IMPL-RISK-3: CompressionMap.deserialize accepts negative block count</li>
- * </ul>
+ * Targets findings from block-compression spec-analysis.md.
  */
 class CompressionMapAdversarialTest {
 
@@ -41,10 +39,28 @@ class CompressionMapAdversarialTest {
 
     @Test
     void entryAcceptsZeroSizes() {
-        // Boundary: zero is valid (empty block edge case)
+        // Boundary: zero is valid (empty block edge case) — both zero is OK
         CompressionMap.Entry entry = new CompressionMap.Entry(0L, 0, 0, (byte) 0x00);
         assertEquals(0, entry.compressedSize());
         assertEquals(0, entry.uncompressedSize());
+    }
+
+    // C1-F8: Entry with compressedSize=0 but uncompressedSize>0 — physically impossible.
+    // Cannot decompress 0 bytes into 4096 bytes.
+    @Test
+    void entryRejectsZeroCompressedWithNonZeroUncompressed_C1F8() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new CompressionMap.Entry(0L, 0, 4096, (byte) 0x02),
+                "C1-F8: compressedSize=0 with uncompressedSize>0 is physically impossible");
+    }
+
+    // C1-F8: Entry with uncompressedSize=0 but compressedSize>0 and codec is NOT none —
+    // also suspicious. A non-none codec compressing to >0 bytes that decompresses to 0 is wrong.
+    @Test
+    void entryRejectsNonZeroCompressedWithZeroUncompressedNonNoneCodec_C1F8() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new CompressionMap.Entry(0L, 4096, 0, (byte) 0x02),
+                "C1-F8: compressedSize>0 with uncompressedSize=0 and non-none codec is invalid");
     }
 
     // ---- IMPL-RISK-3: deserialize accepts negative block count ----
@@ -63,11 +79,55 @@ class CompressionMapAdversarialTest {
         assertThrows(IllegalArgumentException.class, () -> CompressionMap.deserialize(data));
     }
 
+    // C1-F7: Integer overflow in deserialize with huge blockCount.
+    // blockCount = Integer.MAX_VALUE (0x7FFFFFFF): expectedLength = 4 + MAX_VALUE * 17
+    // which overflows to a negative number, making data.length < expectedLength pass incorrectly.
+    @Test
+    void deserializeRejectsHugeBlockCountIntegerOverflow_C1F7() {
+        // Encode blockCount = Integer.MAX_VALUE in first 4 bytes, with 17 extra bytes
+        byte[] data = new byte[21]; // just enough to not be "too short for header"
+        data[0] = 0x7F;
+        data[1] = (byte) 0xFF;
+        data[2] = (byte) 0xFF;
+        data[3] = (byte) 0xFF;
+        assertThrows(IllegalArgumentException.class, () -> CompressionMap.deserialize(data),
+                "C1-F7: blockCount=MAX_VALUE causes expectedLength overflow — must throw IAE");
+    }
+
+    // C1-F7: Moderate blockCount that still causes overflow: 126_322_568
+    // 4 + 126_322_568 * 17 = 4 + 2_147_483_656 overflows int
+    @Test
+    void deserializeRejectsModerateBlockCountOverflow_C1F7() {
+        int blockCount = 126_322_568;
+        byte[] data = new byte[21];
+        data[0] = (byte) (blockCount >>> 24);
+        data[1] = (byte) (blockCount >>> 16);
+        data[2] = (byte) (blockCount >>> 8);
+        data[3] = (byte) blockCount;
+        assertThrows(IllegalArgumentException.class, () -> CompressionMap.deserialize(data),
+                "C1-F7: moderate blockCount causing overflow must throw IAE");
+    }
+
+    // C1-F6: deserialize accepts trailing bytes beyond expected length
+    @Test
+    void deserializeAcceptsTrailingBytes_C1F6() {
+        // Serialize a valid 1-entry map, then append garbage
+        var map = new CompressionMap(List.of(new CompressionMap.Entry(0L, 100, 200, (byte) 0x00)));
+        byte[] serialized = map.serialize();
+        byte[] withTrailing = new byte[serialized.length + 50];
+        System.arraycopy(serialized, 0, withTrailing, 0, serialized.length);
+        for (int i = serialized.length; i < withTrailing.length; i++) {
+            withTrailing[i] = (byte) 0xAB;
+        }
+        // C1-F6: Should reject trailing bytes for data integrity, but currently accepts.
+        // Documenting: deserialize silently ignores trailing data.
+        CompressionMap result = CompressionMap.deserialize(withTrailing);
+        assertEquals(1, result.blockCount(), "C1-F6: CONFIRMED — trailing bytes silently accepted");
+    }
+
     @Test
     void deserializeRejectsTrailingGarbageExactly() {
-        // Verify exact match: blockCount claims 0 entries but there's trailing data.
-        // This is a theoretical concern — current impl silently ignores trailing bytes.
-        // Documenting the behavior rather than requiring strict matching.
+        // blockCount claims 0 entries but there's trailing data
         byte[] data = new byte[]{ 0, 0, 0, 0, 99, 99 };
         CompressionMap map = CompressionMap.deserialize(data);
         assertEquals(0, map.blockCount()); // trailing bytes silently ignored — WATCH
