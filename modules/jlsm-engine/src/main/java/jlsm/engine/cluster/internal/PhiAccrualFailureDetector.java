@@ -124,7 +124,7 @@ public final class PhiAccrualFailureDetector {
      */
     public boolean isAvailable(NodeAddress node, double threshold, long nowNanos) {
         Objects.requireNonNull(node, "node must not be null");
-        if (threshold <= 0.0) {
+        if (!(threshold > 0.0)) {
             throw new IllegalArgumentException("threshold must be positive, got: " + threshold);
         }
         return phi(node, nowNanos) < threshold;

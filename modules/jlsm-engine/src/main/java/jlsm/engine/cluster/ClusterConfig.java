@@ -60,9 +60,9 @@ public record ClusterConfig(Duration gracePeriod, Duration protocolPeriod, Durat
             throw new IllegalArgumentException(
                     "indirectProbes must be non-negative, got: " + indirectProbes);
         }
-        if (phiThreshold <= 0.0) {
+        if (!(phiThreshold > 0.0) || !Double.isFinite(phiThreshold)) {
             throw new IllegalArgumentException(
-                    "phiThreshold must be positive, got: " + phiThreshold);
+                    "phiThreshold must be a finite positive value, got: " + phiThreshold);
         }
         if (consensusQuorumPercent < 1 || consensusQuorumPercent > 100) {
             throw new IllegalArgumentException(

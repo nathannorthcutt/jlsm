@@ -52,6 +52,7 @@ public final class ClusteredTable implements Table {
     private final TableMetadata tableMetadata;
     private final ClusterTransport transport;
     private final MembershipProtocol membership;
+    private final NodeAddress localAddress;
     private final RendezvousOwnership ownership = new RendezvousOwnership();
     private volatile PartialResultMetadata lastPartialResult;
     private volatile boolean closed;
@@ -62,13 +63,15 @@ public final class ClusteredTable implements Table {
      * @param tableMetadata the metadata for this table; must not be null
      * @param transport the cluster transport for remote communication; must not be null
      * @param membership the membership protocol for resolving partition owners; must not be null
+     * @param localAddress the address of the local node; must not be null
      */
     public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
-            MembershipProtocol membership) {
+            MembershipProtocol membership, NodeAddress localAddress) {
         this.tableMetadata = Objects.requireNonNull(tableMetadata,
                 "tableMetadata must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
         this.membership = Objects.requireNonNull(membership, "membership must not be null");
+        this.localAddress = Objects.requireNonNull(localAddress, "localAddress must not be null");
     }
 
     @Override
@@ -254,17 +257,10 @@ public final class ClusteredTable implements Table {
     }
 
     /**
-     * Returns the local address by inspecting the membership view for any node that might be local.
-     * Falls back to the first live member.
+     * Returns the local node address provided at construction.
      */
     private NodeAddress findLocalAddress() {
-        final MembershipView view = membership.currentView();
-        for (final Member m : view.members()) {
-            if (m.state() == MemberState.ALIVE) {
-                return m.address();
-            }
-        }
-        throw new IllegalStateException("No live members available for local address resolution");
+        return localAddress;
     }
 
     /**

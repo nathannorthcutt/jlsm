@@ -92,7 +92,8 @@ public final class ClusteredEngine implements Engine {
 
         // Create a clustered proxy for distributed access
         final TableMetadata metadata = localTable.metadata();
-        final ClusteredTable clustered = new ClusteredTable(metadata, transport, membership);
+        final ClusteredTable clustered = new ClusteredTable(metadata, transport, membership,
+                localAddress);
         clusteredTables.put(name, clustered);
 
         return localTable;
@@ -223,14 +224,28 @@ public final class ClusteredEngine implements Engine {
         // Evict stale ownership cache entries
         ownership.evictBefore(newView.epoch());
 
-        // Record departures for grace period tracking
+        // Record departures for grace period tracking.
+        // A departure occurs when a member was ALIVE in the old view and is either:
+        // (a) absent from the new view entirely, or
+        // (b) present but no longer ALIVE (SUSPECTED or DEAD)
         for (final Member oldMember : oldView.members()) {
-            if (oldMember.state() == MemberState.ALIVE && !newView.isMember(oldMember.address())) {
-                gracePeriodManager.recordDeparture(oldMember.address(), Instant.now());
+            if (oldMember.state() == MemberState.ALIVE) {
+                boolean stillAliveInNew = false;
+                for (final Member newMember : newView.members()) {
+                    if (newMember.address().equals(oldMember.address())
+                            && newMember.state() == MemberState.ALIVE) {
+                        stillAliveInNew = true;
+                        break;
+                    }
+                }
+                if (!stillAliveInNew) {
+                    gracePeriodManager.recordDeparture(oldMember.address(), Instant.now());
+                }
             }
         }
 
-        // Record returns for nodes that rejoin
+        // Record returns for nodes that rejoin (transition to ALIVE in new view
+        // when they were not ALIVE in old view)
         for (final Member newMember : newView.members()) {
             if (newMember.state() == MemberState.ALIVE) {
                 gracePeriodManager.recordReturn(newMember.address());

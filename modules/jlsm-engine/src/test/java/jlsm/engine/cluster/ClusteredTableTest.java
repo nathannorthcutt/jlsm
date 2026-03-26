@@ -59,7 +59,7 @@ final class ClusteredTableTest {
                         new Member(REMOTE_B, MemberState.ALIVE, 0)),
                 NOW);
 
-        table = new ClusteredTable(TABLE_META, localTransport, membership);
+        table = new ClusteredTable(TABLE_META, localTransport, membership, LOCAL);
     }
 
     @AfterEach
@@ -76,19 +76,19 @@ final class ClusteredTableTest {
     @Test
     void constructor_nullTableMetadata_throws() {
         assertThrows(NullPointerException.class,
-                () -> new ClusteredTable(null, localTransport, membership));
+                () -> new ClusteredTable(null, localTransport, membership, LOCAL));
     }
 
     @Test
     void constructor_nullTransport_throws() {
         assertThrows(NullPointerException.class,
-                () -> new ClusteredTable(TABLE_META, null, membership));
+                () -> new ClusteredTable(TABLE_META, null, membership, LOCAL));
     }
 
     @Test
     void constructor_nullMembership_throws() {
         assertThrows(NullPointerException.class,
-                () -> new ClusteredTable(TABLE_META, localTransport, null));
+                () -> new ClusteredTable(TABLE_META, localTransport, null, LOCAL));
     }
 
     // --- metadata() ---
