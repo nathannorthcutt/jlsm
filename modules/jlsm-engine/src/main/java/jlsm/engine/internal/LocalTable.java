@@ -83,7 +83,10 @@ final class LocalTable implements Table {
         assert !schema.fields().isEmpty() : "schema must have at least one field for primary key";
         final String primaryKeyField = schema.fields().getFirst().name();
         final String key = doc.getString(primaryKeyField);
-        assert key != null : "primary key value must not be null";
+        if (key == null) {
+            throw new IllegalArgumentException(
+                    "primary key field '" + primaryKeyField + "' must not be null in document");
+        }
         delegate.create(key, doc);
     }
 
@@ -119,8 +122,10 @@ final class LocalTable implements Table {
      */
     private void checkValid() {
         if (registration.isInvalidated()) {
+            final HandleEvictedException.Reason reason = registration.invalidationReason();
+            assert reason != null : "invalidated registration must have a reason";
             throw new HandleEvictedException(registration.tableName(), registration.sourceId(), 0,
-                    registration.allocationSite(), HandleEvictedException.Reason.EVICTION);
+                    registration.allocationSite(), reason);
         }
     }
 }

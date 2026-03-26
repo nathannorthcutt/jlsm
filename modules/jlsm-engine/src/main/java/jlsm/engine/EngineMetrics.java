@@ -1,5 +1,6 @@
 package jlsm.engine;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -25,6 +26,12 @@ public record EngineMetrics(int tableCount, int totalOpenHandles,
         Objects.requireNonNull(handlesPerSourcePerTable,
                 "handlesPerSourcePerTable must not be null");
         handlesPerTable = Map.copyOf(handlesPerTable);
-        handlesPerSourcePerTable = Map.copyOf(handlesPerSourcePerTable);
+        // Deep copy: ensure inner maps are also unmodifiable
+        final var deepCopy = new HashMap<String, Map<String, Integer>>(
+                handlesPerSourcePerTable.size());
+        for (final var entry : handlesPerSourcePerTable.entrySet()) {
+            deepCopy.put(entry.getKey(), Map.copyOf(entry.getValue()));
+        }
+        handlesPerSourcePerTable = Map.copyOf(deepCopy);
     }
 }

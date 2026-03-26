@@ -15,11 +15,14 @@
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 30 | 2026-03-25 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 5 | 2026-03-25 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 4 | 2026-03-25 |
-| systems | [systems/](systems/CLAUDE.md) | 4 | 30 | 2026-03-25 |
+| systems | [systems/](systems/CLAUDE.md) | 4 | 33 | 2026-03-26 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-26 | systems | database-engines | in-process-database-engine (footprint) |
+| 2026-03-26 | systems | database-engines | hardcoded-invalidation-reason (adversarial) |
+| 2026-03-26 | systems | database-engines | assert-only-public-validation (adversarial) |
 | 2026-03-25 | algorithms | encryption | encrypt-memory-data (footprint) |
 | 2026-03-25 | algorithms | encryption | ope-width-truncation (adversarial) |
 | 2026-03-25 | algorithms | encryption | key-bytes-on-heap (adversarial) |

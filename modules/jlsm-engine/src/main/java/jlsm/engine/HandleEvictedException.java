@@ -49,7 +49,7 @@ public final class HandleEvictedException extends IllegalStateException {
         this.tableName = Objects.requireNonNull(tableName, "tableName must not be null");
         this.sourceId = Objects.requireNonNull(sourceId, "sourceId must not be null");
         this.handleCountAtEviction = handleCountAtEviction;
-        this.allocationSite = allocationSite;
+        this.allocationSite = allocationSite == null ? null : allocationSite.clone();
         this.reason = Objects.requireNonNull(reason, "reason must not be null");
         assert handleCountAtEviction >= 0 : "handleCountAtEviction must be non-negative";
     }
@@ -75,9 +75,9 @@ public final class HandleEvictedException extends IllegalStateException {
         return handleCountAtEviction;
     }
 
-    /** Returns the allocation site stack trace, or null if tracking was off. */
+    /** Returns a defensive copy of the allocation site stack trace, or null if tracking was off. */
     public StackTraceElement[] allocationSite() {
-        return allocationSite;
+        return allocationSite == null ? null : allocationSite.clone();
     }
 
     /** Returns the reason the handle was evicted. */

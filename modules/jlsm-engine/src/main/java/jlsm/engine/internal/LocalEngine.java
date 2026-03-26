@@ -117,13 +117,16 @@ final class LocalEngine implements Engine {
                 .orElseThrow(() -> new IOException("Table does not exist: " + name));
 
         // Get or lazily create the live table
-        final JlsmTable.StringKeyed jlsmTable = liveTables.computeIfAbsent(name, k -> {
-            try {
-                return createJlsmTable(k, metadata.schema());
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to initialize table: " + k, e);
+        JlsmTable.StringKeyed jlsmTable = liveTables.get(name);
+        if (jlsmTable == null) {
+            jlsmTable = createJlsmTable(name, metadata.schema());
+            final JlsmTable.StringKeyed existing = liveTables.putIfAbsent(name, jlsmTable);
+            if (existing != null) {
+                // Another thread created the table concurrently — close ours and use theirs
+                jlsmTable.close();
+                jlsmTable = existing;
             }
-        });
+        }
 
         // Register handle
         final String sourceId = Thread.currentThread().getName();
@@ -181,11 +184,11 @@ final class LocalEngine implements Engine {
         handleTracker.invalidateAll(HandleEvictedException.Reason.ENGINE_SHUTDOWN);
 
         // Close all live tables, accumulating exceptions
-        final List<IOException> errors = new ArrayList<>();
+        final List<Exception> errors = new ArrayList<>();
         for (final var entry : liveTables.entrySet()) {
             try {
                 entry.getValue().close();
-            } catch (IOException e) {
+            } catch (Exception e) {
                 errors.add(e);
             }
         }
@@ -195,19 +198,20 @@ final class LocalEngine implements Engine {
         // Close catalog
         try {
             catalog.close();
-        } catch (IOException e) {
+        } catch (Exception e) {
             errors.add(e);
         }
 
         // Close handle tracker
         try {
             handleTracker.close();
-        } catch (IOException e) {
+        } catch (Exception e) {
             errors.add(e);
         }
 
         if (!errors.isEmpty()) {
-            final IOException primary = errors.getFirst();
+            final IOException primary = errors.getFirst() instanceof IOException io ? io
+                    : new IOException("Engine close failed", errors.getFirst());
             for (int i = 1; i < errors.size(); i++) {
                 primary.addSuppressed(errors.get(i));
             }
@@ -227,37 +231,56 @@ final class LocalEngine implements Engine {
 
         final Path tableDir = catalog.tableDirectory(tableName);
 
-        // WAL
+        // WAL — must be closed if subsequent builds fail
         final var wal = LocalWriteAheadLog.builder().directory(tableDir).build();
 
-        // MemTable factory
-        final Supplier<MemTable> memTableFactory = ConcurrentSkipListMemTable::new;
+        final TypedLsmTree.StringKeyed<JlsmDocument> tree;
+        try {
+            // MemTable factory
+            final Supplier<MemTable> memTableFactory = ConcurrentSkipListMemTable::new;
 
-        // SSTable writer/reader factories
-        final SSTableWriterFactory writerFactory = TrieSSTableWriter::new;
-        final SSTableReaderFactory readerFactory = path -> TrieSSTableReader.open(path,
-                BlockedBloomFilter.deserializer());
+            // SSTable writer/reader factories
+            final SSTableWriterFactory writerFactory = TrieSSTableWriter::new;
+            final SSTableReaderFactory readerFactory = path -> TrieSSTableReader.open(path,
+                    BlockedBloomFilter.deserializer());
 
-        // Per-table ID counter
-        final AtomicLong idCounter = idCounters.computeIfAbsent(tableName, k -> new AtomicLong(0));
+            // Per-table ID counter
+            final AtomicLong idCounter = idCounters.computeIfAbsent(tableName,
+                    k -> new AtomicLong(0));
 
-        // Path function for SSTables within the table directory
-        final BiFunction<Long, Level, Path> pathFn = (id, level) -> tableDir
-                .resolve("sst-" + id + "-L" + level.index() + ".sst");
+            // Path function for SSTables within the table directory
+            final BiFunction<Long, Level, Path> pathFn = (id, level) -> tableDir
+                    .resolve("sst-" + id + "-L" + level.index() + ".sst");
 
-        // Document serializer
-        final MemorySerializer<JlsmDocument> codec = DocumentSerializer.forSchema(schema);
+            // Document serializer
+            final MemorySerializer<JlsmDocument> codec = DocumentSerializer.forSchema(schema);
 
-        // Build the typed tree
-        final TypedLsmTree.StringKeyed<JlsmDocument> tree = TypedStandardLsmTree
-                .<JlsmDocument>stringKeyedBuilder().wal(wal).memTableFactory(memTableFactory)
-                .sstableWriterFactory(writerFactory).sstableReaderFactory(readerFactory)
-                .idSupplier(idCounter::getAndIncrement).pathFn(pathFn)
-                .memTableFlushThresholdBytes(memTableFlushThresholdBytes).valueSerializer(codec)
-                .build();
+            // Build the typed tree
+            tree = TypedStandardLsmTree.<JlsmDocument>stringKeyedBuilder().wal(wal)
+                    .memTableFactory(memTableFactory).sstableWriterFactory(writerFactory)
+                    .sstableReaderFactory(readerFactory).idSupplier(idCounter::getAndIncrement)
+                    .pathFn(pathFn).memTableFlushThresholdBytes(memTableFlushThresholdBytes)
+                    .valueSerializer(codec).build();
+        } catch (Exception e) {
+            try {
+                wal.close();
+            } catch (Exception suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e instanceof IOException io ? io : new IOException("Failed to build table", e);
+        }
 
-        // Build the JlsmTable.StringKeyed
-        return StandardJlsmTable.stringKeyedBuilder().lsmTree(tree).schema(schema).build();
+        // Build the JlsmTable.StringKeyed — close tree on failure
+        try {
+            return StandardJlsmTable.stringKeyedBuilder().lsmTree(tree).schema(schema).build();
+        } catch (Exception e) {
+            try {
+                tree.close();
+            } catch (Exception suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e instanceof IOException io ? io : new IOException("Failed to build table", e);
+        }
     }
 
     /**
@@ -282,19 +305,29 @@ final class LocalEngine implements Engine {
         }
 
         Builder maxHandlesPerSourcePerTable(int max) {
-            assert max > 0 : "max must be positive";
+            if (max <= 0) {
+                throw new IllegalArgumentException(
+                        "maxHandlesPerSourcePerTable must be positive: " + max);
+            }
+            assert max > 0 : "maxHandlesPerSourcePerTable must be positive";
             this.maxHandlesPerSourcePerTable = max;
             return this;
         }
 
         Builder maxHandlesPerTable(int max) {
-            assert max > 0 : "max must be positive";
+            if (max <= 0) {
+                throw new IllegalArgumentException("maxHandlesPerTable must be positive: " + max);
+            }
+            assert max > 0 : "maxHandlesPerTable must be positive";
             this.maxHandlesPerTable = max;
             return this;
         }
 
         Builder maxTotalHandles(int max) {
-            assert max > 0 : "max must be positive";
+            if (max <= 0) {
+                throw new IllegalArgumentException("maxTotalHandles must be positive: " + max);
+            }
+            assert max > 0 : "maxTotalHandles must be positive";
             this.maxTotalHandles = max;
             return this;
         }
@@ -305,7 +338,11 @@ final class LocalEngine implements Engine {
         }
 
         Builder memTableFlushThresholdBytes(long bytes) {
-            assert bytes > 0 : "bytes must be positive";
+            if (bytes <= 0) {
+                throw new IllegalArgumentException(
+                        "memTableFlushThresholdBytes must be positive: " + bytes);
+            }
+            assert bytes > 0 : "memTableFlushThresholdBytes must be positive";
             this.memTableFlushThresholdBytes = bytes;
             return this;
         }

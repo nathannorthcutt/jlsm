@@ -41,6 +41,18 @@ final class HandleTracker implements Closeable {
     private final ConcurrentHashMap<String, Map<String, List<HandleRegistration>>> tableHandles = new ConcurrentHashMap<>();
 
     private HandleTracker(Builder builder) {
+        if (builder.maxHandlesPerSourcePerTable <= 0) {
+            throw new IllegalArgumentException("maxHandlesPerSourcePerTable must be positive: "
+                    + builder.maxHandlesPerSourcePerTable);
+        }
+        if (builder.maxHandlesPerTable <= 0) {
+            throw new IllegalArgumentException(
+                    "maxHandlesPerTable must be positive: " + builder.maxHandlesPerTable);
+        }
+        if (builder.maxTotalHandles <= 0) {
+            throw new IllegalArgumentException(
+                    "maxTotalHandles must be positive: " + builder.maxTotalHandles);
+        }
         assert builder.maxHandlesPerSourcePerTable > 0
                 : "maxHandlesPerSourcePerTable must be positive";
         assert builder.maxHandlesPerTable > 0 : "maxHandlesPerTable must be positive";
@@ -178,7 +190,7 @@ final class HandleTracker implements Closeable {
             synchronized (sourceMap) {
                 for (final List<HandleRegistration> regs : sourceMap.values()) {
                     for (final HandleRegistration reg : regs) {
-                        reg.invalidate();
+                        reg.invalidate(reason);
                     }
                 }
                 sourceMap.clear();
@@ -204,7 +216,7 @@ final class HandleTracker implements Closeable {
         synchronized (sourceMap) {
             for (final List<HandleRegistration> regs : sourceMap.values()) {
                 for (final HandleRegistration reg : regs) {
-                    reg.invalidate();
+                    reg.invalidate(reason);
                 }
             }
             sourceMap.clear();
@@ -310,7 +322,7 @@ final class HandleTracker implements Closeable {
             HandleEvictedException.Reason reason) {
         assert !regs.isEmpty() : "cannot evict from empty list";
         final HandleRegistration victim = regs.removeFirst();
-        victim.invalidate();
+        victim.invalidate(reason);
     }
 
     /**
@@ -327,19 +339,29 @@ final class HandleTracker implements Closeable {
         }
 
         Builder maxHandlesPerSourcePerTable(int max) {
-            assert max > 0 : "max must be positive";
+            if (max <= 0) {
+                throw new IllegalArgumentException(
+                        "maxHandlesPerSourcePerTable must be positive: " + max);
+            }
+            assert max > 0 : "maxHandlesPerSourcePerTable must be positive";
             this.maxHandlesPerSourcePerTable = max;
             return this;
         }
 
         Builder maxHandlesPerTable(int max) {
-            assert max > 0 : "max must be positive";
+            if (max <= 0) {
+                throw new IllegalArgumentException("maxHandlesPerTable must be positive: " + max);
+            }
+            assert max > 0 : "maxHandlesPerTable must be positive";
             this.maxHandlesPerTable = max;
             return this;
         }
 
         Builder maxTotalHandles(int max) {
-            assert max > 0 : "max must be positive";
+            if (max <= 0) {
+                throw new IllegalArgumentException("maxTotalHandles must be positive: " + max);
+            }
+            assert max > 0 : "maxTotalHandles must be positive";
             this.maxTotalHandles = max;
             return this;
         }
