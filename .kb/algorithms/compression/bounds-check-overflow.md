@@ -38,3 +38,5 @@ with extreme int values.
 
 - block-compression (audit round 1, 2026-03-25): All 4 codec methods in DeflateCodec
   and NoneCodec used `offset + length > input.length`. Fixed to `offset > input.length - length`.
+- block-compression (audit round 2, 2026-03-26): Re-verified — original fix confirmed
+  correct. C1-F1 investigated and found to be false positive (subtraction pattern is safe).

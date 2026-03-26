@@ -9,7 +9,7 @@ applies_to:
   - "modules/jlsm-core/src/main/java/jlsm/sstable/internal/CompressionMap.java"
   - "modules/jlsm-core/src/main/java/jlsm/sstable/internal/SSTableFormat.java"
 research_status: stable
-last_researched: "2026-03-25"
+last_researched: "2026-03-26"
 ---
 
 # block-compression
@@ -36,6 +36,10 @@ Writer falls back to NoneCodec for blocks that don't compress well.
 - bounds-check-overflow: `offset + length` int overflow in codec methods → [KB entry](bounds-check-overflow.md)
 - negative-size-unvalidated: negative `uncompressedLength` not validated → [KB entry](negative-size-unvalidated.md)
 - record-result-missing-validation: `CompressionMap.Entry` lacked compact constructor → [KB entry](../../systems/lsm-index-patterns/record-result-missing-validation.md)
+- integer-overflow-in-size-calc: `blockCount * ENTRY_SIZE` int overflow in CompressionMap → [KB entry](integer-overflow-in-size-calc.md)
+- lazy-channel-concurrent-read: position-then-read race on lazy reader channel → [KB entry](lazy-channel-concurrent-read.md)
+- footer-field-validation: corrupt footer fields cascade to uninformative exceptions → [KB entry](footer-field-validation.md)
+- assert-only-public-validation: assert-only codec null guard in reader → [KB entry](../../systems/database-engines/assert-only-public-validation.md)
 
 ## Cross-references
 

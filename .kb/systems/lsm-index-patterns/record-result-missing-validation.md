@@ -43,3 +43,7 @@ When auditing any public record type:
 - float16-vector-support (round 4, 2026-03-25): `VectorIndex.SearchResult(D docId, float score)`
   accepted null docId and NaN score. Fixed with compact constructor adding
   `Objects.requireNonNull` and `Float.isNaN` check.
+- block-compression (audit round 2, 2026-03-26): `CompressionMap.Entry` accepted
+  impossible size combinations (compressedSize=0 with uncompressedSize>0). Fixed with
+  compact constructor validation. Also `TrieSSTableReader.Footer` had no validation at all.
+  Fixed with `validate(fileSize)` method.

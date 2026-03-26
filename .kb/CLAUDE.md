@@ -20,6 +20,9 @@
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-26 | algorithms | compression | integer-overflow-in-size-calc (adversarial) |
+| 2026-03-26 | algorithms | compression | lazy-channel-concurrent-read (adversarial) |
+| 2026-03-26 | algorithms | compression | footer-field-validation (adversarial) |
 | 2026-03-26 | data-structures | caching | getorload-non-atomic (adversarial) |
 | 2026-03-26 | data-structures | caching | deferred-builder-validation (adversarial) |
 | 2026-03-26 | data-structures | caching | missing-close-guard (adversarial) |

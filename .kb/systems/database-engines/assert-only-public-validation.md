@@ -44,3 +44,6 @@ guards against incorrect caller usage.
   LocalEngine.Builder used assert-only for maxHandlesPerSourcePerTable,
   maxHandlesPerTable, maxTotalHandles, memTableFlushThresholdBytes. Fixed by adding
   explicit IAE checks before the existing asserts.
+- block-compression (audit round 2, 2026-03-26): `TrieSSTableReader.readAndDecompressBlock`
+  and `readAndDecompressBlockNoCache` used assert for codec-not-null check. NPE in
+  production instead of IOException. Fixed by replacing assert with runtime check.
