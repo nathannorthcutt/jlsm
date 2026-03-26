@@ -5,6 +5,7 @@ import jlsm.core.cache.BlockCache;
 import java.lang.foreign.MemorySegment;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * A {@link BlockCache} implementation that partitions the key space across N independent
@@ -25,9 +26,12 @@ import java.util.Optional;
  */
 public final class StripedBlockCache implements BlockCache {
 
+    static final int MAX_STRIPE_COUNT = 1024;
+
     private final LruBlockCache[] stripes;
     private final int stripeCount;
     private final long capacity;
+    private volatile boolean closed;
 
     private StripedBlockCache(Builder builder) {
         assert builder.stripeCount > 0 : "stripeCount must be positive";
@@ -79,12 +83,17 @@ public final class StripedBlockCache implements BlockCache {
      */
     @Override
     public Optional<MemorySegment> get(long sstableId, long blockOffset) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         if (blockOffset < 0) {
             throw new IllegalArgumentException(
                     "blockOffset must be non-negative, got: " + blockOffset);
         }
-        return stripes[stripeIndex(sstableId, blockOffset, stripeCount)].get(sstableId,
-                blockOffset);
+        int idx = stripeIndex(sstableId, blockOffset, stripeCount);
+        assert idx >= 0 && idx < stripeCount
+                : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
+        return stripes[idx].get(sstableId, blockOffset);
     }
 
     /**
@@ -99,13 +108,35 @@ public final class StripedBlockCache implements BlockCache {
      */
     @Override
     public void put(long sstableId, long blockOffset, MemorySegment block) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         if (blockOffset < 0) {
             throw new IllegalArgumentException(
                     "blockOffset must be non-negative, got: " + blockOffset);
         }
         Objects.requireNonNull(block, "block must not be null");
-        stripes[stripeIndex(sstableId, blockOffset, stripeCount)].put(sstableId, blockOffset,
-                block);
+        int idx = stripeIndex(sstableId, blockOffset, stripeCount);
+        assert idx >= 0 && idx < stripeCount
+                : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
+        stripes[idx].put(sstableId, blockOffset, block);
+    }
+
+    @Override
+    public MemorySegment getOrLoad(long sstableId, long blockOffset,
+            Supplier<MemorySegment> loader) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
+        if (blockOffset < 0) {
+            throw new IllegalArgumentException(
+                    "blockOffset must be non-negative, got: " + blockOffset);
+        }
+        Objects.requireNonNull(loader, "loader must not be null");
+        int idx = stripeIndex(sstableId, blockOffset, stripeCount);
+        assert idx >= 0 && idx < stripeCount
+                : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
+        return stripes[idx].getOrLoad(sstableId, blockOffset, loader);
     }
 
     /**
@@ -120,6 +151,9 @@ public final class StripedBlockCache implements BlockCache {
      */
     @Override
     public void evict(long sstableId) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         for (LruBlockCache stripe : stripes) {
             stripe.evict(sstableId);
         }
@@ -155,6 +189,7 @@ public final class StripedBlockCache implements BlockCache {
      */
     @Override
     public void close() {
+        closed = true;
         RuntimeException deferred = null;
         for (LruBlockCache stripe : stripes) {
             try {
@@ -209,6 +244,10 @@ public final class StripedBlockCache implements BlockCache {
                 throw new IllegalArgumentException(
                         "stripeCount must be positive, got: " + stripeCount);
             }
+            if (stripeCount > MAX_STRIPE_COUNT) {
+                throw new IllegalArgumentException("stripeCount must not exceed " + MAX_STRIPE_COUNT
+                        + ", got: " + stripeCount);
+            }
             this.stripeCount = stripeCount;
             return this;
         }
@@ -221,6 +260,9 @@ public final class StripedBlockCache implements BlockCache {
          * @return this builder
          */
         public Builder capacity(long capacity) {
+            if (capacity <= 0) {
+                throw new IllegalArgumentException("capacity must be positive, got: " + capacity);
+            }
             this.capacity = capacity;
             return this;
         }

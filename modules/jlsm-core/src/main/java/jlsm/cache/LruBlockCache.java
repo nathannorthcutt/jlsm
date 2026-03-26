@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 /**
  * An LRU block cache backed by a {@link LinkedHashMap} with access-order eviction.
@@ -29,6 +30,7 @@ public final class LruBlockCache implements BlockCache {
     private final long capacity;
     private final ReentrantLock lock;
     private final LinkedHashMap<CacheKey, MemorySegment> map;
+    private volatile boolean closed;
 
     private LruBlockCache(Builder builder) {
         assert builder.capacity > 0 : "capacity must be positive";
@@ -45,6 +47,9 @@ public final class LruBlockCache implements BlockCache {
 
     @Override
     public Optional<MemorySegment> get(long sstableId, long blockOffset) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         if (blockOffset < 0) {
             throw new IllegalArgumentException(
                     "blockOffset must be non-negative, got: " + blockOffset);
@@ -59,6 +64,9 @@ public final class LruBlockCache implements BlockCache {
 
     @Override
     public void put(long sstableId, long blockOffset, MemorySegment block) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         if (blockOffset < 0) {
             throw new IllegalArgumentException(
                     "blockOffset must be non-negative, got: " + blockOffset);
@@ -73,7 +81,37 @@ public final class LruBlockCache implements BlockCache {
     }
 
     @Override
+    public MemorySegment getOrLoad(long sstableId, long blockOffset,
+            Supplier<MemorySegment> loader) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
+        if (blockOffset < 0) {
+            throw new IllegalArgumentException(
+                    "blockOffset must be non-negative, got: " + blockOffset);
+        }
+        Objects.requireNonNull(loader, "loader must not be null");
+        lock.lock();
+        try {
+            var key = new CacheKey(sstableId, blockOffset);
+            var existing = map.get(key);
+            if (existing != null) {
+                return existing;
+            }
+            var block = loader.get();
+            Objects.requireNonNull(block, "loader must not return null");
+            map.put(key, block);
+            return block;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
     public void evict(long sstableId) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         lock.lock();
         try {
             map.keySet().removeIf(k -> k.sstableId() == sstableId);
@@ -99,6 +137,7 @@ public final class LruBlockCache implements BlockCache {
 
     @Override
     public void close() {
+        closed = true;
         lock.lock();
         try {
             map.clear();
@@ -139,6 +178,9 @@ public final class LruBlockCache implements BlockCache {
         }
 
         public Builder capacity(long capacity) {
+            if (capacity <= 0) {
+                throw new IllegalArgumentException("capacity must be positive, got: " + capacity);
+            }
             this.capacity = capacity;
             return this;
         }

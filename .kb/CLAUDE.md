@@ -13,13 +13,16 @@
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 5 | 30 | 2026-03-25 |
-| data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 5 | 2026-03-25 |
+| data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 8 | 2026-03-26 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 7 | 2026-03-26 |
 | systems | [systems/](systems/CLAUDE.md) | 4 | 33 | 2026-03-26 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-03-26 | data-structures | caching | getorload-non-atomic (adversarial) |
+| 2026-03-26 | data-structures | caching | deferred-builder-validation (adversarial) |
+| 2026-03-26 | data-structures | caching | missing-close-guard (adversarial) |
 | 2026-03-26 | distributed-systems | cluster-membership | engine-clustering (footprint) |
 | 2026-03-26 | distributed-systems | cluster-membership | ismember-ignores-state (adversarial) |
 | 2026-03-26 | distributed-systems | cluster-membership | nan-at-phi-threshold (adversarial) |
