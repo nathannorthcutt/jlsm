@@ -44,13 +44,22 @@ public final class PhiAccrualFailureDetector {
      * @param from the address of the node that sent the heartbeat; must not be null
      */
     public void recordHeartbeat(NodeAddress from) {
+        recordHeartbeat(from, System.nanoTime());
+    }
+
+    /**
+     * Records a heartbeat from the specified node at the given timestamp.
+     *
+     * @param from the address of the node that sent the heartbeat; must not be null
+     * @param timestampNanos the timestamp in nanoseconds (e.g., from {@link System#nanoTime()})
+     */
+    public void recordHeartbeat(NodeAddress from, long timestampNanos) {
         Objects.requireNonNull(from, "from must not be null");
-        final long now = System.nanoTime();
         heartbeatHistory.compute(from, (key, existing) -> {
             if (existing == null) {
-                return new HeartbeatHistory(windowSize, now);
+                return new HeartbeatHistory(windowSize, timestampNanos);
             }
-            existing.record(now);
+            existing.record(timestampNanos);
             return existing;
         });
     }
@@ -62,13 +71,23 @@ public final class PhiAccrualFailureDetector {
      * @return the phi value; 0.0 if insufficient history
      */
     public double phi(NodeAddress node) {
+        return phi(node, System.nanoTime());
+    }
+
+    /**
+     * Computes the phi value for the specified node at the given timestamp.
+     *
+     * @param node the address of the node to check; must not be null
+     * @param nowNanos the current timestamp in nanoseconds
+     * @return the phi value; 0.0 if insufficient history
+     */
+    public double phi(NodeAddress node, long nowNanos) {
         Objects.requireNonNull(node, "node must not be null");
         final HeartbeatHistory history = heartbeatHistory.get(node);
         if (history == null || history.count() < 2) {
             return 0.0;
         }
-        final long now = System.nanoTime();
-        final long elapsed = now - history.lastHeartbeatNanos();
+        final long elapsed = nowNanos - history.lastHeartbeatNanos();
         assert elapsed >= 0 : "elapsed time must be non-negative";
 
         final double elapsedMs = elapsed / 1_000_000.0;
@@ -90,11 +109,25 @@ public final class PhiAccrualFailureDetector {
      * @return {@code true} if phi(node) is below the threshold
      */
     public boolean isAvailable(NodeAddress node, double threshold) {
+        return isAvailable(node, threshold, System.nanoTime());
+    }
+
+    /**
+     * Returns whether the specified node is considered available at the given threshold and
+     * timestamp.
+     *
+     * @param node the address of the node to check; must not be null
+     * @param threshold the phi threshold above which the node is considered failed; must be
+     *            positive
+     * @param nowNanos the current timestamp in nanoseconds
+     * @return {@code true} if phi(node) is below the threshold
+     */
+    public boolean isAvailable(NodeAddress node, double threshold, long nowNanos) {
         Objects.requireNonNull(node, "node must not be null");
         if (threshold <= 0.0) {
             throw new IllegalArgumentException("threshold must be positive, got: " + threshold);
         }
-        return phi(node) < threshold;
+        return phi(node, nowNanos) < threshold;
     }
 
     /**
