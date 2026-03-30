@@ -14,6 +14,7 @@ Algorithm designs, complexity analysis, pseudocode, and data structure technique
 | compression | [compression/](compression/CLAUDE.md) | 8 | 2026-03-26 | Lossless block compression algorithms for SSTable storage (LZ4, Deflate, Snappy, ZSTD) |
 | vector-quantization | [vector-quantization/](vector-quantization/CLAUDE.md) | 5 | 2026-03-16 | Compression techniques for high-dimensional vectors in ANN search |
 | encryption | [encryption/](encryption/CLAUDE.md) | 6 | 2026-03-25 | Searchable encryption, vector encryption, and deterministic encryption performance |
+| vector-indexing | [vector-indexing/](vector-indexing/CLAUDE.md) | 10 | 2026-03-30 | ANN index structures, filtered search, object storage, incremental maintenance, quality lifecycle |
 
 ## Navigation
 Read the category CLAUDE.md to see individual subjects and comparisons.
