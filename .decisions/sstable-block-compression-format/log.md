@@ -49,3 +49,12 @@
 - [`.kb/algorithms/compression/block-compression-algorithms.md`](../../.kb/algorithms/compression/block-compression-algorithms.md)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** per-block-checksums, backend-optimal-block-size, wal-compression, compaction-recompression
+**Summary:** 4 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

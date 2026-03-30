@@ -250,7 +250,7 @@ if [[ -d ".decisions" ]] && [[ -s "$TMPDIR_SCAN/artifact-hits.txt" ]]; then
         total=0
         for adr_f in .decisions/"$slug"/adr.md .decisions/"$slug"/constraints.md; do
             [[ -f "$adr_f" ]] || continue
-            t=$(grep -oE '[a-zA-Z0-9_./+-]+/[a-zA-Z0-9_.+-]+\.[a-zA-Z0-9]+' "$adr_f" 2>/dev/null \
+            t=$( (grep -oE '[a-zA-Z0-9_./+-]+/[a-zA-Z0-9_.+-]+\.[a-zA-Z0-9]+' "$adr_f" 2>/dev/null || true) \
                 | sort -u | wc -l)
             total=$((total + t))
         done
@@ -436,7 +436,8 @@ while IFS= read -r src_file; do
     if [[ "$matched" == "0" ]]; then
         # Source changed but no corresponding test changed
         # Count how many commits touched this source file
-        src_commits="$(grep -c "$src_file" "$TMPDIR_SCAN/churn.txt" 2>/dev/null || echo 0)"
+        src_commits="$(grep -c "$src_file" "$TMPDIR_SCAN/churn.txt" 2>/dev/null || true)"
+        : "${src_commits:=0}"
         if [[ "$src_commits" -gt 0 ]]; then
             echo "$src_commits|$src_file" >> "$TMPDIR_SCAN/test-drift.txt"
         fi

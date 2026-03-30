@@ -56,3 +56,12 @@ created: "2026-03-17"
 - None (KB is empty — all candidates evaluated from domain knowledge)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** hash-distribution-uniformity, power-of-two-stripe-optimization
+**Summary:** 2 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

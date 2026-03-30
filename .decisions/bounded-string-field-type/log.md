@@ -47,3 +47,12 @@
 - None -- codebase analysis only
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** binary-field-type, parameterized-field-bounds, string-to-bounded-string-migration
+**Summary:** 3 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

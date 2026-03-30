@@ -65,3 +65,12 @@
 - [`.kb/algorithms/encryption/searchable-encryption-schemes.md`](../../.kb/algorithms/encryption/searchable-encryption-schemes.md) — existing SSE overview, needs deeper implementation detail for inverted index integration
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** encrypted-prefix-wildcard-queries, encrypted-fuzzy-matching, encrypted-cross-field-joins, index-access-pattern-leakage
+**Summary:** 4 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

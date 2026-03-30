@@ -56,3 +56,12 @@ created: "2026-03-16"
 - [`.kb/distributed-systems/data-partitioning/vector-search-partitioning.md`](../../.kb/distributed-systems/data-partitioning/vector-search-partitioning.md)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** partition-replication-protocol, cross-partition-transactions, vector-query-partition-pruning, sequential-insert-hotspot, partition-aware-compaction
+**Summary:** 5 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

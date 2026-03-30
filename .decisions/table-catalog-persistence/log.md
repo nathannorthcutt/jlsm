@@ -61,3 +61,12 @@
 - [`.kb/systems/database-engines/catalog-persistence-patterns.md`](../../.kb/systems/database-engines/catalog-persistence-patterns.md)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** atomic-multi-table-ddl, cross-table-transaction-coordination, catalog-replication, table-migration-protocol
+**Summary:** 4 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

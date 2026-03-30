@@ -26,3 +26,12 @@ Candidate 4 — factory method pattern with `JlsmDocument.preEncrypted(schema, n
 - Minimal API surface: one new factory method, no new types
 - Best fit with existing architecture: JlsmDocument is final, deeply embedded; wrapper type would require pervasive changes
 - Metadata map is architecturally inconsistent with the tight, schema-validated value holder design
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** per-field-pre-encryption, pre-encrypted-flag-persistence, client-side-encryption-sdk
+**Summary:** 3 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

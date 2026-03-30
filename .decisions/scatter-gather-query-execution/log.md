@@ -63,3 +63,12 @@
 - None — implementation design
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** aggregation-query-merge, limit-offset-pushdown, cross-partition-atomic-writes
+**Summary:** 3 out-of-scope items promoted to tracked deferred decisions during /curate session. (distributed-join-execution already tracked as deferred.)
+
+---

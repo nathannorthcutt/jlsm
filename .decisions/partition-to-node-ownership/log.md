@@ -48,3 +48,12 @@
 - [`.kb/distributed-systems/data-partitioning/partitioning-strategies.md`](../../.kb/distributed-systems/data-partitioning/partitioning-strategies.md)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** weighted-node-capacity, partition-affinity, ownership-lookup-optimization, rebalancing-trigger-policy
+**Summary:** 4 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---
