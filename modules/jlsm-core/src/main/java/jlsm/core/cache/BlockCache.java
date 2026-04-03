@@ -2,6 +2,7 @@ package jlsm.core.cache;
 
 import java.io.Closeable;
 import java.lang.foreign.MemorySegment;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -60,11 +61,15 @@ public interface BlockCache extends Closeable {
      */
     default MemorySegment getOrLoad(long sstableId, long blockOffset,
             Supplier<MemorySegment> loader) {
-        return get(sstableId, blockOffset).orElseGet(() -> {
-            MemorySegment block = loader.get();
-            put(sstableId, blockOffset, block);
-            return block;
-        });
+        Objects.requireNonNull(loader, "loader must not be null");
+        synchronized (this) {
+            return get(sstableId, blockOffset).orElseGet(() -> {
+                MemorySegment block = Objects.requireNonNull(loader.get(),
+                        "loader must not return null");
+                put(sstableId, blockOffset, block);
+                return block;
+            });
+        }
     }
 
     /**

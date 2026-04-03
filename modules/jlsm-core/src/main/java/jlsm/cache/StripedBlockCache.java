@@ -34,8 +34,14 @@ public final class StripedBlockCache implements BlockCache {
     private volatile boolean closed;
 
     private StripedBlockCache(Builder builder) {
-        assert builder.stripeCount > 0 : "stripeCount must be positive";
-        assert builder.capacity >= builder.stripeCount : "capacity must be >= stripeCount";
+        if (builder.stripeCount <= 0) {
+            throw new IllegalArgumentException("stripeCount must be positive, got: " + builder.stripeCount);
+        }
+        if (builder.capacity < builder.stripeCount) {
+            throw new IllegalArgumentException(
+                    "capacity must be >= stripeCount, got capacity=" + builder.capacity
+                            + ", stripeCount=" + builder.stripeCount);
+        }
 
         this.stripeCount = builder.stripeCount;
         this.stripes = new LruBlockCache[stripeCount];
@@ -62,7 +68,9 @@ public final class StripedBlockCache implements BlockCache {
      * @return a stripe index in {@code [0, stripeCount)}
      */
     static int stripeIndex(long sstableId, long blockOffset, int stripeCount) {
-        assert stripeCount > 0 : "stripeCount must be positive";
+        if (stripeCount <= 0) {
+            throw new IllegalArgumentException("stripeCount must be positive, got: " + stripeCount);
+        }
 
         // Splitmix64 finalizer — constants from java.util.SplittableRandom
         long h = sstableId * 0x9E3779B97F4A7C15L + blockOffset;
@@ -93,7 +101,14 @@ public final class StripedBlockCache implements BlockCache {
         int idx = stripeIndex(sstableId, blockOffset, stripeCount);
         assert idx >= 0 && idx < stripeCount
                 : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
-        return stripes[idx].get(sstableId, blockOffset);
+        try {
+            return stripes[idx].get(sstableId, blockOffset);
+        } catch (IllegalStateException e) {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
+            throw e;
+        }
     }
 
     /**
@@ -119,7 +134,14 @@ public final class StripedBlockCache implements BlockCache {
         int idx = stripeIndex(sstableId, blockOffset, stripeCount);
         assert idx >= 0 && idx < stripeCount
                 : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
-        stripes[idx].put(sstableId, blockOffset, block);
+        try {
+            stripes[idx].put(sstableId, blockOffset, block);
+        } catch (IllegalStateException e) {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
+            throw e;
+        }
     }
 
     @Override
@@ -136,7 +158,14 @@ public final class StripedBlockCache implements BlockCache {
         int idx = stripeIndex(sstableId, blockOffset, stripeCount);
         assert idx >= 0 && idx < stripeCount
                 : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
-        return stripes[idx].getOrLoad(sstableId, blockOffset, loader);
+        try {
+            return stripes[idx].getOrLoad(sstableId, blockOffset, loader);
+        } catch (IllegalStateException e) {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
+            throw e;
+        }
     }
 
     /**
@@ -154,8 +183,15 @@ public final class StripedBlockCache implements BlockCache {
         if (closed) {
             throw new IllegalStateException("cache is closed");
         }
-        for (LruBlockCache stripe : stripes) {
-            stripe.evict(sstableId);
+        try {
+            for (LruBlockCache stripe : stripes) {
+                stripe.evict(sstableId);
+            }
+        } catch (IllegalStateException e) {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
+            throw e;
         }
     }
 
@@ -166,6 +202,9 @@ public final class StripedBlockCache implements BlockCache {
      */
     @Override
     public long size() {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         long total = 0;
         for (LruBlockCache stripe : stripes) {
             total += stripe.size();
@@ -180,6 +219,9 @@ public final class StripedBlockCache implements BlockCache {
      */
     @Override
     public long capacity() {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         return capacity;
     }
 
@@ -190,11 +232,11 @@ public final class StripedBlockCache implements BlockCache {
     @Override
     public void close() {
         closed = true;
-        RuntimeException deferred = null;
+        Throwable deferred = null;
         for (LruBlockCache stripe : stripes) {
             try {
                 stripe.close();
-            } catch (RuntimeException e) {
+            } catch (Throwable e) {
                 if (deferred == null) {
                     deferred = e;
                 } else {
@@ -203,7 +245,11 @@ public final class StripedBlockCache implements BlockCache {
             }
         }
         if (deferred != null) {
-            throw deferred;
+            switch (deferred) {
+                case RuntimeException re -> throw re;
+                case Error err -> throw err;
+                default -> throw new RuntimeException(deferred);
+            }
         }
     }
 
@@ -278,6 +324,10 @@ public final class StripedBlockCache implements BlockCache {
             if (stripeCount <= 0) {
                 throw new IllegalArgumentException(
                         "stripeCount must be positive, got: " + stripeCount);
+            }
+            if (capacity < 0) {
+                throw new IllegalArgumentException(
+                        "capacity not set — call .capacity(n) before .build()");
             }
             if (capacity < stripeCount) {
                 throw new IllegalArgumentException("capacity must be at least stripeCount ("
