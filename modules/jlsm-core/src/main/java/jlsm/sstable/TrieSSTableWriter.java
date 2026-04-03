@@ -44,7 +44,7 @@ import java.util.Objects;
 public final class TrieSSTableWriter implements SSTableWriter {
 
     private enum State {
-        OPEN, FINISHED, CLOSED
+        OPEN, FINISHED, FAILED, CLOSED
     }
 
     private final long id;
@@ -127,6 +127,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
         Objects.requireNonNull(level, "level must not be null");
         Objects.requireNonNull(outputPath, "outputPath must not be null");
         Objects.requireNonNull(bloomFactory, "bloomFactory must not be null");
+        if (codec != null && codec.codecId() == 0x00 && codec != CompressionCodec.none()) {
+            throw new IllegalArgumentException(
+                    "custom codec must not use codecId 0x00 (reserved for NoneCodec)");
+        }
         this.id = id;
         this.level = level;
         this.outputPath = outputPath;
@@ -218,14 +222,28 @@ public final class TrieSSTableWriter implements SSTableWriter {
             // v1: write raw block
             writeBytes(blockBytes);
         }
+        if (blockCount == Integer.MAX_VALUE) {
+            throw new IOException("block count overflow: cannot exceed " + Integer.MAX_VALUE);
+        }
         blockCount++;
         currentBlock = new DataBlock();
     }
 
+    private static final int MAX_ZERO_PROGRESS_WRITES = 1024;
+
     private void writeBytes(byte[] bytes) throws IOException {
         ByteBuffer buf = ByteBuffer.wrap(bytes);
+        int zeroProgressCount = 0;
         while (buf.hasRemaining()) {
-            channel.write(buf);
+            int written = channel.write(buf);
+            if (written == 0) {
+                if (++zeroProgressCount >= MAX_ZERO_PROGRESS_WRITES) {
+                    throw new IOException("writeBytes made no progress after "
+                            + MAX_ZERO_PROGRESS_WRITES + " attempts — channel may be broken");
+                }
+            } else {
+                zeroProgressCount = 0;
+            }
         }
         writePosition += bytes.length;
     }
@@ -233,75 +251,85 @@ public final class TrieSSTableWriter implements SSTableWriter {
     @Override
     public SSTableMetadata finish() throws IOException {
         if (state != State.OPEN) {
-            throw new IllegalStateException("finish() already called or writer is closed");
+            throw new IllegalStateException("finish() already called or writer failed/closed");
         }
         if (entryCount == 0) {
             throw new IllegalStateException("cannot finish an empty SSTable");
         }
 
-        // Flush remaining block
-        flushCurrentBlock();
+        try {
+            // Flush remaining block
+            flushCurrentBlock();
 
-        // Build bloom filter
-        bloomFilter = bloomFactory.create((int) Math.max(1, entryCount));
-        for (byte[] key : indexKeys) {
-            bloomFilter.add(MemorySegment.ofArray(key));
+            // Build bloom filter — clamp entryCount to avoid negative int from long truncation
+            int bloomCapacity = (int) Math.min(Integer.MAX_VALUE, Math.max(1, entryCount));
+            bloomFilter = bloomFactory.create(bloomCapacity);
+            for (byte[] key : indexKeys) {
+                bloomFilter.add(MemorySegment.ofArray(key));
+            }
+
+            if (codec != null) {
+                // v2 layout: [data blocks][compression map][key index][bloom filter][footer 64]
+                long mapOffset = writePosition;
+                CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
+                writeBytes(compressionMap.serialize());
+                long mapLength = writePosition - mapOffset;
+
+                long indexOffset = writePosition;
+                writeKeyIndexV2();
+                long indexLength = writePosition - indexOffset;
+
+                long filterOffset = writePosition;
+                MemorySegment filterBytes = bloomFilter.serialize();
+                byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
+                writeBytes(filterArray);
+                long filterLength = writePosition - filterOffset;
+
+                writeFooterV2(mapOffset, mapLength, indexOffset, indexLength, filterOffset,
+                        filterLength);
+            } else {
+                // v1 layout: [data blocks][key index][bloom filter][footer 48]
+                long indexOffset = writePosition;
+                writeKeyIndexV1();
+                long indexLength = writePosition - indexOffset;
+
+                long filterOffset = writePosition;
+                MemorySegment filterBytes = bloomFilter.serialize();
+                byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
+                writeBytes(filterArray);
+                long filterLength = writePosition - filterOffset;
+
+                writeFooterV1(indexOffset, indexLength, filterOffset, filterLength);
+            }
+
+            // fsync if supported (e.g., local FileChannel; skipped for object-storage channels)
+            if (channel instanceof FileChannel fc)
+                fc.force(true);
+
+            long sizeBytes = writePosition;
+
+            state = State.FINISHED;
+
+            return new SSTableMetadata(id, outputPath, level, smallestKey, largestKey, minSequence,
+                    maxSequence, sizeBytes, entryCount);
+        } catch (IOException e) {
+            state = State.FAILED;
+            throw e;
         }
-
-        if (codec != null) {
-            // v2 layout: [data blocks][compression map][key index][bloom filter][footer 64]
-            long mapOffset = writePosition;
-            CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
-            writeBytes(compressionMap.serialize());
-            long mapLength = writePosition - mapOffset;
-
-            long indexOffset = writePosition;
-            writeKeyIndexV2();
-            long indexLength = writePosition - indexOffset;
-
-            long filterOffset = writePosition;
-            MemorySegment filterBytes = bloomFilter.serialize();
-            byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
-            writeBytes(filterArray);
-            long filterLength = writePosition - filterOffset;
-
-            writeFooterV2(mapOffset, mapLength, indexOffset, indexLength, filterOffset,
-                    filterLength);
-        } else {
-            // v1 layout: [data blocks][key index][bloom filter][footer 48]
-            long indexOffset = writePosition;
-            writeKeyIndexV1();
-            long indexLength = writePosition - indexOffset;
-
-            long filterOffset = writePosition;
-            MemorySegment filterBytes = bloomFilter.serialize();
-            byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
-            writeBytes(filterArray);
-            long filterLength = writePosition - filterOffset;
-
-            writeFooterV1(indexOffset, indexLength, filterOffset, filterLength);
-        }
-
-        // fsync if supported (e.g., local FileChannel; skipped for object-storage channels)
-        if (channel instanceof FileChannel fc)
-            fc.force(true);
-
-        long sizeBytes = writePosition;
-
-        state = State.FINISHED;
-
-        return new SSTableMetadata(id, outputPath, level, smallestKey, largestKey, minSequence,
-                maxSequence, sizeBytes, entryCount);
     }
 
     /** Writes v1 key index: [numKeys(4)][per key: keyLen(4) + key + fileOffset(8)]. */
     private void writeKeyIndexV1() throws IOException {
         int numKeys = indexKeys.size();
-        int indexSize = 4;
+        long indexSize = 4L;
         for (byte[] k : indexKeys) {
             indexSize += 4 + k.length + 8;
         }
-        byte[] buf = new byte[indexSize];
+        if (indexSize > Integer.MAX_VALUE) {
+            throw new IOException(
+                    "key index too large: %d bytes exceeds Integer.MAX_VALUE".formatted(indexSize));
+        }
+        byte[] buf = new byte[(int) indexSize];
         int off = 0;
         off = writeInt(buf, off, numKeys);
         for (int i = 0; i < numKeys; i++) {
@@ -319,11 +347,15 @@ public final class TrieSSTableWriter implements SSTableWriter {
      */
     private void writeKeyIndexV2() throws IOException {
         int numKeys = indexKeys.size();
-        int indexSize = 4;
+        long indexSize = 4L;
         for (byte[] k : indexKeys) {
             indexSize += 4 + k.length + 4 + 4;
         }
-        byte[] buf = new byte[indexSize];
+        if (indexSize > Integer.MAX_VALUE) {
+            throw new IOException(
+                    "key index too large: %d bytes exceeds Integer.MAX_VALUE".formatted(indexSize));
+        }
+        byte[] buf = new byte[(int) indexSize];
         int off = 0;
         off = writeInt(buf, off, numKeys);
         for (int i = 0; i < numKeys; i++) {
@@ -402,7 +434,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
     public void close() throws IOException {
         if (state == State.CLOSED)
             return;
-        boolean shouldDelete = (state == State.OPEN);
+        boolean shouldDelete = (state == State.OPEN || state == State.FAILED);
         state = State.CLOSED;
         IOException channelEx = null;
         try {

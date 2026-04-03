@@ -3,6 +3,7 @@ package jlsm.sstable.internal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Compression offset map for SSTable v2 format.
@@ -32,6 +33,9 @@ public final class CompressionMap {
     /** Size in bytes of a single compression map entry. */
     public static final int ENTRY_SIZE = 17;
 
+    /** Known valid codec IDs: 0x00 = NoneCodec, 0x02 = DeflateCodec. */
+    private static final Set<Byte> KNOWN_CODEC_IDS = Set.of((byte) 0x00, (byte) 0x02);
+
     /**
      * A single entry in the compression map describing one data block.
      *
@@ -53,6 +57,11 @@ public final class CompressionMap {
             if (uncompressedSize < 0) {
                 throw new IllegalArgumentException(
                         "uncompressedSize must be non-negative, got: " + uncompressedSize);
+            }
+            if (!KNOWN_CODEC_IDS.contains(codecId)) {
+                throw new IllegalArgumentException(
+                        "unknown codecId: 0x%02x (known: 0x00=none, 0x02=deflate)"
+                                .formatted(codecId));
             }
             // C1-F8: Reject physically impossible size combinations.
             // compressedSize=0 with uncompressedSize>0 means "decompress nothing into something"
@@ -168,6 +177,11 @@ public final class CompressionMap {
         if (data.length < expectedLength) {
             throw new IllegalArgumentException(
                     "compression map data too short: %d bytes (expected %d for %d blocks)"
+                            .formatted(data.length, expectedLength, blockCount));
+        }
+        if (data.length > expectedLength) {
+            throw new IllegalArgumentException(
+                    "compression map data has trailing bytes: %d bytes (expected %d for %d blocks)"
                             .formatted(data.length, expectedLength, blockCount));
         }
         List<Entry> entries = new ArrayList<>(blockCount);

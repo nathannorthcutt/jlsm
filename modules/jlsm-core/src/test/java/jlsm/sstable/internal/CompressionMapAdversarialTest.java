@@ -108,10 +108,9 @@ class CompressionMapAdversarialTest {
                 "C1-F7: moderate blockCount causing overflow must throw IAE");
     }
 
-    // C1-F6: deserialize accepts trailing bytes beyond expected length
+    // C1-F6: deserialize now rejects trailing bytes (fixed by F-R1.cb.2.4)
     @Test
-    void deserializeAcceptsTrailingBytes_C1F6() {
-        // Serialize a valid 1-entry map, then append garbage
+    void deserializeRejectsTrailingBytes_C1F6() {
         var map = new CompressionMap(List.of(new CompressionMap.Entry(0L, 100, 200, (byte) 0x00)));
         byte[] serialized = map.serialize();
         byte[] withTrailing = new byte[serialized.length + 50];
@@ -119,17 +118,15 @@ class CompressionMapAdversarialTest {
         for (int i = serialized.length; i < withTrailing.length; i++) {
             withTrailing[i] = (byte) 0xAB;
         }
-        // C1-F6: Should reject trailing bytes for data integrity, but currently accepts.
-        // Documenting: deserialize silently ignores trailing data.
-        CompressionMap result = CompressionMap.deserialize(withTrailing);
-        assertEquals(1, result.blockCount(), "C1-F6: CONFIRMED — trailing bytes silently accepted");
+        assertThrows(IllegalArgumentException.class, () -> CompressionMap.deserialize(withTrailing),
+                "deserialize should reject trailing bytes");
     }
 
     @Test
     void deserializeRejectsTrailingGarbageExactly() {
         // blockCount claims 0 entries but there's trailing data
         byte[] data = new byte[]{ 0, 0, 0, 0, 99, 99 };
-        CompressionMap map = CompressionMap.deserialize(data);
-        assertEquals(0, map.blockCount()); // trailing bytes silently ignored — WATCH
+        assertThrows(IllegalArgumentException.class, () -> CompressionMap.deserialize(data),
+                "deserialize should reject trailing bytes after zero-entry map");
     }
 }
