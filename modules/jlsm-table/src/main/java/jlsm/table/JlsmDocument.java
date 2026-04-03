@@ -2,6 +2,7 @@ package jlsm.table;
 
 import jlsm.encryption.EncryptionSpec;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
@@ -146,10 +147,16 @@ public final class JlsmDocument {
                 if (fd.encryption() instanceof EncryptionSpec.None) {
                     // Unencrypted field — validate type normally
                     validateType(fieldName, fd.type(), value);
+                } else {
+                    // Encrypted field — must be byte[] ciphertext
+                    if (!(value instanceof byte[])) {
+                        throw new IllegalArgumentException(
+                                "Encrypted field '" + fieldName + "' must be byte[], got "
+                                        + value.getClass().getSimpleName());
+                    }
                 }
-                // Encrypted fields: accept byte[] ciphertext without type validation
             }
-            values[idx] = value;
+            values[idx] = defensiveCopyIfVector(schema.fields().get(idx).type(), value);
         }
 
         return new JlsmDocument(schema, values, true);
@@ -162,6 +169,25 @@ public final class JlsmDocument {
     /** Returns the schema for this document. */
     public JlsmSchema schema() {
         return schema;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof JlsmDocument other)) {
+            return false;
+        }
+        return preEncrypted == other.preEncrypted && Objects.equals(schema, other.schema)
+                && Arrays.deepEquals(values, other.values);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(schema, preEncrypted);
+        result = 31 * result + Arrays.deepHashCode(values);
+        return result;
     }
 
     /**
@@ -280,6 +306,38 @@ public final class JlsmDocument {
         return (JlsmDocument) val;
     }
 
+    /** Returns a defensive copy of the VECTOR(FLOAT32) value of the named field as a {@code float[]}. */
+    public float[] getFloat32Vector(String field) {
+        final int idx = requireIndex(field);
+        final FieldType type = schema.fields().get(idx).type();
+        if (!(type instanceof FieldType.VectorType vt)
+                || vt.elementType() != FieldType.Primitive.FLOAT32) {
+            throw new IllegalArgumentException(
+                    "Field '" + field + "' is not a VECTOR(FLOAT32), got " + type);
+        }
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return ((float[]) val).clone();
+    }
+
+    /** Returns a defensive copy of the VECTOR(FLOAT16) value of the named field as a {@code short[]}. */
+    public short[] getFloat16Vector(String field) {
+        final int idx = requireIndex(field);
+        final FieldType type = schema.fields().get(idx).type();
+        if (!(type instanceof FieldType.VectorType vt)
+                || vt.elementType() != FieldType.Primitive.FLOAT16) {
+            throw new IllegalArgumentException(
+                    "Field '" + field + "' is not a VECTOR(FLOAT16), got " + type);
+        }
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return ((short[]) val).clone();
+    }
+
     // -------------------------------------------------------------------------
     // JSON / YAML stubs — filled in by later tasks
     // -------------------------------------------------------------------------
@@ -380,7 +438,15 @@ public final class JlsmDocument {
                     case TIMESTAMP -> expect(fieldName, value, Long.class, "TIMESTAMP");
                 }
             }
-            case FieldType.ArrayType _ -> expect(fieldName, value, Object[].class, "ARRAY");
+            case FieldType.ArrayType at -> {
+                expect(fieldName, value, Object[].class, "ARRAY");
+                final Object[] arr = (Object[]) value;
+                for (int i = 0; i < arr.length; i++) {
+                    if (arr[i] != null) {
+                        validateType(fieldName + "[" + i + "]", at.elementType(), arr[i]);
+                    }
+                }
+            }
             case FieldType.VectorType vt -> {
                 if (vt.elementType() == FieldType.Primitive.FLOAT32) {
                     expect(fieldName, value, float[].class, "VECTOR(FLOAT32)");

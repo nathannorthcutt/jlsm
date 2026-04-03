@@ -29,6 +29,7 @@ public final class JlsmSchema {
 
     private JlsmSchema(String name, int version, List<FieldDefinition> fields, int maxDepth) {
         assert name != null : "name must not be null";
+        assert version >= 0 : "version must not be negative";
         assert fields != null : "fields must not be null";
         assert maxDepth >= 0 && maxDepth <= ABSOLUTE_MAX_DEPTH : "maxDepth out of range";
 
@@ -70,6 +71,23 @@ public final class JlsmSchema {
         return maxDepth;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof JlsmSchema other)) {
+            return false;
+        }
+        return version == other.version && maxDepth == other.maxDepth
+                && Objects.equals(name, other.name) && Objects.equals(fields, other.fields);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, version, fields, maxDepth);
+    }
+
     /**
      * Returns the zero-based index of the field with the given name, or {@code -1} if no such field
      * exists.
@@ -91,6 +109,9 @@ public final class JlsmSchema {
      */
     public static Builder builder(String name, int version) {
         Objects.requireNonNull(name, "name must not be null");
+        if (version < 0) {
+            throw new IllegalArgumentException("version must not be negative, got: " + version);
+        }
         return new Builder(name, version, 0, DEFAULT_MAX_DEPTH, null);
     }
 
@@ -133,6 +154,9 @@ public final class JlsmSchema {
         public Builder field(String name, FieldType type) {
             Objects.requireNonNull(name, "name must not be null");
             Objects.requireNonNull(type, "type must not be null");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("field name must not be blank");
+            }
             assert name != null : "name must not be null";
             assert type != null : "type must not be null";
             fields.add(new FieldDefinition(name, type));
@@ -151,6 +175,9 @@ public final class JlsmSchema {
             Objects.requireNonNull(name, "name must not be null");
             Objects.requireNonNull(type, "type must not be null");
             Objects.requireNonNull(encryption, "encryption must not be null");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("field name must not be blank");
+            }
             assert name != null : "name must not be null";
             assert type != null : "type must not be null";
             assert encryption != null : "encryption must not be null";

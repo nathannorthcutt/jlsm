@@ -21,6 +21,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -135,27 +136,51 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
 
     @Test
     void ivfFlat_float16_nanVectorDoesNotCorruptOtherResults() throws IOException {
-        // F14: A stored vector with NaN component produces NaN score via cosine.
-        // NaN should not displace legitimate results at the top of the heap.
+        // F01 R27: Vectors with NaN components that reach the index produce NaN scores.
+        //          NaN scores must be excluded from search results (silent degradation).
+        // F01 R13: The document layer rejects non-finite values, so the index layer
+        //          validates and rejects NaN at index(). To test search-path resilience
+        //          per R27, inject a NaN vector directly into the backing LSM tree,
+        //          simulating data corruption or encoding edge cases.
+        // Expectation: search returns only finite-scored results; the NaN vector is
+        //              invisible to search but does not crash or displace valid results.
+        LsmTree tree = buildTree(Long.MAX_VALUE);
         try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(tree).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .dimensions(2).similarityFunction(SimilarityFunction.COSINE)
                 .precision(VectorPrecision.FLOAT16).build()) {
 
-            // Index a normal vector
+            // Index a normal vector through the public API
             index.index(1L, new float[]{ 1.0f, 0.0f });
 
-            // Index a vector with NaN — produces NaN score against any query
-            index.index(2L, new float[]{ Float.NaN, 0.0f });
+            // Inject a NaN vector directly into the LSM tree, bypassing index() validation.
+            // This simulates data corruption or a bug that lets NaN slip past the boundary.
+            // Centroid 0 already exists from doc 1; post under the same centroid.
+            byte[] docId2Bytes = LONG_DOC_ID_SERIALIZER.serialize(2L)
+                    .toArray(ValueLayout.JAVA_BYTE);
+            float[] nanVector = { Float.NaN, 0.0f };
+            byte[] nanEncoded = LsmVectorIndex.encodeVector(nanVector, VectorPrecision.FLOAT16);
+            // Posting key: [0x01][centroid_id=0 (4 bytes BE)][docId]
+            byte[] postingKey = new byte[1 + 4 + docId2Bytes.length];
+            postingKey[0] = 0x01; // POSTING_PREFIX
+            // centroid id 0 → bytes [0,0,0,0] already zero-initialized
+            System.arraycopy(docId2Bytes, 0, postingKey, 5, docId2Bytes.length);
+            tree.put(MemorySegment.ofArray(postingKey), MemorySegment.ofArray(nanEncoded));
+            // Reverse lookup: [0x02][docId] → centroid_id 0
+            byte[] revKey = new byte[1 + docId2Bytes.length];
+            revKey[0] = 0x02;
+            System.arraycopy(docId2Bytes, 0, revKey, 1, docId2Bytes.length);
+            tree.put(MemorySegment.ofArray(revKey),
+                    MemorySegment.ofArray(new byte[]{ 0, 0, 0, 0 }));
 
-            // Search with a normal query
+            // Search — NaN vector should be invisible per F01 R25a/R27
             List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
                     2);
 
             assertFalse(results.isEmpty(), "search should return results");
 
             // The first result should be doc 1 (exact match), NOT doc 2 (NaN score).
-            // If NaN corrupts ordering, doc 2 appears first.
+            // Per F01 R25a, NaN scores are filtered during candidate accumulation.
             VectorIndex.SearchResult<Long> top = results.get(0);
             assertFalse(Float.isNaN(top.score()),
                     "top result should not have NaN score — NaN entries should be ranked last or filtered");
@@ -166,15 +191,36 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
 
     @Test
     void hnsw_float16_nanVectorDoesNotCorruptOtherResults() throws IOException {
-        // F14: Same NaN ordering corruption check for Hnsw.
+        // F01 R27: Same as above but for HNSW. Inject NaN below the validation boundary
+        //          to test that HNSW search filters non-finite scores per F01 R25a.
+        // The HNSW node format includes neighbor links, so we index a valid vector first
+        // then overwrite its stored data with a NaN vector to corrupt the stored value
+        // while preserving valid graph structure.
+        LsmTree tree = buildTree(Long.MAX_VALUE);
         try (VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
-                .lsmTree(buildTree(Long.MAX_VALUE)).docIdSerializer(LONG_DOC_ID_SERIALIZER)
+                .lsmTree(tree).docIdSerializer(LONG_DOC_ID_SERIALIZER)
                 .dimensions(2).similarityFunction(SimilarityFunction.COSINE)
                 .precision(VectorPrecision.FLOAT16).build()) {
 
+            // Index two valid vectors to build graph structure
             index.index(1L, new float[]{ 1.0f, 0.0f });
-            index.index(2L, new float[]{ Float.NaN, 0.0f });
+            index.index(2L, new float[]{ 0.0f, 1.0f });
 
+            // Read doc 2's node data, decode it, replace vector with NaN, re-encode and overwrite
+            byte[] docId2Bytes = LONG_DOC_ID_SERIALIZER.serialize(2L)
+                    .toArray(ValueLayout.JAVA_BYTE);
+            Optional<MemorySegment> nodeData = tree.get(MemorySegment.ofArray(docId2Bytes));
+            assertTrue(nodeData.isPresent(), "doc 2 node must exist");
+            byte[] nodeBytes = nodeData.get().toArray(ValueLayout.JAVA_BYTE);
+            // The vector portion is the last dimensions*2 bytes (float16, 2 dims = 4 bytes)
+            int vectorStart = nodeBytes.length - 2 * 2; // dimensions * bytesPerFloat16
+            // Overwrite with NaN-encoded float16 vector
+            float[] nanVector = { Float.NaN, 0.0f };
+            byte[] nanEncoded = LsmVectorIndex.encodeVector(nanVector, VectorPrecision.FLOAT16);
+            System.arraycopy(nanEncoded, 0, nodeBytes, vectorStart, nanEncoded.length);
+            tree.put(MemorySegment.ofArray(docId2Bytes), MemorySegment.ofArray(nodeBytes));
+
+            // Search — doc 2's NaN score should be filtered per F01 R25a/R27
             List<VectorIndex.SearchResult<Long>> results = index.search(new float[]{ 1.0f, 0.0f },
                     2);
 

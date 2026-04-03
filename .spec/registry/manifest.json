@@ -1,0 +1,140 @@
+{
+  "version": 1,
+  "generated": "2026-04-02T00:00:00Z",
+  "domains": {
+    "vector-indexing": {
+      "shard_path": "domains/vector-indexing/INDEX.md",
+      "description": "vector search hnsw ivf-flat ann similarity float16 precision encoding",
+      "feature_count": 2
+    },
+    "serialization": {
+      "shard_path": "domains/serialization/INDEX.md",
+      "description": "encoding decoding sstable document serializer binary format footer",
+      "feature_count": 3
+    },
+    "storage": {
+      "shard_path": "domains/storage/INDEX.md",
+      "description": "memtable wal flush compaction object-store block cache manifest",
+      "feature_count": 1
+    },
+    "encryption": {
+      "shard_path": "domains/encryption/INDEX.md",
+      "description": "aes gcm kms tmk sek key-derivation cipher block-encryption",
+      "feature_count": 1
+    },
+    "query": {
+      "shard_path": "domains/query/INDEX.md",
+      "description": "sql query plan statistics join index scan filter",
+      "feature_count": 2
+    },
+    "engine": {
+      "shard_path": "domains/engine/INDEX.md",
+      "description": "database engine table catalog schema partition",
+      "feature_count": 5
+    }
+  },
+  "features": {
+    "F01": {
+      "latest_file": "domains/vector-indexing/F01-float16-vector-support.md",
+      "state": "DRAFT",
+      "domains": [
+        "vector-indexing",
+        "serialization"
+      ]
+    },
+    "F02": {
+      "latest_file": "domains/serialization/F02-block-compression.md",
+      "state": "DRAFT",
+      "domains": [
+        "serialization",
+        "storage"
+      ]
+    },
+    "F03": {
+      "latest_file": "domains/encryption/F03-encrypt-memory-data.md",
+      "state": "DRAFT",
+      "domains": [
+        "encryption"
+      ]
+    },
+    "F04": {
+      "latest_file": "domains/engine/F04-engine-clustering.md",
+      "state": "DRAFT",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F05": {
+      "latest_file": "domains/engine/F05-in-process-database-engine.md",
+      "state": "DRAFT",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F06": {
+      "latest_file": "domains/serialization/F06-optimize-document-serializer.md",
+      "state": "DRAFT",
+      "domains": [
+        "serialization"
+      ]
+    },
+    "F07": {
+      "latest_file": "domains/query/F07-sql-query-support.md",
+      "state": "DRAFT",
+      "domains": [
+        "query"
+      ]
+    },
+    "F08": {
+      "latest_file": "domains/serialization/F08-streaming-block-decompression.md",
+      "state": "DRAFT",
+      "domains": [
+        "serialization",
+        "storage"
+      ]
+    },
+    "F09": {
+      "latest_file": "domains/storage/F09-striped-block-cache.md",
+      "state": "DRAFT",
+      "domains": [
+        "storage"
+      ]
+    },
+    "F10": {
+      "latest_file": "domains/query/F10-table-indices-and-queries.md",
+      "state": "DRAFT",
+      "domains": [
+        "query",
+        "engine"
+      ]
+    },
+    "F11": {
+      "latest_file": "domains/engine/F11-table-partitioning.md",
+      "state": "DRAFT",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F12": {
+      "latest_file": "domains/vector-indexing/F12-vector-field-type.md",
+      "state": "DRAFT",
+      "domains": [
+        "vector-indexing"
+      ]
+    },
+    "F13": {
+      "latest_file": "domains/engine/F13-jlsm-schema.md",
+      "state": "DRAFT",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F14": {
+      "latest_file": "domains/engine/F14-jlsm-document.md",
+      "state": "DRAFT",
+      "domains": [
+        "engine"
+      ]
+    }
+  }
+}

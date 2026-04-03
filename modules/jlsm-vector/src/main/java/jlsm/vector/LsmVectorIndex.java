@@ -756,6 +756,7 @@ public final class LsmVectorIndex {
 
             private int numClusters = 256;
             private int nprobe = 8;
+            private boolean nprobeExplicitlySet = false;
 
             public Builder<D> numClusters(int n) {
                 if (n <= 0)
@@ -768,18 +769,22 @@ public final class LsmVectorIndex {
                 if (n <= 0)
                     throw new IllegalArgumentException("nprobe must be > 0");
                 this.nprobe = n;
+                this.nprobeExplicitlySet = true;
                 return this;
             }
 
             public VectorIndex.IvfFlat<D> build() {
                 validateBase();
-                if (nprobe > numClusters) {
+                int effectiveNprobe = nprobe;
+                if (nprobeExplicitlySet && nprobe > numClusters) {
                     throw new IllegalArgumentException(
                             "nprobe must be <= numClusters, got nprobe=" + nprobe
                                     + " and numClusters=" + numClusters);
+                } else if (!nprobeExplicitlySet && nprobe > numClusters) {
+                    effectiveNprobe = numClusters;
                 }
                 return new LsmVectorIndex.IvfFlat<>(lsmTree, docIdSerializer, dimensions,
-                        similarityFunction, numClusters, nprobe, precision);
+                        similarityFunction, numClusters, effectiveNprobe, precision);
             }
         }
     }
