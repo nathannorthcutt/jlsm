@@ -53,3 +53,12 @@
 - None — implementation design layering on existing ADRs
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** in-flight-write-protection, partition-takeover-priority, concurrent-wal-replay-throttling, un-walled-memtable-data-loss
+**Summary:** 4 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

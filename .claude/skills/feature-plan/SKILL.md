@@ -28,11 +28,12 @@ Otherwise:
 ───────────────────────────────────────────────
 Work planning is already complete for '<slug>'.
 Work plan: .feature/<slug>/work-plan.md
-
-  Type **yes**  to proceed to test writing  ·  or: stop
 ```
-If "yes": invoke /feature-test "<slug>" as a sub-agent immediately.
-If "stop": display `Next: /feature-test "<slug>"` and stop.
+Use AskUserQuestion with options:
+  - "Proceed to test writing"
+  - "Stop"
+If "Proceed to test writing": invoke /feature-test "<slug>" as a sub-agent immediately.
+If "Stop": display `Next: /feature-test "<slug>"` and stop.
 
 **If Planning stage is `in-progress`:**
 Display opening header, then:
@@ -52,6 +53,15 @@ Display opening header, then:
 
 **If Planning stage is `not-started`:**
 - Verify `.feature/<slug>/domains.md` exists. If not: "Run /feature-domains first."
+- Check for spec infrastructure (`test -f .spec/CLAUDE.md || test -d .spec/registry`).
+  If spec infrastructure exists, check whether the Spec Authoring stage in status.md
+  is `complete`. If Spec Authoring is `not-started` or `in-progress`, warn:
+  "Spec infrastructure exists but specs haven't been authored for this feature."
+  Use AskUserQuestion with options:
+    - "Run /spec-author first" (description: stop and let user run spec-author)
+    - "Skip specs" (description: plan from brief and domains only)
+  If "Skip specs": proceed normally (specs will be absent from context).
+  If "Run /spec-author first": stop and let the user run spec-author.
 - Set status.md: Planning → `in-progress`, substage → `loading-context`
 - Display opening header and proceed to Step 1
 
@@ -114,6 +124,58 @@ Read in order:
 4. `.feature/<slug>/domains.md`
 5. All ADR files linked in domains.md
 6. Key sections of linked KB subject files (`#key-parameters`, `#implementation-notes`)
+7. **Resolve specs** — check for spec infrastructure first:
+   ```bash
+   test -f .spec/CLAUDE.md || test -d .spec/registry
+   ```
+   If spec infrastructure exists, run the resolver:
+   ```bash
+   bash .claude/scripts/spec-resolve.sh "<feature description>" 8000
+   ```
+   If the resolver returns specs, these are the **primary context** for work
+   planning — alongside the brief and domains, specs are the authoritative
+   source for behavioral requirements. The three documents serve different
+   roles:
+   - **Brief** — describes *why* we're building and the user's intent
+   - **Domains** — describes *what constraints* exist (ADRs, KB, gaps)
+   - **Specs** — describes *what must be true* (behavioral requirements)
+
+   When specs exist, contracts in the work plan MUST trace to spec requirements.
+   The brief and domains provide context and constraints; the spec provides the
+   requirements that contracts must deliver.
+
+   If the brief contradicts a spec requirement, flag the contradiction for the
+   user — the spec takes precedence unless the user explicitly overrides.
+
+   If spec infrastructure does not exist, or the resolver returns no specs for
+   this feature's domains, proceed as before — derive contracts from the brief
+   and ADRs.
+
+   **Conflict gate:** After loading the resolved bundle, check if it contains
+   a `## Conflicts` section. If it does:
+
+   Display:
+   ```
+   ⚠️  Spec conflicts detected in resolved bundle:
+     <list each CONFLICT and INVALIDATES line from the section>
+
+   These must be resolved before planning can proceed.
+   Options: resolve via /spec-author, or type **override** to acknowledge and continue.
+   ```
+
+   Wait for user input:
+   - If the user runs /spec-author: stop and let them resolve.
+   - If the user types "override": proceed with planning, but record the
+     conflicts in work-plan.md under a `## Open Risks` section:
+     ```markdown
+     ## Open Risks
+     - Spec conflict override: <each conflict line>
+     ```
+     These are carried forward as open risks in the work plan.
+
+8. Read project coding conventions: `CONTRIBUTING.md`, `.claude/rules/`,
+   and any language-specific style guides. These constrain the design space
+   for construct shapes.
 
 Scan the source directory structure (names and module layout only — don't read
 every file). Read only files likely relevant to this feature.
@@ -122,30 +184,92 @@ Update status.md substage → `surveying-codebase`.
 
 ---
 
-## Step 2 — Identify existing vs. new constructs
+## Step 2 — Map requirements to constructs
+
+**If specs were resolved in Step 1:** translate each spec requirement into the
+construct(s) that will deliver it. The spec describes behavioral contracts
+(what must be true); the work planner designs the implementation structure
+(which constructs deliver those behaviors). Every spec requirement must map
+to at least one construct. If a requirement can't be mapped, add a construct
+or extend an existing one — do not present a gap to the user.
+
+**If no specs exist:** derive contracts from the brief and ADRs as before.
+
+### Self-check (before presenting to the user)
+
+After generating the construct catalogue, verify the design before presenting:
+
+1. **Coverage:** Every spec requirement must map to at least one contract. If
+   any requirement has no contract, add a construct or extend an existing one
+   to cover it.
+
+2. **Agent success shaping:** For each contract, ask "how will the implementing
+   agent misunderstand this?" If a contract is ambiguous or the construct
+   boundaries make it easy to implement correctly-but-wrong, reshape the
+   constructs. Split a large construct into two with clearer contracts. Merge
+   two constructs that are too tightly coupled to implement independently.
+   Respect the project's coding conventions — don't reshape into patterns
+   that violate established architecture.
+
+3. **Dependency completeness:** For each construct, verify it has access to
+   all inputs its contract needs. If a dependency is missing from the graph,
+   add it — don't flag it.
+
+4. **Shared state identification:** For each pair of constructs, check whether
+   their contracts reference shared mutable state or produce/consume the same
+   data. Record these edges — they determine clustering in Step 2b.
+
+### Present the design
 
 Produce a catalogue and display:
 ```
 ── Design ──────────────────────────────────────
+Spec requirements mapped: <N>/<total>
+
 Existing constructs to USE or EXTEND:
-  ✓ <Name> at <src/path>  —  <how this feature uses it>
+  ✓ <Name> at <src/path>  —  delivers: <spec requirement IDs>
 
 New constructs to CREATE:
-  + <Name>  —  <purpose>  →  <src/path>  —  depends on: <list>
+  + <Name>  —  <purpose>  →  <src/path>  —  delivers: <spec requirement IDs>
+                                             depends on: <list>
+                                             shares state with: <list or "none">
 ```
 
-Display:
-```
-  Type **yes**  ·  or: describe corrections
-```
-Wait for the user to type "continue" or describe corrections. Update status.md substage → `confirmed-design`
-after confirmation.
+Use AskUserQuestion with options:
+  - "Approve" (description: design looks correct, proceed)
+  - "Needs changes" (description: user will describe corrections)
+
+If "Approve": proceed. User corrections are not needed.
+If "Needs changes": ask the user what to change. User corrections
+become additional constraints on the design — the work planner respects them
+while maintaining coverage of all spec requirements.
+
+Update status.md substage → `confirmed-design` after confirmation.
 
 ---
 
 ## Step 2b — Work unit analysis
 
-After design is confirmed, evaluate whether to split into work units.
+After design is confirmed, cluster constructs into work units using the
+construct graph from Step 2.
+
+### Clustering rules
+
+Work units are determined by **construct relationships**, not just token cost.
+The construct graph has three edge types (identified in Step 2's self-check):
+
+- **depends_on** — construct A calls or imports construct B's interface
+- **shares_state** — constructs A and B read/write the same mutable resource
+- **produces/consumes** — construct A's output is construct B's input
+
+**Clustering constraints:**
+1. Constructs connected by `shares_state` edges must be in the same work unit.
+   They cannot be parallel — their TDD pass must see both constructs.
+2. Constructs connected by `produces/consumes` should be in the same work unit
+   when possible. If split, the consuming unit must include the producing
+   construct as visible context.
+3. Constructs connected only by `depends_on` can be in separate work units.
+   The dependent unit loads the dependency's public interface, not its internals.
 
 ### Token estimation
 
@@ -161,34 +285,41 @@ N constructs × 3.5K = estimated Code Writer session size
 
 **Split-unit total load** (per unit session):
 ```
-(constructs in unit × 3.5K) + 0.5K dependency interfaces + 0.5K status overhead
+(constructs in unit × 3.5K) + context from prior units + 0.5K status overhead
 ```
-
-**Split saves tokens when:** single-unit load > 15K AND at least one clean
-dependency boundary exists (a group of constructs with no intra-feature deps).
 
 ### Decision rules
 
-| Constructs | Clean dep boundary? | Recommendation |
-|------------|--------------------|--------------  |
+| Constructs | Shared state? | Recommendation |
+|------------|--------------|----------------|
 | 1–3 | any | Never split — overhead exceeds savings |
-| 4–5 | no | Single unit |
-| 4–5 | yes | Propose split — marginal but clean |
-| 6+ | no | Single unit unless one group is fully independent |
-| 6+ | yes | Split — savings are real (~15K+ vs ~6-8K per session) |
+| 4–5 | all share state | Single unit — can't split shared state |
+| 4–5 | clean groups | Propose split — marginal but clean |
+| 6+ | all share state | Single unit — but flag size for user awareness |
+| 6+ | clean groups | Split — savings are real |
 
-A **clean dependency boundary** means: group A constructs do not depend on
-group B constructs within this feature (they may depend on existing code).
+### Work unit ordering
+
+Units are ordered by dependency. When a later unit depends on an earlier
+unit's constructs (via `shares_state` or `produces/consumes`), those
+constructs are included as visible context in the later unit's TDD pass.
+The work plan must state this explicitly:
+
+```
+WU-2 context includes: <construct A from WU-1> (shares state with <construct C>)
+```
+
+This ensures the TDD agent has visibility into all constructs it needs.
 
 ### Natural split signals (lower the threshold)
-- Two constructs have zero intra-feature dependencies → free split, no interface load cost
+- Two constructs have zero intra-feature dependencies → free split
 - Constructs span different source modules or packages → natural seam
 - One construct group is a pure data/type layer (no logic) → always a good WU-1
 
 ### Override rules (never split regardless of size)
 - Feature has a single acceptance criterion that requires all constructs together
 - User explicitly said "implement as single unit" during scoping
-- All constructs are tightly coupled with circular dependencies
+- All constructs share mutable state (no clean boundary exists)
 
 ### Display the analysis
 
@@ -232,21 +363,10 @@ set `execution_strategy: cost` implicitly in status.md, skip the prompt.
 
 **If feature qualifies for splitting**, show the analysis then ask:
 
-```
-── Execution strategy ─────────────────────────────
-  cost      — sequential execution. Splits only when a single session
-              exceeds ~15K tokens.
-
-  balanced  — split at clean boundaries, independent units run in parallel
-              in batches. Wait for each batch before starting the next.
-              Moderate token overhead.
-
-  speed     — split at every clean boundary, maximum parallelism.
-              Units launch as soon as dependencies resolve — no batch waits.
-              Fastest wall-clock time, highest token cost.
-
-Type: cost, balanced, or speed
-```
+Use AskUserQuestion with options:
+  - "Cost" (description: sequential execution — splits only when a single session exceeds ~15K tokens)
+  - "Balanced" (description: split at clean boundaries, independent units run in parallel in batches — moderate token overhead)
+  - "Speed" (description: split at every clean boundary, maximum parallelism — fastest wall-clock time, highest token cost)
 
 Record `execution_strategy: <choice>` in status.md and in the
 `<!-- execution_strategy: -->` comment under `## Work Units`.
@@ -471,29 +591,15 @@ persists for the lifetime of this feature — it will not be asked again.
 
 **When `execution_strategy` is `balanced` or `speed`:**
 
-Display:
-```
-── How would you like to run the TDD loop? ─────
-  auto    — independent units run their full test → implement → refactor
-            cycles in parallel. Checkpoints happen at batch boundaries.
-
-  manual  — I'll pause between batches and wait for your go-ahead.
-
-Type: auto  or  manual
-```
+Use AskUserQuestion with options:
+  - "Auto" (description: independent units run their full test/implement/refactor cycles in parallel — checkpoints happen at batch boundaries)
+  - "Manual" (description: pause between batches and wait for go-ahead)
 
 **When `execution_strategy` is `cost` (or not set):**
 
-Display:
-```
-── How would you like to run the TDD loop? ─────
-  auto    — test → implement → refactor cycles run without stopping.
-            I'll pause if I find something that needs your input.
-
-  manual  — I'll stop after each stage and wait for your command.
-
-Type: auto  or  manual
-```
+Use AskUserQuestion with options:
+  - "Auto" (description: cycles run without stopping, pauses only if input needed)
+  - "Manual" (description: stop after each stage and wait for command)
 
 Wait for input:
 - "auto" (or "autonomous"): set `automation_mode: autonomous` in status.md
@@ -567,18 +673,26 @@ criterion from brief.md, and any governing ADRs linked in the contract.
 
 ### Step R2 — Diagnose and revise
 
-Determine the root cause:
+Determine the root cause. **If specs exist for this feature, the spec is the
+tiebreaker.** Check the contract against the spec requirement it claims to
+deliver — if the contract matches the spec, the escalation is wrong. If the
+contract deviates from the spec, the contract is wrong.
 
-1. **Contract contradicts brief** — the work plan constraint does not satisfy
-   the acceptance criterion. Revise the contract to match the brief.
+1. **Contract contradicts spec** — the contract does not satisfy the spec
+   requirement it maps to. Revise the contract to deliver the spec requirement.
 
-2. **Contract contradicts ADR** — the constraint conflicts with a governing
+2. **Contract contradicts brief** — the work plan constraint does not satisfy
+   the acceptance criterion. Check whether the brief or the spec is authoritative.
+   If the spec exists and covers this behavior, align with the spec. If no spec
+   exists, revise the contract to match the brief.
+
+3. **Contract contradicts ADR** — the constraint conflicts with a governing
    architecture decision. Revise the contract to align with the ADR.
 
-3. **Contract is internally inconsistent** — the signature, return type, or
+4. **Contract is internally inconsistent** — the signature, return type, or
    error conditions conflict with each other. Fix the inconsistency.
 
-4. **Brief is ambiguous** — the acceptance criterion can be read multiple ways,
+5. **Brief is ambiguous** — the acceptance criterion can be read multiple ways,
    and the contract chose the wrong reading. Revise the contract to match the
    intended reading. If the intended reading is unclear, ask the user.
 
@@ -640,6 +754,7 @@ language: "<language>"
 - Brief: [brief.md](brief.md)
 - Domains: [domains.md](domains.md)
 - Governing ADRs: <links>
+- Specs: <spec IDs and paths from .spec/, or "none — contracts derived from brief">
 
 ## Existing Constructs
 
@@ -659,10 +774,18 @@ language: "<language>"
 |------|--------|
 | <path> | stubbed |
 
+## Requirement Traceability
+<!-- Every spec requirement must map to at least one contract. -->
+
+| Spec Requirement | Contract(s) | Work Unit |
+|-----------------|-------------|-----------|
+| <F01.R1> | <ConstructName> | WU-1 |
+
 ## Contract Definitions
 
 ### <ConstructName>
 **File:** `<path>`
+**Delivers:** <spec requirement IDs, e.g. F01.R5, F01.R6>
 **Governed by:** [<ADR or KB>](<link>)
 **Signature:** `<stub signature>`
 **Contract:**
@@ -670,6 +793,7 @@ language: "<language>"
 - Returns: <return>
 - Side effects: <or "none">
 - Error conditions: <what is raised/returned on failure>
+- Shared state: <what mutable resources this construct accesses, or "none">
 
 ---
 
@@ -679,11 +803,13 @@ language: "<language>"
 ### WU-1: <name>
 **Constructs:** <list>
 **Depends on:** none
+**Context from prior units:** none
 **Est. session load:** ~<N>K
 
 ### WU-2: <name>
 **Constructs:** <list>
 **Depends on:** WU-1 public interface
+**Context from prior units:** <constructs from WU-1 visible in this unit's TDD pass, with reason (shares state / produces-consumes)>
 **Est. session load:** ~<N>K
 
 ## Implementation Order

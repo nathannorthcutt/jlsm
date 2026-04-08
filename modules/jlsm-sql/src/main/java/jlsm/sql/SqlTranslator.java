@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 
+import jlsm.table.FieldType;
 import jlsm.table.JlsmSchema;
 import jlsm.table.Predicate;
 
@@ -46,6 +48,9 @@ import jlsm.table.Predicate;
  */
 public final class SqlTranslator {
 
+    /** Known distance metrics accepted by VECTOR_DISTANCE. */
+    private static final Set<String> KNOWN_METRICS = Set.of("cosine", "euclidean", "dot");
+
     /**
      * Translates a parsed SQL AST into a SqlQuery.
      *
@@ -72,7 +77,8 @@ public final class SqlTranslator {
         for (final SqlAst.OrderByClause clause : statement.orderBy()) {
             if (clause.expression() instanceof SqlAst.Expression.FunctionCall fn
                     && fn.name().equals("VECTOR_DISTANCE")) {
-                vectorDistance = Optional.of(translateVectorDistance(fn, schema));
+                vectorDistance = Optional
+                        .of(translateVectorDistance(fn, schema, clause.ascending()));
             } else if (clause.expression() instanceof SqlAst.Expression.ColumnRef ref) {
                 validateField(ref.name(), schema);
                 orderBy.add(new SqlQuery.OrderBy(ref.name(), clause.ascending()));
@@ -138,24 +144,84 @@ public final class SqlTranslator {
                 throw new SqlParseException("NOT predicates are not yet supported", -1);
             case SqlAst.Expression.IsNull isNull ->
                 throw new SqlParseException("IS NULL predicates are not yet supported", -1);
-            default -> throw new SqlParseException(
-                    "Unsupported expression type: " + expr.getClass().getSimpleName(), -1);
+            case SqlAst.Expression.ColumnRef ref -> throw new SqlParseException(
+                    "ColumnRef cannot be used as a standalone predicate: " + ref.name(), -1);
+            case SqlAst.Expression.StringLiteral lit -> throw new SqlParseException(
+                    "StringLiteral cannot be used as a standalone predicate: '" + lit.value() + "'",
+                    -1);
+            case SqlAst.Expression.NumberLiteral lit -> throw new SqlParseException(
+                    "NumberLiteral cannot be used as a standalone predicate: " + lit.text(), -1);
+            case SqlAst.Expression.BooleanLiteral lit -> throw new SqlParseException(
+                    "BooleanLiteral cannot be used as a standalone predicate: " + lit.value(), -1);
+            case SqlAst.Expression.Parameter param -> throw new SqlParseException(
+                    "Parameter cannot be used as a standalone predicate: ?" + param.index(), -1);
         };
     }
 
     private Predicate translateComparison(SqlAst.Expression.Comparison cmp, JlsmSchema schema)
             throws SqlParseException {
-        final String field = extractFieldName(cmp.left());
-        validateField(field, schema);
-        final Object value = extractValue(cmp.right());
+        // Support both "field op value" and "value op field" (reversed) comparisons
+        final String field;
+        final Object value;
+        final SqlAst.ComparisonOp op;
 
-        return switch (cmp.op()) {
+        if (isValueExpression(cmp.left()) && isValueExpression(cmp.right())) {
+            throw new SqlParseException(
+                    "Comparison requires at least one column reference, but both operands are"
+                            + " literal values",
+                    -1);
+        } else if (isFieldExpression(cmp.left()) && isFieldExpression(cmp.right())) {
+            throw new SqlParseException(
+                    "Comparison between two column references is not supported — one operand"
+                            + " must be a literal value or bind parameter",
+                    -1);
+        } else if (isValueExpression(cmp.left()) && isFieldExpression(cmp.right())) {
+            // Reversed: literal on left, column on right — swap and flip operator
+            field = extractFieldName(cmp.right());
+            value = extractValue(cmp.left());
+            op = flipOp(cmp.op());
+        } else {
+            field = extractFieldName(cmp.left());
+            value = extractValue(cmp.right());
+            op = cmp.op();
+        }
+
+        validateField(field, schema);
+        validateValueType(field, value, schema);
+
+        return switch (op) {
             case EQ -> new Predicate.Eq(field, value);
             case NE -> new Predicate.Ne(field, value);
             case GT -> new Predicate.Gt(field, toComparable(value));
             case GTE -> new Predicate.Gte(field, toComparable(value));
             case LT -> new Predicate.Lt(field, toComparable(value));
             case LTE -> new Predicate.Lte(field, toComparable(value));
+        };
+    }
+
+    private boolean isValueExpression(SqlAst.Expression expr) {
+        return expr instanceof SqlAst.Expression.StringLiteral
+                || expr instanceof SqlAst.Expression.NumberLiteral
+                || expr instanceof SqlAst.Expression.BooleanLiteral
+                || expr instanceof SqlAst.Expression.Parameter;
+    }
+
+    private boolean isFieldExpression(SqlAst.Expression expr) {
+        return expr instanceof SqlAst.Expression.ColumnRef;
+    }
+
+    /**
+     * Flips a comparison operator for reversed comparisons (e.g., {@code 5 < age} →
+     * {@code age > 5}).
+     */
+    private SqlAst.ComparisonOp flipOp(SqlAst.ComparisonOp op) {
+        return switch (op) {
+            case EQ -> SqlAst.ComparisonOp.EQ;
+            case NE -> SqlAst.ComparisonOp.NE;
+            case GT -> SqlAst.ComparisonOp.LT;
+            case GTE -> SqlAst.ComparisonOp.LTE;
+            case LT -> SqlAst.ComparisonOp.GT;
+            case LTE -> SqlAst.ComparisonOp.GTE;
         };
     }
 
@@ -174,8 +240,20 @@ public final class SqlTranslator {
             throws SqlParseException {
         final String field = extractFieldName(bet.field());
         validateField(field, schema);
-        final Comparable<?> low = toComparable(extractValue(bet.low()));
-        final Comparable<?> high = toComparable(extractValue(bet.high()));
+        final Object lowValue = extractValue(bet.low());
+        final Object highValue = extractValue(bet.high());
+        validateValueType(field, lowValue, schema);
+        validateValueType(field, highValue, schema);
+        final Comparable<?> low = toComparable(lowValue);
+        final Comparable<?> high = toComparable(highValue);
+
+        @SuppressWarnings("unchecked")
+        final int cmp = ((Comparable<Object>) low).compareTo(high);
+        if (cmp > 0) {
+            throw new SqlParseException(
+                    "BETWEEN low bound (" + low + ") must not exceed high bound (" + high + ")",
+                    -1);
+        }
 
         return new Predicate.Between(field, low, high);
     }
@@ -190,6 +268,7 @@ public final class SqlTranslator {
                 }
                 final String field = extractFieldName(fn.arguments().get(0));
                 validateField(field, schema);
+                validateFieldIsString(field, schema);
                 final Object queryValue = extractValue(fn.arguments().get(1));
                 if (!(queryValue instanceof String queryText)) {
                     throw new SqlParseException("MATCH query argument must be a string literal",
@@ -197,6 +276,8 @@ public final class SqlTranslator {
                 }
                 yield new Predicate.FullTextMatch(field, queryText);
             }
+            case "VECTOR_DISTANCE" -> throw new SqlParseException(
+                    "VECTOR_DISTANCE must appear in ORDER BY, not WHERE", -1);
             default -> throw new SqlParseException(
                     "Unsupported function in WHERE clause: " + fn.name(), -1);
         };
@@ -205,7 +286,7 @@ public final class SqlTranslator {
     // ── VECTOR_DISTANCE translation ──────────────────────────────
 
     private SqlQuery.VectorDistanceOrder translateVectorDistance(SqlAst.Expression.FunctionCall fn,
-            JlsmSchema schema) throws SqlParseException {
+            JlsmSchema schema, boolean ascending) throws SqlParseException {
         if (fn.arguments().size() != 3) {
             throw new SqlParseException(
                     "VECTOR_DISTANCE requires exactly 3 arguments: field, vector, metric", -1);
@@ -213,6 +294,7 @@ public final class SqlTranslator {
 
         final String field = extractFieldName(fn.arguments().get(0));
         validateField(field, schema);
+        validateFieldIsVector(field, schema);
 
         final SqlAst.Expression vecExpr = fn.arguments().get(1);
         final int paramIndex;
@@ -228,8 +310,13 @@ public final class SqlTranslator {
             throw new SqlParseException("VECTOR_DISTANCE metric argument must be a string literal",
                     -1);
         }
+        if (!KNOWN_METRICS.contains(metric)) {
+            throw new SqlParseException(
+                    "Unknown VECTOR_DISTANCE metric '" + metric + "'; supported: " + KNOWN_METRICS,
+                    -1);
+        }
 
-        return new SqlQuery.VectorDistanceOrder(field, paramIndex, metric);
+        return new SqlQuery.VectorDistanceOrder(field, paramIndex, metric, ascending);
     }
 
     // ── Helpers ──────────────────────────────────────────────────
@@ -247,21 +334,25 @@ public final class SqlTranslator {
             case SqlAst.Expression.StringLiteral lit -> lit.value();
             case SqlAst.Expression.NumberLiteral num -> parseNumber(num.text());
             case SqlAst.Expression.BooleanLiteral bool -> bool.value();
-            case SqlAst.Expression.Parameter param -> param;
+            case SqlAst.Expression.Parameter param -> new SqlQuery.BindMarker(param.index());
             default -> throw new SqlParseException(
                     "Unsupported value expression: " + expr.getClass().getSimpleName(), -1);
         };
     }
 
-    private Number parseNumber(String text) {
+    private Number parseNumber(String text) throws SqlParseException {
         assert text != null : "numeric text must not be null";
-        if (text.contains(".")) {
-            return Double.parseDouble(text);
-        }
         try {
-            return Integer.parseInt(text);
+            if (text.contains(".")) {
+                return Double.parseDouble(text);
+            }
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException _) {
+                return Long.parseLong(text);
+            }
         } catch (NumberFormatException e) {
-            return Long.parseLong(text);
+            throw new SqlParseException("Numeric literal out of range: '" + text + "'", -1, e);
         }
     }
 
@@ -278,6 +369,82 @@ public final class SqlTranslator {
         if (schema.fieldIndex(fieldName) < 0) {
             throw new SqlParseException("Unknown field '" + fieldName + "' — not found in schema '"
                     + schema.name() + "'", -1);
+        }
+    }
+
+    private FieldType resolveFieldType(String fieldName, JlsmSchema schema) {
+        final int idx = schema.fieldIndex(fieldName);
+        assert idx >= 0 : "field must exist — call validateField first";
+        return schema.fields().get(idx).type();
+    }
+
+    private void validateValueType(String fieldName, Object value, JlsmSchema schema)
+            throws SqlParseException {
+        // Bind markers are resolved at execution time — skip type checking
+        if (value instanceof SqlQuery.BindMarker) {
+            return;
+        }
+
+        final FieldType fieldType = resolveFieldType(fieldName, schema);
+        final boolean compatible = switch (fieldType) {
+            case FieldType.Primitive p -> switch (p) {
+                case STRING -> value instanceof String;
+                case INT8 ->
+                    value instanceof Number n && inRange(n, Byte.MIN_VALUE, Byte.MAX_VALUE);
+                case INT16 ->
+                    value instanceof Number n && inRange(n, Short.MIN_VALUE, Short.MAX_VALUE);
+                case INT32 ->
+                    value instanceof Number n && inRange(n, Integer.MIN_VALUE, Integer.MAX_VALUE);
+                case INT64 -> value instanceof Number;
+                case FLOAT16, FLOAT32, FLOAT64 -> value instanceof Number;
+                case BOOLEAN -> value instanceof Boolean;
+                case TIMESTAMP -> value instanceof Number || value instanceof String;
+            };
+            case FieldType.BoundedString _ -> value instanceof String;
+            case FieldType.ArrayType _, FieldType.ObjectType _, FieldType.VectorType _ -> false;
+        };
+
+        if (! compatible) {
+            final String detail = (value instanceof Number && isIntegerType(fieldType))
+                    ? " (out of range for " + fieldType + ")"
+                    : "";
+            throw new SqlParseException("Type mismatch: field '" + fieldName + "' is " + fieldType
+                    + " but value is " + value.getClass().getSimpleName() + detail, -1);
+        }
+    }
+
+    private static boolean inRange(Number n, long min, long max) {
+        final long v = n.longValue();
+        return v >= min && v <= max;
+    }
+
+    private static boolean isIntegerType(FieldType type) {
+        return type == FieldType.Primitive.INT8 || type == FieldType.Primitive.INT16
+                || type == FieldType.Primitive.INT32;
+    }
+
+    private void validateFieldIsString(String fieldName, JlsmSchema schema)
+            throws SqlParseException {
+        final FieldType type = resolveFieldType(fieldName, schema);
+        if (!(type == FieldType.Primitive.STRING || type instanceof FieldType.BoundedString)) {
+            throw new SqlParseException(
+                    "MATCH requires a STRING field but '" + fieldName + "' is " + type, -1);
+        }
+    }
+
+    private void validateFieldIsVector(String fieldName, JlsmSchema schema)
+            throws SqlParseException {
+        final FieldType type = resolveFieldType(fieldName, schema);
+        final boolean isVector = switch (type) {
+            case FieldType.VectorType _ -> true;
+            case FieldType.ArrayType a -> a.elementType() == FieldType.Primitive.FLOAT16
+                    || a.elementType() == FieldType.Primitive.FLOAT32;
+            default -> false;
+        };
+        if (!isVector) {
+            throw new SqlParseException(
+                    "VECTOR_DISTANCE requires a vector field but '" + fieldName + "' is " + type,
+                    -1);
         }
     }
 }

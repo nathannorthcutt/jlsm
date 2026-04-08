@@ -49,3 +49,12 @@
 - [`.kb/algorithms/vector-encoding/lossless-vector-compression.md`](../../.kb/algorithms/vector-encoding/lossless-vector-compression.md)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** vector-storage-cost-optimization, sparse-vector-support
+**Summary:** 2 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

@@ -128,8 +128,19 @@ public final class DocumentSerializer {
         SchemaSerializer(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
             this.schema = schema;
 
+            if (schema.version() > 0xFFFF) {
+                throw new IllegalArgumentException("schema version " + schema.version()
+                        + " exceeds the maximum serializable value (65535)");
+            }
+
             final List<FieldDefinition> fields = schema.fields();
             this.fieldCount = fields.size();
+
+            if (fieldCount > 0xFFFF) {
+                throw new IllegalArgumentException("schema field count " + fieldCount
+                        + " exceeds the maximum serializable value (65535)");
+            }
+
             final FieldDefinition[] fieldArray = fields.toArray(new FieldDefinition[0]);
 
             // Precompute boolean field flags and prefix counts
@@ -165,8 +176,10 @@ public final class DocumentSerializer {
         @Override
         public MemorySegment serialize(JlsmDocument doc) {
             Objects.requireNonNull(doc, "doc must not be null");
-            assert doc.schema() == schema || doc.schema().name().equals(schema.name())
-                    : "document schema mismatch";
+            if (doc.schema() != schema && !schema.equals(doc.schema())) {
+                throw new IllegalArgumentException("document schema mismatch: expected '"
+                        + schema.name() + "' but got '" + doc.schema().name() + "'");
+            }
 
             final List<FieldDefinition> fields = schema.fields();
             final int fieldCount = fields.size();
@@ -176,11 +189,12 @@ public final class DocumentSerializer {
             // Count boolean fields
             final int boolCount = countBoolFields(fields);
 
-            // Header size: 2 (version) + 2 (fieldCount) + ceil(fieldCount/8) (null mask)
+            // Header size: 2 (version) + 2 (fieldCount) + 2 (boolCount)
+            // + ceil(fieldCount/8) (null mask)
             // + (boolCount > 0 ? ceil(boolCount/8) : 0) (bool mask)
             final int nullMaskBytes = (fieldCount + 7) / 8;
             final int boolMaskBytes = boolCount > 0 ? (boolCount + 7) / 8 : 0;
-            final int headerSize = 2 + 2 + nullMaskBytes + boolMaskBytes;
+            final int headerSize = 2 + 2 + 2 + nullMaskBytes + boolMaskBytes;
 
             if (preEnc) {
                 // Pre-encrypted path: skip encryption, validate and write ciphertext directly.
@@ -223,11 +237,12 @@ public final class DocumentSerializer {
             // Write header
             writeShortBE(buf, 0, (short) schema.version());
             writeShortBE(buf, 2, (short) fieldCount);
+            writeShortBE(buf, 4, (short) boolCount);
             // Null bitmask
-            buildNullMask(fields, values, buf, 4);
+            buildNullMask(fields, values, buf, 6);
             // Boolean bitmask
             if (boolCount > 0) {
-                buildBoolMask(fields, values, buf, 4 + nullMaskBytes);
+                buildBoolMask(fields, values, buf, 6 + nullMaskBytes);
             }
 
             // Write values
@@ -262,10 +277,11 @@ public final class DocumentSerializer {
                 }
                 final FieldDefinition fd = fields.get(i);
                 if (!(fd.encryption() instanceof EncryptionSpec.None)) {
-                    // Encrypted field — value should be byte[] ciphertext
-                    assert val instanceof byte[]
-                            : "pre-encrypted field '" + fd.name() + "' must hold byte[]";
-                    final byte[] ciphertext = (byte[]) val;
+                    // Encrypted field — value must be byte[] ciphertext
+                    if (!(val instanceof byte[] ciphertext)) {
+                        throw new IllegalArgumentException("pre-encrypted field '" + fd.name()
+                                + "' must hold byte[], got " + val.getClass().getSimpleName());
+                    }
                     CiphertextValidator.validate(fd, ciphertext);
                     ciphertextPayloads[i] = ciphertext;
                     hasEncrypted = true;
@@ -286,9 +302,10 @@ public final class DocumentSerializer {
             // Write header
             writeShortBE(buf, 0, (short) schema.version());
             writeShortBE(buf, 2, (short) fieldCount);
-            buildNullMask(fields, values, buf, 4);
+            writeShortBE(buf, 4, (short) boolCount);
+            buildNullMask(fields, values, buf, 6);
             if (boolCount > 0) {
-                buildBoolMask(fields, values, buf, 4 + nullMaskBytes);
+                buildBoolMask(fields, values, buf, 6 + nullMaskBytes);
             }
 
             // Write values
@@ -309,17 +326,41 @@ public final class DocumentSerializer {
 
             final ByteArrayView view = extractBytes(segment);
             final byte[] buf = view.data();
+            final int available = buf.length - view.offset();
+            if (available < 6) {
+                throw new IllegalArgumentException(
+                        "segment too small for document header: need at least 6 bytes, got "
+                                + available);
+            }
             final Cursor cursor = new Cursor(buf, view.offset());
 
-            // Read header
-            final int _ = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
+            // Read header — validate schema version matches
+            final int writeVersion = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
+            if (writeVersion > schema.version()) {
+                throw new IllegalArgumentException(
+                        "schema version mismatch: serialized data was written with version "
+                                + writeVersion + " but deserializer expects version "
+                                + schema.version()
+                                + "; data was written by a newer schema than this reader understands");
+            }
             final int writeFieldCount = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
+            final int writeBoolCount = readShortBE(buf, cursor.advance(2)) & 0xFFFF;
 
             // We only read min(writeFieldCount, currentFieldCount) fields
             final int readCount = Math.min(writeFieldCount, fieldCount);
 
-            // Use precomputed prefixBoolCount for O(1) lookup instead of O(n) iteration
-            final int writeBoolCount = prefixBoolCount[readCount];
+            // Validate that boolean field positions are compatible between write-time
+            // and current schema for the overlapping fields. If a field changed type
+            // to/from BOOLEAN, the bool bitmask layout is incompatible.
+            final int expectedBoolCount = prefixBoolCount[readCount];
+            if (writeBoolCount != expectedBoolCount) {
+                throw new IllegalArgumentException(
+                        "schema evolution incompatible: write-time boolean count (" + writeBoolCount
+                                + ") differs from current schema boolean count ("
+                                + expectedBoolCount + ") for the first " + readCount
+                                + " fields; field types must not change between schema versions");
+            }
+
             final int writeNullMaskBytes = (writeFieldCount + 7) / 8;
             final int writeBoolMaskBytes = writeBoolCount > 0 ? (writeBoolCount + 7) / 8 : 0;
 
@@ -377,7 +418,13 @@ public final class DocumentSerializer {
             if (val == null) {
                 continue; // null → no value bytes
             }
-            total += measureField(fd.type(), val);
+            try {
+                total += measureField(fd.type(), val);
+            } catch (ClassCastException e) {
+                throw new IllegalArgumentException("field '" + fd.name() + "' (type " + fd.type()
+                        + "): value type mismatch — expected compatible type but got "
+                        + val.getClass().getSimpleName(), e);
+            }
         }
         return total;
     }
@@ -434,11 +481,18 @@ public final class DocumentSerializer {
 
     private static void encodeFields(List<FieldDefinition> fields, Object[] values, Cursor c) {
         for (int i = 0; i < fields.size(); i++) {
+            final FieldDefinition fd = fields.get(i);
             final Object val = values[i];
             if (val == null) {
                 continue;
             }
-            encodeField(c, fields.get(i).type(), val);
+            try {
+                encodeField(c, fd.type(), val);
+            } catch (ClassCastException e) {
+                throw new IllegalArgumentException("field '" + fd.name() + "' (type " + fd.type()
+                        + "): value type mismatch — expected compatible type but got "
+                        + val.getClass().getSimpleName(), e);
+            }
         }
     }
 
@@ -582,7 +636,10 @@ public final class DocumentSerializer {
         final int d = vt.dimensions();
         if (vt.elementType() == FieldType.Primitive.FLOAT32) {
             final float[] vec = (float[]) value;
-            assert vec.length == d : "vector length must match dimensions";
+            if (vec.length != d) {
+                throw new IllegalArgumentException(
+                        "vector length " + vec.length + " must match dimensions " + d);
+            }
             for (int i = 0; i < d; i++) {
                 writeIntBE(c.buf, c.pos, Float.floatToRawIntBits(vec[i]));
                 c.pos += 4;
@@ -590,7 +647,10 @@ public final class DocumentSerializer {
         } else {
             // FLOAT16 — stored as short[]
             final short[] vec = (short[]) value;
-            assert vec.length == d : "vector length must match dimensions";
+            if (vec.length != d) {
+                throw new IllegalArgumentException(
+                        "vector length " + vec.length + " must match dimensions " + d);
+            }
             for (int i = 0; i < d; i++) {
                 writeShortBE(c.buf, c.pos, vec[i]);
                 c.pos += 2;
@@ -804,6 +864,13 @@ public final class DocumentSerializer {
 
     private static Object decodeVector(byte[] buf, Cursor cursor, FieldType.VectorType vt) {
         final int d = vt.dimensions();
+        final int elemSize = (vt.elementType() == FieldType.Primitive.FLOAT32) ? 4 : 2;
+        final int requiredBytes = d * elemSize;
+        if (cursor.pos + requiredBytes > buf.length) {
+            throw new IllegalArgumentException("truncated vector data: need " + requiredBytes
+                    + " bytes for " + d + " dimensions but only " + (buf.length - cursor.pos)
+                    + " bytes remaining");
+        }
         if (vt.elementType() == FieldType.Primitive.FLOAT32) {
             final float[] vec = new float[d];
             for (int i = 0; i < d; i++) {
@@ -1046,7 +1113,9 @@ public final class DocumentSerializer {
                 break;
             }
             shift += 7;
-            assert shift <= 35 : "VarInt overflow — corrupt data";
+            if (shift > 35) {
+                throw new IllegalArgumentException("VarInt overflow — corrupt data");
+            }
         }
         return result;
     }

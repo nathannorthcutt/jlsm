@@ -1,8 +1,10 @@
 package jlsm.table;
 
 import java.lang.foreign.MemorySegment;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Configuration for a {@link PartitionedTable} specifying the partition layout.
@@ -47,11 +49,16 @@ public final class PartitionConfig {
         if (descriptors.isEmpty()) {
             throw new IllegalArgumentException("descriptors must contain at least one partition");
         }
-        // Validate elements are non-null and boundaries are contiguous
+        // Validate elements are non-null, IDs are unique, and boundaries are contiguous
+        final Set<Long> seenIds = new HashSet<>();
         for (int i = 0; i < descriptors.size(); i++) {
             var d = descriptors.get(i);
             Objects.requireNonNull(d,
                     "descriptors must not contain null elements (index " + i + ")");
+            if (!seenIds.add(d.id())) {
+                throw new IllegalArgumentException(
+                        "duplicate partition descriptor id: " + d.id() + " (index " + i + ")");
+            }
             if (i > 0) {
                 var prev = descriptors.get(i - 1);
                 // prev.highKey must equal d.lowKey (contiguous, non-overlapping)

@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -13,6 +14,11 @@ import java.util.Optional;
  * Contract: Abstracts the communication channel between the {@link PartitionedTable} coordinator
  * and a partition. The in-process implementation wraps a {@link JlsmTable.StringKeyed} directly.
  * Future remote implementations will serialize operations over a network transport.
+ *
+ * <p>
+ * Null-rejection: All parameters are validated at the interface level via default methods that
+ * delegate to abstract {@code doXxx} methods. Implementations override the {@code doXxx} methods
+ * and receive guaranteed non-null arguments.
  *
  * <p>
  * Governed by: .decisions/table-partitioning/adr.md — remote-capable interface designed for future
@@ -30,50 +36,104 @@ public interface PartitionClient extends Closeable {
     /**
      * Creates a document in this partition.
      *
-     * @param key the document key
-     * @param doc the document to create
+     * @param key the document key; must not be null
+     * @param doc the document to create; must not be null
+     * @throws NullPointerException if key or doc is null
      * @throws IOException if the write fails
      * @throws DuplicateKeyException if the key already exists
      */
-    void create(String key, JlsmDocument doc) throws IOException;
+    default void create(String key, JlsmDocument doc) throws IOException {
+        Objects.requireNonNull(key, "key must not be null");
+        Objects.requireNonNull(doc, "doc must not be null");
+        doCreate(key, doc);
+    }
+
+    /**
+     * Implementation hook for {@link #create(String, JlsmDocument)}. Called after null-checking;
+     * both parameters are guaranteed non-null.
+     */
+    void doCreate(String key, JlsmDocument doc) throws IOException;
 
     /**
      * Retrieves a document by key from this partition.
      *
-     * @param key the document key
+     * @param key the document key; must not be null
      * @return the document, or empty if not found
+     * @throws NullPointerException if key is null
      * @throws IOException if the read fails
      */
-    Optional<JlsmDocument> get(String key) throws IOException;
+    default Optional<JlsmDocument> get(String key) throws IOException {
+        Objects.requireNonNull(key, "key must not be null");
+        return doGet(key);
+    }
+
+    /**
+     * Implementation hook for {@link #get(String)}. Called after null-checking; key is guaranteed
+     * non-null.
+     */
+    Optional<JlsmDocument> doGet(String key) throws IOException;
 
     /**
      * Updates a document in this partition.
      *
-     * @param key the document key
-     * @param doc the updated document
-     * @param mode replace or patch
+     * @param key the document key; must not be null
+     * @param doc the updated document; must not be null
+     * @param mode replace or patch; must not be null
+     * @throws NullPointerException if any parameter is null
      * @throws IOException if the write fails
      * @throws KeyNotFoundException if the key does not exist
      */
-    void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException;
+    default void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
+        Objects.requireNonNull(key, "key must not be null");
+        Objects.requireNonNull(doc, "doc must not be null");
+        Objects.requireNonNull(mode, "mode must not be null");
+        doUpdate(key, doc, mode);
+    }
+
+    /**
+     * Implementation hook for {@link #update(String, JlsmDocument, UpdateMode)}. Called after
+     * null-checking; all parameters are guaranteed non-null.
+     */
+    void doUpdate(String key, JlsmDocument doc, UpdateMode mode) throws IOException;
 
     /**
      * Deletes a document from this partition.
      *
-     * @param key the document key
+     * @param key the document key; must not be null
+     * @throws NullPointerException if key is null
      * @throws IOException if the write fails
      */
-    void delete(String key) throws IOException;
+    default void delete(String key) throws IOException {
+        Objects.requireNonNull(key, "key must not be null");
+        doDelete(key);
+    }
+
+    /**
+     * Implementation hook for {@link #delete(String)}. Called after null-checking; key is
+     * guaranteed non-null.
+     */
+    void doDelete(String key) throws IOException;
 
     /**
      * Returns entries in this partition within the given key range.
      *
-     * @param fromKey inclusive lower bound
-     * @param toKey exclusive upper bound
+     * @param fromKey inclusive lower bound; must not be null
+     * @param toKey exclusive upper bound; must not be null
      * @return iterator over matching entries
+     * @throws NullPointerException if fromKey or toKey is null
      * @throws IOException if the read fails
      */
-    Iterator<TableEntry<String>> getRange(String fromKey, String toKey) throws IOException;
+    default Iterator<TableEntry<String>> getRange(String fromKey, String toKey) throws IOException {
+        Objects.requireNonNull(fromKey, "fromKey must not be null");
+        Objects.requireNonNull(toKey, "toKey must not be null");
+        return doGetRange(fromKey, toKey);
+    }
+
+    /**
+     * Implementation hook for {@link #getRange(String, String)}. Called after null-checking; both
+     * parameters are guaranteed non-null.
+     */
+    Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey) throws IOException;
 
     /**
      * Executes a predicate query against this partition, returning matching entries.
@@ -82,10 +142,22 @@ public interface PartitionClient extends Closeable {
      * For vector and full-text predicates, the partition executes the search locally against its
      * co-located indices and returns local top-k results.
      *
-     * @param predicate the query predicate (may include vector, full-text, or property predicates)
-     * @param limit maximum results to return from this partition
+     * @param predicate the query predicate (may include vector, full-text, or property predicates);
+     *            must not be null
+     * @param limit maximum results to return from this partition; must be positive
      * @return matching entries with scores (for ranked queries)
+     * @throws NullPointerException if predicate is null
+     * @throws IllegalArgumentException if limit is less than 1
      * @throws IOException if the query fails
      */
-    List<ScoredEntry<String>> query(Predicate predicate, int limit) throws IOException;
+    default List<ScoredEntry<String>> query(Predicate predicate, int limit) throws IOException {
+        Objects.requireNonNull(predicate, "predicate must not be null");
+        return doQuery(predicate, limit);
+    }
+
+    /**
+     * Implementation hook for {@link #query(Predicate, int)}. Called after null-checking; predicate
+     * is guaranteed non-null.
+     */
+    List<ScoredEntry<String>> doQuery(Predicate predicate, int limit) throws IOException;
 }

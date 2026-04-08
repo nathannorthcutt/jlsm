@@ -1,6 +1,8 @@
 package jlsm.table;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
@@ -29,5 +31,79 @@ public record PartitionDescriptor(long id, MemorySegment lowKey, MemorySegment h
         if (epoch < 0) {
             throw new IllegalArgumentException("epoch must be non-negative, got: " + epoch);
         }
+        // Defensive copy: MemorySegment.ofArray wraps the backing byte[] without copying,
+        // so callers could mutate the original array and corrupt this descriptor's range.
+        lowKey = copySegment(lowKey);
+        highKey = copySegment(highKey);
+        // Validate range: lowKey must be strictly less than highKey (non-empty range)
+        if (compareKeys(lowKey, highKey) >= 0) {
+            throw new IllegalArgumentException(
+                    "lowKey must be strictly less than highKey (half-open range [low, high))");
+        }
+    }
+
+    /**
+     * Creates an independent, read-only copy of the given segment's byte content. The returned
+     * segment cannot be mutated, preventing callers from corrupting the descriptor's internal state
+     * via accessor methods.
+     */
+    private static MemorySegment copySegment(MemorySegment src) {
+        final byte[] bytes = src.toArray(ValueLayout.JAVA_BYTE);
+        return MemorySegment.ofArray(bytes).asReadOnly();
+    }
+
+    /**
+     * Unsigned byte-lexicographic comparison of two segments.
+     */
+    private static int compareKeys(MemorySegment a, MemorySegment b) {
+        final long lenA = a.byteSize();
+        final long lenB = b.byteSize();
+        final long mismatch = a.mismatch(b);
+        if (mismatch == -1L) {
+            return 0;
+        }
+        if (mismatch == lenA) {
+            return -1;
+        }
+        if (mismatch == lenB) {
+            return 1;
+        }
+        return Integer.compare(Byte.toUnsignedInt(a.get(ValueLayout.JAVA_BYTE, mismatch)),
+                Byte.toUnsignedInt(b.get(ValueLayout.JAVA_BYTE, mismatch)));
+    }
+
+    /**
+     * Returns the byte content of a segment as a byte array for content-based comparison.
+     */
+    private static byte[] segmentBytes(MemorySegment seg) {
+        return seg.toArray(ValueLayout.JAVA_BYTE);
+    }
+
+    /**
+     * Content-based equality: two descriptors are equal if all their fields contain the same
+     * values. MemorySegment fields are compared by byte content, not by address identity.
+     */
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        return obj instanceof PartitionDescriptor other && id == other.id && epoch == other.epoch
+                && Arrays.equals(segmentBytes(lowKey), segmentBytes(other.lowKey))
+                && Arrays.equals(segmentBytes(highKey), segmentBytes(other.highKey))
+                && Objects.equals(nodeId, other.nodeId);
+    }
+
+    /**
+     * Content-based hash code consistent with {@link #equals(Object)}.
+     */
+    @Override
+    public int hashCode() {
+        int result = Long.hashCode(id);
+        result = 31 * result + Arrays.hashCode(segmentBytes(lowKey));
+        result = 31 * result + Arrays.hashCode(segmentBytes(highKey));
+        result = 31 * result + nodeId.hashCode();
+        result = 31 * result + Long.hashCode(epoch);
+        return result;
     }
 }

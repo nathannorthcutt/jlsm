@@ -16,6 +16,7 @@ Single entry point for all architecture decision operations.
 | `/decisions defer "<problem>" [--until <condition>]` | Park a topic for later |
 | `/decisions close "<problem>" [--reason <text>]` | Rule a topic out permanently |
 | `/decisions triage` | Review all deferred items and act on them |
+| `/decisions roadmap` | Cluster, classify, and prioritize the deferred backlog |
 | `/decisions list [--status <filter>] [--search <term>]` | Browse and filter all decisions |
 | `/decisions explain "<slug>"` | Plain-language summary of a decision with KB context |
 | `/decisions candidates` | Review undocumented decision candidates from recent sessions |
@@ -160,15 +161,16 @@ to browse all decisions."
 
 If one match: proceed directly to Step 2 with that decision.
 
-If multiple matches, present them:
+If multiple matches, present them using AskUserQuestion. Build the options
+dynamically — one option per match, plus an "All" option:
+
 ```
 Found <N> decisions matching "<argument>":
-
-  [1] <slug-1> — <recommendation summary> (accepted <date>)
-  [2] <slug-2> — <recommendation summary> (accepted <date>)
-
-Pick a number to start with, or: all
 ```
+
+Use AskUserQuestion with:
+- One option per match, labeled `<slug> — <recommendation summary> (accepted <date>)`
+- A final option: `All` (description: "Revisit all matching decisions in order")
 
 ### Step 2 — Understand the motivation
 
@@ -285,12 +287,12 @@ fine, mark as reviewed and move on.
 ### Step 5 — Present and confirm
 
 Present the outcome as a defence summary in chat (same format as
-`/architect` Step 6a) with one of these headers:
+`/architect` Step 7a) with one of these headers:
 - `[STILL VALID]` — recommendation holds; explain with KB evidence
 - `[REVISED]` — recommendation changes; explain what changed
 - `[OVERRIDE]` — user-directed change; state what changed and the reason
 
-Follow all deliberation chat rules from `/architect` Step 6b.
+Follow all deliberation chat rules from `/architect` Step 7b.
 
 ### Step 6 — Write confirmed outcome
 
@@ -373,6 +375,7 @@ problem: "<slug>"
 date: "<YYYY-MM-DD>"
 version: 1
 status: "deferred"
+depends_on: []
 ---
 
 # <Problem Slug> — Deferred
@@ -421,7 +424,7 @@ To triage all deferred: /decisions triage
 as out-of-scope mid-deliberation, capture it the same way — brief acknowledgement,
 `tangent-captured` log entry on the parent problem, stub adr.md for the tangent,
 row in the Deferred (or Closed) section. Return to deliberation without
-re-presenting the full summary. See `/architect` Step 6b for full rules.
+re-presenting the full summary. See `/architect` Step 7b for full rules.
 
 ---
 
@@ -473,6 +476,154 @@ To reopen: /architect "<problem>"
 
 ---
 
+## decisions roadmap — cluster, classify, and prioritize the backlog
+
+Strategic planning pass across all deferred decisions. Clusters by theme,
+classifies each by effort, identifies dependencies, and writes a
+prioritized sequence. **Planning only — never executes work.**
+
+### Step 1 — Run the scan
+
+```bash
+bash .claude/scripts/decisions-scan.sh
+```
+
+Read the output at `.decisions/.roadmap-scan.md`.
+
+If zero deferred decisions: display "No deferred decisions to plan." Stop.
+
+### Step 2 — Read problem statements
+
+For each deferred decision in the scan output, read the first ~30 lines of
+`.decisions/<slug>/adr.md` to get the Problem and Resume When sections.
+**Do not read full ADRs** — you only need the problem scope, not the
+analysis context.
+
+### Step 3 — Cluster by theme
+
+Group decisions into thematic clusters using:
+1. **Parent ADR grouping** (from scan output — decisions sharing a parent
+   are already related)
+2. **Problem statement similarity** (merge parent groups that address the
+   same domain — e.g., two parent groups both about encryption)
+
+Name each cluster descriptively (e.g., "Storage & Compression",
+"Encryption & Security", "Partitioning & Rebalancing").
+
+### Step 4 — Classify by effort
+
+For each decision, classify as:
+
+- **Gap-fill** — config option, single-method addition, validation check,
+  thread-safety contract. 1-2 sessions. No architecture pass needed.
+  Signals: problem mentions "config", "validation", "flag", "parameter",
+  "contract"; scope is a single file or interface.
+
+- **Minor feature** — bounded new capability extending existing architecture.
+  Brief `/architect` eval needed. 2-4 sessions.
+  Signals: new type, new protocol extension, new API surface; scope is
+  2-3 files within one module.
+
+- **Full feature** — significant new architecture, multiple modules, new
+  abstractions. Full `/architect` + `/feature` pipeline. 5+ sessions.
+  Signals: problem mentions "protocol", "distributed", "consensus",
+  "SDK", "new module"; has multiple viable approaches requiring evaluation.
+
+### Step 5 — Identify dependencies
+
+Check for:
+1. Decisions whose problem statement references another deferred decision
+2. Decisions in the same cluster where one is clearly foundational
+   (e.g., "connection-pooling" before "transport-traffic-priority")
+3. Cross-cluster dependencies (e.g., networking must stabilize before
+   distributed query features)
+
+### Step 6 — Suggest ordering
+
+Order clusters by:
+1. **Foundation first** — clusters that other clusters depend on
+2. **Quick wins early** — clusters dominated by gap-fills
+3. **Independence** — clusters with no external dependencies can be
+   parallelized
+
+Within each cluster, order by:
+1. Gap-fills before minor features before full features
+2. Correctness risks and safety concerns first
+3. Dependencies respected (A before B if B depends on A)
+
+Also identify:
+- **Immediate promotions** — decisions that are correctness/safety risks
+  and should be addressed regardless of cluster ordering
+- **Duplicate merges** — decisions from different parents that describe
+  the same problem (suggest merging into one ADR)
+- **Research suggestions** — full features where a `/research` pass would
+  help before committing to `/architect`
+
+### Step 7 — Write outputs
+
+**a. Roadmap document** — write `.decisions/roadmap.md`:
+
+```markdown
+# Decisions Roadmap
+
+**Generated:** <date>
+**Deferred:** <n> decisions in <n> clusters
+
+## Summary
+
+<n> gap-fill | <n> minor feature | <n> full feature
+
+## Clusters (priority order)
+
+### 1. <Cluster Name> (<n> decisions)
+
+<one-sentence description of why this cluster matters>
+
+**Gap-fills:** <slug>, <slug>, ...
+**Minor features:** <slug>, <slug>, ...
+**Full features:** <slug>, ...
+
+**Dependencies:** <cluster> must precede <cluster> because ...
+
+### 2. ...
+
+## Immediate Actions
+
+- **Promote:** <slugs> — <reason>
+- **Merge:** <slug A> + <slug B> — same problem
+- **Research first:** <slugs> — <what to research>
+
+## Suggested Sequence
+
+Phase 1: <cluster> gap-fills (batch TDD pass)
+Phase 2: <cluster> gap-fills + minor features
+...
+```
+
+**b. Per-ADR metadata** — for each deferred decision where a dependency
+was identified, update the ADR's frontmatter to add:
+
+```yaml
+depends_on: ["<other-slug>"]
+```
+
+This allows `/architect` and `/feature` to surface dependencies when the
+user goes to work on a specific decision. Only add `depends_on` for
+concrete dependencies, not cluster-level ordering preferences.
+
+### Step 8 — Present to user
+
+Display the roadmap summary and use AskUserQuestion:
+- "Start with Phase 1" — begin working through the first cluster
+- "Pick a cluster" — choose a specific cluster to focus on
+- "Done" — roadmap is written, user will return later
+
+If "Start with Phase 1" or "Pick a cluster": suggest the appropriate
+next command for each item (e.g., `/architect "<slug>"` for minor/full
+features, or a direct implementation reference for gap-fills).
+
+---
+
 ## decisions triage — review all deferred items
 
 Triages everything in the Deferred section of `.decisions/CLAUDE.md`.
@@ -490,9 +641,23 @@ No deferred topics. Nothing to triage.
 ```
 Stop.
 
+**Roadmap suggestion:** If 10+ deferred items exist, check whether
+`.decisions/roadmap.md` exists. If no roadmap (or roadmap is stale),
+use AskUserQuestion before proceeding:
+- "Run roadmap first" — cluster and prioritize before per-item triage
+- "Continue with triage" — process items one at a time as usual
+
+If the user picks "Run roadmap first": execute the roadmap subcommand
+(Step 1-8 above), then return here for triage.
+
 ### Step 1 — Build the triage list
 
 For each deferred item, read `.decisions/<slug>/adr.md` to get full context.
+
+**Roadmap context:** If `.decisions/roadmap.md` exists, note each item's
+cluster and classification (gap-fill / minor / full) from the roadmap.
+Display this alongside the triage entry so the user sees the strategic
+context while triaging.
 
 Display:
 ```
@@ -502,22 +667,28 @@ Deferred topics (<n> total)
 [1] <slug>
     Deferred:    <date> (<N> days ago)
     Resume when: <condition or "not specified">
+    Depends on:  <slugs from depends_on field, or "none">
     Context:     <one sentence from "What Is Known So Far", or "none">
     Source:      <"standalone defer" | "tangent during: <parent-slug>">
+    Roadmap:     <cluster name — gap-fill/minor/full, if roadmap.md exists>
 
 [2] ...
 
 ───────────────────────────────────────────────
-For each item:
-  e  — evaluate now  (start /architect session)
-  c  — close         (move to Closed, remove from Deferred)
-  u  — update        (refresh resume condition or add context)
-  d  — delete        (remove stub entirely)
-  s  — skip
-
-Enter choices: 1=e 2=s 3=c  (or type: skip  to skip all)
-───────────────────────────────────────────────
 ```
+
+If a decision has `depends_on` entries that are still deferred (not yet
+confirmed), note this in the display: "blocked by: <slug> (still deferred)".
+This helps the user avoid evaluating decisions whose prerequisites aren't
+resolved yet.
+
+Process items one at a time. For each item, use AskUserQuestion with these
+options:
+- `Evaluate` (description: "Start /architect session for this topic")
+- `Close` (description: "Move to Closed, remove from Deferred")
+- `Update` (description: "Refresh resume condition or add context")
+- `Delete` (description: "Remove stub entirely")
+- `Skip` (description: "Leave as-is for now")
 
 ### Step 2 — Process choices
 
@@ -551,7 +722,7 @@ If the Deferred section is now empty, add a `<!-- Last cleared: YYYY-MM-DD -->`
 comment to that section in `.decisions/CLAUDE.md`.
 
 Check total line count: if over 80 lines, archive oldest Recently Accepted rows
-to `history.md` (same crash-safe order as `/architect` Step 7: create history.md
+to `history.md` (same crash-safe order as `/architect` Step 8: create history.md
 if needed → append row to history.md → remove row from CLAUDE.md).
 
 ---
@@ -758,8 +929,11 @@ Present each candidate one at a time:
   Session: <date>
   Suggested: <suggested_problem>
 
-  Type: decide · draft · defer · dismiss
-```
+Use AskUserQuestion with these options:
+- `Decide` (description: "Start full /architect deliberation for this candidate")
+- `Draft` (description: "Write a partial ADR with rationale, to formalize later")
+- `Defer` (description: "Park for later with context")
+- `Dismiss` (description: "Not a real decision — mark as dismissed")
 
 Wait for user response. Process identically to `/decisions backfill` Step 4:
 - **decide** → invoke `/architect "<suggested_problem>"` as a sub-agent
@@ -992,9 +1166,13 @@ Present each candidate one at a time:
   <2-3 sentences describing the implicit decision. For archived features,
   quote the guidance text from domains.md. For source patterns, describe
   what the structure implies.>
-
-  Type: decide · draft · defer · dismiss
 ```
+
+Use AskUserQuestion with these options:
+- `Decide` (description: "Start full /architect deliberation for this candidate")
+- `Draft` (description: "Write a partial ADR with rationale, to formalize later")
+- `Defer` (description: "Park for later with context")
+- `Dismiss` (description: "Not a real decision — won't resurface")
 
 Wait for user response.
 

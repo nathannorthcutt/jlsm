@@ -47,9 +47,22 @@ import java.util.Optional;
  */
 public final class SqlParser {
 
+    /** Maximum allowed expression nesting depth to prevent stack overflow from crafted input. */
+    private static final int MAX_EXPRESSION_DEPTH = 128;
+
+    /** Maximum allowed bind-parameter count to prevent integer overflow and resource exhaustion. */
+    private static final int MAX_PARAMETERS = 10_000;
+
+    /**
+     * Maximum allowed list size (columns, ORDER BY clauses, function args) to prevent resource
+     * exhaustion.
+     */
+    private static final int MAX_LIST_SIZE = 1_000;
+
     private List<Token> tokens;
     private int pos;
     private int parameterIndex;
+    private int expressionDepth;
 
     /**
      * Parses a list of tokens into a SQL AST.
@@ -67,18 +80,23 @@ public final class SqlParser {
         this.tokens = tokens;
         this.pos = 0;
         this.parameterIndex = 0;
+        this.expressionDepth = 0;
 
         return parseSelectStatement();
     }
 
     // ── Token navigation ─────────────────────────────────────────
 
-    private Token peek() {
-        assert pos < tokens.size() : "pos out of bounds";
+    private Token peek() throws SqlParseException {
+        if (pos >= tokens.size()) {
+            final int position = tokens.isEmpty() ? 0 : tokens.getLast().position();
+            throw new SqlParseException("Unexpected end of token stream (missing EOF token)",
+                    position);
+        }
         return tokens.get(pos);
     }
 
-    private Token advance() {
+    private Token advance() throws SqlParseException {
         final Token token = peek();
         if (token.type() != TokenType.EOF) {
             pos++;
@@ -95,11 +113,11 @@ public final class SqlParser {
         return advance();
     }
 
-    private boolean check(TokenType type) {
+    private boolean check(TokenType type) throws SqlParseException {
         return peek().type() == type;
     }
 
-    private boolean match(TokenType type) {
+    private boolean match(TokenType type) throws SqlParseException {
         if (check(type)) {
             advance();
             return true;
@@ -182,6 +200,11 @@ public final class SqlParser {
         columns.add(parseColumn());
 
         while (match(TokenType.COMMA)) {
+            if (columns.size() >= MAX_LIST_SIZE) {
+                final Token token = peek();
+                throw new SqlParseException("Column list exceeds maximum of " + MAX_LIST_SIZE
+                        + " at position " + token.position(), token.position());
+            }
             columns.add(parseColumn());
         }
 
@@ -210,6 +233,11 @@ public final class SqlParser {
         clauses.add(parseOrderByClause());
 
         while (match(TokenType.COMMA)) {
+            if (clauses.size() >= MAX_LIST_SIZE) {
+                final Token token = peek();
+                throw new SqlParseException("ORDER BY clause list exceeds maximum of "
+                        + MAX_LIST_SIZE + " at position " + token.position(), token.position());
+            }
             clauses.add(parseOrderByClause());
         }
 
@@ -246,31 +274,59 @@ public final class SqlParser {
 
     private SqlAst.Expression parseOr() throws SqlParseException {
         SqlAst.Expression left = parseAnd();
+        int depthAdded = 0;
 
         while (match(TokenType.OR)) {
+            expressionDepth++;
+            depthAdded++;
+            if (expressionDepth > MAX_EXPRESSION_DEPTH) {
+                final Token token = peek();
+                throw new SqlParseException("Expression nesting depth exceeds maximum of "
+                        + MAX_EXPRESSION_DEPTH + " at position " + token.position(),
+                        token.position());
+            }
             final SqlAst.Expression right = parseAnd();
             left = new SqlAst.Expression.Logical(left, SqlAst.LogicalOp.OR, right);
         }
 
+        expressionDepth -= depthAdded;
         return left;
     }
 
     private SqlAst.Expression parseAnd() throws SqlParseException {
         SqlAst.Expression left = parseNot();
+        int depthAdded = 0;
 
         // BETWEEN...AND is consumed by parseComparison before reaching here,
         // so any AND token at this level is always a logical connective.
         while (match(TokenType.AND)) {
+            expressionDepth++;
+            depthAdded++;
+            if (expressionDepth > MAX_EXPRESSION_DEPTH) {
+                final Token token = peek();
+                throw new SqlParseException("Expression nesting depth exceeds maximum of "
+                        + MAX_EXPRESSION_DEPTH + " at position " + token.position(),
+                        token.position());
+            }
             final SqlAst.Expression right = parseNot();
             left = new SqlAst.Expression.Logical(left, SqlAst.LogicalOp.AND, right);
         }
 
+        expressionDepth -= depthAdded;
         return left;
     }
 
     private SqlAst.Expression parseNot() throws SqlParseException {
         if (match(TokenType.NOT)) {
+            expressionDepth++;
+            if (expressionDepth > MAX_EXPRESSION_DEPTH) {
+                final Token token = peek();
+                throw new SqlParseException("Expression nesting depth exceeds maximum of "
+                        + MAX_EXPRESSION_DEPTH + " at position " + token.position(),
+                        token.position());
+            }
             final SqlAst.Expression operand = parseNot();
+            expressionDepth--;
             return new SqlAst.Expression.Not(operand);
         }
         return parseComparison();
@@ -304,7 +360,7 @@ public final class SqlParser {
         return left;
     }
 
-    private SqlAst.ComparisonOp matchComparisonOp() {
+    private SqlAst.ComparisonOp matchComparisonOp() throws SqlParseException {
         return switch (peek().type()) {
             case EQ -> {
                 advance();
@@ -348,6 +404,11 @@ public final class SqlParser {
                 advance();
                 yield new SqlAst.Expression.NumberLiteral(token.text());
             }
+            case MINUS -> {
+                advance(); // consume the minus token
+                final Token num = expect(TokenType.NUMBER_LITERAL);
+                yield new SqlAst.Expression.NumberLiteral("-" + num.text());
+            }
             case TRUE -> {
                 advance();
                 yield new SqlAst.Expression.BooleanLiteral(true);
@@ -358,6 +419,11 @@ public final class SqlParser {
             }
             case PARAMETER -> {
                 advance();
+                if (parameterIndex >= MAX_PARAMETERS) {
+                    throw new SqlParseException("Bind parameter count exceeds maximum of "
+                            + MAX_PARAMETERS + " at position " + token.position(),
+                            token.position());
+                }
                 yield new SqlAst.Expression.Parameter(parameterIndex++);
             }
             case MATCH, VECTOR_DISTANCE -> parseFunctionCall();
@@ -366,9 +432,16 @@ public final class SqlParser {
                 yield new SqlAst.Expression.ColumnRef(token.text());
             }
             case LPAREN -> {
+                expressionDepth++;
+                if (expressionDepth > MAX_EXPRESSION_DEPTH) {
+                    throw new SqlParseException("Expression nesting depth exceeds maximum of "
+                            + MAX_EXPRESSION_DEPTH + " at position " + token.position(),
+                            token.position());
+                }
                 advance(); // consume (
                 final SqlAst.Expression expr = parseExpression();
                 expect(TokenType.RPAREN);
+                expressionDepth--;
                 yield expr;
             }
             default -> throw new SqlParseException("Unexpected token " + token.type() + " '"
@@ -378,17 +451,30 @@ public final class SqlParser {
 
     private SqlAst.Expression.FunctionCall parseFunctionCall() throws SqlParseException {
         final Token name = advance(); // MATCH or VECTOR_DISTANCE
+
+        expressionDepth++;
+        if (expressionDepth > MAX_EXPRESSION_DEPTH) {
+            throw new SqlParseException("Expression nesting depth exceeds maximum of "
+                    + MAX_EXPRESSION_DEPTH + " at position " + name.position(), name.position());
+        }
+
         expect(TokenType.LPAREN);
 
         final var args = new ArrayList<SqlAst.Expression>();
         if (!check(TokenType.RPAREN)) {
             args.add(parsePrimary());
             while (match(TokenType.COMMA)) {
+                if (args.size() >= MAX_LIST_SIZE) {
+                    final Token token = peek();
+                    throw new SqlParseException("Function argument list exceeds maximum of "
+                            + MAX_LIST_SIZE + " at position " + token.position(), token.position());
+                }
                 args.add(parsePrimary());
             }
         }
 
         expect(TokenType.RPAREN);
+        expressionDepth--;
         return new SqlAst.Expression.FunctionCall(name.text().toUpperCase(), args);
     }
 }

@@ -10,7 +10,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.Objects;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import jlsm.table.DuplicateKeyException;
 import jlsm.table.FieldType;
@@ -26,16 +27,32 @@ import jlsm.table.Predicate;
 public final class FieldIndex implements SecondaryIndex {
 
     private final IndexDefinition definition;
+    private final FieldType schemaFieldType;
     private final NavigableMap<ByteArrayKey, List<MemorySegment>> entries;
     private volatile boolean closed;
 
-    public FieldIndex(IndexDefinition definition) throws IOException {
+    /**
+     * Creates a FieldIndex with explicit schema field type for correct encoding. Prefer this
+     * constructor when the schema field type is known (e.g., from IndexRegistry).
+     */
+    public FieldIndex(IndexDefinition definition, FieldType schemaFieldType) throws IOException {
         Objects.requireNonNull(definition, "definition");
         IndexType type = definition.indexType();
-        assert type == IndexType.EQUALITY || type == IndexType.RANGE || type == IndexType.UNIQUE
-                : "FieldIndex only supports EQUALITY, RANGE, or UNIQUE";
+        if (type != IndexType.EQUALITY && type != IndexType.RANGE && type != IndexType.UNIQUE) {
+            throw new IllegalArgumentException(
+                    "FieldIndex only supports EQUALITY, RANGE, or UNIQUE — got " + type);
+        }
         this.definition = definition;
-        this.entries = new TreeMap<>();
+        this.schemaFieldType = schemaFieldType;
+        this.entries = new ConcurrentSkipListMap<>();
+    }
+
+    /**
+     * Creates a FieldIndex without explicit schema field type. Falls back to runtime type inference
+     * which is ambiguous for Short (INT16 vs FLOAT16).
+     */
+    public FieldIndex(IndexDefinition definition) throws IOException {
+        this(definition, null);
     }
 
     @Override
@@ -43,13 +60,36 @@ public final class FieldIndex implements SecondaryIndex {
         return definition;
     }
 
+    /**
+     * Checks the unique constraint for the given field value without modifying the index. Only
+     * meaningful for UNIQUE indices — no-op for others.
+     *
+     * @throws DuplicateKeyException if the value already exists in a UNIQUE index
+     */
+    void checkUnique(Object fieldValue) throws IOException {
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
+        if (definition.indexType() != IndexType.UNIQUE || fieldValue == null) {
+            return;
+        }
+        FieldType fieldType = resolveFieldType(fieldValue);
+        ByteArrayKey encoded = encodeKey(fieldValue, fieldType);
+        List<MemorySegment> existing = entries.get(encoded);
+        if (existing != null && !existing.isEmpty()) {
+            throw new DuplicateKeyException(String.valueOf(fieldValue));
+        }
+    }
+
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        assert !closed : "Index is closed";
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         if (fieldValue == null) {
             return;
         }
-        FieldType fieldType = inferFieldType(fieldValue);
+        FieldType fieldType = resolveFieldType(fieldValue);
         ByteArrayKey encoded = encodeKey(fieldValue, fieldType);
 
         if (definition.indexType() == IndexType.UNIQUE) {
@@ -59,24 +99,37 @@ public final class FieldIndex implements SecondaryIndex {
             }
         }
 
-        entries.computeIfAbsent(encoded, _ -> new ArrayList<>()).add(copySegment(primaryKey));
+        entries.computeIfAbsent(encoded, _ -> new CopyOnWriteArrayList<>())
+                .add(copySegment(primaryKey));
     }
 
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
-        assert !closed : "Index is closed";
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         if (oldFieldValue != null) {
             removeEntry(primaryKey, oldFieldValue);
         }
         if (newFieldValue != null) {
-            onInsert(primaryKey, newFieldValue);
+            try {
+                onInsert(primaryKey, newFieldValue);
+            } catch (IOException | RuntimeException ex) {
+                // Restore old entry to avoid orphaning the primary key from the index
+                if (oldFieldValue != null) {
+                    onInsert(primaryKey, oldFieldValue);
+                }
+                throw ex;
+            }
         }
     }
 
     @Override
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        assert !closed : "Index is closed";
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         if (fieldValue == null) {
             return;
         }
@@ -85,7 +138,9 @@ public final class FieldIndex implements SecondaryIndex {
 
     @Override
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
-        assert !closed : "Index is closed";
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         return switch (predicate) {
             case Predicate.Eq eq -> lookupEq(eq.value());
             case Predicate.Ne ne -> lookupNe(ne.value());
@@ -94,7 +149,9 @@ public final class FieldIndex implements SecondaryIndex {
             case Predicate.Lt lt -> lookupLt(lt.value());
             case Predicate.Lte lte -> lookupLte(lte.value());
             case Predicate.Between between -> lookupBetween(between.low(), between.high());
-            default -> Collections.emptyIterator();
+            default -> throw new UnsupportedOperationException(
+                    "FieldIndex does not support predicate type: "
+                            + predicate.getClass().getSimpleName());
         };
     }
 
@@ -123,7 +180,7 @@ public final class FieldIndex implements SecondaryIndex {
     // ── Private helpers ─────────────────────────────────────────────────
 
     private void removeEntry(MemorySegment primaryKey, Object fieldValue) {
-        FieldType fieldType = inferFieldType(fieldValue);
+        FieldType fieldType = resolveFieldType(fieldValue);
         ByteArrayKey encoded = encodeKey(fieldValue, fieldType);
         List<MemorySegment> pks = entries.get(encoded);
         if (pks != null) {
@@ -135,7 +192,7 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     private Iterator<MemorySegment> lookupEq(Object value) {
-        FieldType fieldType = inferFieldType(value);
+        FieldType fieldType = resolveFieldType(value);
         ByteArrayKey encoded = encodeKey(value, fieldType);
         List<MemorySegment> pks = entries.get(encoded);
         if (pks == null || pks.isEmpty()) {
@@ -145,7 +202,7 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     private Iterator<MemorySegment> lookupNe(Object value) {
-        FieldType fieldType = inferFieldType(value);
+        FieldType fieldType = resolveFieldType(value);
         ByteArrayKey excluded = encodeKey(value, fieldType);
         List<MemorySegment> result = new ArrayList<>();
         for (var entry : entries.entrySet()) {
@@ -157,33 +214,42 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     private Iterator<MemorySegment> lookupGt(Object value) {
-        FieldType fieldType = inferFieldType(value);
+        FieldType fieldType = resolveFieldType(value);
         ByteArrayKey encoded = encodeKey(value, fieldType);
         return flattenValues(entries.tailMap(encoded, false));
     }
 
     private Iterator<MemorySegment> lookupGte(Object value) {
-        FieldType fieldType = inferFieldType(value);
+        FieldType fieldType = resolveFieldType(value);
         ByteArrayKey encoded = encodeKey(value, fieldType);
         return flattenValues(entries.tailMap(encoded, true));
     }
 
     private Iterator<MemorySegment> lookupLt(Object value) {
-        FieldType fieldType = inferFieldType(value);
+        FieldType fieldType = resolveFieldType(value);
         ByteArrayKey encoded = encodeKey(value, fieldType);
         return flattenValues(entries.headMap(encoded, false));
     }
 
     private Iterator<MemorySegment> lookupLte(Object value) {
-        FieldType fieldType = inferFieldType(value);
+        FieldType fieldType = resolveFieldType(value);
         ByteArrayKey encoded = encodeKey(value, fieldType);
         return flattenValues(entries.headMap(encoded, true));
     }
 
     private Iterator<MemorySegment> lookupBetween(Object low, Object high) {
-        FieldType fieldType = inferFieldType(low);
-        ByteArrayKey lowKey = encodeKey(low, fieldType);
-        ByteArrayKey highKey = encodeKey(high, fieldType);
+        FieldType lowType = resolveFieldType(low);
+        FieldType highType = resolveFieldType(high);
+        if (!lowType.equals(highType)) {
+            throw new IllegalArgumentException("Between low and high must have the same type, got: "
+                    + lowType + " and " + highType);
+        }
+        ByteArrayKey lowKey = encodeKey(low, lowType);
+        ByteArrayKey highKey = encodeKey(high, lowType);
+        // Guard against inverted range — TreeMap.subMap throws IAE when fromKey > toKey
+        if (lowKey.compareTo(highKey) > 0) {
+            return Collections.emptyIterator();
+        }
         return flattenValues(entries.subMap(lowKey, true, highKey, true));
     }
 
@@ -226,6 +292,23 @@ public final class FieldIndex implements SecondaryIndex {
         };
     }
 
+    /**
+     * Resolves the field type for encoding. Prefers the schema field type when available, falling
+     * back to runtime type inference. This is critical for Short values which are ambiguous between
+     * INT16 and FLOAT16.
+     */
+    private FieldType resolveFieldType(Object value) {
+        if (schemaFieldType != null) {
+            return schemaFieldType;
+        }
+        if (value instanceof Short) {
+            throw new IllegalStateException(
+                    "Short is ambiguous between INT16 and FLOAT16; use the two-arg constructor "
+                            + "FieldIndex(definition, schemaFieldType) to specify the intended encoding");
+        }
+        return inferFieldType(value);
+    }
+
     static FieldType inferFieldType(Object value) {
         return switch (value) {
             case String _ -> FieldType.Primitive.STRING;
@@ -245,6 +328,15 @@ public final class FieldIndex implements SecondaryIndex {
      * Byte array wrapper with unsigned bytewise comparison for use as TreeMap key.
      */
     record ByteArrayKey(byte[] data) implements Comparable<ByteArrayKey> {
+
+        ByteArrayKey {
+            data = data.clone();
+        }
+
+        @Override
+        public byte[] data() {
+            return data.clone();
+        }
 
         @Override
         public int compareTo(ByteArrayKey other) {

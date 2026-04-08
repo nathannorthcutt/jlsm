@@ -81,7 +81,7 @@ Stop.
 - Jump to the appropriate checklist item in this order:
   2a coding-standards → 2b duplication → 2c security → 2d performance →
   2e missing-tests → 2f integration-tests → 2g documentation →
-  2h security-review → Step 4 final-lint
+  2h security-review → Step 4 final-lint → Step 4b audit-pass
 
 **If Refactor is `not-started`:**
 - Verify cycle-log.md has an `implemented` entry for this cycle.
@@ -124,6 +124,7 @@ TodoWrite item. Use `activeForm` to show what is being reviewed or fixed
   {"id": "pipeline-implementation", "content": "Implementation", "status": "completed", "priority": "medium"},
   {"id": "pipeline-refactor", "content": "Refactor & review", "status": "in_progress", "priority": "high",
    "activeForm": "2a — Coding standards"},
+  {"id": "pipeline-audit", "content": "Adversarial audit", "status": "pending", "priority": "medium"},
   {"id": "pipeline-pr", "content": "PR draft", "status": "pending", "priority": "medium"},
   {"id": "coding-standards", "content": "2a — Coding standards", "status": "in_progress", "priority": "medium",
    "activeForm": "Fixing: unused import in src/rate.py"},
@@ -135,6 +136,7 @@ TodoWrite item. Use `activeForm` to show what is being reviewed or fixed
   {"id": "documentation", "content": "2g — Documentation check", "status": "pending", "priority": "medium"},
   {"id": "security-review", "content": "2h — Security review", "status": "pending", "priority": "high"},
   {"id": "final-lint", "content": "Final lint and test run", "status": "pending", "priority": "medium"},
+  {"id": "audit-pass", "content": "Adversarial audit pass", "status": "pending", "priority": "high"},
   {"id": "handoff", "content": "Log and hand off", "status": "pending", "priority": "medium"}
 ]
 ```
@@ -471,6 +473,47 @@ Update status.md substage → `refactor: final-lint`.
 - Run type checker (if applicable)
 - Fix remaining issues
 - Run full test suite one final time — must be all passing
+
+---
+
+## Step 4b — Adversarial audit pass
+
+Delegate the full adversarial audit to `/audit`. The audit orchestrator
+handles scoping, analysis, reconciliation, suspect identification, prove-fix
+cycles, and reporting.
+
+**Skip this step if:**
+- This is `/feature-quick` (status.md shows no spec analysis was performed)
+- This is a refactor cycle > 1 (audit runs once after the first clean refactor)
+
+### 4b.1 — Run the audit
+
+Invoke `/audit <slug>` where `<slug>` is the current feature slug.
+
+Wait for the audit to complete. Do not intervene in the audit pipeline — it
+manages its own subagents and state.
+
+### 4b.2 — Read the audit report
+
+After the audit finishes, read `.feature/<slug>/audit-report.md` (the final
+output from the audit orchestrator).
+
+Update status.md substage to `audit-complete`.
+
+Append `audit-complete` to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — audit-complete
+**Agent:** Refactor Agent (audit delegation)
+**Cycle:** <n>
+**Audit result:** <summary from audit-report.md>
+---
+```
+
+Display the audit summary to the user:
+- If the audit found and fixed bugs, list them with their test references
+- If zero findings, note that the refactored code passed adversarial audit
+
+Proceed to Step 5.
 
 ---
 

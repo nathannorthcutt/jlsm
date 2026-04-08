@@ -24,15 +24,16 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Regression benchmark: LruBlockCache throughput and lock contention.
  *
- * <p>Guards against:
+ * <p>
+ * Guards against:
  * <ul>
- *   <li>Single-threaded throughput regression (putWithEviction, mixedGetPut)</li>
- *   <li>Multi-threaded lock contention degradation (mixedWorkload at 1, 2, 4, 8 threads)</li>
+ * <li>Single-threaded throughput regression (putWithEviction, mixedGetPut)</li>
+ * <li>Multi-threaded lock contention degradation (mixedWorkload at 1, 2, 4, 8 threads)</li>
  * </ul>
  *
- * <p>The contention benchmarks establish a baseline for the current single-ReentrantLock
- * design. When the cache is reworked (e.g., striped/sharded), these benchmarks will
- * quantify the improvement.
+ * <p>
+ * The contention benchmarks establish a baseline for the current single-ReentrantLock design. When
+ * the cache is reworked (e.g., striped/sharded), these benchmarks will quantify the improvement.
  */
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
@@ -46,7 +47,7 @@ public class LruBlockCacheBenchmark {
     @State(Scope.Benchmark)
     public static class CacheState {
 
-        @Param({"1000", "10000"})
+        @Param({ "1000", "10000" })
         int cacheCapacity;
 
         LruBlockCache cache;
@@ -102,25 +103,25 @@ public class LruBlockCacheBenchmark {
 
     @Benchmark
     @Threads(1)
-    public void contention_t1(CacheState cs, ThreadIndex ti, Blackhole bh) {
+    public void contentionT1(CacheState cs, ThreadIndex ti, Blackhole bh) {
         doMixedOp(cs, ti, bh);
     }
 
     @Benchmark
     @Threads(2)
-    public void contention_t2(CacheState cs, ThreadIndex ti, Blackhole bh) {
+    public void contentionT2(CacheState cs, ThreadIndex ti, Blackhole bh) {
         doMixedOp(cs, ti, bh);
     }
 
     @Benchmark
     @Threads(4)
-    public void contention_t4(CacheState cs, ThreadIndex ti, Blackhole bh) {
+    public void contentionT4(CacheState cs, ThreadIndex ti, Blackhole bh) {
         doMixedOp(cs, ti, bh);
     }
 
     @Benchmark
     @Threads(8)
-    public void contention_t8(CacheState cs, ThreadIndex ti, Blackhole bh) {
+    public void contentionT8(CacheState cs, ThreadIndex ti, Blackhole bh) {
         doMixedOp(cs, ti, bh);
     }
 

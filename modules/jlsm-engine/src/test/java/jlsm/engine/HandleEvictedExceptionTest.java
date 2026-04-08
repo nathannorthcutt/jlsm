@@ -18,7 +18,7 @@ class HandleEvictedExceptionTest {
         assertEquals("users", ex.tableName());
         assertEquals("thread-1", ex.sourceId());
         assertEquals(5, ex.handleCountAtEviction());
-        assertSame(site, ex.allocationSite());
+        assertArrayEquals(site, ex.allocationSite());
         assertEquals(HandleEvictedException.Reason.EVICTION, ex.reason());
 
         // Message should contain diagnostic info

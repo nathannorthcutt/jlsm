@@ -46,3 +46,12 @@
 - (none — codebase-derived decision)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** similarity-function-placement, non-vector-index-type-review
+**Summary:** 2 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

@@ -99,10 +99,10 @@ class DocumentSerializerTest {
         JlsmDocument doc = JlsmDocument.of(schema, "s", "hi");
         MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema);
         MemorySegment bytes = ser.serialize(doc);
-        // Header: 2 (version) + 2 (fieldCount) + 1 (null bitmask) = 5 bytes
+        // Header: 2 (version) + 2 (fieldCount) + 2 (boolCount) + 1 (null bitmask) = 7 bytes
         // Value: 1 (varint len=2) + 2 (UTF-8 "hi") = 3 bytes
-        // Total: 8 bytes
-        assertEquals(8L, bytes.byteSize());
+        // Total: 10 bytes
+        assertEquals(10L, bytes.byteSize());
     }
 
     @Test
@@ -114,8 +114,8 @@ class DocumentSerializerTest {
         JlsmDocument doc = JlsmDocument.of(schema, "s", s128);
         MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema);
         MemorySegment bytes = ser.serialize(doc);
-        // Header: 5 bytes; Value: 2 (varint 128) + 128 bytes = 130; Total: 135
-        assertEquals(135L, bytes.byteSize());
+        // Header: 7 bytes; Value: 2 (varint 128) + 128 bytes = 130; Total: 137
+        assertEquals(137L, bytes.byteSize());
     }
 
     @Test
@@ -129,8 +129,8 @@ class DocumentSerializerTest {
         JlsmDocument doc = JlsmDocument.of(schema, "arr", arr);
         MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema);
         MemorySegment bytes = ser.serialize(doc);
-        // Header: 5; Array: 2 (varint 200) + 200*4 bytes = 802; Total: 807
-        assertEquals(807L, bytes.byteSize());
+        // Header: 7; Array: 2 (varint 200) + 200*4 bytes = 802; Total: 809
+        assertEquals(809L, bytes.byteSize());
     }
 
     @Test

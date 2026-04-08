@@ -10,8 +10,8 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-slug="$1"
-feature_dir="$2"
+slug="${1:-}"
+feature_dir="${2:-}"
 
 if [[ -z "$slug" || -z "$feature_dir" ]]; then
     exit 0

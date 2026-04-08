@@ -12,6 +12,9 @@ schemes implementable in pure Java for use in jlsm's document model.
 | [searchable-encryption-schemes.md](searchable-encryption-schemes.md) | Searchable Encryption Schemes | active | DET: O(n) enc, +16B expansion | Field-level encryption with query support |
 | [vector-encryption-approaches.md](vector-encryption-approaches.md) | Vector Encryption Approaches | active | DCPE: ~1x plaintext query perf | Encrypted ANN search |
 | [deterministic-encryption-performance.md](deterministic-encryption-performance.md) | Deterministic Encryption Performance | active | AES-SIV: 66K->~130K ops/s optimized | Narrowing DET vs AEAD perf gap |
+| [ope-width-truncation.md](ope-width-truncation.md) | OPE width truncation | active | critical | adversarial-finding: OPE cap causes data truncation |
+| [key-bytes-on-heap.md](key-bytes-on-heap.md) | Key bytes on heap | active | tendency | adversarial-finding: key material persists on heap |
+| [encrypt-memory-data.md](encrypt-memory-data.md) | encrypt-memory-data footprint | stable | — | feature-footprint: field-level encryption audit |
 
 ## Comparison Summary
 

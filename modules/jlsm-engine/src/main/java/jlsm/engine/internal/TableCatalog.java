@@ -1,6 +1,8 @@
 package jlsm.engine.internal;
 
 import jlsm.engine.TableMetadata;
+import jlsm.table.FieldDefinition;
+import jlsm.table.FieldType;
 import jlsm.table.JlsmSchema;
 
 import java.io.Closeable;
@@ -11,8 +13,10 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -78,13 +82,35 @@ final class TableCatalog implements Closeable {
                     final TableMetadata metadata = readMetadata(tableName, metadataPath);
                     tables.put(tableName, metadata);
                 } catch (IOException e) {
-                    // Corrupt metadata — clean up
-                    deleteDirectoryTree(entry);
+                    // Corrupt or unreadable metadata — preserve data, mark as ERROR
+                    final JlsmSchema errorSchema = JlsmSchema.builder(tableName, 0).build();
+                    final TableMetadata errorMetadata = new TableMetadata(tableName, errorSchema,
+                            Instant.EPOCH, TableMetadata.TableState.ERROR);
+                    tables.put(tableName, errorMetadata);
                 }
             }
         }
 
         loading = false;
+    }
+
+    /**
+     * Throws {@link IllegalStateException} if the catalog has been closed.
+     */
+    private void ensureOpen() {
+        if (closed.get()) {
+            throw new IllegalStateException("TableCatalog is closed");
+        }
+    }
+
+    /**
+     * Throws {@link IllegalStateException} if the catalog is still loading or has been closed.
+     */
+    private void ensureReady() {
+        ensureOpen();
+        if (loading) {
+            throw new IllegalStateException("TableCatalog is still loading");
+        }
     }
 
     /**
@@ -96,30 +122,40 @@ final class TableCatalog implements Closeable {
      * @throws IOException if the table already exists or the directory cannot be created
      */
     TableMetadata register(String name, JlsmSchema schema) throws IOException {
+        ensureReady();
         Objects.requireNonNull(name, "name must not be null");
         Objects.requireNonNull(schema, "schema must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
         }
 
-        if (tables.containsKey(name)) {
-            throw new IOException("Table already exists: " + name);
-        }
-
-        final Path tableDir = rootDir.resolve(name);
-        Files.createDirectories(tableDir);
-
         final Instant createdAt = Instant.now();
         final TableMetadata metadata = new TableMetadata(name, schema, createdAt,
                 TableMetadata.TableState.READY);
 
-        writeMetadata(tableDir.resolve(METADATA_FILE), metadata);
-
+        // Atomically claim the name before any I/O — prevents TOCTOU race where
+        // two threads both pass a containsKey check, both create directories,
+        // and the loser's cleanup deletes the winner's directory.
         final TableMetadata previous = tables.putIfAbsent(name, metadata);
         if (previous != null) {
-            // Concurrent registration — clean up and throw
-            deleteDirectoryTree(tableDir);
-            throw new IOException("Table already exists (concurrent registration): " + name);
+            throw new IOException("Table already exists: " + name);
+        }
+
+        try {
+            final Path tableDir = rootDir.resolve(name);
+            Files.createDirectories(tableDir);
+            writeMetadata(tableDir.resolve(METADATA_FILE), metadata);
+        } catch (IOException e) {
+            // Roll back the map entry on I/O failure
+            tables.remove(name, metadata);
+            // Clean up the orphan directory created by Files.createDirectories()
+            try {
+                final Path tableDir = rootDir.resolve(name);
+                deleteDirectoryTree(tableDir);
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
         }
 
         return metadata;
@@ -132,6 +168,7 @@ final class TableCatalog implements Closeable {
      * @throws IOException if the table does not exist or cannot be removed
      */
     void unregister(String name) throws IOException {
+        ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
@@ -155,6 +192,7 @@ final class TableCatalog implements Closeable {
      * @return an Optional containing the metadata, or empty if not found
      */
     Optional<TableMetadata> get(String name) {
+        ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
         return Optional.ofNullable(tables.get(name));
     }
@@ -165,6 +203,7 @@ final class TableCatalog implements Closeable {
      * @return an unmodifiable collection of table metadata; never null
      */
     Collection<TableMetadata> list() {
+        ensureOpen();
         return Collections.unmodifiableCollection(tables.values());
     }
 
@@ -175,6 +214,7 @@ final class TableCatalog implements Closeable {
      * @return the table's subdirectory path; never null
      */
     Path tableDirectory(String name) {
+        ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
         return rootDir.resolve(name);
     }
@@ -197,9 +237,17 @@ final class TableCatalog implements Closeable {
 
     // ---- Private helpers ----
 
+    // ---- Field type discriminator tags for binary serialization ----
+    private static final byte TYPE_PRIMITIVE = 0;
+    private static final byte TYPE_ARRAY = 1;
+    private static final byte TYPE_OBJECT = 2;
+    private static final byte TYPE_VECTOR = 3;
+    private static final byte TYPE_BOUNDED_STRING = 4;
+
     /**
      * Writes table metadata to a binary file. Format: magic (4 bytes) | schema-name (UTF) |
-     * schema-version (int) | field-count (int) | created-at-millis (long)
+     * schema-version (int) | field-count (int) | field-definitions (variable) | created-at-millis
+     * (long) | state-ordinal (int)
      */
     private static void writeMetadata(Path path, TableMetadata metadata) throws IOException {
         assert metadata != null : "metadata must not be null";
@@ -208,13 +256,48 @@ final class TableCatalog implements Closeable {
             out.writeUTF(metadata.schema().name());
             out.writeInt(metadata.schema().version());
             out.writeInt(metadata.schema().fields().size());
+            for (final FieldDefinition field : metadata.schema().fields()) {
+                out.writeUTF(field.name());
+                writeFieldType(out, field.type());
+            }
             out.writeLong(metadata.createdAt().toEpochMilli());
+            out.writeInt(metadata.state().ordinal());
+        }
+    }
+
+    private static void writeFieldType(DataOutputStream out, FieldType type) throws IOException {
+        switch (type) {
+            case FieldType.Primitive p -> {
+                out.writeByte(TYPE_PRIMITIVE);
+                out.writeInt(p.ordinal());
+            }
+            case FieldType.ArrayType a -> {
+                out.writeByte(TYPE_ARRAY);
+                writeFieldType(out, a.elementType());
+            }
+            case FieldType.ObjectType o -> {
+                out.writeByte(TYPE_OBJECT);
+                out.writeInt(o.fields().size());
+                for (final FieldDefinition nested : o.fields()) {
+                    out.writeUTF(nested.name());
+                    writeFieldType(out, nested.type());
+                }
+            }
+            case FieldType.VectorType v -> {
+                out.writeByte(TYPE_VECTOR);
+                out.writeInt(v.elementType().ordinal());
+                out.writeInt(v.dimensions());
+            }
+            case FieldType.BoundedString b -> {
+                out.writeByte(TYPE_BOUNDED_STRING);
+                out.writeInt(b.maxLength());
+            }
         }
     }
 
     /**
-     * Reads minimal metadata from a binary file. Returns a TableMetadata with LOADING state and a
-     * skeleton JlsmSchema (name and version only, no fields).
+     * Reads table metadata from a binary file, reconstructing the full schema including field
+     * definitions and persisted table state.
      */
     private static TableMetadata readMetadata(String tableName, Path path) throws IOException {
         assert tableName != null : "tableName must not be null";
@@ -226,16 +309,69 @@ final class TableCatalog implements Closeable {
             }
             final String schemaName = in.readUTF();
             final int schemaVersion = in.readInt();
-            final int fieldCount = in.readInt(); // read but not used for reconstruction
-            final long createdAtMillis = in.readLong();
+            final int fieldCount = in.readInt();
 
-            // Build skeleton schema — name and version only
-            final JlsmSchema skeleton = JlsmSchema.builder(schemaName, schemaVersion).build();
+            // Reconstruct field definitions from persisted data
+            final JlsmSchema.Builder builder = JlsmSchema.builder(schemaName, schemaVersion);
+            for (int i = 0; i < fieldCount; i++) {
+                final String fieldName = in.readUTF();
+                final FieldType fieldType = readFieldType(in);
+                builder.field(fieldName, fieldType);
+            }
+
+            final long createdAtMillis = in.readLong();
+            final int stateOrdinal = in.readInt();
+            final TableMetadata.TableState[] states = TableMetadata.TableState.values();
+            if (stateOrdinal < 0 || stateOrdinal >= states.length) {
+                throw new IOException("Invalid table state ordinal: " + stateOrdinal);
+            }
+            final JlsmSchema schema = builder.build();
             final Instant createdAt = Instant.ofEpochMilli(createdAtMillis);
 
-            return new TableMetadata(tableName, skeleton, createdAt,
-                    TableMetadata.TableState.LOADING);
+            return new TableMetadata(tableName, schema, createdAt, states[stateOrdinal]);
         }
+    }
+
+    private static FieldType readFieldType(DataInputStream in) throws IOException {
+        final byte tag = in.readByte();
+        return switch (tag) {
+            case TYPE_PRIMITIVE -> {
+                final int ordinal = in.readInt();
+                final FieldType.Primitive[] values = FieldType.Primitive.values();
+                if (ordinal < 0 || ordinal >= values.length) {
+                    throw new IOException("Invalid primitive type ordinal: " + ordinal);
+                }
+                yield values[ordinal];
+            }
+            case TYPE_ARRAY -> {
+                final FieldType elementType = readFieldType(in);
+                yield new FieldType.ArrayType(elementType);
+            }
+            case TYPE_OBJECT -> {
+                final int nestedCount = in.readInt();
+                final List<FieldDefinition> nestedFields = new ArrayList<>(nestedCount);
+                for (int i = 0; i < nestedCount; i++) {
+                    final String nestedName = in.readUTF();
+                    final FieldType nestedType = readFieldType(in);
+                    nestedFields.add(new FieldDefinition(nestedName, nestedType));
+                }
+                yield new FieldType.ObjectType(nestedFields);
+            }
+            case TYPE_VECTOR -> {
+                final int elemOrdinal = in.readInt();
+                final FieldType.Primitive[] values = FieldType.Primitive.values();
+                if (elemOrdinal < 0 || elemOrdinal >= values.length) {
+                    throw new IOException("Invalid vector element type ordinal: " + elemOrdinal);
+                }
+                final int dimensions = in.readInt();
+                yield new FieldType.VectorType(values[elemOrdinal], dimensions);
+            }
+            case TYPE_BOUNDED_STRING -> {
+                final int maxLength = in.readInt();
+                yield new FieldType.BoundedString(maxLength);
+            }
+            default -> throw new IOException("Unknown field type tag: " + tag);
+        };
     }
 
     /**

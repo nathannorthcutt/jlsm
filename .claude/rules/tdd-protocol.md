@@ -75,6 +75,49 @@ No command re-does completed work without explicit user confirmation.
   Code Writer escalates contract conflicts to Test Writer.
   Test Writer escalates contract changes to Work Planner.
 
+## Test execution timeout (CRITICAL)
+  When running test commands via Bash, ALWAYS set a timeout:
+  - Use the Bash tool's `timeout` parameter: 300000 (5 minutes)
+  - If the command times out, do NOT simply re-run the same command
+  - Instead: check what happened — look for hung processes (`ps aux | grep`
+    for the test runner), kill them if found, then investigate the root cause
+    (deadlock, infinite loop, missing resource, blocking I/O)
+  - After investigating, either fix the issue and re-run, or report the hang
+    to the user with the process state and any partial output
+  - Never wait silently for more than 5 minutes on a test command — a test
+    suite that hasn't produced output in 5 minutes is almost certainly hung
+
+## Adversarial TDD (aTDD) pipeline
+  /atdd-round "<slug>" — adversarial cycle: Analyst → Breaker → Implementer
+  /atdd-audit "<slug|path>" — audit existing code, bootstrap known_issues, enter cycle
+  /atdd-refactor "<slug>" — constrained refactor + targeted regression verification
+
+## aTDD write authority
+  All aTDD agents     → .feature/<slug>/atdd-status.md (round tracking)
+  Spec Analyst        → .feature/<slug>/breaker-prompt.md
+                        .feature/<slug>/known_issues.md (RESOLVED/TENDENCY/WATCH)
+                        .feature/<slug>/cycle-log.md (analyst entries)
+  Breaker             → adversarial test files + .feature/<slug>/cycle-log.md (breaker entries)
+  Code Writer         → implementation files (same authority as standard pipeline)
+                        .feature/<slug>/cycle-log.md (implementer entries)
+  Constrained Refactorer → implementation files + .feature/<slug>/refactor-diff.md
+                           .feature/<slug>/cycle-log.md (refactor entries)
+  Audit (/atdd-audit) → .feature/<slug>/spec.md, .feature/<slug>/gaps.md
+                         .feature/<slug>/known_issues.md (bootstrap)
+
+## aTDD shared read
+  Spec Analyst reads: brief.md (or spec.md), work-plan.md, test files,
+  implementation files, known_issues.md
+  Breaker reads: breaker-prompt.md (or refactor-diff.md), test files,
+  implementation files
+  Constrained Refactorer reads: implementation files, test files,
+  known_issues.md, project-config.md, CONTRIBUTING.md
+
+## aTDD escalation paths
+  Breaker never modifies implementation — Implementer fixes failing tests.
+  Constrained Refactorer never modifies tests — Targeted Breaker writes
+  regression tests if refactoring weakened a resolved pattern.
+  Spec Analyst never writes tests or implementation — only analysis and prompts.
 
 ## .feature/ gitignore policy
   .feature/project-config.md  → committed

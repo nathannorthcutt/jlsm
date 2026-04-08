@@ -15,21 +15,21 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Cluster-aware engine that distributes tables and partitions across cluster members.
  *
  * <p>
  * Contract: Wraps a local {@link Engine} instance and adds cluster membership, ownership
- * assignment, and distributed query routing. On {@link #createTable}, creates the table
- * locally and announces it to the cluster. On {@link #getTable}, returns a
- * {@link ClusteredTable} proxy for partitioned tables or delegates to the local engine
- * for locally-owned tables. Listens for membership changes to trigger rebalancing of
- * table and partition ownership.
+ * assignment, and distributed query routing. On {@link #createTable}, creates the table locally and
+ * announces it to the cluster. On {@link #getTable}, returns a {@link ClusteredTable} proxy for
+ * partitioned tables or delegates to the local engine for locally-owned tables. Listens for
+ * membership changes to trigger rebalancing of table and partition ownership.
  *
  * <p>
- * Side effects: Starts membership protocol on build. Modifies ownership assignments
- * on membership changes. Creates and manages {@link ClusteredTable} proxies.
+ * Side effects: Starts membership protocol on build. Modifies ownership assignments on membership
+ * changes. Creates and manages {@link ClusteredTable} proxies.
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md},
@@ -48,9 +48,8 @@ public final class ClusteredEngine implements Engine {
     private final ClusterTransport transport;
     private final ClusterConfig config;
     private final NodeAddress localAddress;
-    private final ConcurrentHashMap<String, ClusteredTable> clusteredTables =
-            new ConcurrentHashMap<>();
-    private volatile boolean closed;
+    private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     private ClusteredEngine(Builder builder) {
         this.localEngine = Objects.requireNonNull(builder.localEngine, "localEngine");
@@ -92,12 +91,44 @@ public final class ClusteredEngine implements Engine {
         final Table localTable = localEngine.createTable(name, schema);
         assert localTable != null : "localEngine.createTable must return non-null";
 
-        // Create a clustered proxy for distributed access
-        final TableMetadata metadata = localTable.metadata();
-        final ClusteredTable clustered = new ClusteredTable(metadata, transport, membership);
-        clusteredTables.put(name, clustered);
+        // Create a clustered proxy for distributed access — roll back local table on failure
+        final ClusteredTable clustered;
+        try {
+            final TableMetadata metadata = localTable.metadata();
+            clustered = new ClusteredTable(metadata, transport, membership, localAddress,
+                    ownership);
+            final ClusteredTable previous = clusteredTables.put(name, clustered);
+            if (previous != null) {
+                previous.close();
+            }
 
-        return localTable;
+            // Guard against TOCTOU race with close(): if close() ran between
+            // checkNotClosed() and the put above, the new entry was added after
+            // close() iterated/cleared the map — it would be orphaned. Re-check
+            // and clean up if the engine was closed concurrently.
+            if (closed.get()) {
+                final ClusteredTable orphan = clusteredTables.remove(name);
+                if (orphan != null) {
+                    orphan.close();
+                }
+                final var closedEx = new IOException("ClusteredEngine is closed");
+                try {
+                    localEngine.dropTable(name);
+                } catch (IOException dropEx) {
+                    closedEx.addSuppressed(dropEx);
+                }
+                throw closedEx;
+            }
+        } catch (RuntimeException ex) {
+            try {
+                localEngine.dropTable(name);
+            } catch (IOException dropEx) {
+                ex.addSuppressed(dropEx);
+            }
+            throw ex;
+        }
+
+        return clustered;
     }
 
     @Override
@@ -154,16 +185,23 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public void close() throws IOException {
-        if (closed) {
+        if (!closed.compareAndSet(false, true)) {
             return;
         }
-        closed = true;
 
         final List<IOException> errors = new ArrayList<>();
 
-        // Close all clustered table proxies
+        // Close all clustered table proxies (deferred exception collection)
         for (final ClusteredTable ct : clusteredTables.values()) {
-            ct.close();
+            try {
+                ct.close();
+            } catch (Exception e) {
+                if (e instanceof IOException ioe) {
+                    errors.add(ioe);
+                } else {
+                    errors.add(new IOException("Failed to close clustered table", e));
+                }
+            }
         }
         clusteredTables.clear();
 
@@ -192,6 +230,17 @@ public final class ClusteredEngine implements Engine {
             errors.add(e);
         }
 
+        // Close cluster transport
+        try {
+            transport.close();
+        } catch (Exception e) {
+            if (e instanceof IOException ioe) {
+                errors.add(ioe);
+            } else {
+                errors.add(new IOException("Failed to close cluster transport", e));
+            }
+        }
+
         if (!errors.isEmpty()) {
             final IOException primary = errors.getFirst();
             for (int i = 1; i < errors.size(); i++) {
@@ -204,13 +253,13 @@ public final class ClusteredEngine implements Engine {
     // ---- Private helpers ----
 
     private void checkNotClosed() throws IOException {
-        if (closed) {
+        if (closed.get()) {
             throw new IOException("ClusteredEngine is closed");
         }
     }
 
     private void checkNotClosedUnchecked() {
-        if (closed) {
+        if (closed.get()) {
             throw new IllegalStateException("ClusteredEngine is closed");
         }
     }
@@ -219,25 +268,42 @@ public final class ClusteredEngine implements Engine {
      * Handles membership view changes by triggering ownership rebalancing.
      */
     private void onViewChanged(MembershipView oldView, MembershipView newView) {
-        assert oldView != null : "oldView must not be null";
-        assert newView != null : "newView must not be null";
+        Objects.requireNonNull(oldView, "oldView must not be null");
+        Objects.requireNonNull(newView, "newView must not be null");
 
         // Evict stale ownership cache entries
         ownership.evictBefore(newView.epoch());
 
-        // Record departures for grace period tracking
+        // Record departures for grace period tracking.
+        // A departure occurs when a member was ALIVE in the old view and is either:
+        // (a) absent from the new view entirely, or
+        // (b) present but no longer ALIVE (SUSPECTED or DEAD)
         for (final Member oldMember : oldView.members()) {
-            if (oldMember.state() == MemberState.ALIVE && !newView.isMember(oldMember.address())) {
-                gracePeriodManager.recordDeparture(oldMember.address(), Instant.now());
+            if (oldMember.state() == MemberState.ALIVE) {
+                boolean stillAliveInNew = false;
+                for (final Member newMember : newView.members()) {
+                    if (newMember.address().equals(oldMember.address())
+                            && newMember.state() == MemberState.ALIVE) {
+                        stillAliveInNew = true;
+                        break;
+                    }
+                }
+                if (!stillAliveInNew) {
+                    gracePeriodManager.recordDeparture(oldMember.address(), Instant.now());
+                }
             }
         }
 
-        // Record returns for nodes that rejoin
+        // Record returns for nodes that rejoin (transition to ALIVE in new view
+        // when they were not ALIVE in old view)
         for (final Member newMember : newView.members()) {
             if (newMember.state() == MemberState.ALIVE) {
                 gracePeriodManager.recordReturn(newMember.address());
             }
         }
+
+        // Clean up expired departure entries to prevent unbounded map growth
+        gracePeriodManager.expiredDepartures();
     }
 
     /**
@@ -278,7 +344,8 @@ public final class ClusteredEngine implements Engine {
         private ClusterConfig config;
         private NodeAddress localAddress;
 
-        private Builder() {}
+        private Builder() {
+        }
 
         public Builder localEngine(Engine localEngine) {
             this.localEngine = Objects.requireNonNull(localEngine, "localEngine must not be null");

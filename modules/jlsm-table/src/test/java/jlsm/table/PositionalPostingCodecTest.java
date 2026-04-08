@@ -8,7 +8,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.EncryptionKeyHolder;
 import jlsm.table.internal.PositionalPostingCodec;
@@ -27,7 +26,6 @@ class PositionalPostingCodecTest {
     private static final long RANGE_SIZE = 1_000_000L;
 
     private EncryptionKeyHolder keyHolder;
-    private AesSivEncryptor detEncryptor;
     private BoldyrevaOpeEncryptor opeEncryptor;
     private PositionalPostingCodec codec;
 
@@ -38,9 +36,8 @@ class PositionalPostingCodecTest {
             keyMaterial[i] = (byte) (i + 1);
         }
         keyHolder = EncryptionKeyHolder.of(keyMaterial);
-        detEncryptor = new AesSivEncryptor(keyHolder);
         opeEncryptor = new BoldyrevaOpeEncryptor(keyHolder, DOMAIN_SIZE, RANGE_SIZE);
-        codec = new PositionalPostingCodec(detEncryptor, opeEncryptor);
+        codec = new PositionalPostingCodec(opeEncryptor);
     }
 
     @AfterEach
@@ -225,14 +222,7 @@ class PositionalPostingCodecTest {
     }
 
     @Test
-    void constructorRejectsNullDetEncryptor() {
-        assertThrows(NullPointerException.class,
-                () -> new PositionalPostingCodec(null, opeEncryptor));
-    }
-
-    @Test
     void constructorRejectsNullOpeEncryptor() {
-        assertThrows(NullPointerException.class,
-                () -> new PositionalPostingCodec(detEncryptor, null));
+        assertThrows(NullPointerException.class, () -> new PositionalPostingCodec(null));
     }
 }

@@ -24,14 +24,13 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for {@link ClusteredEngine} — cluster-aware engine wrapping LocalEngine
- * with membership, ownership, and distributed routing.
+ * Tests for {@link ClusteredEngine} — cluster-aware engine wrapping LocalEngine with membership,
+ * ownership, and distributed routing.
  */
 final class ClusteredEngineTest {
 
@@ -39,8 +38,7 @@ final class ClusteredEngineTest {
     private static final NodeAddress NODE_B = new NodeAddress("node-b", "localhost", 8002);
     private static final Instant NOW = Instant.parse("2026-03-20T00:00:00Z");
     private static final JlsmSchema SCHEMA = JlsmSchema.builder("test", 1)
-            .field("id", FieldType.Primitive.STRING)
-            .field("value", FieldType.Primitive.STRING)
+            .field("id", FieldType.Primitive.STRING).field("value", FieldType.Primitive.STRING)
             .build();
 
     private InJvmTransport transportA;
@@ -74,41 +72,25 @@ final class ClusteredEngineTest {
 
     @Test
     void builder_missingLocalEngine_throwsNPE() {
-        assertThrows(NullPointerException.class, () ->
-                ClusteredEngine.builder()
-                        .membership(membershipA)
-                        .ownership(ownership)
-                        .gracePeriodManager(gracePeriod)
-                        .transport(transportA)
-                        .config(config)
-                        .localAddress(NODE_A)
-                        .build());
+        assertThrows(NullPointerException.class,
+                () -> ClusteredEngine.builder().membership(membershipA).ownership(ownership)
+                        .gracePeriodManager(gracePeriod).transport(transportA).config(config)
+                        .localAddress(NODE_A).build());
     }
 
     @Test
     void builder_missingMembership_throwsNPE() {
-        assertThrows(NullPointerException.class, () ->
-                ClusteredEngine.builder()
-                        .localEngine(stubEngine())
-                        .ownership(ownership)
-                        .gracePeriodManager(gracePeriod)
-                        .transport(transportA)
-                        .config(config)
-                        .localAddress(NODE_A)
-                        .build());
+        assertThrows(NullPointerException.class,
+                () -> ClusteredEngine.builder().localEngine(stubEngine()).ownership(ownership)
+                        .gracePeriodManager(gracePeriod).transport(transportA).config(config)
+                        .localAddress(NODE_A).build());
     }
 
     @Test
     void builder_allFieldsSet_builds() {
-        final ClusteredEngine engine = ClusteredEngine.builder()
-                .localEngine(stubEngine())
-                .membership(membershipA)
-                .ownership(ownership)
-                .gracePeriodManager(gracePeriod)
-                .transport(transportA)
-                .config(config)
-                .localAddress(NODE_A)
-                .build();
+        final ClusteredEngine engine = ClusteredEngine.builder().localEngine(stubEngine())
+                .membership(membershipA).ownership(ownership).gracePeriodManager(gracePeriod)
+                .transport(transportA).config(config).localAddress(NODE_A).build();
         assertNotNull(engine);
     }
 
@@ -219,36 +201,27 @@ final class ClusteredEngineTest {
     @Test
     void createTable_nullName_throws() {
         final ClusteredEngine engine = buildEngine(stubEngine());
-        assertThrows(IllegalArgumentException.class, () ->
-                engine.createTable(null, SCHEMA));
+        assertThrows(IllegalArgumentException.class, () -> engine.createTable(null, SCHEMA));
     }
 
     @Test
     void createTable_emptyName_throws() {
         final ClusteredEngine engine = buildEngine(stubEngine());
-        assertThrows(IllegalArgumentException.class, () ->
-                engine.createTable("", SCHEMA));
+        assertThrows(IllegalArgumentException.class, () -> engine.createTable("", SCHEMA));
     }
 
     @Test
     void createTable_nullSchema_throws() {
         final ClusteredEngine engine = buildEngine(stubEngine());
-        assertThrows(IllegalArgumentException.class, () ->
-                engine.createTable("users", null));
+        assertThrows(IllegalArgumentException.class, () -> engine.createTable("users", null));
     }
 
     // --- Helper methods ---
 
     private ClusteredEngine buildEngine(Engine localEngine) {
-        return ClusteredEngine.builder()
-                .localEngine(localEngine)
-                .membership(membershipA)
-                .ownership(ownership)
-                .gracePeriodManager(gracePeriod)
-                .transport(transportA)
-                .config(config)
-                .localAddress(NODE_A)
-                .build();
+        return ClusteredEngine.builder().localEngine(localEngine).membership(membershipA)
+                .ownership(ownership).gracePeriodManager(gracePeriod).transport(transportA)
+                .config(config).localAddress(NODE_A).build();
     }
 
     private static StubEngine stubEngine() {
@@ -307,8 +280,7 @@ final class ClusteredEngineTest {
     private static final class StubEngine implements Engine {
         final List<String> createdTables = new CopyOnWriteArrayList<>();
         final List<String> droppedTables = new CopyOnWriteArrayList<>();
-        private final java.util.concurrent.ConcurrentHashMap<String, TableMetadata> tables =
-                new java.util.concurrent.ConcurrentHashMap<>();
+        private final java.util.concurrent.ConcurrentHashMap<String, TableMetadata> tables = new java.util.concurrent.ConcurrentHashMap<>();
         volatile boolean closed;
 
         @Override

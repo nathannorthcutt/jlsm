@@ -10,5 +10,5 @@ A PR must meet all of the following conditions before being marked ready for rev
 
 ### Code Standards
 
-- **Defensive assertions** — use `assert` statements throughout all code (public and private) to document and enforce assumptions
-- **Eager input validation** — validate all inputs to public methods eagerly with explicit exceptions (`IllegalArgumentException`, `NullPointerException`, etc.); never trust external callers
+- **Eager input validation** — validate all inputs to public methods eagerly with explicit exceptions (`IllegalArgumentException`, `NullPointerException`, etc.); never trust external callers. Input guards must use runtime checks (`Objects.requireNonNull`, explicit `if`/`throw`), never `assert` alone — assertions are disabled in production
+- **Defensive assertions** — use `assert` statements to validate internal data flow and state transitions (returned values being consumed, intermediate computation results, invariants between cooperating private methods). Asserts provide development-time visibility into assumptions that runtime checks would not cover. Asserts must never be the sole mechanism satisfying a spec requirement — any behavior a spec mandates must be enforced by runtime checks

@@ -53,7 +53,8 @@ fi
 # Simple semver comparison: is MAIN_VERSION newer than INSTALLED?
 version_gt() {
     local IFS=.
-    local i a=($1) b=($2)
+    local i
+    local -a a=($1) b=($2)
     for ((i=0; i<${#a[@]}; i++)); do
         if ((10#${a[i]:-0} > 10#${b[i]:-0})); then return 0; fi
         if ((10#${a[i]:-0} < 10#${b[i]:-0})); then return 1; fi

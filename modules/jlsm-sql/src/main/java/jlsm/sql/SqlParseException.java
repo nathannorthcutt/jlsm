@@ -22,6 +22,9 @@ public final class SqlParseException extends Exception {
      */
     public SqlParseException(String message, int position) {
         super(message);
+        if (position < -1) {
+            throw new IllegalArgumentException("position must be >= -1, got: " + position);
+        }
         this.position = position;
     }
 
@@ -32,6 +35,9 @@ public final class SqlParseException extends Exception {
      */
     public SqlParseException(String message, int position, Throwable cause) {
         super(message, cause);
+        if (position < -1) {
+            throw new IllegalArgumentException("position must be >= -1, got: " + position);
+        }
         this.position = position;
     }
 

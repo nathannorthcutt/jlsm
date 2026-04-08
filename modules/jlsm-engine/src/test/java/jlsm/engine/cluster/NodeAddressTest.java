@@ -49,7 +49,8 @@ class NodeAddressTest {
 
     @Test
     void portAbove65535Throws() {
-        assertThrows(IllegalArgumentException.class, () -> new NodeAddress("n1", "localhost", 65536));
+        assertThrows(IllegalArgumentException.class,
+                () -> new NodeAddress("n1", "localhost", 65536));
     }
 
     @Test

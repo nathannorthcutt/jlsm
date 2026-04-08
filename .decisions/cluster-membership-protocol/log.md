@@ -64,3 +64,12 @@
 - [`.kb/distributed-systems/cluster-membership/cluster-membership-protocols.md`](../../.kb/distributed-systems/cluster-membership/cluster-membership-protocols.md)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** membership-view-stall-recovery, slow-node-detection, dynamic-membership-threshold, piggybacked-state-exchange
+**Summary:** 4 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

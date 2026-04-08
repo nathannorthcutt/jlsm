@@ -2,6 +2,7 @@ package jlsm.table;
 
 import jlsm.encryption.EncryptionSpec;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
@@ -55,9 +56,12 @@ public final class JlsmDocument {
      * @param preEncrypted whether the document's encrypted fields contain pre-encrypted ciphertext
      */
     JlsmDocument(JlsmSchema schema, Object[] values, boolean preEncrypted) {
-        assert schema != null : "schema must not be null";
-        assert values != null : "values must not be null";
-        assert values.length == schema.fields().size() : "values length must match field count";
+        Objects.requireNonNull(schema, "schema must not be null");
+        Objects.requireNonNull(values, "values must not be null");
+        if (values.length != schema.fields().size()) {
+            throw new IllegalArgumentException("values length " + values.length
+                    + " must match field count " + schema.fields().size());
+        }
         this.schema = schema;
         this.values = values;
         this.preEncrypted = preEncrypted;
@@ -78,13 +82,14 @@ public final class JlsmDocument {
      */
     public static JlsmDocument of(JlsmSchema schema, Object... nameValuePairs) {
         Objects.requireNonNull(schema, "schema must not be null");
-        assert nameValuePairs != null : "nameValuePairs must not be null";
+        Objects.requireNonNull(nameValuePairs, "nameValuePairs must not be null");
         if (nameValuePairs.length % 2 != 0) {
             throw new IllegalArgumentException(
                     "nameValuePairs must be an even number of alternating name/value entries");
         }
 
         final Object[] values = new Object[schema.fields().size()];
+        final boolean[] assigned = new boolean[values.length];
 
         for (int i = 0; i < nameValuePairs.length; i += 2) {
             final Object rawName = nameValuePairs[i];
@@ -96,11 +101,16 @@ public final class JlsmDocument {
             if (idx < 0) {
                 throw new IllegalArgumentException("Unknown field: '" + fieldName + "'");
             }
+            if (assigned[idx]) {
+                throw new IllegalArgumentException(
+                        "Duplicate field name: '" + fieldName + "' appears more than once");
+            }
+            assigned[idx] = true;
             final Object value = nameValuePairs[i + 1];
             if (value != null) {
                 validateType(fieldName, schema.fields().get(idx).type(), value);
             }
-            values[idx] = value;
+            values[idx] = defensiveCopyIfVector(schema.fields().get(idx).type(), value);
         }
 
         return new JlsmDocument(schema, values);
@@ -122,7 +132,7 @@ public final class JlsmDocument {
      */
     public static JlsmDocument preEncrypted(JlsmSchema schema, Object... nameValuePairs) {
         Objects.requireNonNull(schema, "schema must not be null");
-        assert nameValuePairs != null : "nameValuePairs must not be null";
+        Objects.requireNonNull(nameValuePairs, "nameValuePairs must not be null");
         if (nameValuePairs.length % 2 != 0) {
             throw new IllegalArgumentException(
                     "nameValuePairs must be an even number of alternating name/value entries");
@@ -146,10 +156,22 @@ public final class JlsmDocument {
                 if (fd.encryption() instanceof EncryptionSpec.None) {
                     // Unencrypted field — validate type normally
                     validateType(fieldName, fd.type(), value);
+                } else {
+                    // Encrypted field — must be byte[] ciphertext
+                    if (!(value instanceof byte[])) {
+                        throw new IllegalArgumentException("Encrypted field '" + fieldName
+                                + "' must be byte[], got " + value.getClass().getSimpleName());
+                    }
                 }
-                // Encrypted fields: accept byte[] ciphertext without type validation
             }
-            values[idx] = value;
+            final FieldDefinition fd2 = schema.fields().get(idx);
+            if (!(fd2.encryption() instanceof EncryptionSpec.None)
+                    && value instanceof byte[] ciphertext) {
+                // Encrypted field — defensive copy of ciphertext, not vector dispatch
+                values[idx] = ciphertext.clone();
+            } else {
+                values[idx] = defensiveCopyIfVector(fd2.type(), value);
+            }
         }
 
         return new JlsmDocument(schema, values, true);
@@ -164,6 +186,25 @@ public final class JlsmDocument {
         return schema;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof JlsmDocument other)) {
+            return false;
+        }
+        return preEncrypted == other.preEncrypted && Objects.equals(schema, other.schema)
+                && Arrays.deepEquals(values, other.values);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(schema, preEncrypted);
+        result = 31 * result + Arrays.deepHashCode(values);
+        return result;
+    }
+
     /**
      * Returns {@code true} if this document was constructed via {@link #preEncrypted} and its
      * encrypted fields hold pre-encrypted ciphertext.
@@ -172,9 +213,12 @@ public final class JlsmDocument {
         return preEncrypted;
     }
 
-    /** Returns the raw value array in schema-field order (package-private for serializer use). */
+    /**
+     * Returns a defensive copy of the value array in schema-field order (package-private for
+     * serializer use).
+     */
     Object[] values() {
-        return values;
+        return values.clone();
     }
 
     /** Returns {@code true} if the field with the given name is null/absent. */
@@ -226,7 +270,11 @@ public final class JlsmDocument {
             throw new IllegalArgumentException(
                     "Field '" + field + "' is not INT64 or TIMESTAMP, got " + type);
         }
-        return (Long) values[idx];
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return (Long) val;
     }
 
     /** Returns the raw IEEE 754 half-precision bits for the FLOAT16 named field. */
@@ -260,7 +308,11 @@ public final class JlsmDocument {
         if (!(schema.fields().get(idx).type() instanceof FieldType.ArrayType)) {
             throw new IllegalArgumentException("Field '" + field + "' is not an array type");
         }
-        return (Object[]) values[idx];
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return ((Object[]) val).clone();
     }
 
     /** Returns the nested document (ObjectType) value of the named field. */
@@ -269,7 +321,49 @@ public final class JlsmDocument {
         if (!(schema.fields().get(idx).type() instanceof FieldType.ObjectType)) {
             throw new IllegalArgumentException("Field '" + field + "' is not an object type");
         }
-        return (JlsmDocument) values[idx];
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return (JlsmDocument) val;
+    }
+
+    /**
+     * Returns a defensive copy of the VECTOR(FLOAT32) value of the named field as a
+     * {@code float[]}.
+     */
+    public float[] getFloat32Vector(String field) {
+        final int idx = requireIndex(field);
+        final FieldType type = schema.fields().get(idx).type();
+        if (!(type instanceof FieldType.VectorType vt)
+                || vt.elementType() != FieldType.Primitive.FLOAT32) {
+            throw new IllegalArgumentException(
+                    "Field '" + field + "' is not a VECTOR(FLOAT32), got " + type);
+        }
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return ((float[]) val).clone();
+    }
+
+    /**
+     * Returns a defensive copy of the VECTOR(FLOAT16) value of the named field as a
+     * {@code short[]}.
+     */
+    public short[] getFloat16Vector(String field) {
+        final int idx = requireIndex(field);
+        final FieldType type = schema.fields().get(idx).type();
+        if (!(type instanceof FieldType.VectorType vt)
+                || vt.elementType() != FieldType.Primitive.FLOAT16) {
+            throw new IllegalArgumentException(
+                    "Field '" + field + "' is not a VECTOR(FLOAT16), got " + type);
+        }
+        final Object val = values[idx];
+        if (val == null) {
+            throw new NullPointerException("Field '" + field + "' is null");
+        }
+        return ((short[]) val).clone();
     }
 
     // -------------------------------------------------------------------------
@@ -352,7 +446,17 @@ public final class JlsmDocument {
      * @param value the non-null value to check
      * @throws IllegalArgumentException if the value type does not match
      */
+    /**
+     * Maximum nesting depth for ArrayType validation. Prevents StackOverflowError on pathologically
+     * nested array schemas.
+     */
+    private static final int MAX_ARRAY_NESTING_DEPTH = 32;
+
     private static void validateType(String fieldName, FieldType type, Object value) {
+        validateType(fieldName, type, value, 0);
+    }
+
+    private static void validateType(String fieldName, FieldType type, Object value, int depth) {
         assert fieldName != null : "fieldName must not be null";
         assert type != null : "type must not be null";
         assert value != null : "value must not be null (nulls are handled by callers)";
@@ -372,7 +476,21 @@ public final class JlsmDocument {
                     case TIMESTAMP -> expect(fieldName, value, Long.class, "TIMESTAMP");
                 }
             }
-            case FieldType.ArrayType _ -> expect(fieldName, value, Object[].class, "ARRAY");
+            case FieldType.ArrayType at -> {
+                if (depth >= MAX_ARRAY_NESTING_DEPTH) {
+                    throw new IllegalArgumentException(
+                            "Field '" + fieldName + "' exceeds maximum array nesting depth of "
+                                    + MAX_ARRAY_NESTING_DEPTH);
+                }
+                expect(fieldName, value, Object[].class, "ARRAY");
+                final Object[] arr = (Object[]) value;
+                for (int i = 0; i < arr.length; i++) {
+                    if (arr[i] != null) {
+                        validateType(fieldName + "[" + i + "]", at.elementType(), arr[i],
+                                depth + 1);
+                    }
+                }
+            }
             case FieldType.VectorType vt -> {
                 if (vt.elementType() == FieldType.Primitive.FLOAT32) {
                     expect(fieldName, value, float[].class, "VECTOR(FLOAT32)");
@@ -382,7 +500,14 @@ public final class JlsmDocument {
                                 + "' expects VECTOR(FLOAT32, " + vt.dimensions() + ") but got "
                                 + fArr.length + " elements");
                     }
-                } else {
+                    for (int i = 0; i < fArr.length; i++) {
+                        if (!Float.isFinite(fArr[i])) {
+                            throw new IllegalArgumentException(
+                                    "Field '" + fieldName + "' VECTOR(FLOAT32) element [" + i
+                                            + "] is non-finite: " + fArr[i]);
+                        }
+                    }
+                } else if (vt.elementType() == FieldType.Primitive.FLOAT16) {
                     expect(fieldName, value, short[].class, "VECTOR(FLOAT16)");
                     final short[] sArr = (short[]) value;
                     if (sArr.length != vt.dimensions()) {
@@ -390,6 +515,16 @@ public final class JlsmDocument {
                                 + "' expects VECTOR(FLOAT16, " + vt.dimensions() + ") but got "
                                 + sArr.length + " elements");
                     }
+                    for (int i = 0; i < sArr.length; i++) {
+                        if ((sArr[i] & 0x7C00) == 0x7C00) {
+                            throw new IllegalArgumentException(
+                                    "Field '" + fieldName + "' VECTOR(FLOAT16) element [" + i
+                                            + "] is non-finite (NaN or Infinity)");
+                        }
+                    }
+                } else {
+                    throw new AssertionError(
+                            "Unsupported VectorType elementType: " + vt.elementType());
                 }
             }
             case FieldType.ObjectType _ -> expect(fieldName, value, JlsmDocument.class, "OBJECT");
@@ -413,5 +548,45 @@ public final class JlsmDocument {
                     + " (" + expectedClass.getSimpleName() + "), got "
                     + value.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Returns a defensive copy of the value if it is a mutable array type (vector float[]/short[],
+     * or Object[] for ArrayType fields). Other types are returned as-is (immutable or not an
+     * array).
+     */
+    private static Object defensiveCopyIfVector(FieldType type, Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (type instanceof FieldType.VectorType vt) {
+            if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+                return ((float[]) value).clone();
+            } else {
+                return ((short[]) value).clone();
+            }
+        }
+        if (type instanceof FieldType.ArrayType at && value instanceof Object[] arr) {
+            return deepCopyArray(at, arr);
+        }
+        return value;
+    }
+
+    /**
+     * Deep-copies an {@code Object[]} value according to the nested {@link FieldType.ArrayType}
+     * structure. Primitive leaf arrays (e.g., int[], float[]) are immutable-by-convention and not
+     * cloned; only {@code Object[]} levels are cloned so that callers cannot mutate the document's
+     * internal state.
+     */
+    private static Object[] deepCopyArray(FieldType.ArrayType arrayType, Object[] source) {
+        final Object[] copy = source.clone();
+        if (arrayType.elementType() instanceof FieldType.ArrayType innerType) {
+            for (int i = 0; i < copy.length; i++) {
+                if (copy[i] instanceof Object[] inner) {
+                    copy[i] = deepCopyArray(innerType, inner);
+                }
+            }
+        }
+        return copy;
     }
 }

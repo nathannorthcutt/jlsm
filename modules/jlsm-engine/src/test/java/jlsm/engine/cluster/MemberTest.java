@@ -31,8 +31,7 @@ class MemberTest {
 
     @Test
     void negativeIncarnationThrows() {
-        assertThrows(IllegalArgumentException.class, () ->
-                new Member(ADDR, MemberState.ALIVE, -1));
+        assertThrows(IllegalArgumentException.class, () -> new Member(ADDR, MemberState.ALIVE, -1));
     }
 
     @Test

@@ -3,6 +3,7 @@ package jlsm.encryption;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
@@ -19,7 +20,7 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>
  * Governed by: .kb/algorithms/encryption/searchable-encryption-schemes.md
  */
-public final class AesSivEncryptor {
+public final class AesSivEncryptor implements AutoCloseable {
 
     private static final int BLOCK_SIZE = 16;
     private static final int KEY_512_BYTES = 64;
@@ -30,6 +31,11 @@ public final class AesSivEncryptor {
      * Per-thread AES/ECB cipher for CTR keystream — stateless between doFinal calls, safe to reuse.
      */
     private final ThreadLocal<Cipher> ctrCipher;
+    /** Retained for destruction on close — SecretKeySpec internally clones key bytes. */
+    private final SecretKeySpec cmacKeySpec;
+    /** Retained for destruction on close — SecretKeySpec internally clones key bytes. */
+    private final SecretKeySpec ctrKeySpec;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     /**
      * Creates an AES-SIV encryptor using the given key holder.
@@ -48,15 +54,15 @@ public final class AesSivEncryptor {
         final byte[] ctrKey = Arrays.copyOfRange(fullKey, 32, 64);
         Arrays.fill(fullKey, (byte) 0);
 
-        final SecretKeySpec cmacKeySpec = new SecretKeySpec(cmacKey, "AES");
-        final SecretKeySpec ctrKeySpec = new SecretKeySpec(ctrKey, "AES");
+        this.cmacKeySpec = new SecretKeySpec(cmacKey, "AES");
+        this.ctrKeySpec = new SecretKeySpec(ctrKey, "AES");
         Arrays.fill(cmacKey, (byte) 0);
         Arrays.fill(ctrKey, (byte) 0);
 
         this.cmacCipher = ThreadLocal.withInitial(() -> {
             try {
                 final Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
-                c.init(Cipher.ENCRYPT_MODE, cmacKeySpec);
+                c.init(Cipher.ENCRYPT_MODE, this.cmacKeySpec);
                 return c;
             } catch (GeneralSecurityException e) {
                 throw new IllegalStateException("Failed to initialize CMAC cipher", e);
@@ -65,7 +71,7 @@ public final class AesSivEncryptor {
         this.ctrCipher = ThreadLocal.withInitial(() -> {
             try {
                 final Cipher c = Cipher.getInstance("AES/ECB/NoPadding");
-                c.init(Cipher.ENCRYPT_MODE, ctrKeySpec);
+                c.init(Cipher.ENCRYPT_MODE, this.ctrKeySpec);
                 return c;
             } catch (GeneralSecurityException e) {
                 throw new IllegalStateException("Failed to initialize CTR cipher", e);
@@ -82,6 +88,7 @@ public final class AesSivEncryptor {
      */
     public byte[] encrypt(byte[] plaintext, byte[] associatedData) {
         Objects.requireNonNull(plaintext, "plaintext must not be null");
+        ensureOpen();
         final byte[] ad = associatedData != null ? associatedData : new byte[0];
 
         final byte[] iv = s2v(ad, plaintext);
@@ -104,6 +111,7 @@ public final class AesSivEncryptor {
      */
     public byte[] decrypt(byte[] ciphertext, byte[] associatedData) {
         Objects.requireNonNull(ciphertext, "ciphertext must not be null");
+        ensureOpen();
         if (ciphertext.length < BLOCK_SIZE) {
             throw new IllegalArgumentException("Ciphertext too short: minimum " + BLOCK_SIZE
                     + " bytes, got " + ciphertext.length);
@@ -121,6 +129,36 @@ public final class AesSivEncryptor {
                     "AES-SIV IV verification failed: wrong key or tampered data");
         }
         return plaintext;
+    }
+
+    /**
+     * Destroys retained SecretKeySpec objects (zeroing internal key clones), removes per-thread
+     * Cipher entries, and marks this encryptor as closed. Subsequent calls to {@link #encrypt} or
+     * {@link #decrypt} will throw {@link IllegalStateException}. Idempotent.
+     */
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        cmacCipher.remove();
+        ctrCipher.remove();
+        try {
+            cmacKeySpec.destroy();
+        } catch (javax.security.auth.DestroyFailedException _) {
+            // Best-effort: some providers do not support destroy
+        }
+        try {
+            ctrKeySpec.destroy();
+        } catch (javax.security.auth.DestroyFailedException _) {
+            // Best-effort: some providers do not support destroy
+        }
+    }
+
+    private void ensureOpen() {
+        if (closed.get()) {
+            throw new IllegalStateException("AesSivEncryptor has been closed");
+        }
     }
 
     // ── S2V (RFC 5297 Section 2.4) ──────────────────────────────────────────

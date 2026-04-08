@@ -23,7 +23,9 @@ public record TableMetadata(String name, JlsmSchema schema, Instant createdAt, T
         Objects.requireNonNull(schema, "schema must not be null");
         Objects.requireNonNull(createdAt, "createdAt must not be null");
         Objects.requireNonNull(state, "state must not be null");
-        assert !name.isEmpty() : "name must not be empty";
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
     }
 
     /**

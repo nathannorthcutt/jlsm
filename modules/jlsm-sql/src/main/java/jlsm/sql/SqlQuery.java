@@ -42,6 +42,10 @@ public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
         projections = List.copyOf(projections);
         aliases = List.copyOf(aliases);
         orderBy = List.copyOf(orderBy);
+        if (!aliases.isEmpty() && projections.size() != aliases.size()) {
+            throw new IllegalArgumentException("projections and aliases must have the same size: "
+                    + projections.size() + " vs " + aliases.size());
+        }
     }
 
     /**
@@ -57,17 +61,42 @@ public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
     }
 
     /**
+     * A placeholder for a positional bind parameter ({@code ?}) in a predicate value position.
+     * Implements {@link Comparable} so it can be used in range predicates (Gt, Gte, Lt, Lte,
+     * Between) as well as equality predicates (Eq, Ne).
+     *
+     * @param index the zero-based parameter index
+     */
+    public record BindMarker(int index) implements Comparable<BindMarker> {
+        public BindMarker {
+            if (index < 0) {
+                throw new IllegalArgumentException("bind marker index must be >= 0, got: " + index);
+            }
+        }
+
+        @Override
+        public int compareTo(BindMarker other) {
+            return Integer.compare(index, other.index);
+        }
+    }
+
+    /**
      * Describes a VECTOR_DISTANCE function call in ORDER BY position.
      *
      * @param field the vector field name
      * @param parameterIndex the bind parameter index for the query vector
      * @param metric the distance metric string (e.g. "cosine", "euclidean", "dot")
+     * @param ascending true for ASC (default), false for DESC
      */
-    public record VectorDistanceOrder(String field, int parameterIndex, String metric) {
+    public record VectorDistanceOrder(String field, int parameterIndex, String metric,
+            boolean ascending) {
         public VectorDistanceOrder {
             Objects.requireNonNull(field, "field");
             Objects.requireNonNull(metric, "metric");
-            assert parameterIndex >= 0 : "parameterIndex must be >= 0";
+            if (parameterIndex < 0) {
+                throw new IllegalArgumentException(
+                        "parameterIndex must be >= 0, got: " + parameterIndex);
+            }
         }
     }
 }

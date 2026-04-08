@@ -8,10 +8,12 @@ import java.lang.foreign.ValueLayout;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldDefinition;
@@ -31,99 +33,304 @@ public final class IndexRegistry implements Closeable {
     private final JlsmSchema schema;
     private final List<SecondaryIndex> indices;
     private final Map<PkKey, StoredEntry> documentStore;
-    private volatile boolean closed;
+    private final Arena segmentArena;
+    private final AtomicBoolean closed = new AtomicBoolean();
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions) throws IOException {
         Objects.requireNonNull(schema, "schema");
         Objects.requireNonNull(definitions, "definitions");
         this.schema = schema;
         this.indices = new ArrayList<>();
-        this.documentStore = new LinkedHashMap<>();
+        this.documentStore = new ConcurrentHashMap<>();
+        this.segmentArena = Arena.ofShared();
 
         for (IndexDefinition def : definitions) {
             validate(schema, def);
-            this.indices.add(createIndex(def));
+            final int fieldIdx = schema.fieldIndex(def.fieldName());
+            final FieldType fieldType = schema.fields().get(fieldIdx).type();
+            try {
+                this.indices.add(createIndex(def, fieldType));
+            } catch (Exception e) {
+                // Close the managed arena before propagating the failure.
+                segmentArena.close();
+                // Close already-created indices before propagating the failure.
+                if (!this.indices.isEmpty()) {
+                    final int cleanedUp = this.indices.size();
+                    for (SecondaryIndex idx : this.indices) {
+                        try {
+                            idx.close();
+                        } catch (IOException suppressed) {
+                            e.addSuppressed(suppressed);
+                        }
+                    }
+                    this.indices.clear();
+                    if (e instanceof IOException ioe) {
+                        throw ioe;
+                    }
+                    throw new IOException("Index creation failed; cleaned up " + cleanedUp
+                            + " already-created indices", e);
+                }
+                if (e instanceof IOException ioe) {
+                    throw ioe;
+                }
+                throw new IOException("Index creation failed", e);
+            }
         }
     }
 
     public void onInsert(MemorySegment primaryKey, JlsmDocument document) throws IOException {
-        assert !closed : "Registry is closed";
-        Objects.requireNonNull(primaryKey, "primaryKey");
-        Objects.requireNonNull(document, "document");
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
+            Objects.requireNonNull(primaryKey, "primaryKey");
+            Objects.requireNonNull(document, "document");
 
-        // Unique checks first
-        for (final SecondaryIndex idx : indices) {
-            if (idx.definition().indexType() == IndexType.UNIQUE) {
-                final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
-                idx.onInsert(primaryKey, fieldValue);
+            // Phase 1: validate ALL unique constraints before any mutation.
+            // This prevents orphan entries if the Nth unique check fails after
+            // the first N-1 unique indices already inserted.
+            for (final SecondaryIndex idx : indices) {
+                if (idx instanceof FieldIndex fi
+                        && fi.definition().indexType() == IndexType.UNIQUE) {
+                    final Object fieldValue = extractFieldValue(document,
+                            fi.definition().fieldName());
+                    fi.checkUnique(fieldValue);
+                }
             }
-        }
-        // Non-unique inserts
-        for (final SecondaryIndex idx : indices) {
-            if (idx.definition().indexType() != IndexType.UNIQUE) {
-                final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
-                idx.onInsert(primaryKey, fieldValue);
-            }
-        }
 
-        documentStore.put(toPkKey(primaryKey), new StoredEntry(copySegment(primaryKey), document));
+            // Phase 2: all unique checks passed — now insert into all indices.
+            // Track how many indices we've inserted into so we can roll back on failure.
+            int insertedCount = 0;
+            try {
+                for (final SecondaryIndex idx : indices) {
+                    final Object fieldValue = extractFieldValue(document,
+                            idx.definition().fieldName());
+                    idx.onInsert(primaryKey, fieldValue);
+                    insertedCount++;
+                }
+                // documentStore.put must be inside the rollback scope — if copySegment or
+                // toPkKey throws after indices are updated, the rollback removes orphaned
+                // index entries that would otherwise reference a missing documentStore entry.
+                documentStore.put(toPkKey(primaryKey),
+                        new StoredEntry(copySegment(primaryKey), document));
+            } catch (IOException | RuntimeException e) {
+                // Roll back indices that already received the insert
+                for (int i = 0; i < insertedCount; i++) {
+                    try {
+                        final SecondaryIndex idx = indices.get(i);
+                        final Object fieldValue = extractFieldValue(document,
+                                idx.definition().fieldName());
+                        idx.onDelete(primaryKey, fieldValue);
+                    } catch (IOException | RuntimeException suppressed) {
+                        e.addSuppressed(suppressed);
+                    }
+                }
+                throw e;
+            }
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     public void onUpdate(MemorySegment primaryKey, JlsmDocument oldDocument,
             JlsmDocument newDocument) throws IOException {
-        assert !closed : "Registry is closed";
-        for (final SecondaryIndex idx : indices) {
-            final String fieldName = idx.definition().fieldName();
-            final Object oldValue = oldDocument != null ? extractFieldValue(oldDocument, fieldName)
-                    : null;
-            final Object newValue = extractFieldValue(newDocument, fieldName);
-            idx.onUpdate(primaryKey, oldValue, newValue);
-        }
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
 
-        documentStore.put(toPkKey(primaryKey),
-                new StoredEntry(copySegment(primaryKey), newDocument));
+            // Phase 1: validate ALL unique constraints for the new values before any mutation.
+            // This prevents partial updates if the Nth unique check fails after the first
+            // N-1 indices have already been updated.
+            for (final SecondaryIndex idx : indices) {
+                if (idx instanceof FieldIndex fi
+                        && fi.definition().indexType() == IndexType.UNIQUE) {
+                    final String fieldName = fi.definition().fieldName();
+                    final Object oldValue = oldDocument != null
+                            ? extractFieldValue(oldDocument, fieldName)
+                            : null;
+                    final Object newValue = extractFieldValue(newDocument, fieldName);
+                    // Only check uniqueness if the value actually changed
+                    if (newValue != null && !newValue.equals(oldValue)) {
+                        fi.checkUnique(newValue);
+                    }
+                }
+            }
+
+            // Phase 2: all unique checks passed — now apply updates to all indices.
+            // Track how many indices we've updated so we can roll back on failure.
+            int updatedCount = 0;
+            try {
+                for (final SecondaryIndex idx : indices) {
+                    final String fieldName = idx.definition().fieldName();
+                    final Object oldValue = oldDocument != null
+                            ? extractFieldValue(oldDocument, fieldName)
+                            : null;
+                    final Object newValue = extractFieldValue(newDocument, fieldName);
+                    idx.onUpdate(primaryKey, oldValue, newValue);
+                    updatedCount++;
+                }
+                // documentStore.put must be inside the rollback scope — if copySegment or
+                // toPkKey throws after indices are updated, the rollback reverses orphaned
+                // index entries that would otherwise reference stale documentStore data.
+                documentStore.put(toPkKey(primaryKey),
+                        new StoredEntry(copySegment(primaryKey), newDocument));
+            } catch (IOException | RuntimeException e) {
+                // Roll back indices that already received the update by reversing the operation
+                for (int i = 0; i < updatedCount; i++) {
+                    try {
+                        final SecondaryIndex idx = indices.get(i);
+                        final String fieldName = idx.definition().fieldName();
+                        final Object oldValue = oldDocument != null
+                                ? extractFieldValue(oldDocument, fieldName)
+                                : null;
+                        final Object newValue = extractFieldValue(newDocument, fieldName);
+                        idx.onUpdate(primaryKey, newValue, oldValue);
+                    } catch (IOException | RuntimeException suppressed) {
+                        e.addSuppressed(suppressed);
+                    }
+                }
+                throw e;
+            }
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     public void onDelete(MemorySegment primaryKey, JlsmDocument document) throws IOException {
-        assert !closed : "Registry is closed";
-        for (final SecondaryIndex idx : indices) {
-            final Object fieldValue = extractFieldValue(document, idx.definition().fieldName());
-            idx.onDelete(primaryKey, fieldValue);
-        }
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
 
-        documentStore.remove(toPkKey(primaryKey));
+            // Track how many indices we've deleted from so we can roll back on failure.
+            int deletedCount = 0;
+            try {
+                for (final SecondaryIndex idx : indices) {
+                    final Object fieldValue = extractFieldValue(document,
+                            idx.definition().fieldName());
+                    idx.onDelete(primaryKey, fieldValue);
+                    deletedCount++;
+                }
+                // documentStore.remove must be inside the rollback scope — if toPkKey
+                // or remove throws after indices are updated, the rollback re-inserts
+                // orphaned index entries that would otherwise reference a still-present
+                // documentStore entry.
+                documentStore.remove(toPkKey(primaryKey));
+            } catch (IOException | RuntimeException e) {
+                // Roll back indices that already received the delete by re-inserting
+                for (int i = 0; i < deletedCount; i++) {
+                    try {
+                        final SecondaryIndex idx = indices.get(i);
+                        final Object fieldValue = extractFieldValue(document,
+                                idx.definition().fieldName());
+                        idx.onInsert(primaryKey, fieldValue);
+                    } catch (IOException | RuntimeException suppressed) {
+                        e.addSuppressed(suppressed);
+                    }
+                }
+                throw e;
+            }
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     public SecondaryIndex findIndex(Predicate predicate) {
-        for (SecondaryIndex idx : indices) {
-            if (idx.supports(predicate)) {
-                return idx;
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
+            for (SecondaryIndex idx : indices) {
+                if (idx.supports(predicate)) {
+                    return idx;
+                }
             }
+            return null;
+        } finally {
+            rwLock.readLock().unlock();
         }
-        return null;
+    }
+
+    /**
+     * Atomically finds an index supporting the predicate and executes lookup on it, returning the
+     * results as a snapshot list. The read lock is held for the entire operation, preventing
+     * {@link #close()} from tearing down indices between the find and the lookup.
+     *
+     * @return the lookup results, or {@code null} if no index supports the predicate
+     */
+    public List<MemorySegment> findAndLookup(Predicate predicate) throws IOException {
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
+            SecondaryIndex idx = null;
+            for (SecondaryIndex candidate : indices) {
+                if (candidate.supports(predicate)) {
+                    idx = candidate;
+                    break;
+                }
+            }
+            if (idx == null)
+                return null;
+            List<MemorySegment> results = new ArrayList<>();
+            Iterator<MemorySegment> it = idx.lookup(predicate);
+            while (it.hasNext()) {
+                results.add(it.next());
+            }
+            return results;
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     public boolean isEmpty() {
-        return indices.isEmpty();
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
+            return indices.isEmpty();
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     @Override
     public void close() throws IOException {
-        closed = true;
-        IOException deferred = null;
-        for (SecondaryIndex idx : indices) {
-            try {
-                idx.close();
-            } catch (IOException e) {
-                if (deferred == null) {
-                    deferred = e;
-                } else {
-                    deferred.addSuppressed(e);
+        if (!closed.compareAndSet(false, true))
+            return;
+        // Acquire write lock to ensure all in-flight operations (which hold the
+        // read lock) complete before tearing down indices, documentStore, and arena.
+        rwLock.writeLock().lock();
+        try {
+            IOException deferred = null;
+            for (SecondaryIndex idx : indices) {
+                try {
+                    idx.close();
+                } catch (IOException e) {
+                    if (deferred == null) {
+                        deferred = e;
+                    } else {
+                        deferred.addSuppressed(e);
+                    }
                 }
             }
-        }
-        if (deferred != null) {
-            throw deferred;
+            documentStore.clear();
+            try {
+                segmentArena.close();
+            } catch (Exception arenaEx) {
+                if (deferred == null) {
+                    deferred = new IOException("Failed to close segment arena", arenaEx);
+                } else {
+                    deferred.addSuppressed(arenaEx);
+                }
+            }
+            if (deferred != null) {
+                throw deferred;
+            }
+        } finally {
+            rwLock.writeLock().unlock();
         }
     }
 
@@ -131,21 +338,44 @@ public final class IndexRegistry implements Closeable {
      * Resolves a primary key to its stored document, or null if not found.
      */
     public StoredEntry resolveEntry(MemorySegment primaryKey) {
-        return documentStore.get(toPkKey(primaryKey));
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
+            return documentStore.get(toPkKey(primaryKey));
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     /**
-     * Returns an iterator over all stored entries. Used for scan-and-filter queries.
+     * Returns an iterator over all stored entries. Used for scan-and-filter queries. The read lock
+     * is held while building the snapshot, preventing {@link #close()} from tearing down the arena
+     * while entries are being copied.
      */
     public Iterator<StoredEntry> allEntries() {
-        return List.copyOf(documentStore.values()).iterator();
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
+            return List.copyOf(documentStore.values()).iterator();
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     /**
      * Returns the schema this registry was created with.
      */
     public JlsmSchema schema() {
-        return schema;
+        rwLock.readLock().lock();
+        try {
+            if (closed.get())
+                throw new IllegalStateException("Registry is closed");
+            return schema;
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     // ── Document store types ────────────────────────────────────────────
@@ -155,8 +385,8 @@ public final class IndexRegistry implements Closeable {
      */
     public record StoredEntry(MemorySegment primaryKey, JlsmDocument document) {
         public StoredEntry {
-            assert primaryKey != null : "primaryKey must not be null";
-            assert document != null : "document must not be null";
+            Objects.requireNonNull(primaryKey, "primaryKey must not be null");
+            Objects.requireNonNull(document, "document must not be null");
         }
     }
 
@@ -179,8 +409,8 @@ public final class IndexRegistry implements Closeable {
         return new PkKey(seg.toArray(ValueLayout.JAVA_BYTE));
     }
 
-    private static MemorySegment copySegment(MemorySegment src) {
-        MemorySegment copy = Arena.ofAuto().allocate(src.byteSize());
+    private MemorySegment copySegment(MemorySegment src) {
+        MemorySegment copy = segmentArena.allocate(src.byteSize());
         copy.copyFrom(src);
         return copy;
     }
@@ -214,6 +444,11 @@ public final class IndexRegistry implements Closeable {
                 }
             }
             case EQUALITY -> {
+                if (fieldType == FieldType.Primitive.BOOLEAN) {
+                    throw new IllegalArgumentException(
+                            "EQUALITY index is not supported on BOOLEAN field '" + def.fieldName()
+                                    + "'");
+                }
                 if (!isPrimitiveOrBoundedString) {
                     throw new IllegalArgumentException(
                             "EQUALITY index requires a primitive field type, got: " + fieldType
@@ -258,13 +493,26 @@ public final class IndexRegistry implements Closeable {
         final FieldType fieldType = fieldDef.type();
         final String fieldName = def.fieldName();
 
-        if (fieldType instanceof FieldType.BoundedString) {
-            return; // allowed
+        // OPE is capped at 2 bytes — must match FieldEncryptionDispatch.MAX_OPE_BYTES
+        if (fieldType instanceof FieldType.BoundedString bs) {
+            if (bs.maxLength() > 2) {
+                throw new IllegalArgumentException(
+                        "OrderPreserving encryption on BoundedString(maxLength=" + bs.maxLength()
+                                + ") field '" + fieldName
+                                + "' is not supported — maxLength exceeds OPE limit of 2");
+            }
+            return; // allowed — fits in MAX_OPE_BYTES
         }
         if (fieldType instanceof FieldType.Primitive p) {
             switch (p) {
-                case INT8, INT16, INT32, INT64, TIMESTAMP -> {
-                    /* allowed */ }
+                case INT8, INT16 -> {
+                    /* allowed — fits in MAX_OPE_BYTES (2) */ }
+                case INT32, INT64,
+                        TIMESTAMP ->
+                    throw new IllegalArgumentException(
+                            "OrderPreserving encryption on " + p + " field '" + fieldName
+                                    + "' is not supported — OPE is limited to 2-byte values; "
+                                    + "wider types would suffer silent data truncation");
                 case STRING -> throw new IllegalArgumentException(
                         "OrderPreserving encryption on unbounded STRING field '" + fieldName
                                 + "' is not supported; use FieldType.string(maxLength) for bounded string");
@@ -323,9 +571,10 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    private static SecondaryIndex createIndex(IndexDefinition def) throws IOException {
+    private static SecondaryIndex createIndex(IndexDefinition def, FieldType fieldType)
+            throws IOException {
         return switch (def.indexType()) {
-            case EQUALITY, RANGE, UNIQUE -> new FieldIndex(def);
+            case EQUALITY, RANGE, UNIQUE -> new FieldIndex(def, fieldType);
             case FULL_TEXT -> new FullTextFieldIndex(def);
             case VECTOR -> new VectorFieldIndex(def);
         };
@@ -357,8 +606,13 @@ public final class IndexRegistry implements Closeable {
             return document.getString(fieldName);
         } else if (fieldType instanceof FieldType.ArrayType) {
             return document.getArray(fieldName);
-        } else if (fieldType instanceof FieldType.VectorType) {
-            return DocumentAccess.get().values(document)[idx];
+        } else if (fieldType instanceof FieldType.VectorType vt) {
+            final Object raw = DocumentAccess.get().values(document)[idx];
+            return switch (vt.elementType()) {
+                case FLOAT32 -> ((float[]) raw).clone();
+                case FLOAT16 -> ((short[]) raw).clone();
+                default -> raw;
+            };
         } else if (fieldType instanceof FieldType.ObjectType) {
             return document.getObject(fieldName);
         }

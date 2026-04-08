@@ -51,3 +51,12 @@
 - [`.kb/systems/security/jvm-key-handling-patterns.md`](../../.kb/systems/security/jvm-key-handling-patterns.md)
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** encryption-key-rotation, wal-entry-encryption, unencrypted-to-encrypted-migration, per-field-key-binding
+**Summary:** 4 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

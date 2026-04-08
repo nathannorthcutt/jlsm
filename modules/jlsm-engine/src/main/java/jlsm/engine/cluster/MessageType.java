@@ -4,9 +4,9 @@ package jlsm.engine.cluster;
  * Types of messages exchanged between cluster nodes.
  *
  * <p>
- * Contract: Enumeration of all message categories used by the clustering subsystem.
- * Each {@link Message} carries exactly one type, which determines how the payload is
- * interpreted and which handler processes it.
+ * Contract: Enumeration of all message categories used by the clustering subsystem. Each
+ * {@link Message} carries exactly one type, which determines how the payload is interpreted and
+ * which handler processes it.
  *
  * <p>
  * Governed by: {@code .decisions/transport-abstraction-design/adr.md}

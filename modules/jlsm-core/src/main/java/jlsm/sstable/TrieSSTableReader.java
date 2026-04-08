@@ -16,6 +16,8 @@ import jlsm.sstable.internal.SSTableFormat;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.foreign.Arena;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
@@ -74,6 +76,17 @@ public final class TrieSSTableReader implements SSTableReader {
 
     private volatile boolean closed = false;
 
+    private static final VarHandle CLOSED;
+
+    static {
+        try {
+            CLOSED = MethodHandles.lookup().findVarHandle(TrieSSTableReader.class, "closed",
+                    boolean.class);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
     private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
             long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
             CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap) {
@@ -118,6 +131,9 @@ public final class TrieSSTableReader implements SSTableReader {
         } catch (IOException e) {
             ch.close();
             throw e;
+        } catch (Error e) {
+            ch.close();
+            throw e;
         }
     }
 
@@ -142,6 +158,9 @@ public final class TrieSSTableReader implements SSTableReader {
             return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, null, ch,
                     blockCache, null, null);
         } catch (IOException e) {
+            ch.close();
+            throw e;
+        } catch (Error e) {
             ch.close();
             throw e;
         }
@@ -200,6 +219,12 @@ public final class TrieSSTableReader implements SSTableReader {
         } catch (IOException e) {
             ch.close();
             throw e;
+        } catch (RuntimeException e) {
+            ch.close();
+            throw e;
+        } catch (Error e) {
+            ch.close();
+            throw e;
         }
     }
 
@@ -249,6 +274,12 @@ public final class TrieSSTableReader implements SSTableReader {
         } catch (IOException e) {
             ch.close();
             throw e;
+        } catch (RuntimeException e) {
+            ch.close();
+            throw e;
+        } catch (Error e) {
+            ch.close();
+            throw e;
         }
     }
 
@@ -275,17 +306,26 @@ public final class TrieSSTableReader implements SSTableReader {
 
         long offset = offsetOpt.get();
 
+        final Entry decoded;
         if (compressionMap != null) {
             // v2: offset is packed (blockIndex << 32 | intraBlockOffset)
             int blockIndex = (int) (offset >>> 32);
             int intraBlockOffset = (int) offset;
             byte[] decompressedBlock = readAndDecompressBlock(blockIndex);
-            return Optional.of(EntryCodec.decode(decompressedBlock, intraBlockOffset));
+            decoded = EntryCodec.decode(decompressedBlock, intraBlockOffset);
         } else {
             // v1: offset is absolute file position
             byte[] entryBytes = readDataAtV1(offset, SSTableFormat.DEFAULT_BLOCK_SIZE);
-            return Optional.of(EntryCodec.decode(entryBytes, 0));
+            decoded = EntryCodec.decode(entryBytes, 0);
         }
+
+        // Re-check closed after I/O to narrow the TOCTOU window between the
+        // pre-read checkNotClosed() and the return. Without this, a concurrent
+        // close() between the initial check and here would let get() return
+        // data from a logically-closed reader.
+        checkNotClosed();
+
+        return Optional.of(decoded);
     }
 
     @Override
@@ -311,9 +351,8 @@ public final class TrieSSTableReader implements SSTableReader {
 
     @Override
     public void close() throws IOException {
-        if (closed)
+        if (!CLOSED.compareAndSet(this, false, true))
             return;
-        closed = true;
         if (lazyChannel != null) {
             lazyChannel.close();
         }
@@ -339,19 +378,38 @@ public final class TrieSSTableReader implements SSTableReader {
 
         byte[] compressed;
         if (eagerData != null) {
+            int intOffset;
+            try {
+                intOffset = Math.toIntExact(mapEntry.blockOffset());
+            } catch (ArithmeticException e) {
+                throw new IOException("block %d offset %d exceeds int range".formatted(blockIndex,
+                        mapEntry.blockOffset()), e);
+            }
+            if (intOffset + mapEntry.compressedSize() > eagerData.length
+                    || intOffset + mapEntry.compressedSize() < 0) {
+                throw new IOException("block %d bounds [%d, %d) exceed eager data length %d"
+                        .formatted(blockIndex, intOffset,
+                                (long) intOffset + mapEntry.compressedSize(), eagerData.length));
+            }
             compressed = new byte[mapEntry.compressedSize()];
-            System.arraycopy(eagerData, (int) mapEntry.blockOffset(), compressed, 0,
-                    mapEntry.compressedSize());
+            System.arraycopy(eagerData, intOffset, compressed, 0, mapEntry.compressedSize());
         } else {
-            compressed = readBytes(lazyChannel, mapEntry.blockOffset(), mapEntry.compressedSize());
+            compressed = readLazyChannel(mapEntry.blockOffset(), mapEntry.compressedSize());
         }
 
         CompressionCodec codec = codecMap.get(mapEntry.codecId());
-        assert codec != null : "codec not found for ID 0x%02x".formatted(mapEntry.codecId());
+        if (codec == null) {
+            throw new IOException("codec not found for ID 0x%02x in block %d"
+                    .formatted(mapEntry.codecId(), blockIndex));
+        }
         byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
                 mapEntry.uncompressedSize());
+        if (decompressed.length != mapEntry.uncompressedSize()) {
+            throw new IOException("block %d decompression size mismatch: got %d bytes, expected %d"
+                    .formatted(blockIndex, decompressed.length, mapEntry.uncompressedSize()));
+        }
 
-        if (blockCache != null) {
+        if (blockCache != null && !closed) {
             blockCache.put(metadata.id(), blockIndex, MemorySegment.ofArray(decompressed));
         }
 
@@ -370,22 +428,63 @@ public final class TrieSSTableReader implements SSTableReader {
 
         byte[] compressed;
         if (eagerData != null) {
+            int intOffset;
+            try {
+                intOffset = Math.toIntExact(mapEntry.blockOffset());
+            } catch (ArithmeticException e) {
+                throw new IOException("block %d offset %d exceeds int range".formatted(blockIndex,
+                        mapEntry.blockOffset()), e);
+            }
+            if (intOffset + mapEntry.compressedSize() > eagerData.length
+                    || intOffset + mapEntry.compressedSize() < 0) {
+                throw new IOException("block %d bounds [%d, %d) exceed eager data length %d"
+                        .formatted(blockIndex, intOffset,
+                                (long) intOffset + mapEntry.compressedSize(), eagerData.length));
+            }
             compressed = new byte[mapEntry.compressedSize()];
-            System.arraycopy(eagerData, (int) mapEntry.blockOffset(), compressed, 0,
-                    mapEntry.compressedSize());
+            System.arraycopy(eagerData, intOffset, compressed, 0, mapEntry.compressedSize());
         } else {
-            compressed = readBytes(lazyChannel, mapEntry.blockOffset(), mapEntry.compressedSize());
+            compressed = readLazyChannel(mapEntry.blockOffset(), mapEntry.compressedSize());
         }
 
         CompressionCodec codec = codecMap.get(mapEntry.codecId());
-        assert codec != null : "codec not found for ID 0x%02x".formatted(mapEntry.codecId());
-        return codec.decompress(compressed, 0, compressed.length, mapEntry.uncompressedSize());
+        if (codec == null) {
+            throw new IOException("codec not found for ID 0x%02x in block %d"
+                    .formatted(mapEntry.codecId(), blockIndex));
+        }
+        byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
+                mapEntry.uncompressedSize());
+        if (decompressed.length != mapEntry.uncompressedSize()) {
+            throw new IOException("block %d decompression size mismatch: got %d bytes, expected %d"
+                    .formatted(blockIndex, decompressed.length, mapEntry.uncompressedSize()));
+        }
+        return decompressed;
     }
 
     private static Map<Byte, CompressionCodec> buildCodecMap(CompressionCodec... codecs) {
         Map<Byte, CompressionCodec> map = new HashMap<>();
-        for (CompressionCodec codec : codecs) {
-            map.put(codec.codecId(), codec);
+        // Always include NoneCodec — the writer falls back to NONE for incompressible blocks,
+        // so any v2 file may contain codec ID 0x00 regardless of the configured codec.
+        CompressionCodec none = CompressionCodec.none();
+        map.put(none.codecId(), none);
+        for (int i = 0; i < codecs.length; i++) {
+            Objects.requireNonNull(codecs[i], "codecs[%d] must not be null".formatted(i));
+            byte id = codecs[i].codecId();
+            // Reject user-supplied codecs that claim codecId 0x00 — this is reserved for NoneCodec.
+            // The writer's incompressible fallback always stores raw blocks with codecId 0x00.
+            // Allow the actual NoneCodec instance (it's already in the map, so just skip it).
+            if (id == 0x00) {
+                if (codecs[i] == none) {
+                    continue; // NoneCodec is already in the map
+                }
+                throw new IllegalArgumentException(
+                        "codecs[%d] has codecId 0x00 which is reserved for NoneCodec".formatted(i));
+            }
+            CompressionCodec previous = map.put(id, codecs[i]);
+            if (previous != null && previous != none) {
+                throw new IllegalArgumentException(
+                        "duplicate codec ID 0x%02x: %s and %s".formatted(id, previous, codecs[i]));
+            }
         }
         return Collections.unmodifiableMap(map);
     }
@@ -404,6 +503,22 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- v1 internal helpers ----
 
+    /**
+     * Reads bytes from the lazy channel, converting ClosedChannelException to IllegalStateException
+     * when the reader has been closed. This prevents callers from seeing a raw
+     * ClosedChannelException in the TOCTOU window between checkNotClosed() and the actual I/O.
+     */
+    private byte[] readLazyChannel(long offset, int length) throws IOException {
+        try {
+            return readBytes(lazyChannel, offset, length);
+        } catch (java.nio.channels.ClosedChannelException e) {
+            if (closed) {
+                throw new IllegalStateException("reader is closed");
+            }
+            throw e;
+        }
+    }
+
     private void checkNotClosed() throws IOException {
         if (closed)
             throw new IllegalStateException("reader is closed");
@@ -411,6 +526,9 @@ public final class TrieSSTableReader implements SSTableReader {
 
     /** Returns the data at {@code fileOffset} (v1 absolute offset), reading at most maxBytes. */
     private byte[] readDataAtV1(long fileOffset, int maxBytes) throws IOException {
+        if (fileOffset < 0) {
+            throw new IOException("negative file offset: " + fileOffset);
+        }
         int len = (int) Math.min(maxBytes, dataEnd - fileOffset);
         if (len <= 0)
             throw new IOException("file offset out of data range: " + fileOffset);
@@ -427,7 +545,7 @@ public final class TrieSSTableReader implements SSTableReader {
             data = new byte[len];
             System.arraycopy(eagerData, (int) fileOffset, data, 0, len);
         } else {
-            data = readBytes(lazyChannel, fileOffset, len);
+            data = readLazyChannel(fileOffset, len);
         }
 
         if (blockCache != null) {
@@ -440,13 +558,96 @@ public final class TrieSSTableReader implements SSTableReader {
     private byte[] getAllDataV1() throws IOException {
         if (eagerData != null)
             return eagerData;
-        return readBytes(lazyChannel, 0L, (int) dataEnd);
+        return readLazyChannel(0L, (int) dataEnd);
     }
 
     // ---- Footer / index / filter loading ----
 
     private record Footer(int version, long mapOffset, long mapLength, long idxOffset,
             long idxLength, long fltOffset, long fltLength, long entryCount) {
+
+        /**
+         * Validates footer field consistency against the file size. All offsets and lengths must be
+         * non-negative and within file bounds.
+         *
+         * @throws IOException if any field is invalid
+         */
+        void validate(long fileSize) throws IOException {
+            if (entryCount < 0) {
+                throw new IOException("corrupt SSTable footer: negative entryCount " + entryCount);
+            }
+            if (idxOffset < 0 || idxLength < 0) {
+                throw new IOException(
+                        "corrupt SSTable footer: negative idxOffset=%d or idxLength=%d"
+                                .formatted(idxOffset, idxLength));
+            }
+            if (fltOffset < 0 || fltLength < 0) {
+                throw new IOException(
+                        "corrupt SSTable footer: negative fltOffset=%d or fltLength=%d"
+                                .formatted(fltOffset, fltLength));
+            }
+            if (version == 2) {
+                if (mapOffset < 0 || mapLength < 0) {
+                    throw new IOException(
+                            "corrupt SSTable footer: negative mapOffset=%d or mapLength=%d"
+                                    .formatted(mapOffset, mapLength));
+                }
+                // C2-F2: Guard against long-to-int truncation for data region size
+                if (mapOffset > Integer.MAX_VALUE) {
+                    throw new IOException(
+                            "SSTable data region too large for eager read: mapOffset=%d exceeds 2 GiB"
+                                    .formatted(mapOffset));
+                }
+                if (mapLength > Integer.MAX_VALUE) {
+                    throw new IOException(
+                            "SSTable compression map too large: mapLength=%d exceeds 2 GiB"
+                                    .formatted(mapLength));
+                }
+            } else {
+                // v1: idxOffset defines the data region end
+                if (idxOffset > Integer.MAX_VALUE) {
+                    throw new IOException(
+                            "SSTable data region too large for eager read: idxOffset=%d exceeds 2 GiB"
+                                    .formatted(idxOffset));
+                }
+            }
+            // Guard against long-to-int truncation for idxLength and fltLength
+            if (idxLength > Integer.MAX_VALUE) {
+                throw new IOException("SSTable key index too large: idxLength=%d exceeds 2 GiB"
+                        .formatted(idxLength));
+            }
+            if (fltLength > Integer.MAX_VALUE) {
+                throw new IOException("SSTable bloom filter too large: fltLength=%d exceeds 2 GiB"
+                        .formatted(fltLength));
+            }
+            // Bounds-vs-fileSize: offset+length must not exceed file size
+            if (idxOffset + idxLength > fileSize) {
+                throw new IOException(
+                        "corrupt SSTable footer: idx section [%d, %d) exceeds file size %d"
+                                .formatted(idxOffset, idxOffset + idxLength, fileSize));
+            }
+            if (fltOffset + fltLength > fileSize) {
+                throw new IOException(
+                        "corrupt SSTable footer: flt section [%d, %d) exceeds file size %d"
+                                .formatted(fltOffset, fltOffset + fltLength, fileSize));
+            }
+            if (version == 2 && mapOffset + mapLength > fileSize) {
+                throw new IOException(
+                        "corrupt SSTable footer: map section [%d, %d) exceeds file size %d"
+                                .formatted(mapOffset, mapOffset + mapLength, fileSize));
+            }
+            // Cross-field overlap: sections must not overlap each other
+            if (fltLength > 0 && idxOffset + idxLength > fltOffset) {
+                throw new IOException(
+                        "corrupt SSTable footer: idx section [%d, %d) overlaps flt section at offset %d"
+                                .formatted(idxOffset, idxOffset + idxLength, fltOffset));
+            }
+            if (version == 2 && idxLength > 0 && mapOffset + mapLength > idxOffset) {
+                throw new IOException(
+                        "corrupt SSTable footer: map section [%d, %d) overlaps idx section at offset %d"
+                                .formatted(mapOffset, mapOffset + mapLength, idxOffset));
+            }
+        }
     }
 
     /** Reads a v1-only footer. Throws on v2 magic. */
@@ -461,10 +662,16 @@ public final class TrieSSTableReader implements SSTableReader {
         long fltLength = readLong(buf, 24);
         long entryCount = readLong(buf, 32);
         long magic = readLong(buf, 40);
+        if (magic == SSTableFormat.MAGIC_V2) {
+            throw new IOException(
+                    "SSTable file is v2 format — use the open/openLazy overload that accepts CompressionCodec");
+        }
         if (magic != SSTableFormat.MAGIC) {
             throw new IOException("not a valid SSTable file: bad magic " + Long.toHexString(magic));
         }
-        return new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength, entryCount);
+        Footer footer = new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength, entryCount);
+        footer.validate(fileSize);
+        return footer;
     }
 
     /** Reads footer detecting v1 or v2 format from magic bytes. */
@@ -489,8 +696,10 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltOffset = readLong(buf, 32);
             long fltLength = readLong(buf, 40);
             long entryCount = readLong(buf, 48);
-            return new Footer(2, mapOffset, mapLength, idxOffset, idxLength, fltOffset, fltLength,
-                    entryCount);
+            Footer footer = new Footer(2, mapOffset, mapLength, idxOffset, idxLength, fltOffset,
+                    fltLength, entryCount);
+            footer.validate(fileSize);
+            return footer;
         } else if (magic == SSTableFormat.MAGIC) {
             byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE,
                     SSTableFormat.FOOTER_SIZE);
@@ -499,7 +708,10 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltOffset = readLong(buf, 16);
             long fltLength = readLong(buf, 24);
             long entryCount = readLong(buf, 32);
-            return new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength, entryCount);
+            Footer footer = new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength,
+                    entryCount);
+            footer.validate(fileSize);
+            return footer;
         } else {
             throw new IOException("not a valid SSTable file: bad magic " + Long.toHexString(magic));
         }
@@ -558,11 +770,12 @@ public final class TrieSSTableReader implements SSTableReader {
         byte[] buf = readBytes(ch, footer.fltOffset, (int) footer.fltLength);
         // Use an Arena-allocated segment to satisfy the alignment constraints of the deserializer
         // (BlockedBloomFilter uses JAVA_INT/JAVA_LONG without withByteAlignment(1)).
-        try (Arena arena = Arena.ofShared()) {
-            MemorySegment seg = arena.allocate(buf.length, 8);
-            MemorySegment.copy(MemorySegment.ofArray(buf), 0, seg, 0, buf.length);
-            return deserializer.deserialize(seg);
-        }
+        // Arena.ofAuto() is used instead of ofShared() because the deserialized BloomFilter may
+        // retain a reference to the MemorySegment — closing the Arena would invalidate it.
+        Arena arena = Arena.ofAuto();
+        MemorySegment seg = arena.allocate(buf.length, 8);
+        MemorySegment.copy(MemorySegment.ofArray(buf), 0, seg, 0, buf.length);
+        return deserializer.deserialize(seg);
     }
 
     private static SSTableMetadata buildMetadata(Path path, long fileSize, Footer footer,
@@ -583,16 +796,26 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Low-level I/O ----
 
+    /**
+     * Reads {@code length} bytes from the channel starting at {@code offset}.
+     *
+     * <p>
+     * The position-then-read sequence is synchronized on the channel to prevent concurrent callers
+     * (e.g., multiple threads sharing a lazy reader) from interleaving position and read calls,
+     * which would produce silently corrupt data (C2-F18).
+     */
     private static byte[] readBytes(SeekableByteChannel ch, long offset, int length)
             throws IOException {
         if (length == 0)
             return new byte[0];
         ByteBuffer buf = ByteBuffer.allocate(length);
-        ch.position(offset);
-        while (buf.hasRemaining()) {
-            int read = ch.read(buf);
-            if (read < 0)
-                throw new IOException("unexpected EOF at offset " + (offset + buf.position()));
+        synchronized (ch) {
+            ch.position(offset);
+            while (buf.hasRemaining()) {
+                int read = ch.read(buf);
+                if (read < 0)
+                    throw new IOException("unexpected EOF at offset " + (offset + buf.position()));
+            }
         }
         return buf.array();
     }
@@ -695,6 +918,9 @@ public final class TrieSSTableReader implements SSTableReader {
 
         private void advance() {
             next = null;
+            if (closed) {
+                throw new IllegalStateException("reader is closed");
+            }
             while (true) {
                 if (entryIdx < blockEntries.size()) {
                     next = blockEntries.get(entryIdx++);
@@ -708,6 +934,15 @@ public final class TrieSSTableReader implements SSTableReader {
                     byte[] decompressed = readAndDecompressBlockNoCache(currentBlockIndex);
                     currentBlockIndex++;
                     int count = readBlockInt(decompressed, 0);
+                    // Minimum encoded entry size: 1 (type) + 4 (keyLen) + 0 (key) +
+                    // 8 (seqNum) + 4 (valLen) + 0 (val) = 17 bytes.
+                    // Validate that the block is large enough to hold the claimed entries.
+                    if (count < 0 || 4L + (long) count * 17 > decompressed.length) {
+                        throw new IOException(
+                                "corrupt block %d: entry count %d exceeds block capacity (%d bytes)"
+                                        .formatted(currentBlockIndex - 1, count,
+                                                decompressed.length));
+                    }
                     blockEntries = new ArrayList<>(count);
                     int off = 4;
                     for (int i = 0; i < count; i++) {
@@ -724,11 +959,14 @@ public final class TrieSSTableReader implements SSTableReader {
 
         @Override
         public boolean hasNext() {
-            return next != null;
+            return !closed && next != null;
         }
 
         @Override
         public Entry next() {
+            if (closed) {
+                throw new IllegalStateException("reader is closed");
+            }
             if (next == null) {
                 throw new NoSuchElementException();
             }
@@ -762,6 +1000,9 @@ public final class TrieSSTableReader implements SSTableReader {
 
         private void advance() {
             next = null;
+            if (closed) {
+                throw new IllegalStateException("reader is closed");
+            }
             if (!indexIter.hasNext())
                 return;
             KeyIndex.Entry ie = indexIter.next();
@@ -792,11 +1033,13 @@ public final class TrieSSTableReader implements SSTableReader {
 
         @Override
         public boolean hasNext() {
-            return next != null;
+            return !closed && next != null;
         }
 
         @Override
         public Entry next() {
+            if (closed)
+                throw new IllegalStateException("reader is closed");
             if (next == null)
                 throw new NoSuchElementException();
             Entry result = next;

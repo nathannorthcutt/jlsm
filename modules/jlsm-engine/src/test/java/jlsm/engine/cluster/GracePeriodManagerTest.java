@@ -11,8 +11,8 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for {@link GracePeriodManager} — tracks departed nodes and manages
- * the grace period before permanent removal.
+ * Tests for {@link GracePeriodManager} — tracks departed nodes and manages the grace period before
+ * permanent removal.
  */
 final class GracePeriodManagerTest {
 
@@ -31,8 +31,7 @@ final class GracePeriodManagerTest {
 
     @Test
     void constructor_zeroGracePeriodThrows() {
-        assertThrows(IllegalArgumentException.class,
-                () -> new GracePeriodManager(Duration.ZERO));
+        assertThrows(IllegalArgumentException.class, () -> new GracePeriodManager(Duration.ZERO));
     }
 
     @Test
@@ -51,8 +50,7 @@ final class GracePeriodManagerTest {
     @Test
     void isInGracePeriod_unknownNodeReturnsFalse() {
         GracePeriodManager mgr = new GracePeriodManager(GRACE);
-        assertFalse(mgr.isInGracePeriod(NODE_A),
-                "Unknown node should not be in grace period");
+        assertFalse(mgr.isInGracePeriod(NODE_A), "Unknown node should not be in grace period");
     }
 
     @Test
@@ -61,8 +59,7 @@ final class GracePeriodManagerTest {
         mgr.recordDeparture(NODE_A, Instant.now());
         // isInGracePeriod checks against current time — the departure was just recorded
         // and 5 minutes haven't passed yet in wall-clock time
-        assertTrue(mgr.isInGracePeriod(NODE_A),
-                "Recently departed node should be in grace period");
+        assertTrue(mgr.isInGracePeriod(NODE_A), "Recently departed node should be in grace period");
     }
 
     @Test
@@ -155,29 +152,25 @@ final class GracePeriodManagerTest {
     @Test
     void recordDeparture_nullNodeThrows() {
         GracePeriodManager mgr = new GracePeriodManager(GRACE);
-        assertThrows(NullPointerException.class,
-                () -> mgr.recordDeparture(null, BASE));
+        assertThrows(NullPointerException.class, () -> mgr.recordDeparture(null, BASE));
     }
 
     @Test
     void recordDeparture_nullInstantThrows() {
         GracePeriodManager mgr = new GracePeriodManager(GRACE);
-        assertThrows(NullPointerException.class,
-                () -> mgr.recordDeparture(NODE_A, null));
+        assertThrows(NullPointerException.class, () -> mgr.recordDeparture(NODE_A, null));
     }
 
     @Test
     void isInGracePeriod_nullNodeThrows() {
         GracePeriodManager mgr = new GracePeriodManager(GRACE);
-        assertThrows(NullPointerException.class,
-                () -> mgr.isInGracePeriod(null));
+        assertThrows(NullPointerException.class, () -> mgr.isInGracePeriod(null));
     }
 
     @Test
     void recordReturn_nullNodeThrows() {
         GracePeriodManager mgr = new GracePeriodManager(GRACE);
-        assertThrows(NullPointerException.class,
-                () -> mgr.recordReturn(null));
+        assertThrows(NullPointerException.class, () -> mgr.recordReturn(null));
     }
 
     // --- Multiple departures of same node ---
@@ -191,8 +184,7 @@ final class GracePeriodManagerTest {
 
         // Re-depart now — should reset grace window
         mgr.recordDeparture(NODE_A, Instant.now());
-        assertTrue(mgr.isInGracePeriod(NODE_A),
-                "Re-departure should reset the grace window");
+        assertTrue(mgr.isInGracePeriod(NODE_A), "Re-departure should reset the grace window");
         assertFalse(mgr.expiredDepartures().contains(NODE_A));
     }
 }

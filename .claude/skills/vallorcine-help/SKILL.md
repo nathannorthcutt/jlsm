@@ -47,16 +47,22 @@ command to run, then explain what it does and what the user can expect.
 ### Command reference (for answering questions)
 
 **Starting and resuming work:**
-- `/feature "<description>"` — start a new feature (full pipeline: scoping → domains → plan → test → implement → refactor → PR)
+- `/feature "<description>"` — start a new feature (full pipeline: scoping → domains → specs → plan → test → implement → refactor → audit → PR)
 - `/feature-quick "<description>"` — small, well-understood tasks (single session, no planning overhead)
 - `/feature-resume "<slug>"` — see where a feature is and what to run next (crash recovery, session resume)
 - `/feature-resume "<slug>" --status` — detailed session briefing with next-session agenda
 - `/feature-resume "<slug>" --list` — list all active features with their current stage
 
+**Specifications:**
+- `/spec "<question>"` — query specs, discover gaps, and trace change impact. Searches all specs for matching requirements, surfaces areas with no spec coverage, and analyzes the downstream impact of proposed requirement changes.
+- `/spec-author "<feature-id>" "<title>"` — author a hardened spec through two-pass adversarial review (structured draft + falsification)
+- `/spec-write "<id>" "<title>"` — register a spec in `.spec/` storage with conflict check
+- `/spec-verify "<id>"` — verify a spec against the current implementation
+
 **Knowledge and decisions:**
 - `/kb "<question>"` — query the knowledge base in plain language
 - `/research <topic> <category> "<subject>"` — run a research session, writes to `.kb/`
-- `/architect "<problem>"` — run an architecture decision session with full deliberation
+- `/architect "<problem>"` — run an architecture decision session with full deliberation and falsification
 - `/decisions "<question>"` — query existing decisions in plain language
 - `/decisions backfill [<path>]` — surface implicit decisions from past work (prefer `/curate` for broader review)
 - `/decisions revisit "<slug>"` — revisit a confirmed decision
@@ -65,7 +71,8 @@ command to run, then explain what it does and what the user can expect.
 - `/decisions close "<problem>"` — rule out permanently
 
 **Codebase quality:**
-- `/curate` — review codebase quality: find stale decisions, knowledge gaps, implicit dependencies
+- `/audit "<entry-point>"` — run the adversarial audit pipeline against shipped code. Finds bugs, proves them with failing tests, fixes the code. Accepts feature slugs, file paths, spec references, or prior audit reports.
+- `/curate` — review codebase quality: find stale decisions, knowledge gaps, implicit dependencies, spec coverage gaps, unspecified shared types, and spec-code drift
 - `/curate --init` — first-time scan on an existing codebase (bootstraps quality signals)
 - `/curate --deeper` — scan 6 months of history instead of default 3
 
@@ -73,17 +80,17 @@ command to run, then explain what it does and what the user can expect.
 - `/project-context add "<entry>"` — add team-shared knowledge about the codebase
 - `/project-context cleanup` — review expired context entries
 - `/project-context` — display all active context entries
-- `/setup-vallorcine` — one-time project setup (KB, decisions, feature pipeline, project profile)
+- `/setup-vallorcine` — one-time project setup (KB, decisions, specs, feature pipeline, project profile)
 - `/feature-cleanup` — interactive walkthrough of stale feature directories
 - `/upgrade-vallorcine` — check for and apply kit updates
 
 **Pipeline stages (usually invoked automatically, not manually):**
-- `/feature-domains "<slug>"` — domain analysis, commissions research/architect
-- `/feature-plan "<slug>"` — work plan, stubs, execution strategy
+- `/feature-domains "<slug>"` — domain analysis, commissions research/architect. Routes to spec authoring when `.spec/` exists.
+- `/feature-plan "<slug>"` — work plan, stubs, execution strategy. Consumes specs as primary context.
 - `/feature-coordinate "<slug>"` — parallel batch coordinator (balanced/speed mode)
-- `/feature-test "<slug>"` — write failing tests from contracts
-- `/feature-implement "<slug>"` — implement until tests pass
-- `/feature-refactor "<slug>"` — quality review checklist
+- `/feature-test "<slug>"` — operationalizes spec requirements into tests (Lens A) + adversarial implementation risk analysis (Lens B). Falls back to inline spec analysis when no specs exist.
+- `/feature-implement "<slug>"` — implement until tests pass. Detects spec conflicts in test failures.
+- `/feature-refactor "<slug>"` — quality review checklist, then delegates to `/audit` for adversarial bug finding.
 - `/feature-pr "<slug>"` — draft PR title, description, checklist
 - `/feature-retro "<slug>"` — post-feature retrospective (scope, assumptions, gaps, tokens)
 - `/feature-complete "<slug>"` — archive after PR merges
@@ -230,7 +237,7 @@ Here's how it works, in order:
 
   1. /feature "<description>"
      Scoping interview — I'll ask clarifying questions and write a feature brief.
-     Takes: 5–10 minutes of back-and-forth.
+     Takes: 5-10 minutes of back-and-forth.
      Produces: .feature/<slug>/brief.md
 
   2. /feature-domains "<slug>"
@@ -238,28 +245,38 @@ Here's how it works, in order:
      and commission any missing architectural decisions.
      Produces: .feature/<slug>/domains.md
 
-  3. /feature-plan "<slug>"
+  3. Spec authoring (automatic when .spec/ exists)
+     Two-pass adversarial spec authoring: structured draft then falsification.
+     Produces hardened behavioral requirements in .spec/.
+
+  4. /feature-plan "<slug>"
      I'll design the implementation structure and write empty stubs with contracts.
+     Uses specs as primary context alongside brief and domains.
      Produces: .feature/<slug>/work-plan.md + stub files
 
-  4. /feature-test "<slug>"
-     Tests written against the contracts — verified failing before any code is written.
-     Produces: failing tests in your test directory
+  5. /feature-test "<slug>"
+     Operationalizes spec requirements into tests (Lens A) and finds
+     implementation risk patterns (Lens B). Tests verified failing before
+     any code is written.
+     Produces: failing tests (spec-driven + defensive + structural)
 
-  5. /feature-implement "<slug>"
-     Implementation until all tests pass. Escalates conflicts rather than working around them.
+  6. /feature-implement "<slug>"
+     Implementation until all tests pass. Detects spec conflicts in test
+     failures and escalates to spec-author instead of misdiagnosing.
      Produces: passing tests + working code
 
-  6. /feature-refactor "<slug>"
-     Quality review: standards, security, performance, missing test coverage,
-     and integration tests if configured.
-     Produces: clean, reviewed code
+  7. /feature-refactor "<slug>"
+     Quality review: standards, security, performance, missing test coverage.
+     Then delegates to /audit for adversarial bug finding — writes targeted
+     tests, proves bugs, fixes confirmed issues. Findings feed back into
+     specs and KB.
+     Produces: clean, audited code
 
-  7. /feature-pr "<slug>"
+  8. /feature-pr "<slug>"
      Drafts your PR title, description, and review checklist.
      Produces: .feature/<slug>/pr-draft.md
 
-  8. /feature-complete "<slug>"  (run after the PR merges)
+  9. /feature-complete "<slug>"  (run after the PR merges)
      Archives the working files. Source code and tests stay in git.
 
 If you stop at any point: /feature-resume "<slug>" will tell you exactly where
@@ -299,10 +316,12 @@ After any routing decision, add:
 ```
 Other commands you might want:
   /feature-resume "<slug>" --status  — detailed progress summary for any active feature
-  /setup-vallorcine                   — update the project profile
+  /spec "<question>"                 — query specs, discover gaps, trace change impact
+  /audit "<entry-point>"             — adversarial bug finding on shipped code
   /kb "<question>"                   — query the knowledge base
   /decisions "<question>"            — query architecture decisions
-  /curate                            — review codebase quality, find gaps, and surface undocumented decisions
+  /curate                            — review codebase quality, spec gaps, undocumented decisions
+  /setup-vallorcine                   — update the project profile
   /vallorcine-help "<question>"      — ask me anything about these commands
 ```
 

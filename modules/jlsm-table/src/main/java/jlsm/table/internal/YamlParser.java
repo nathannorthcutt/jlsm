@@ -200,9 +200,15 @@ public final class YamlParser {
                     throw new IllegalArgumentException(
                             "Expected YAML list item for vector at line " + (lineRef[0] + 1));
                 }
-                vec[i] = Float.parseFloat(trimmed.substring(2).trim());
+                final float f = Float.parseFloat(trimmed.substring(2).trim());
+                if (!Float.isFinite(f)) {
+                    throw new IllegalArgumentException(
+                            "Non-finite vector element at index " + i + ": " + f);
+                }
+                vec[i] = f;
                 lineRef[0]++;
             }
+            rejectExcessVectorElements(lines, lineRef, d);
             return vec;
         } else {
             final short[] vec = new short[d];
@@ -217,10 +223,33 @@ public final class YamlParser {
                     throw new IllegalArgumentException(
                             "Expected YAML list item for vector at line " + (lineRef[0] + 1));
                 }
-                vec[i] = Float16.fromFloat(Float.parseFloat(trimmed.substring(2).trim()));
+                final float f16val = Float.parseFloat(trimmed.substring(2).trim());
+                if (!Float.isFinite(f16val)) {
+                    throw new IllegalArgumentException(
+                            "Non-finite vector element at index " + i + ": " + f16val);
+                }
+                vec[i] = Float16.fromFloat(f16val);
                 lineRef[0]++;
             }
+            rejectExcessVectorElements(lines, lineRef, d);
             return vec;
+        }
+    }
+
+    /**
+     * After reading exactly {@code dimensions} list items, checks that the next line is not another
+     * list item. Excess elements would be silently left unconsumed and misinterpreted as subsequent
+     * field keys.
+     */
+    private static void rejectExcessVectorElements(List<String> lines, int[] lineRef,
+            int dimensions) {
+        if (lineRef[0] < lines.size()) {
+            final String nextTrimmed = lines.get(lineRef[0]).stripLeading();
+            if (nextTrimmed.startsWith("- ")) {
+                throw new IllegalArgumentException("Excess vector elements: expected exactly "
+                        + dimensions + " dimensions but found additional list items at line "
+                        + (lineRef[0] + 1));
+            }
         }
     }
 
@@ -294,8 +323,24 @@ public final class YamlParser {
                 case INT16 -> Short.parseShort(raw);
                 case INT32 -> Integer.parseInt(raw);
                 case INT64 -> Long.parseLong(raw);
-                case FLOAT16 -> Float16.fromFloat(Float.parseFloat(raw));
-                case FLOAT32 -> Float.parseFloat(raw);
+                case FLOAT16 -> {
+                    final float f16val = Float.parseFloat(raw);
+                    if (!Float.isFinite(f16val)) {
+                        throw new IllegalArgumentException(
+                                "Field '" + fieldName + "' FLOAT16 value is non-finite: "
+                                        + "numeric fields require finite values");
+                    }
+                    yield Float16.fromFloat(f16val);
+                }
+                case FLOAT32 -> {
+                    final float f32val = Float.parseFloat(raw);
+                    if (!Float.isFinite(f32val)) {
+                        throw new IllegalArgumentException(
+                                "Field '" + fieldName + "' FLOAT32 value is non-finite: "
+                                        + "numeric fields require finite values");
+                    }
+                    yield f32val;
+                }
                 case FLOAT64 -> Double.parseDouble(raw);
                 case BOOLEAN -> parseBoolean(raw, fieldName);
                 case TIMESTAMP -> Long.parseLong(raw);

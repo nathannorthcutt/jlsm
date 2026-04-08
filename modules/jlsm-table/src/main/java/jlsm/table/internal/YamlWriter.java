@@ -1,5 +1,7 @@
 package jlsm.table.internal;
 
+import java.util.Objects;
+
 import jlsm.table.FieldDefinition;
 import jlsm.table.FieldType;
 import jlsm.table.Float16;
@@ -29,7 +31,7 @@ public final class YamlWriter {
      * @return a YAML string (no trailing newline)
      */
     public String write(JlsmDocument doc) {
-        assert doc != null : "doc must not be null";
+        Objects.requireNonNull(doc, "doc must not be null");
 
         final StringBuilder sb = new StringBuilder(256);
         writeDocument(doc, sb, 0);
@@ -135,6 +137,8 @@ public final class YamlWriter {
                 writeYamlFloat(vec[i], sb);
             }
         } else {
+            assert vt.elementType() == FieldType.Primitive.FLOAT16
+                    : "writeVector: unsupported VectorType elementType: " + vt.elementType();
             final short[] vec = (short[]) value;
             for (int i = 0; i < vec.length; i++) {
                 sb.append('\n');

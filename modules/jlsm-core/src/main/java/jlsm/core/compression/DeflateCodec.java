@@ -56,7 +56,7 @@ final class DeflateCodec implements CompressionCodec {
     @Override
     public byte[] compress(byte[] input, int offset, int length) {
         Objects.requireNonNull(input, "input must not be null");
-        if (offset < 0 || length < 0 || offset + length > input.length) {
+        if (offset < 0 || length < 0 || offset > input.length - length) {
             throw new IllegalArgumentException(
                     "offset=%d, length=%d out of bounds for input.length=%d".formatted(offset,
                             length, input.length));
@@ -83,10 +83,14 @@ final class DeflateCodec implements CompressionCodec {
     @Override
     public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
         Objects.requireNonNull(input, "input must not be null");
-        if (offset < 0 || length < 0 || offset + length > input.length) {
+        if (offset < 0 || length < 0 || offset > input.length - length) {
             throw new IllegalArgumentException(
                     "offset=%d, length=%d out of bounds for input.length=%d".formatted(offset,
                             length, input.length));
+        }
+        if (uncompressedLength < 0) {
+            throw new IllegalArgumentException(
+                    "uncompressedLength must be non-negative, got: " + uncompressedLength);
         }
         Inflater inf = new Inflater();
         try {

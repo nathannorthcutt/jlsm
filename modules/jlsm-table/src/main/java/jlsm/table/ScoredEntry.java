@@ -19,5 +19,9 @@ public record ScoredEntry<K>(K key, JlsmDocument document, double score) {
     public ScoredEntry {
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(document, "document must not be null");
+        if (Double.isNaN(score)) {
+            throw new IllegalArgumentException(
+                    "score must not be NaN — ordering is undefined for NaN values");
+        }
     }
 }

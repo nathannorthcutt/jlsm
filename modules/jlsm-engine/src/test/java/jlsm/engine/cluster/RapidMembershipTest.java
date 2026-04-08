@@ -9,7 +9,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -23,12 +22,9 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class RapidMembershipTest {
 
-    private static final NodeAddress ADDR_1 =
-            new NodeAddress("node-1", "localhost", 8001);
-    private static final NodeAddress ADDR_2 =
-            new NodeAddress("node-2", "localhost", 8002);
-    private static final NodeAddress ADDR_3 =
-            new NodeAddress("node-3", "localhost", 8003);
+    private static final NodeAddress ADDR_1 = new NodeAddress("node-1", "localhost", 8001);
+    private static final NodeAddress ADDR_2 = new NodeAddress("node-2", "localhost", 8002);
+    private static final NodeAddress ADDR_3 = new NodeAddress("node-3", "localhost", 8003);
 
     private final List<AutoCloseable> closeables = new ArrayList<>();
 
@@ -45,14 +41,17 @@ class RapidMembershipTest {
             try {
                 closeables.get(i).close();
             } catch (Exception e) {
-                if (first == null) first = e;
-                else first.addSuppressed(e);
+                if (first == null)
+                    first = e;
+                else
+                    first.addSuppressed(e);
             }
         }
         closeables.clear();
         InJvmTransport.clearRegistry();
         InJvmDiscoveryProvider.clearRegistrations();
-        if (first != null) throw first;
+        if (first != null)
+            throw first;
     }
 
     // --- Constructor validation ---
@@ -112,10 +111,8 @@ class RapidMembershipTest {
 
         MembershipView view = membership.currentView();
         assertNotNull(view, "view should not be null after start");
-        assertEquals(1, view.members().size(),
-                "single-node cluster should have 1 member");
-        assertTrue(view.isMember(ADDR_1),
-                "local node should be a member of its own cluster");
+        assertEquals(1, view.members().size(), "single-node cluster should have 1 member");
+        assertTrue(view.isMember(ADDR_1), "local node should be a member of its own cluster");
     }
 
     @Test
@@ -132,8 +129,7 @@ class RapidMembershipTest {
     @Test
     void addListenerRejectsNull() throws Exception {
         var membership = createMembership(ADDR_1);
-        assertThrows(NullPointerException.class,
-                () -> membership.addListener(null));
+        assertThrows(NullPointerException.class, () -> membership.addListener(null));
     }
 
     // --- Multi-node cluster formation ---
@@ -181,8 +177,7 @@ class RapidMembershipTest {
         Thread.sleep(500);
 
         MembershipView view1 = m1.currentView();
-        assertEquals(3, view1.members().size(),
-                "all 3 nodes should be in the cluster view");
+        assertEquals(3, view1.members().size(), "all 3 nodes should be in the cluster view");
     }
 
     // --- Listener callbacks ---
@@ -196,7 +191,8 @@ class RapidMembershipTest {
         var m1 = createMembership(ADDR_1, discovery);
         m1.addListener(new MembershipListener() {
             @Override
-            public void onViewChanged(MembershipView oldView, MembershipView newView) {}
+            public void onViewChanged(MembershipView oldView, MembershipView newView) {
+            }
 
             @Override
             public void onMemberJoined(Member member) {
@@ -205,10 +201,12 @@ class RapidMembershipTest {
             }
 
             @Override
-            public void onMemberLeft(Member member) {}
+            public void onMemberLeft(Member member) {
+            }
 
             @Override
-            public void onMemberSuspected(Member member) {}
+            public void onMemberSuspected(Member member) {
+            }
         });
         m1.start(List.of());
         discovery.register(ADDR_1);
@@ -236,13 +234,16 @@ class RapidMembershipTest {
             }
 
             @Override
-            public void onMemberJoined(Member member) {}
+            public void onMemberJoined(Member member) {
+            }
 
             @Override
-            public void onMemberLeft(Member member) {}
+            public void onMemberLeft(Member member) {
+            }
 
             @Override
-            public void onMemberSuspected(Member member) {}
+            public void onMemberSuspected(Member member) {
+            }
         });
         m1.start(List.of());
         discovery.register(ADDR_1);
@@ -279,11 +280,9 @@ class RapidMembershipTest {
 
         // Node 1 should eventually see node 2 as removed or dead
         MembershipView view1 = m1.currentView();
-        long aliveCount = view1.members().stream()
-                .filter(m -> m.state() == MemberState.ALIVE)
+        long aliveCount = view1.members().stream().filter(m -> m.state() == MemberState.ALIVE)
                 .count();
-        assertEquals(1, aliveCount,
-                "after leave, only 1 node should be ALIVE in node-1's view");
+        assertEquals(1, aliveCount, "after leave, only 1 node should be ALIVE in node-1's view");
     }
 
     // --- Close ---
@@ -293,8 +292,7 @@ class RapidMembershipTest {
         var membership = createMembership(ADDR_1);
         membership.start(List.of());
         membership.close();
-        assertDoesNotThrow(() -> membership.close(),
-                "close() should be idempotent");
+        assertDoesNotThrow(() -> membership.close(), "close() should be idempotent");
     }
 
     @Test
@@ -322,8 +320,8 @@ class RapidMembershipTest {
         Thread.sleep(500);
 
         long newEpoch = m1.currentView().epoch();
-        assertTrue(newEpoch > initialEpoch,
-                "epoch should increase after a view change: initial=" + initialEpoch + ", new=" + newEpoch);
+        assertTrue(newEpoch > initialEpoch, "epoch should increase after a view change: initial="
+                + initialEpoch + ", new=" + newEpoch);
     }
 
     // --- Helpers ---
@@ -340,10 +338,8 @@ class RapidMembershipTest {
 
     private RapidMembership createMembership(NodeAddress addr, DiscoveryProvider discovery) {
         var transport = createTransport(addr);
-        var config = ClusterConfig.builder()
-                .protocolPeriod(java.time.Duration.ofMillis(100))
-                .pingTimeout(java.time.Duration.ofMillis(50))
-                .build();
+        var config = ClusterConfig.builder().protocolPeriod(java.time.Duration.ofMillis(100))
+                .pingTimeout(java.time.Duration.ofMillis(50)).build();
         var detector = new PhiAccrualFailureDetector(10);
         var membership = new RapidMembership(addr, transport, discovery, config, detector);
         closeables.add(membership);

@@ -9,6 +9,9 @@ engines. Covers catalog persistence, table lifecycle, and startup recovery.
 | File | Subject | Status | Key Metric | Best For |
 |------|---------|--------|------------|----------|
 | [catalog-persistence-patterns.md](catalog-persistence-patterns.md) | Database Catalog Persistence Patterns | mature | O(1) lookup, O(n) lazy recovery | Multi-table engines needing fast startup |
+| [in-process-database-engine.md](in-process-database-engine.md) | in-process-database-engine (feature footprint) | stable | feature audit record | Engine handle lifecycle + catalog overview |
+| [hardcoded-invalidation-reason.md](hardcoded-invalidation-reason.md) | Hardcoded invalidation reason in handle validity check (adversarial) | active | data-integrity bug class | Any handle system with multiple invalidation causes |
+| [assert-only-public-validation.md](assert-only-public-validation.md) | Assert-only validation on public API inputs (adversarial) | active | data-integrity bug class | Any builder/constructor accepting numeric config |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

@@ -2,6 +2,7 @@ package jlsm.encryption;
 
 import java.security.GeneralSecurityException;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
@@ -19,9 +20,10 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>
  * Governed by: .kb/algorithms/encryption/searchable-encryption-schemes.md
  */
-public final class BoldyrevaOpeEncryptor {
+public final class BoldyrevaOpeEncryptor implements AutoCloseable {
 
     private static final int MAX_RECURSION_DEPTH = 128;
+    private static final int MAX_BINARY_SEARCH_ITERATIONS = 64;
     private static final int BLOCK_SIZE = 16;
 
     private final long domainSize;
@@ -34,6 +36,7 @@ public final class BoldyrevaOpeEncryptor {
 
     /** Per-thread 16-byte buffer for PRF input assembly. */
     private final ThreadLocal<byte[]> prfBuffer;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     /**
      * Creates a Boldyreva OPE encryptor with the given key and domain/range configuration.
@@ -79,6 +82,7 @@ public final class BoldyrevaOpeEncryptor {
      * @throws IllegalArgumentException if plaintext is out of domain bounds
      */
     public long encrypt(long plaintext) {
+        ensureOpen();
         if (plaintext < 1 || plaintext > domainSize) {
             throw new IllegalArgumentException(
                     "Plaintext must be in [1.." + domainSize + "], got " + plaintext);
@@ -94,6 +98,7 @@ public final class BoldyrevaOpeEncryptor {
      * @throws IllegalArgumentException if ciphertext is out of range bounds
      */
     public long decrypt(long ciphertext) {
+        ensureOpen();
         if (ciphertext < 1 || ciphertext > rangeSize) {
             throw new IllegalArgumentException(
                     "Ciphertext must be in [1.." + rangeSize + "], got " + ciphertext);
@@ -101,7 +106,12 @@ public final class BoldyrevaOpeEncryptor {
         // Binary search: find plaintext p such that encrypt(p) == ciphertext
         long lo = 1;
         long hi = domainSize;
+        int iterations = 0;
         while (lo <= hi) {
+            if (++iterations > MAX_BINARY_SEARCH_ITERATIONS) {
+                throw new IllegalStateException("max binary search iterations "
+                        + MAX_BINARY_SEARCH_ITERATIONS + " exceeded during decrypt");
+            }
             final long mid = lo + (hi - lo) / 2;
             final long enc = encrypt(mid);
             if (enc == ciphertext) {
@@ -125,9 +135,18 @@ public final class BoldyrevaOpeEncryptor {
      */
     private long encryptRecursive(long plaintext, long dLo, long dHi, long rLo, long rHi,
             int depth) {
-        assert dLo <= dHi : "domain lo > hi";
-        assert rLo <= rHi : "range lo > hi";
-        assert depth <= MAX_RECURSION_DEPTH : "max recursion depth exceeded at " + depth;
+        if (depth > MAX_RECURSION_DEPTH) {
+            throw new IllegalStateException(
+                    "max recursion depth " + MAX_RECURSION_DEPTH + " exceeded at depth " + depth);
+        }
+        if (dLo > dHi) {
+            throw new IllegalStateException(
+                    "corrupted domain bounds: dLo=" + dLo + " > dHi=" + dHi + " at depth " + depth);
+        }
+        if (rLo > rHi) {
+            throw new IllegalStateException(
+                    "corrupted range bounds: rLo=" + rLo + " > rHi=" + rHi + " at depth " + depth);
+        }
 
         final long dSize = dHi - dLo + 1;
         final long rSize = rHi - rLo + 1;
@@ -165,6 +184,17 @@ public final class BoldyrevaOpeEncryptor {
      */
     private long sampleHypergeometric(long popN, long succK, long draws, long dLo, long dHi,
             long rLo, long rHi) {
+        if (popN <= 0) {
+            throw new IllegalArgumentException("population must be positive, got: " + popN);
+        }
+        if (succK < 0 || succK > popN) {
+            throw new IllegalArgumentException(
+                    "succK out of bounds: succK=" + succK + ", popN=" + popN);
+        }
+        if (draws < 0 || draws > popN) {
+            throw new IllegalArgumentException(
+                    "draws out of bounds: draws=" + draws + ", popN=" + popN);
+        }
         assert popN > 0 : "population must be positive";
         assert succK >= 0 && succK <= popN : "succK out of bounds";
         assert draws >= 0 && draws <= popN : "draws out of bounds";
@@ -196,44 +226,53 @@ public final class BoldyrevaOpeEncryptor {
     }
 
     /**
-     * Derives a deterministic seed from the key and node parameters using AES encryption. Uses
-     * cached prfCipher — AES/ECB is stateless between doFinal calls.
+     * Derives a deterministic seed from the key and node parameters using AES encryption. Packs all
+     * four long parameters at full fidelity using a two-pass Davies-Meyer-style construction: first
+     * encrypts (dLo, dHi) to get an intermediate value, then feeds that intermediate into the
+     * second block alongside (rLo, rHi) to produce the final seed. This avoids the lossy
+     * long-to-int folding that caused distinct parameter tuples to collide.
+     *
+     * <p>
+     * Uses cached prfCipher — AES/ECB is stateless between doFinal calls.
      */
     private long prfSeed(long dLo, long dHi, long rLo, long rHi) {
         try {
             final byte[] buf = prfBuffer.get();
-            // Pack 4 ints into buf (big-endian, matching original ByteBuffer.putInt behavior)
-            final int i0 = (int) (dLo ^ (dLo >>> 32));
-            final int i1 = (int) (dHi ^ (dHi >>> 32));
-            final int i2 = (int) (rLo ^ (rLo >>> 32));
-            final int i3 = (int) (rHi ^ (rHi >>> 32));
+            // Pass 1: encrypt (dLo, dHi) — full 16 bytes
+            packLong(buf, 0, dLo);
+            packLong(buf, 8, dHi);
 
-            buf[0] = (byte) (i0 >>> 24);
-            buf[1] = (byte) (i0 >>> 16);
-            buf[2] = (byte) (i0 >>> 8);
-            buf[3] = (byte) i0;
-            buf[4] = (byte) (i1 >>> 24);
-            buf[5] = (byte) (i1 >>> 16);
-            buf[6] = (byte) (i1 >>> 8);
-            buf[7] = (byte) i1;
-            buf[8] = (byte) (i2 >>> 24);
-            buf[9] = (byte) (i2 >>> 16);
-            buf[10] = (byte) (i2 >>> 8);
-            buf[11] = (byte) i2;
-            buf[12] = (byte) (i3 >>> 24);
-            buf[13] = (byte) (i3 >>> 16);
-            buf[14] = (byte) (i3 >>> 8);
-            buf[15] = (byte) i3;
+            final Cipher cipher = prfCipher.get();
+            final byte[] enc0 = cipher.doFinal(buf, 0, BLOCK_SIZE);
 
-            final byte[] encrypted = prfCipher.get().doFinal(buf);
-            assert encrypted.length == BLOCK_SIZE : "AES block output must be 16 bytes";
-            return ((long) (encrypted[0] & 0xFF) << 56) | ((long) (encrypted[1] & 0xFF) << 48)
-                    | ((long) (encrypted[2] & 0xFF) << 40) | ((long) (encrypted[3] & 0xFF) << 32)
-                    | ((long) (encrypted[4] & 0xFF) << 24) | ((long) (encrypted[5] & 0xFF) << 16)
-                    | ((long) (encrypted[6] & 0xFF) << 8) | ((long) (encrypted[7] & 0xFF));
+            // Pass 2: XOR enc0 with (rLo, rHi) to chain the two blocks, then encrypt
+            packLong(buf, 0, rLo);
+            packLong(buf, 8, rHi);
+            for (int i = 0; i < BLOCK_SIZE; i++) {
+                buf[i] ^= enc0[i];
+            }
+
+            final byte[] enc1 = cipher.doFinal(buf, 0, BLOCK_SIZE);
+
+            return ((long) (enc1[0] & 0xFF) << 56) | ((long) (enc1[1] & 0xFF) << 48)
+                    | ((long) (enc1[2] & 0xFF) << 40) | ((long) (enc1[3] & 0xFF) << 32)
+                    | ((long) (enc1[4] & 0xFF) << 24) | ((long) (enc1[5] & 0xFF) << 16)
+                    | ((long) (enc1[6] & 0xFF) << 8) | ((long) (enc1[7] & 0xFF));
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("AES PRF failed", e);
         }
+    }
+
+    /** Packs a long into buf at the given offset in big-endian order. */
+    private static void packLong(byte[] buf, int off, long value) {
+        buf[off] = (byte) (value >>> 56);
+        buf[off + 1] = (byte) (value >>> 48);
+        buf[off + 2] = (byte) (value >>> 40);
+        buf[off + 3] = (byte) (value >>> 32);
+        buf[off + 4] = (byte) (value >>> 24);
+        buf[off + 5] = (byte) (value >>> 16);
+        buf[off + 6] = (byte) (value >>> 8);
+        buf[off + 7] = (byte) value;
     }
 
     /**
@@ -277,5 +316,25 @@ public final class BoldyrevaOpeEncryptor {
      */
     private static double pseudoUniform(long value) {
         return (double) (value >>> 1) / (double) Long.MAX_VALUE;
+    }
+
+    /**
+     * Removes per-thread Cipher and PRF buffer entries for the calling thread and marks this
+     * encryptor as closed. Subsequent calls to {@link #encrypt} or {@link #decrypt} will throw
+     * {@link IllegalStateException}. Idempotent.
+     */
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        prfCipher.remove();
+        prfBuffer.remove();
+    }
+
+    private void ensureOpen() {
+        if (closed.get()) {
+            throw new IllegalStateException("BoldyrevaOpeEncryptor has been closed");
+        }
     }
 }

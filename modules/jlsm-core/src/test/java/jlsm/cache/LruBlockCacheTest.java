@@ -246,12 +246,15 @@ class LruBlockCacheTest {
         assertDoesNotThrow(cache::close);
     }
 
+    // Updated by audit block-cache-hardening: close() now rejects use-after-close on all methods
+    // including size(). The old test asserted size()==0 after close, but the correct behavior is
+    // that size() throws IllegalStateException on a closed cache.
     @Test
-    void closeClearsCache() {
+    void closedCacheRejectsSize() {
         var cache = LruBlockCache.builder().capacity(10).build();
         cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
         cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{ 2 }));
         cache.close();
-        assertEquals(0, cache.size());
+        assertThrows(IllegalStateException.class, cache::size);
     }
 }

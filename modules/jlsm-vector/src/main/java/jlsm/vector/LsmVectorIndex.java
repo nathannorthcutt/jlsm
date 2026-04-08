@@ -89,8 +89,13 @@ public final class LsmVectorIndex {
     }
 
     static float[] decodeFloats(byte[] bytes, int dimensions) {
-        assert bytes != null : "bytes must not be null";
-        assert bytes.length == dimensions * 4 : "byte count mismatch";
+        if (bytes == null) {
+            throw new IllegalArgumentException("bytes must not be null");
+        }
+        if (bytes.length != dimensions * 4) {
+            throw new IllegalArgumentException("byte count mismatch: expected " + (dimensions * 4)
+                    + " but got " + bytes.length);
+        }
         float[] floats = new float[dimensions];
         for (int i = 0; i < dimensions; i++) {
             int bits = ((bytes[i * 4] & 0xFF) << 24) | ((bytes[i * 4 + 1] & 0xFF) << 16)
@@ -103,6 +108,57 @@ public final class LsmVectorIndex {
     // -----------------------------------------------------------------------
     // Float16 encoding helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * Validates that all components of a float vector are finite (not NaN or Infinity). Non-finite
+     * components produce NaN similarity scores, making vectors invisible in search while still
+     * consuming storage and participating in index structures.
+     *
+     * @param vector the float vector to validate; must not be null
+     * @throws IllegalArgumentException if any component is NaN or Infinite
+     */
+    static void validateFiniteComponents(float[] vector) {
+        assert vector != null : "vector must not be null";
+        for (int i = 0; i < vector.length; i++) {
+            float f = vector[i];
+            if (!Float.isFinite(f)) {
+                throw new IllegalArgumentException("vector component " + i + " is " + f
+                        + " — non-finite values produce meaningless similarity"
+                        + " scores and corrupt index structures");
+            }
+        }
+    }
+
+    /**
+     * Validates that all components of a float vector are representable in float16 without
+     * overflow. Finite float32 values with magnitude greater than 65504 overflow to Infinity in
+     * float16, which produces NaN scores with cosine similarity and makes vectors invisible in
+     * search.
+     *
+     * @param vector the float vector to validate; must not be null
+     * @throws IllegalArgumentException if any component overflows float16
+     */
+    static void validateFloat16Components(float[] vector) {
+        assert vector != null : "vector must not be null";
+        for (int i = 0; i < vector.length; i++) {
+            float f = vector[i];
+            if (Float.isNaN(f)) {
+                throw new IllegalArgumentException("vector component " + i
+                        + " is NaN — NaN values produce meaningless similarity scores"
+                        + " and corrupt centroid assignment");
+            }
+            if (Float.isInfinite(f)) {
+                throw new IllegalArgumentException("vector component " + i + " is " + f
+                        + " — infinite values produce degenerate similarity"
+                        + " scores and corrupt centroid assignment");
+            }
+            short fp16 = Float.floatToFloat16(f);
+            if (!Float.isFinite(Float.float16ToFloat(fp16))) {
+                throw new IllegalArgumentException("vector component " + i + " (" + f
+                        + ") overflows float16 range (max finite: ±65504)");
+            }
+        }
+    }
 
     /**
      * Encodes a float array to float16 (IEEE 754 binary16) big-endian bytes. Contract: each float
@@ -133,8 +189,13 @@ public final class LsmVectorIndex {
      * @return float array of length {@code dimensions}
      */
     static float[] decodeFloat16s(byte[] bytes, int dimensions) {
-        assert bytes != null : "bytes must not be null";
-        assert bytes.length == dimensions * 2 : "byte count mismatch";
+        if (bytes == null) {
+            throw new IllegalArgumentException("bytes must not be null");
+        }
+        if (bytes.length != dimensions * 2) {
+            throw new IllegalArgumentException("byte count mismatch: expected " + (dimensions * 2)
+                    + " but got " + bytes.length);
+        }
         float[] floats = new float[dimensions];
         for (int i = 0; i < dimensions; i++) {
             short bits = (short) (((bytes[i * 2] & 0xFF) << 8) | (bytes[i * 2 + 1] & 0xFF));
@@ -256,13 +317,19 @@ public final class LsmVectorIndex {
     // -----------------------------------------------------------------------
 
     private record ScoredCandidate(byte[] docIdBytes, float score) {
+        ScoredCandidate {
+            if (!Float.isFinite(score)) {
+                throw new IllegalArgumentException("score must be finite, got: " + score);
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
     // Abstract builder base
     // -----------------------------------------------------------------------
 
-    private abstract static class AbstractBuilder<D, B extends AbstractBuilder<D, B>> {
+    private abstract static class AbstractBuilder<D, B extends AbstractBuilder<D, B>>
+            implements AutoCloseable {
 
         LsmTree lsmTree;
         MemorySerializer<D> docIdSerializer;
@@ -283,10 +350,24 @@ public final class LsmVectorIndex {
             return (B) this;
         }
 
+        /**
+         * Computes the maximum safe dimensions for the given precision, preventing integer overflow
+         * when computing {@code dimensions * bytesPerComponent}.
+         */
+        private static int maxDimensionsFor(VectorPrecision p) {
+            return Integer.MAX_VALUE / p.bytesPerComponent();
+        }
+
         @SuppressWarnings("unchecked")
         public B dimensions(int dimensions) {
             if (dimensions <= 0)
                 throw new IllegalArgumentException("dimensions must be > 0, got: " + dimensions);
+            int maxDims = maxDimensionsFor(this.precision);
+            if (dimensions > maxDims)
+                throw new IllegalArgumentException("dimensions must be <= " + maxDims
+                        + " to prevent integer overflow in byte allocation for " + this.precision
+                        + " (" + this.precision.bytesPerComponent() + " bytes/component), got: "
+                        + dimensions);
             this.dimensions = dimensions;
             return (B) this;
         }
@@ -317,6 +398,42 @@ public final class LsmVectorIndex {
                 throw new IllegalArgumentException("dimensions must be > 0");
             }
             Objects.requireNonNull(similarityFunction, "similarityFunction must not be null");
+            Objects.requireNonNull(precision, "precision must not be null");
+            // Precision-aware overflow check: dimensions may have been set before
+            // precision was changed, so re-validate with the final precision.
+            int maxDims = maxDimensionsFor(precision);
+            if (dimensions > maxDims) {
+                throw new IllegalArgumentException("dimensions " + dimensions + " exceeds maximum "
+                        + maxDims + " for " + precision + " (" + precision.bytesPerComponent()
+                        + " bytes/component) — would overflow in byte allocation");
+            }
+        }
+
+        /**
+         * Consumes the {@code lsmTree} reference, returning it and clearing the field so that
+         * {@link #close()} will not close a tree whose ownership was transferred to the built
+         * index.
+         */
+        LsmTree consumeTree() {
+            LsmTree tree = this.lsmTree;
+            this.lsmTree = null;
+            return tree;
+        }
+
+        /**
+         * Closes the {@link LsmTree} held by this builder, if ownership has not been transferred
+         * via a successful {@link #consumeTree()} call. Idempotent — safe to call multiple times.
+         * <p>
+         * This allows callers to use try-with-resources on the builder to prevent resource leaks
+         * when {@code build()} is never called (e.g., due to an exception in caller setup code).
+         */
+        @Override
+        public void close() throws IOException {
+            LsmTree tree = this.lsmTree;
+            this.lsmTree = null;
+            if (tree != null) {
+                tree.close();
+            }
         }
     }
 
@@ -352,6 +469,9 @@ public final class LsmVectorIndex {
         private static final MemorySegment CENTROID_SCAN_END = MemorySegment
                 .ofArray(new byte[]{ POSTING_PREFIX });
 
+        /** Number of striped locks for per-docId synchronization. */
+        private static final int LOCK_STRIPE_COUNT = 64;
+
         private final LsmTree lsmTree;
         private final MemorySerializer<D> docIdSerializer;
         private final int dimensions;
@@ -359,24 +479,43 @@ public final class LsmVectorIndex {
         private final int numClusters;
         private final int nprobe;
         private final VectorPrecision precision;
+        private final Object[] docIdLocks;
+        /** Lock guarding centroid creation in {@link #assignCentroid(float[])}. */
+        private final Object centroidCreationLock = new Object();
 
         private IvfFlat(LsmTree lsmTree, MemorySerializer<D> docIdSerializer, int dimensions,
                 SimilarityFunction similarityFunction, int numClusters, int nprobe,
                 VectorPrecision precision) {
-            assert lsmTree != null;
-            assert docIdSerializer != null;
-            assert dimensions > 0;
-            assert similarityFunction != null;
-            assert numClusters > 0;
-            assert nprobe > 0;
-            assert precision != null;
-            this.lsmTree = lsmTree;
-            this.docIdSerializer = docIdSerializer;
+            this.lsmTree = Objects.requireNonNull(lsmTree, "lsmTree must not be null");
+            this.docIdSerializer = Objects.requireNonNull(docIdSerializer,
+                    "docIdSerializer must not be null");
+            if (dimensions <= 0) {
+                throw new IllegalArgumentException(
+                        "dimensions must be positive, got: " + dimensions);
+            }
             this.dimensions = dimensions;
-            this.similarityFunction = similarityFunction;
+            this.similarityFunction = Objects.requireNonNull(similarityFunction,
+                    "similarityFunction must not be null");
+            if (numClusters <= 0) {
+                throw new IllegalArgumentException(
+                        "numClusters must be positive, got: " + numClusters);
+            }
             this.numClusters = numClusters;
+            if (nprobe <= 0) {
+                throw new IllegalArgumentException("nprobe must be positive, got: " + nprobe);
+            }
             this.nprobe = nprobe;
-            this.precision = precision;
+            this.precision = Objects.requireNonNull(precision, "precision must not be null");
+            this.docIdLocks = new Object[LOCK_STRIPE_COUNT];
+            for (int i = 0; i < LOCK_STRIPE_COUNT; i++) {
+                docIdLocks[i] = new Object();
+            }
+        }
+
+        /** Returns the striped lock for the given docId byte representation. */
+        private Object lockFor(byte[] docIdBytes) {
+            int hash = Arrays.hashCode(docIdBytes);
+            return docIdLocks[(hash & 0x7FFFFFFF) % LOCK_STRIPE_COUNT];
         }
 
         @Override
@@ -392,19 +531,39 @@ public final class LsmVectorIndex {
                 throw new IllegalArgumentException(
                         "vector.length=" + vector.length + " != dimensions=" + dimensions);
             }
+            validateFiniteComponents(vector);
+            if (precision == VectorPrecision.FLOAT16) {
+                validateFloat16Components(vector);
+            }
 
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
             byte[] vectorBytes = encodeVector(vector, precision);
-
             int centroidId = assignCentroid(vector);
 
-            // Store posting: [0x01][centroid_id][docId] → vector
-            lsmTree.put(MemorySegment.ofArray(postingKey(centroidId, docIdBytes)),
-                    MemorySegment.ofArray(vectorBytes));
+            // Synchronize the read-modify-write of reverse lookup and posting entries
+            // per docId to prevent concurrent re-index from leaving orphaned postings.
+            synchronized (lockFor(docIdBytes)) {
+                // Clean up old posting if this docId was previously indexed under a different
+                // centroid
+                byte[] revKey = reverseKey(docIdBytes);
+                Optional<MemorySegment> oldRev = lsmTree.get(MemorySegment.ofArray(revKey));
+                if (oldRev.isPresent()) {
+                    int oldCentroidId = decodeCentroidId(
+                            oldRev.get().toArray(ValueLayout.JAVA_BYTE), 0);
+                    if (oldCentroidId != centroidId) {
+                        lsmTree.delete(
+                                MemorySegment.ofArray(postingKey(oldCentroidId, docIdBytes)));
+                    }
+                }
 
-            // Store reverse lookup: [0x02][docId] → centroid_id (4 bytes BE)
-            lsmTree.put(MemorySegment.ofArray(reverseKey(docIdBytes)),
-                    MemorySegment.ofArray(encodeCentroidId(centroidId)));
+                // Store posting: [0x01][centroid_id][docId] → vector
+                lsmTree.put(MemorySegment.ofArray(postingKey(centroidId, docIdBytes)),
+                        MemorySegment.ofArray(vectorBytes));
+
+                // Store reverse lookup: [0x02][docId] → centroid_id (4 bytes BE)
+                lsmTree.put(MemorySegment.ofArray(reverseKey(docIdBytes)),
+                        MemorySegment.ofArray(encodeCentroidId(centroidId)));
+            }
         }
 
         @Override
@@ -414,14 +573,19 @@ public final class LsmVectorIndex {
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
             byte[] revKey = reverseKey(docIdBytes);
 
-            Optional<MemorySegment> revOpt = lsmTree.get(MemorySegment.ofArray(revKey));
-            if (revOpt.isEmpty())
-                return; // not indexed
+            // Synchronize on the same per-docId striped lock used by index() to
+            // prevent a concurrent index() from inserting a new posting between
+            // this method's reverse-lookup read and its delete calls.
+            synchronized (lockFor(docIdBytes)) {
+                Optional<MemorySegment> revOpt = lsmTree.get(MemorySegment.ofArray(revKey));
+                if (revOpt.isEmpty())
+                    return; // not indexed
 
-            int centroidId = decodeCentroidId(revOpt.get().toArray(ValueLayout.JAVA_BYTE), 0);
+                int centroidId = decodeCentroidId(revOpt.get().toArray(ValueLayout.JAVA_BYTE), 0);
 
-            lsmTree.delete(MemorySegment.ofArray(postingKey(centroidId, docIdBytes)));
-            lsmTree.delete(MemorySegment.ofArray(revKey));
+                lsmTree.delete(MemorySegment.ofArray(postingKey(centroidId, docIdBytes)));
+                lsmTree.delete(MemorySegment.ofArray(revKey));
+            }
         }
 
         @Override
@@ -447,7 +611,8 @@ public final class LsmVectorIndex {
                 if (key.length != 5 || key[0] != CENTROID_PREFIX)
                     continue;
                 int cid = decodeCentroidId(key, 1);
-                float[] cVec = decodeFloats(put.value().toArray(ValueLayout.JAVA_BYTE), dimensions);
+                float[] cVec = decodeVector(put.value().toArray(ValueLayout.JAVA_BYTE), dimensions,
+                        precision);
                 centroidVecs.add(cVec);
                 centroidIds.add(cid);
             }
@@ -484,6 +649,11 @@ public final class LsmVectorIndex {
                     float[] vec = decodeVector(put.value().toArray(ValueLayout.JAVA_BYTE),
                             dimensions, precision);
                     float s = score(query, vec, similarityFunction);
+
+                    // Skip non-finite scores — NaN and Infinity corrupt ordering
+                    // and violate downstream contracts
+                    if (!Float.isFinite(s))
+                        continue;
 
                     heap.add(new ScoredCandidate(docIdBytes, s));
                     if (heap.size() > topK)
@@ -547,7 +717,11 @@ public final class LsmVectorIndex {
                     (byte) (centroidId >>> 8), (byte) centroidId };
         }
 
-        private static int decodeCentroidId(byte[] bytes, int offset) {
+        private static int decodeCentroidId(byte[] bytes, int offset) throws IOException {
+            if (bytes.length < offset + 4) {
+                throw new IOException("Corrupted centroid ID: expected at least " + (offset + 4)
+                        + " bytes but got " + bytes.length);
+            }
             return ((bytes[offset] & 0xFF) << 24) | ((bytes[offset + 1] & 0xFF) << 16)
                     | ((bytes[offset + 2] & 0xFF) << 8) | (bytes[offset + 3] & 0xFF);
         }
@@ -559,31 +733,39 @@ public final class LsmVectorIndex {
          * {@code numClusters} centroids exist; otherwise assigns to the most similar existing one.
          */
         private int assignCentroid(float[] vector) throws IOException {
-            List<float[]> centroids = new ArrayList<>();
-            List<Integer> centroidIdList = new ArrayList<>();
+            // Synchronize on centroidCreationLock so that the scan + conditional creation
+            // is atomic. Without this, two threads that both see centroids.size() < numClusters
+            // compute the same newCid (max+1) and the second silently overwrites the first.
+            synchronized (centroidCreationLock) {
+                List<float[]> centroids = new ArrayList<>();
+                List<Integer> centroidIdList = new ArrayList<>();
 
-            Iterator<Entry> it = lsmTree.scan(CENTROID_SCAN_START, CENTROID_SCAN_END);
-            while (it.hasNext()) {
-                Entry entry = it.next();
-                if (!(entry instanceof Entry.Put put))
-                    continue;
-                byte[] key = entry.key().toArray(ValueLayout.JAVA_BYTE);
-                if (key.length != 5 || key[0] != CENTROID_PREFIX)
-                    continue;
-                int cid = decodeCentroidId(key, 1);
-                float[] cVec = decodeFloats(put.value().toArray(ValueLayout.JAVA_BYTE), dimensions);
-                centroids.add(cVec);
-                centroidIdList.add(cid);
+                Iterator<Entry> it = lsmTree.scan(CENTROID_SCAN_START, CENTROID_SCAN_END);
+                while (it.hasNext()) {
+                    Entry entry = it.next();
+                    if (!(entry instanceof Entry.Put put))
+                        continue;
+                    byte[] key = entry.key().toArray(ValueLayout.JAVA_BYTE);
+                    if (key.length != 5 || key[0] != CENTROID_PREFIX)
+                        continue;
+                    int cid = decodeCentroidId(key, 1);
+                    float[] cVec = decodeVector(put.value().toArray(ValueLayout.JAVA_BYTE),
+                            dimensions, precision);
+                    centroids.add(cVec);
+                    centroidIdList.add(cid);
+                }
+
+                if (centroids.size() < numClusters) {
+                    int newCid = centroidIdList.isEmpty() ? 0
+                            : centroidIdList.stream().mapToInt(Integer::intValue).max().getAsInt()
+                                    + 1;
+                    lsmTree.put(MemorySegment.ofArray(centroidKey(newCid)),
+                            MemorySegment.ofArray(encodeVector(vector, precision)));
+                    return newCid;
+                }
+
+                return nearestCentroid(vector, centroids, centroidIdList);
             }
-
-            if (centroids.size() < numClusters) {
-                int newCid = centroids.size(); // sequential 0-based centroid IDs
-                lsmTree.put(MemorySegment.ofArray(centroidKey(newCid)),
-                        MemorySegment.ofArray(encodeFloats(vector)));
-                return newCid;
-            }
-
-            return nearestCentroid(vector, centroids, centroidIdList);
         }
 
         private int nearestCentroid(float[] vector, List<float[]> centroids, List<Integer> ids) {
@@ -591,7 +773,9 @@ public final class LsmVectorIndex {
             float bestScore = score(vector, centroids.get(0), similarityFunction);
             for (int i = 1; i < centroids.size(); i++) {
                 float s = score(vector, centroids.get(i), similarityFunction);
-                if (s > bestScore) {
+                // Use !(bestScore >= s) instead of s > bestScore so that a finite score
+                // always beats a NaN bestScore (IEEE 754: comparisons with NaN return false).
+                if (Float.isNaN(bestScore) || s > bestScore) {
                     bestScore = s;
                     best = ids.get(i);
                 }
@@ -608,7 +792,20 @@ public final class LsmVectorIndex {
             Integer[] indices = new Integer[centroids.size()];
             for (int i = 0; i < indices.length; i++)
                 indices[i] = i;
-            Arrays.sort(indices, (a, b) -> Float.compare(scores[b], scores[a])); // descending
+            // Sort descending by score, but push NaN to the end (worst). Float.compare
+            // treats NaN as greater than all finite values; reversing args for descending
+            // order would put NaN first, wasting the nprobe budget on invalid centroids.
+            Arrays.sort(indices, (a, b) -> {
+                boolean aNaN = Float.isNaN(scores[a]);
+                boolean bNaN = Float.isNaN(scores[b]);
+                if (aNaN && bNaN)
+                    return 0;
+                if (aNaN)
+                    return 1; // a is NaN → sort after b
+                if (bNaN)
+                    return -1; // b is NaN → sort after a
+                return Float.compare(scores[b], scores[a]); // descending for finite values
+            });
 
             int[] result = new int[n];
             for (int i = 0; i < n; i++)
@@ -625,6 +822,7 @@ public final class LsmVectorIndex {
 
             private int numClusters = 256;
             private int nprobe = 8;
+            private boolean nprobeExplicitlySet = false;
 
             public Builder<D> numClusters(int n) {
                 if (n <= 0)
@@ -637,13 +835,21 @@ public final class LsmVectorIndex {
                 if (n <= 0)
                     throw new IllegalArgumentException("nprobe must be > 0");
                 this.nprobe = n;
+                this.nprobeExplicitlySet = true;
                 return this;
             }
 
             public VectorIndex.IvfFlat<D> build() {
                 validateBase();
-                return new LsmVectorIndex.IvfFlat<>(lsmTree, docIdSerializer, dimensions,
-                        similarityFunction, numClusters, nprobe, precision);
+                int effectiveNprobe = nprobe;
+                if (nprobeExplicitlySet && nprobe > numClusters) {
+                    throw new IllegalArgumentException("nprobe must be <= numClusters, got nprobe="
+                            + nprobe + " and numClusters=" + numClusters);
+                } else if (!nprobeExplicitlySet && nprobe > numClusters) {
+                    effectiveNprobe = numClusters;
+                }
+                return new LsmVectorIndex.IvfFlat<>(consumeTree(), docIdSerializer, dimensions,
+                        similarityFunction, numClusters, effectiveNprobe, precision);
             }
         }
     }
@@ -681,6 +887,7 @@ public final class LsmVectorIndex {
 
         private static final byte[] ENTRY_POINT_KEY = new byte[]{ (byte) 0xFE };
         private static final byte SOFT_DELETE_PREFIX = (byte) 0xFF;
+        private volatile boolean closed;
 
         private final LsmTree lsmTree;
         private final MemorySerializer<D> docIdSerializer;
@@ -690,27 +897,43 @@ public final class LsmVectorIndex {
         private final int efConstruction;
         private final int efSearch;
         private final VectorPrecision precision;
+        private final Object entryPointLock = new Object();
+        private static final int NODE_LOCK_STRIPES = 64;
+        private final Object[] nodeLocks;
         private final Random random = new Random();
 
         private Hnsw(LsmTree lsmTree, MemorySerializer<D> docIdSerializer, int dimensions,
                 SimilarityFunction similarityFunction, int maxConnections, int efConstruction,
                 int efSearch, VectorPrecision precision) {
-            assert lsmTree != null;
-            assert docIdSerializer != null;
-            assert dimensions > 0;
-            assert similarityFunction != null;
-            assert maxConnections > 0;
-            assert efConstruction > 0;
-            assert efSearch > 0;
-            assert precision != null;
-            this.lsmTree = lsmTree;
-            this.docIdSerializer = docIdSerializer;
+            this.lsmTree = Objects.requireNonNull(lsmTree, "lsmTree must not be null");
+            this.docIdSerializer = Objects.requireNonNull(docIdSerializer,
+                    "docIdSerializer must not be null");
+            if (dimensions <= 0) {
+                throw new IllegalArgumentException(
+                        "dimensions must be positive, got: " + dimensions);
+            }
             this.dimensions = dimensions;
-            this.similarityFunction = similarityFunction;
+            this.similarityFunction = Objects.requireNonNull(similarityFunction,
+                    "similarityFunction must not be null");
+            if (maxConnections <= 0) {
+                throw new IllegalArgumentException(
+                        "maxConnections must be positive, got: " + maxConnections);
+            }
             this.maxConnections = maxConnections;
+            if (efConstruction <= 0) {
+                throw new IllegalArgumentException(
+                        "efConstruction must be positive, got: " + efConstruction);
+            }
             this.efConstruction = efConstruction;
+            if (efSearch <= 0) {
+                throw new IllegalArgumentException("efSearch must be positive, got: " + efSearch);
+            }
             this.efSearch = efSearch;
-            this.precision = precision;
+            this.precision = Objects.requireNonNull(precision, "precision must not be null");
+            this.nodeLocks = new Object[NODE_LOCK_STRIPES];
+            for (int i = 0; i < NODE_LOCK_STRIPES; i++) {
+                nodeLocks[i] = new Object();
+            }
         }
 
         @Override
@@ -726,22 +949,33 @@ public final class LsmVectorIndex {
                 throw new IllegalArgumentException(
                         "vector.length=" + vector.length + " != dimensions=" + dimensions);
             }
+            validateFiniteComponents(vector);
+            if (precision == VectorPrecision.FLOAT16) {
+                validateFloat16Components(vector);
+            }
 
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
+
             int newLevel = randomLevel();
 
-            EntryPoint ep = readEntryPoint();
+            EntryPoint ep;
+            synchronized (entryPointLock) {
+                ep = readEntryPoint();
 
-            if (ep == null) {
-                // First node: create empty layer list and set as entry point
-                List<List<byte[]>> layers = new ArrayList<>();
-                for (int l = 0; l <= newLevel; l++)
-                    layers.add(new ArrayList<>());
-                lsmTree.put(MemorySegment.ofArray(docIdBytes),
-                        MemorySegment.ofArray(encodeNode(docIdBytes, layers, vector, precision)));
-                lsmTree.put(MemorySegment.ofArray(ENTRY_POINT_KEY),
-                        MemorySegment.ofArray(encodeEntryPoint(docIdBytes, newLevel)));
-                return;
+                if (ep == null) {
+                    // First node: create empty layer list and set as entry point
+                    List<List<byte[]>> layers = new ArrayList<>();
+                    for (int l = 0; l <= newLevel; l++)
+                        layers.add(new ArrayList<>());
+                    lsmTree.put(MemorySegment.ofArray(docIdBytes), MemorySegment
+                            .ofArray(encodeNode(docIdBytes, layers, vector, precision)));
+                    lsmTree.put(MemorySegment.ofArray(ENTRY_POINT_KEY),
+                            MemorySegment.ofArray(encodeEntryPoint(docIdBytes, newLevel)));
+                    // Clear soft-delete tombstone after node data is written so
+                    // concurrent searches never see stale pre-removal data
+                    lsmTree.delete(MemorySegment.ofArray(softDeleteKey(docIdBytes)));
+                    return;
+                }
             }
 
             int maxLayer = ep.maxLayer();
@@ -758,6 +992,13 @@ public final class LsmVectorIndex {
             for (int l = 0; l <= newLevel; l++)
                 newNodeLayers.add(new ArrayList<>());
 
+            // Write new node early so that trimToM can look it up during
+            // bidirectional neighbor updates. trimToM scores each candidate
+            // neighbor via lsmTree.get() — an unwritten node returns empty and
+            // is silently excluded from trim selection, losing its backlink.
+            lsmTree.put(MemorySegment.ofArray(docIdBytes), MemorySegment
+                    .ofArray(encodeNode(docIdBytes, newNodeLayers, vector, precision)));
+
             for (int lc = startLevel; lc >= 0; lc--) {
                 List<ScoredCandidate> candidates = searchLayer(currentEp, vector, efConstruction,
                         lc);
@@ -771,39 +1012,55 @@ public final class LsmVectorIndex {
                     currentEp = best.docIdBytes();
                 }
 
-                // Bidirectional neighbor updates
+                // Bidirectional neighbor updates — per-node lock prevents lost
+                // updates when concurrent index() calls modify the same neighbor.
                 for (byte[] nbId : selectedNeighbors) {
-                    Optional<MemorySegment> nbOpt = lsmTree.get(MemorySegment.ofArray(nbId));
-                    if (nbOpt.isEmpty())
-                        continue;
+                    synchronized (nodeLockFor(nbId)) {
+                        Optional<MemorySegment> nbOpt = lsmTree.get(MemorySegment.ofArray(nbId));
+                        if (nbOpt.isEmpty())
+                            continue;
 
-                    DecodedNode nbNode = decodeNode(nbOpt.get().toArray(ValueLayout.JAVA_BYTE),
-                            precision);
-                    if (lc >= nbNode.layerNeighbors().size())
-                        continue;
+                        DecodedNode nbNode = decodeNode(nbOpt.get().toArray(ValueLayout.JAVA_BYTE),
+                                precision);
+                        if (lc >= nbNode.layerNeighbors().size())
+                            continue;
 
-                    List<List<byte[]>> updatedLayers = new ArrayList<>(nbNode.layerNeighbors());
-                    List<byte[]> updatedNbrs = new ArrayList<>(updatedLayers.get(lc));
-                    updatedNbrs.add(docIdBytes);
+                        List<List<byte[]>> updatedLayers = new ArrayList<>(nbNode.layerNeighbors());
+                        List<byte[]> updatedNbrs = new ArrayList<>(updatedLayers.get(lc));
+                        updatedNbrs.add(docIdBytes);
 
-                    if (updatedNbrs.size() > maxConnections) {
-                        updatedNbrs = trimToM(nbNode.vector(), updatedNbrs, maxConnections);
+                        if (updatedNbrs.size() > maxConnections) {
+                            updatedNbrs = trimToM(nbNode.vector(), updatedNbrs, maxConnections);
+                        }
+
+                        updatedLayers.set(lc, updatedNbrs);
+                        lsmTree.put(MemorySegment.ofArray(nbId), MemorySegment.ofArray(
+                                encodeNode(nbId, updatedLayers, nbNode.vector(), precision)));
                     }
-
-                    updatedLayers.set(lc, updatedNbrs);
-                    lsmTree.put(MemorySegment.ofArray(nbId), MemorySegment
-                            .ofArray(encodeNode(nbId, updatedLayers, nbNode.vector(), precision)));
                 }
             }
 
-            // Write new node
+            // Rewrite new node with final neighbor lists populated by Phase 2
             lsmTree.put(MemorySegment.ofArray(docIdBytes), MemorySegment
                     .ofArray(encodeNode(docIdBytes, newNodeLayers, vector, precision)));
 
-            // Promote entry point if this node has a higher level
+            // Clear soft-delete tombstone after new node data is written so
+            // concurrent searches never see stale pre-removal vector data
+            // through a visibility window (F-R5.shared_state.2.6)
+            lsmTree.delete(MemorySegment.ofArray(softDeleteKey(docIdBytes)));
+
+            // Promote entry point if this node has a higher level.
+            // Re-read under lock to avoid lost-update race where a concurrent
+            // thread with a higher level already promoted and we would overwrite
+            // it with a lower maxLayer.
             if (newLevel > maxLayer) {
-                lsmTree.put(MemorySegment.ofArray(ENTRY_POINT_KEY),
-                        MemorySegment.ofArray(encodeEntryPoint(docIdBytes, newLevel)));
+                synchronized (entryPointLock) {
+                    EntryPoint currentEpState = readEntryPoint();
+                    if (currentEpState == null || newLevel > currentEpState.maxLayer()) {
+                        lsmTree.put(MemorySegment.ofArray(ENTRY_POINT_KEY),
+                                MemorySegment.ofArray(encodeEntryPoint(docIdBytes, newLevel)));
+                    }
+                }
             }
         }
 
@@ -852,6 +1109,9 @@ public final class LsmVectorIndex {
             for (ScoredCandidate c : candidates) {
                 if (results.size() >= topK)
                     break;
+                // Skip non-finite scores — Infinity violates SearchResult contract
+                if (!Float.isFinite(c.score()))
+                    continue;
                 if (isSoftDeleted(c.docIdBytes()))
                     continue;
                 D id = docIdSerializer.deserialize(MemorySegment.ofArray(c.docIdBytes()));
@@ -862,6 +1122,10 @@ public final class LsmVectorIndex {
 
         @Override
         public void close() throws IOException {
+            if (closed) {
+                return;
+            }
+            closed = true;
             lsmTree.close();
         }
 
@@ -875,6 +1139,12 @@ public final class LsmVectorIndex {
         }
 
         private record EntryPoint(byte[] docIdBytes, int maxLayer) {
+            EntryPoint {
+                if (maxLayer < 0) {
+                    throw new IllegalStateException(
+                            "Corrupt entry point: maxLayer=" + maxLayer + " (must be >= 0)");
+                }
+            }
         }
 
         private EntryPoint readEntryPoint() throws IOException {
@@ -936,9 +1206,26 @@ public final class LsmVectorIndex {
             PriorityQueue<ScoredCandidate> results = new PriorityQueue<>(
                     Comparator.comparingDouble(ScoredCandidate::score));
 
-            ScoredCandidate entry = new ScoredCandidate(entryDocId, entryScore);
-            frontier.add(entry);
-            results.add(entry);
+            if (Float.isFinite(entryScore)) {
+                ScoredCandidate entry = new ScoredCandidate(entryDocId, entryScore);
+                frontier.add(entry);
+                results.add(entry);
+            } else {
+                // Entry score is non-finite (NaN/Infinity) — cannot create a
+                // ScoredCandidate, but we still need to explore from this node.
+                // Seed the frontier with the entry's finite-scored neighbors.
+                for (byte[] nbId : getNodeNeighbors(entryDocId, layer)) {
+                    visited.add(ByteBuffer.wrap(nbId));
+                    float nbScore = scoreNode(nbId, query);
+                    if (!Float.isFinite(nbScore))
+                        continue;
+                    ScoredCandidate nb = new ScoredCandidate(nbId, nbScore);
+                    frontier.add(nb);
+                    results.add(nb);
+                    if (results.size() > ef)
+                        results.poll();
+                }
+            }
 
             while (!frontier.isEmpty()) {
                 ScoredCandidate best = frontier.poll();
@@ -955,6 +1242,12 @@ public final class LsmVectorIndex {
                         continue; // already visited
 
                     float nbScore = scoreNode(nbId, query);
+
+                    // Skip non-finite scores — NaN and Infinity corrupt ordering
+                    // and violate downstream SearchResult contracts
+                    if (!Float.isFinite(nbScore))
+                        continue;
+
                     float currentWorst = results.isEmpty() ? Float.NEGATIVE_INFINITY
                             : results.peek().score();
 
@@ -1013,6 +1306,11 @@ public final class LsmVectorIndex {
             return node.layerNeighbors().get(layer);
         }
 
+        private Object nodeLockFor(byte[] docIdBytes) {
+            int hash = Arrays.hashCode(docIdBytes);
+            return nodeLocks[(hash & 0x7FFF_FFFF) % NODE_LOCK_STRIPES];
+        }
+
         private boolean isSoftDeleted(byte[] docIdBytes) throws IOException {
             return lsmTree.get(MemorySegment.ofArray(softDeleteKey(docIdBytes))).isPresent();
         }
@@ -1033,8 +1331,9 @@ public final class LsmVectorIndex {
                 float[] vector, VectorPrecision precision) {
             int docIdLen = docIdBytes.length;
             int layerCount = layerNeighbors.size();
-            int neighborBytes = layerNeighbors.stream().mapToInt(l -> 4 + l.size() * docIdLen)
-                    .sum();
+            // Each neighbor: 4-byte length prefix + actual bytes
+            int neighborBytes = layerNeighbors.stream()
+                    .mapToInt(l -> 4 + l.stream().mapToInt(nb -> 4 + nb.length).sum()).sum();
             int totalSize = 4 + 4 + neighborBytes + vector.length * precision.bytesPerComponent();
 
             byte[] buf = new byte[totalSize];
@@ -1044,8 +1343,9 @@ public final class LsmVectorIndex {
             for (List<byte[]> neighbors : layerNeighbors) {
                 off = writeInt(buf, off, neighbors.size());
                 for (byte[] nb : neighbors) {
-                    System.arraycopy(nb, 0, buf, off, docIdLen);
-                    off += docIdLen;
+                    off = writeInt(buf, off, nb.length);
+                    System.arraycopy(nb, 0, buf, off, nb.length);
+                    off += nb.length;
                 }
             }
             byte[] vectorBytes = encodeVector(vector, precision);
@@ -1053,7 +1353,8 @@ public final class LsmVectorIndex {
             return buf;
         }
 
-        private static DecodedNode decodeNode(byte[] bytes, VectorPrecision precision) {
+        private static DecodedNode decodeNode(byte[] bytes, VectorPrecision precision)
+                throws IOException {
             int off = 0;
             int docIdLen = readInt(bytes, off);
             off += 4;
@@ -1063,16 +1364,43 @@ public final class LsmVectorIndex {
             for (int l = 0; l < layerCount; l++) {
                 int neighborCount = readInt(bytes, off);
                 off += 4;
+                if (neighborCount < 0) {
+                    throw new IOException("Corrupted node: negative neighborCount " + neighborCount
+                            + " at layer " + l);
+                }
                 List<byte[]> neighbors = new ArrayList<>(neighborCount);
                 for (int n = 0; n < neighborCount; n++) {
-                    neighbors.add(Arrays.copyOfRange(bytes, off, off + docIdLen));
-                    off += docIdLen;
+                    if (off + 4 > bytes.length) {
+                        throw new IOException("Corrupted node: cannot read neighbor length "
+                                + "at layer " + l + ", neighbor " + n + " (off=" + off + ", bufLen="
+                                + bytes.length + ")");
+                    }
+                    int nbLen = readInt(bytes, off);
+                    off += 4;
+                    if (nbLen < 0) {
+                        throw new IOException("Corrupted node: negative neighbor ID length " + nbLen
+                                + " at layer " + l + ", neighbor " + n);
+                    }
+                    if (off + (long) nbLen > bytes.length) {
+                        throw new IOException(
+                                "Corrupted node: neighbor ID length " + nbLen + " at layer " + l
+                                        + ", neighbor " + n + " would read past end of buffer (off="
+                                        + off + ", bufLen=" + bytes.length + ")");
+                    }
+                    neighbors.add(Arrays.copyOfRange(bytes, off, off + nbLen));
+                    off += nbLen;
                 }
                 layers.add(neighbors);
             }
             int vecBytes = bytes.length - off;
+            int bpc = precision.bytesPerComponent();
+            if (vecBytes % bpc != 0) {
+                throw new IOException("Corrupted node: vector byte count " + vecBytes
+                        + " is not divisible by bytesPerComponent " + bpc + " for precision "
+                        + precision);
+            }
             float[] vector = decodeVector(Arrays.copyOfRange(bytes, off, bytes.length),
-                    vecBytes / precision.bytesPerComponent(), precision);
+                    vecBytes / bpc, precision);
             return new DecodedNode(layers, vector);
         }
 
@@ -1110,7 +1438,7 @@ public final class LsmVectorIndex {
 
             public VectorIndex.Hnsw<D> build() {
                 validateBase();
-                return new LsmVectorIndex.Hnsw<>(lsmTree, docIdSerializer, dimensions,
+                return new LsmVectorIndex.Hnsw<>(consumeTree(), docIdSerializer, dimensions,
                         similarityFunction, maxConnections, efConstruction, efSearch, precision);
             }
         }

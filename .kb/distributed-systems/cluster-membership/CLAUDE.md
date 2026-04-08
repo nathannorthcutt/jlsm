@@ -11,6 +11,9 @@ membership dissemination (gossip/piggybacking), and split-brain detection
 | File | Subject | Status | Key Metric | Best For |
 |------|---------|--------|------------|----------|
 | [cluster-membership-protocols.md](cluster-membership-protocols.md) | SWIM, phi accrual, split-brain detection | mature | O(1) per-member per-period | Peer-to-peer cluster membership at scale |
+| [nan-at-phi-threshold.md](nan-at-phi-threshold.md) | NaN bypasses phi threshold validation | active | adversarial-finding | Failure detector parameter validation |
+| [ismember-ignores-state.md](ismember-ignores-state.md) | isMember() returns true for DEAD members | active | adversarial-finding | Membership state transition handling |
+| [engine-clustering.md](engine-clustering.md) | engine-clustering feature footprint | stable | feature-footprint | Cluster membership + ownership audit |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

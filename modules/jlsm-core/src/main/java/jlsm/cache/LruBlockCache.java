@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 /**
  * An LRU block cache backed by a {@link LinkedHashMap} with access-order eviction.
@@ -29,9 +30,13 @@ public final class LruBlockCache implements BlockCache {
     private final long capacity;
     private final ReentrantLock lock;
     private final LinkedHashMap<CacheKey, MemorySegment> map;
+    private volatile boolean closed;
 
     private LruBlockCache(Builder builder) {
-        assert builder.capacity > 0 : "capacity must be positive";
+        if (builder.capacity <= 0) {
+            throw new IllegalArgumentException(
+                    "capacity must be positive, got: " + builder.capacity);
+        }
         this.capacity = builder.capacity;
         this.lock = new ReentrantLock();
         final long cap = this.capacity;
@@ -45,12 +50,18 @@ public final class LruBlockCache implements BlockCache {
 
     @Override
     public Optional<MemorySegment> get(long sstableId, long blockOffset) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         if (blockOffset < 0) {
             throw new IllegalArgumentException(
                     "blockOffset must be non-negative, got: " + blockOffset);
         }
         lock.lock();
         try {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
             return Optional.ofNullable(map.get(new CacheKey(sstableId, blockOffset)));
         } finally {
             lock.unlock();
@@ -59,6 +70,9 @@ public final class LruBlockCache implements BlockCache {
 
     @Override
     public void put(long sstableId, long blockOffset, MemorySegment block) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         if (blockOffset < 0) {
             throw new IllegalArgumentException(
                     "blockOffset must be non-negative, got: " + blockOffset);
@@ -66,6 +80,9 @@ public final class LruBlockCache implements BlockCache {
         Objects.requireNonNull(block, "block must not be null");
         lock.lock();
         try {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
             map.put(new CacheKey(sstableId, blockOffset), block);
         } finally {
             lock.unlock();
@@ -73,9 +90,70 @@ public final class LruBlockCache implements BlockCache {
     }
 
     @Override
-    public void evict(long sstableId) {
+    public MemorySegment getOrLoad(long sstableId, long blockOffset,
+            Supplier<MemorySegment> loader) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
+        if (blockOffset < 0) {
+            throw new IllegalArgumentException(
+                    "blockOffset must be non-negative, got: " + blockOffset);
+        }
+        Objects.requireNonNull(loader, "loader must not be null");
+        var key = new CacheKey(sstableId, blockOffset);
+
+        // First check: look up under lock without calling the loader
         lock.lock();
         try {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
+            var existing = map.get(key);
+            if (existing != null) {
+                return existing;
+            }
+        } finally {
+            lock.unlock();
+        }
+
+        // Re-check closed after releasing the lock — prevents invoking the loader
+        // (which may perform I/O) on a cache that was closed between the first lock
+        // release and here.
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
+
+        // Load outside the lock — avoids blocking all cache operations during I/O
+        var block = loader.get();
+        Objects.requireNonNull(block, "loader must not return null");
+
+        // Second check: another thread may have loaded the same key concurrently
+        lock.lock();
+        try {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
+            var existing = map.get(key);
+            if (existing != null) {
+                return existing;
+            }
+            map.put(key, block);
+            return block;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public void evict(long sstableId) {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
+        lock.lock();
+        try {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
             map.keySet().removeIf(k -> k.sstableId() == sstableId);
         } finally {
             lock.unlock();
@@ -84,8 +162,14 @@ public final class LruBlockCache implements BlockCache {
 
     @Override
     public long size() {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         lock.lock();
         try {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
             return map.size();
         } finally {
             lock.unlock();
@@ -94,6 +178,9 @@ public final class LruBlockCache implements BlockCache {
 
     @Override
     public long capacity() {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
         return capacity;
     }
 
@@ -101,6 +188,7 @@ public final class LruBlockCache implements BlockCache {
     public void close() {
         lock.lock();
         try {
+            closed = true;
             map.clear();
         } finally {
             lock.unlock();
@@ -139,6 +227,9 @@ public final class LruBlockCache implements BlockCache {
         }
 
         public Builder capacity(long capacity) {
+            if (capacity <= 0) {
+                throw new IllegalArgumentException("capacity must be positive, got: " + capacity);
+            }
             this.capacity = capacity;
             return this;
         }
@@ -146,6 +237,11 @@ public final class LruBlockCache implements BlockCache {
         public LruBlockCache build() {
             if (capacity <= 0) {
                 throw new IllegalArgumentException("capacity must be positive, got: " + capacity);
+            }
+            if (capacity > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("capacity must not exceed Integer.MAX_VALUE ("
+                        + Integer.MAX_VALUE
+                        + ") because the backing LinkedHashMap uses int size(); got: " + capacity);
             }
             return new LruBlockCache(this);
         }

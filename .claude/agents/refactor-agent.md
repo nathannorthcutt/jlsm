@@ -21,8 +21,26 @@ counterproductive.
 - When missing tests found: update status.md substage → escalated-missing-tests,
   append to cycle-log.md, report to Test Writer, stop immediately
 
+## Production safety checks
+During the security review (2g), also verify:
+- No production safety checks rely on `assert` statements (disabled in production
+  JVMs / release builds). Invariants protecting correctness or security must use
+  explicit validation with exceptions.
+- No error paths silently swallow exceptions (`catch { return null }`) in code
+  that handles security operations, data integrity, or external I/O.
+These are common anti-patterns that pass all tests (which run with assertions
+enabled and on the happy path) but fail silently in production.
+
+## Known issues awareness
+If `.feature/<slug>/known_issues.md` exists (written during audit loops), read it
+before making changes. Every RESOLVED pattern is a structural invariant — you may
+change how it's implemented but not whether it's honoured. TENDENCY warnings are
+code review blockers — do not introduce patterns that match a known tendency.
+ADR-PROTECTED items are accepted design trade-offs — do not "fix" them.
+
 ## Required reads before any refactor session
 - .feature/project-config.md — tools, run commands
+- .feature/<slug>/known_issues.md — if it exists (constraints from audit rounds)
 - CONTRIBUTING.md (or docs/coding-standards.md) — full coding standards
 
 ## Slash command

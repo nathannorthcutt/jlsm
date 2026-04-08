@@ -5,6 +5,8 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Contract: Arena-backed off-heap storage for encryption key material. Accepts a {@code byte[]}
@@ -13,7 +15,7 @@ import java.util.Objects;
  *
  * <p>
  * Uses {@link Arena#ofShared()} to allow concurrent read access from multiple table reader threads.
- * Close is idempotent via a {@code volatile boolean}.
+ * Close is idempotent via an {@link AtomicBoolean} CAS guard.
  *
  * <p>
  * Governed by: .kb/systems/security/jvm-key-handling-patterns.md
@@ -26,7 +28,8 @@ public final class EncryptionKeyHolder implements AutoCloseable {
     private final Arena arena;
     private final MemorySegment keySegment;
     private final int keyLength;
-    private volatile boolean closed;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     private EncryptionKeyHolder(Arena arena, MemorySegment keySegment, int keyLength) {
         assert arena != null : "arena must not be null";
@@ -36,7 +39,6 @@ public final class EncryptionKeyHolder implements AutoCloseable {
         this.arena = arena;
         this.keySegment = keySegment;
         this.keyLength = keyLength;
-        this.closed = false;
     }
 
     /**
@@ -72,21 +74,34 @@ public final class EncryptionKeyHolder implements AutoCloseable {
      * @throws IllegalStateException if this holder has been closed
      */
     public byte[] getKeyBytes() {
-        ensureOpen();
-        final byte[] copy = new byte[keyLength];
-        MemorySegment.copy(keySegment, ValueLayout.JAVA_BYTE, 0, copy, 0, keyLength);
-        return copy;
+        rwLock.readLock().lock();
+        try {
+            ensureOpen();
+            final byte[] copy = new byte[keyLength];
+            MemorySegment.copy(keySegment, ValueLayout.JAVA_BYTE, 0, copy, 0, keyLength);
+            return copy;
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     /**
-     * Returns a read-only view of the key segment.
+     * Returns a read-only copy of the key segment. The returned segment is heap-backed and
+     * independent of this holder's arena — it remains valid after {@link #close()}.
      *
-     * @return the off-heap key memory segment
+     * @return a heap-backed read-only copy of the key memory segment
      * @throws IllegalStateException if this holder has been closed
      */
     public MemorySegment keySegment() {
-        ensureOpen();
-        return keySegment.asReadOnly();
+        rwLock.readLock().lock();
+        try {
+            ensureOpen();
+            final MemorySegment copy = Arena.ofAuto().allocate(keyLength);
+            copy.copyFrom(keySegment.asSlice(0, keyLength));
+            return copy.asReadOnly();
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     /**
@@ -96,23 +111,32 @@ public final class EncryptionKeyHolder implements AutoCloseable {
      * @throws IllegalStateException if this holder has been closed
      */
     public int keyLength() {
-        ensureOpen();
-        return keyLength;
+        rwLock.readLock().lock();
+        try {
+            ensureOpen();
+            return keyLength;
+        } finally {
+            rwLock.readLock().unlock();
+        }
     }
 
     @Override
     public void close() {
-        if (closed) {
-            return;
+        if (!closed.compareAndSet(false, true)) {
+            return; // another thread already closed
         }
-        closed = true;
-        // Zero the key material before releasing the arena
-        keySegment.fill((byte) 0);
-        arena.close();
+        rwLock.writeLock().lock();
+        try {
+            // Zero the key material before releasing the arena
+            keySegment.fill((byte) 0);
+            arena.close();
+        } finally {
+            rwLock.writeLock().unlock();
+        }
     }
 
     private void ensureOpen() {
-        if (closed) {
+        if (closed.get()) {
             throw new IllegalStateException("EncryptionKeyHolder has been closed");
         }
     }

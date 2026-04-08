@@ -45,7 +45,8 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
         }
 
         /**
-         * Creates a {@link JlsmSchema} from this ObjectType's field definitions.
+         * Creates a {@link JlsmSchema} from this ObjectType's field definitions, using the default
+         * maximum nesting depth.
          *
          * @param name the schema name; must not be null
          * @param version the schema version
@@ -55,7 +56,26 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
             Objects.requireNonNull(name, "name must not be null");
             JlsmSchema.Builder builder = JlsmSchema.builder(name, version);
             for (FieldDefinition fd : fields) {
-                builder.field(fd.name(), fd.type());
+                builder.field(fd.name(), fd.type(), fd.encryption());
+            }
+            return builder.build();
+        }
+
+        /**
+         * Creates a {@link JlsmSchema} from this ObjectType's field definitions, with the specified
+         * maximum nesting depth. Use this overload to propagate a parent schema's depth
+         * configuration.
+         *
+         * @param name the schema name; must not be null
+         * @param version the schema version
+         * @param maxDepth the maximum nesting depth for the resulting schema
+         * @return a new JlsmSchema with this ObjectType's fields and the given maxDepth
+         */
+        public JlsmSchema toSchema(String name, int version, int maxDepth) {
+            Objects.requireNonNull(name, "name must not be null");
+            JlsmSchema.Builder builder = JlsmSchema.builder(name, version).maxDepth(maxDepth);
+            for (FieldDefinition fd : fields) {
+                builder.field(fd.name(), fd.type(), fd.encryption());
             }
             return builder.build();
         }
@@ -162,7 +182,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      * @return a new ArrayType
      */
     static FieldType arrayOf(FieldType elementType) {
-        assert elementType != null : "elementType must not be null";
+        Objects.requireNonNull(elementType, "elementType must not be null");
         return new ArrayType(elementType);
     }
 
@@ -173,7 +193,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      * @return a new ObjectType
      */
     static FieldType objectOf(List<FieldDefinition> fields) {
-        assert fields != null : "fields must not be null";
+        Objects.requireNonNull(fields, "fields must not be null");
         return new ObjectType(fields);
     }
 }

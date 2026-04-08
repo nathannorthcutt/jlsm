@@ -6,7 +6,6 @@ import jlsm.engine.cluster.internal.RemotePartitionClient;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
 import jlsm.table.JlsmDocument;
 import jlsm.table.PartitionDescriptor;
-import jlsm.table.ScoredEntry;
 import jlsm.table.TableEntry;
 import jlsm.table.TableQuery;
 import jlsm.table.UpdateMode;
@@ -28,40 +27,74 @@ import java.util.Set;
  * Partition-aware proxy table that scatters queries across remote partition owners.
  *
  * <p>
- * Contract: Implements {@link Table} transparently for partitioned tables in a cluster.
- * Inspects predicates for partition pruning (O(log P) on range boundaries). Scatters
- * sub-queries concurrently via the cluster transport. Gathers results with a streaming
- * k-way merge iterator. Attaches {@link PartialResultMetadata} when some partitions are
- * unavailable. Write operations route to the single partition owner.
+ * Contract: Implements {@link Table} transparently for partitioned tables in a cluster. Inspects
+ * predicates for partition pruning (O(log P) on range boundaries). Scatters sub-queries
+ * concurrently via the cluster transport. Gathers results with a streaming k-way merge iterator.
+ * Attaches {@link PartialResultMetadata} when some partitions are unavailable. Write operations
+ * route to the single partition owner.
  *
  * <p>
- * Side effects: Sends messages via {@link ClusterTransport} to remote partition owners.
- * May return incomplete results if some owners are unavailable.
+ * Side effects: Sends messages via {@link ClusterTransport} to remote partition owners. May return
+ * incomplete results if some owners are unavailable.
  *
  * <p>
  * Governed by: {@code .decisions/scatter-gather-query-execution/adr.md}
  */
 public final class ClusteredTable implements Table {
 
+    /** Placeholder low key (lexicographic minimum) for scatter-gather partition descriptors. */
+    private static final java.lang.foreign.MemorySegment PLACEHOLDER_LOW = java.lang.foreign.MemorySegment
+            .ofArray(new byte[0]);
+    /** Placeholder high key (lexicographic maximum) for scatter-gather partition descriptors. */
+    private static final java.lang.foreign.MemorySegment PLACEHOLDER_HIGH = java.lang.foreign.MemorySegment
+            .ofArray(new byte[]{ (byte) 0xFF });
+
     private final TableMetadata tableMetadata;
     private final ClusterTransport transport;
     private final MembershipProtocol membership;
-    private final RendezvousOwnership ownership = new RendezvousOwnership();
+    private final NodeAddress localAddress;
+    private final RendezvousOwnership ownership;
     private volatile PartialResultMetadata lastPartialResult;
     private volatile boolean closed;
 
     /**
-     * Creates a new clustered table proxy.
+     * Creates a new clustered table proxy with a shared ownership instance.
      *
      * @param tableMetadata the metadata for this table; must not be null
-     * @param transport     the cluster transport for remote communication; must not be null
-     * @param membership    the membership protocol for resolving partition owners; must not be null
+     * @param transport the cluster transport for remote communication; must not be null
+     * @param membership the membership protocol for resolving partition owners; must not be null
+     * @param localAddress the address of the local node; must not be null
+     * @param ownership the shared ownership resolver; must not be null. Using a shared instance
+     *            ensures that eviction events from view changes (propagated by the engine) apply to
+     *            the same cache used by this table, preventing stale routing after membership
+     *            changes.
      */
     public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
-            MembershipProtocol membership) {
-        this.tableMetadata = Objects.requireNonNull(tableMetadata, "tableMetadata must not be null");
+            MembershipProtocol membership, NodeAddress localAddress,
+            RendezvousOwnership ownership) {
+        this.tableMetadata = Objects.requireNonNull(tableMetadata,
+                "tableMetadata must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
         this.membership = Objects.requireNonNull(membership, "membership must not be null");
+        this.localAddress = Objects.requireNonNull(localAddress, "localAddress must not be null");
+        this.ownership = Objects.requireNonNull(ownership, "ownership must not be null");
+    }
+
+    /**
+     * Creates a new clustered table proxy with a private ownership instance.
+     *
+     * <p>
+     * Prefer the 5-argument constructor when a shared {@link RendezvousOwnership} is available
+     * (e.g., from {@link ClusteredEngine}) so that view-change evictions apply to the same cache.
+     *
+     * @param tableMetadata the metadata for this table; must not be null
+     * @param transport the cluster transport for remote communication; must not be null
+     * @param membership the membership protocol for resolving partition owners; must not be null
+     * @param localAddress the address of the local node; must not be null
+     */
+    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+            MembershipProtocol membership, NodeAddress localAddress) {
+        this(tableMetadata, transport, membership, localAddress, new RendezvousOwnership());
     }
 
     @Override
@@ -165,11 +198,13 @@ public final class ClusteredTable implements Table {
                 iterators.add(it);
             } catch (IOException e) {
                 unavailable.add(node.nodeId());
+            } finally {
+                client.close();
             }
         }
 
-        lastPartialResult = new PartialResultMetadata(
-                Set.copyOf(unavailable), unavailable.isEmpty());
+        lastPartialResult = new PartialResultMetadata(Set.copyOf(unavailable),
+                unavailable.isEmpty());
 
         // K-way merge the iterators by key order
         return mergeOrdered(iterators);
@@ -192,20 +227,27 @@ public final class ClusteredTable implements Table {
     @Override
     public void close() {
         closed = true;
+        ownership.evictBefore(Long.MAX_VALUE);
     }
 
     // ---- Private helpers ----
 
     /**
-     * Resolves the owner node for a given key using rendezvous hashing.
-     * Uses the table name as the partition identifier for ownership.
+     * Resolves the owner node for a given key using rendezvous hashing. Uses the table name as the
+     * partition identifier for ownership.
      */
-    private NodeAddress resolveOwner(String key) {
+    private NodeAddress resolveOwner(String key) throws IOException {
         assert key != null : "key must not be null";
         final MembershipView view = membership.currentView();
+
+        // Evict stale ownership cache entries for epochs older than the current view.
+        // Without this, old epoch entries accumulate without bound because ClusteredTable's
+        // private RendezvousOwnership is not notified of view changes by ClusteredEngine.
+        ownership.evictBefore(view.epoch());
+
         final Set<NodeAddress> liveNodes = collectLiveNodes(view);
         if (liveNodes.isEmpty()) {
-            throw new IllegalStateException("No live members in the cluster");
+            throw new IOException("No live members in the cluster");
         }
         // Use rendezvous hashing to pick the owner from live nodes
         return ownership.assignOwner(tableMetadata.name() + "/" + key, view);
@@ -231,14 +273,10 @@ public final class ClusteredTable implements Table {
     private RemotePartitionClient createClient(String key, NodeAddress owner) {
         assert key != null : "key must not be null";
         assert owner != null : "owner must not be null";
-        final PartitionDescriptor desc = new PartitionDescriptor(
-                0L,
-                java.lang.foreign.MemorySegment.ofArray(new byte[0]),
-                java.lang.foreign.MemorySegment.ofArray(new byte[0]),
-                owner.nodeId(),
-                0L
-        );
-        return new RemotePartitionClient(desc, owner, transport, findLocalAddress());
+        final PartitionDescriptor desc = new PartitionDescriptor(0L, PLACEHOLDER_LOW,
+                PLACEHOLDER_HIGH, owner.nodeId(), 0L);
+        return new RemotePartitionClient(desc, owner, transport, findLocalAddress(),
+                tableMetadata.schema());
     }
 
     /**
@@ -246,33 +284,22 @@ public final class ClusteredTable implements Table {
      */
     private RemotePartitionClient createClientForNode(NodeAddress target) {
         assert target != null : "target must not be null";
-        final PartitionDescriptor desc = new PartitionDescriptor(
-                0L,
-                java.lang.foreign.MemorySegment.ofArray(new byte[0]),
-                java.lang.foreign.MemorySegment.ofArray(new byte[0]),
-                target.nodeId(),
-                0L
-        );
-        return new RemotePartitionClient(desc, target, transport, findLocalAddress());
+        final PartitionDescriptor desc = new PartitionDescriptor(0L, PLACEHOLDER_LOW,
+                PLACEHOLDER_HIGH, target.nodeId(), 0L);
+        return new RemotePartitionClient(desc, target, transport, findLocalAddress(),
+                tableMetadata.schema());
     }
 
     /**
-     * Returns the local address by inspecting the membership view for any node that
-     * might be local. Falls back to the first live member.
+     * Returns the local node address provided at construction.
      */
     private NodeAddress findLocalAddress() {
-        final MembershipView view = membership.currentView();
-        for (final Member m : view.members()) {
-            if (m.state() == MemberState.ALIVE) {
-                return m.address();
-            }
-        }
-        throw new IllegalStateException("No live members available for local address resolution");
+        return localAddress;
     }
 
     /**
-     * Performs a k-way merge of sorted iterators using a min-heap.
-     * Each iterator must be sorted by key in natural order.
+     * Performs a k-way merge of sorted iterators using a min-heap. Each iterator must be sorted by
+     * key in natural order.
      *
      * @param iterators the sorted iterators to merge
      * @return a merged iterator producing entries in global key order
@@ -289,10 +316,8 @@ public final class ClusteredTable implements Table {
         }
 
         // Initialize min-heap with first element from each iterator
-        final PriorityQueue<HeapEntry> heap = new PriorityQueue<>(
-                iterators.size(),
-                Comparator.comparing(he -> he.current.key())
-        );
+        final PriorityQueue<HeapEntry> heap = new PriorityQueue<>(iterators.size(),
+                Comparator.comparing(he -> he.current.key()));
 
         for (int i = 0; i < iterators.size(); i++) {
             final Iterator<TableEntry<String>> it = iterators.get(i);

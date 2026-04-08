@@ -55,8 +55,9 @@ class TableCatalogTest {
         Optional<TableMetadata> metadata = catalog2.get("users");
         assertTrue(metadata.isPresent());
         assertEquals("users", metadata.get().name());
-        // Recovered tables should be in LOADING state (skeleton schema)
-        assertEquals(TableMetadata.TableState.LOADING, metadata.get().state());
+        // Updated by audit F-R1.cb.2.2: recovered tables now preserve persisted state (READY), not
+        // skeleton LOADING
+        assertEquals(TableMetadata.TableState.READY, metadata.get().state());
         catalog2.close();
     }
 

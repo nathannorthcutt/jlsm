@@ -15,6 +15,23 @@ Idempotent — skips domains already resolved and resumes from the first pending
 Read `.feature/<slug>/status.md`.
 
 **If Domains stage is `complete`:**
+
+Check whether the project has spec infrastructure (`test -f .spec/CLAUDE.md ||
+test -d .spec/registry`). Display the appropriate next step:
+
+If spec infrastructure exists:
+```
+🗺️  DOMAIN SCOUT · <slug>
+───────────────────────────────────────────────
+Domain analysis is already complete for '<slug>'.
+Domains: .feature/<slug>/domains.md
+
+  Type **yes**  to proceed to spec authoring  ·  or: stop
+```
+If "yes": invoke `/spec-author "<feature-id>" "<slug>"` as a sub-agent immediately.
+If "stop": display `Next: /spec-author "<feature-id>" "<slug>"` and stop.
+
+If no spec infrastructure:
 ```
 🗺️  DOMAIN SCOUT · <slug>
 ───────────────────────────────────────────────
@@ -173,8 +190,18 @@ For each pending domain:
    category-level `CLAUDE.md` files for entries matching these keywords — this
    catches tangentially related KB entries in other topics/categories. Read only
    the matching category indexes, not subject files.
-3. Read `.decisions/CLAUDE.md` — check for relevant ADR
-4. Classify using the rules below
+3. Check for **feature footprint** entries (`type: feature-footprint`) in relevant
+   categories. Footprints are condensed records from prior features that document
+   what was built, key decisions, and cross-references to ADRs and KB research.
+   If a footprint overlaps with this feature's domain, note it — the Work Planner
+   should reference it for context on prior art and known constraints.
+4. Check for **adversarial finding** entries (`type: adversarial-finding`) in
+   relevant categories. These are bug patterns discovered during prior feature
+   audits. Do NOT surface these to the user or include them in domains.md — they
+   pass through silently to the test phase where the spec analyst pre-pass
+   (Step 1c of /feature-test) will read and apply them.
+5. Read `.decisions/CLAUDE.md` — check for relevant ADR
+6. Classify using the rules below
 
 ### Classification rules
 
@@ -375,6 +402,43 @@ structure from these constraints and ADRs.
 ───────────────────────────────────────────────
 ```
 
+### Step 5a — Determine next stage (spec authoring or planning)
+
+Check whether the project has spec infrastructure:
+```bash
+test -f .spec/CLAUDE.md || test -d .spec/registry
+```
+
+**If `.spec/CLAUDE.md` or `.spec/registry` exists:** the project uses the spec
+system. The next stage is spec authoring — specs must be written (or confirmed
+current) before work planning, because the planner consumes spec requirements
+as its primary input.
+
+If "yes":
+- Update status.md: Spec Authoring stage → `in-progress`
+- Display:
+  ```
+  Spec infrastructure detected — routing through spec authoring.
+  Specs will define behavioral requirements before work planning begins.
+  ```
+- Invoke `/spec-author "<feature-id>" "<slug>"` as a sub-agent immediately.
+  The spec-author reads brief.md and domains.md to produce hardened specs.
+  After spec-author completes, invoke `/spec-write "<feature-id>" "<slug>"`
+  to register the spec, then invoke `/feature-plan "<slug>"` as a sub-agent.
+
+If "stop":
+```
+When you're ready:
+  /spec-author "<feature-id>" "<slug>"
+
+After spec authoring, continue with:
+  /feature-plan "<slug>"
+```
+
+**If neither `.spec/CLAUDE.md` nor `.spec/registry` exists:** the project does
+not use the spec system. Hand off directly to work planning for backwards
+compatibility.
+
 If "yes": invoke /feature-plan "<slug>" as a sub-agent immediately.
 If "stop":
 ```
@@ -409,6 +473,9 @@ status: "<resolved | has-gaps>"
 
 **Governing ADR:**
 - [`.decisions/<adr-slug>/adr.md`](../../.decisions/<adr-slug>/adr.md) — <one-line decision summary>
+
+**Prior feature footprints:** <if any footprints reference this domain>
+- [`.kb/<topic>/<cat>/<footprint>.md`](../../.kb/<topic>/<cat>/<footprint>.md) — <what was built, key constraint>
 
 **Guidance for implementation:**
 <2–3 sentences the Work Planner must respect>

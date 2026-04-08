@@ -2,6 +2,7 @@ package jlsm.encryption;
 
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Random;
 
@@ -18,12 +19,13 @@ import java.util.Random;
  * <p>
  * Governed by: .kb/algorithms/encryption/vector-encryption-approaches.md
  */
-public final class DcpeSapEncryptor {
+public final class DcpeSapEncryptor implements AutoCloseable {
 
     private final double scaleFactor;
     private final int dimensions;
     private final byte[] keyBytes;
     private final SecureRandom seedRng;
+    private volatile boolean closed;
 
     /**
      * Creates a DCPE Scale-And-Perturb encryptor with the given key.
@@ -47,6 +49,10 @@ public final class DcpeSapEncryptor {
 
         // Seed RNG from remaining key bytes for generating per-vector seeds
         this.seedRng = new SecureRandom(keyBytes);
+
+        // Zero key material immediately — scaleFactor and seedRng are the only derived
+        // values needed post-construction. Retaining keyBytes widens the exposure window.
+        Arrays.fill(this.keyBytes, (byte) 0);
     }
 
     /**
@@ -57,6 +63,9 @@ public final class DcpeSapEncryptor {
      * @throws IllegalArgumentException if vector length does not match dimensions
      */
     public EncryptedVector encrypt(float[] vector) {
+        if (closed) {
+            throw new IllegalStateException("DcpeSapEncryptor is closed");
+        }
         Objects.requireNonNull(vector, "vector must not be null");
         if (vector.length != dimensions) {
             throw new IllegalArgumentException(
@@ -82,7 +91,14 @@ public final class DcpeSapEncryptor {
      * @return the reconstructed plaintext vector
      */
     public float[] decrypt(float[] encrypted, long seed) {
+        if (closed) {
+            throw new IllegalStateException("DcpeSapEncryptor is closed");
+        }
         Objects.requireNonNull(encrypted, "encrypted must not be null");
+        if (encrypted.length != dimensions) {
+            throw new IllegalArgumentException(
+                    "Encrypted vector length must be " + dimensions + ", got " + encrypted.length);
+        }
         final float[] noise = generateNoise(seed);
 
         final float[] result = new float[encrypted.length];
@@ -90,6 +106,18 @@ public final class DcpeSapEncryptor {
             result[i] = (float) ((encrypted[i] - noise[i]) / scaleFactor);
         }
         return result;
+    }
+
+    /**
+     * Closes this encryptor, zeroing the key bytes and marking it as closed. Subsequent calls to
+     * {@link #encrypt} or {@link #decrypt} will throw {@link IllegalStateException}.
+     */
+    @Override
+    public void close() {
+        if (!closed) {
+            closed = true;
+            Arrays.fill(keyBytes, (byte) 0);
+        }
     }
 
     /**
@@ -133,5 +161,25 @@ public final class DcpeSapEncryptor {
      * @param seed the perturbation seed used during encryption
      */
     public record EncryptedVector(float[] values, long seed) {
+        public EncryptedVector {
+            Objects.requireNonNull(values, "values must not be null");
+            values = values.clone();
+        }
+
+        @Override
+        public float[] values() {
+            return values.clone();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof EncryptedVector other && seed == other.seed
+                    && java.util.Arrays.equals(values, other.values);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * java.util.Arrays.hashCode(values) + Long.hashCode(seed);
+        }
     }
 }

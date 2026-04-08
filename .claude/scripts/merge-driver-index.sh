@@ -17,11 +17,18 @@
 # Registered via: git config merge.vallorcine-index.driver "bash <path> %O %A %B"
 # Scoped via .gitattributes to only vallorcine-managed index files.
 
-set -euo pipefail
+# Note: no set -e — if anything fails, we fall through to exit 1 (normal merge).
+# pipefail is safe since we want pipe failures to propagate.
+set -uo pipefail
 
-BASE="$1"   # ancestor
-OURS="$2"   # current branch — result must be written here
-THEIRS="$3" # other branch
+BASE="${1:-}"   # ancestor
+OURS="${2:-}"   # current branch — result must be written here
+THEIRS="${3:-}" # other branch
+
+# Guard: require all 3 arguments
+if [[ -z "$BASE" || -z "$OURS" || -z "$THEIRS" ]]; then
+    exit 1
+fi
 
 # Strategy: collect all unique table rows from both sides, preserve non-table
 # content from ours (structure, headers, comments), merge table rows.
@@ -72,10 +79,11 @@ extract_data_rows() {
 }
 
 # Collect all unique data rows from both files
+MERGED_ROWS_FILE=$(mktemp)
 {
     extract_data_rows "$OURS"
     extract_data_rows "$THEIRS"
-} | sort -u > /tmp/vallorcine-merge-rows-$$
+} | sort -u > "$MERGED_ROWS_FILE"
 
 # Rebuild the file: use OURS as the template (preserves structure, headers,
 # comments), but replace table data rows with the merged set.
@@ -89,7 +97,7 @@ extract_data_rows() {
 # merged rows after each separator.
 
 RESULT=$(mktemp)
-MERGED_ROWS="/tmp/vallorcine-merge-rows-$$"
+trap 'rm -f "$RESULT" "$MERGED_ROWS_FILE"' EXIT
 in_header_zone=1
 just_saw_separator=0
 emitted_for_section=0
@@ -119,7 +127,7 @@ while IFS= read -r line; do
                     echo "$merged_line" >> "$RESULT"
                     emitted_rows["$merged_line"]=1
                 fi
-            done < "$MERGED_ROWS"
+            done < "$MERGED_ROWS_FILE"
             just_saw_separator=0
         fi
         # Skip original data rows (replaced by merged set above)
@@ -134,6 +142,5 @@ done < "$OURS"
 
 # Write result back to OURS (git expects it there)
 cp "$RESULT" "$OURS"
-rm -f "$RESULT" "$MERGED_ROWS"
 
 exit 0

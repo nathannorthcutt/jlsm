@@ -401,33 +401,34 @@ class PartitionedTableTest {
         }
 
         @Override
-        public void create(String key, JlsmDocument doc) throws IOException {
+        public void doCreate(String key, JlsmDocument doc) throws IOException {
             throw new UnsupportedOperationException("stub");
         }
 
         @Override
-        public Optional<JlsmDocument> get(String key) throws IOException {
+        public Optional<JlsmDocument> doGet(String key) throws IOException {
             throw new UnsupportedOperationException("stub");
         }
 
         @Override
-        public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
+        public void doUpdate(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
             throw new UnsupportedOperationException("stub");
         }
 
         @Override
-        public void delete(String key) throws IOException {
+        public void doDelete(String key) throws IOException {
             throw new UnsupportedOperationException("stub");
         }
 
         @Override
-        public Iterator<TableEntry<String>> getRange(String fromKey, String toKey)
+        public Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey)
                 throws IOException {
             throw new UnsupportedOperationException("stub");
         }
 
         @Override
-        public List<ScoredEntry<String>> query(Predicate predicate, int limit) throws IOException {
+        public List<ScoredEntry<String>> doQuery(Predicate predicate, int limit)
+                throws IOException {
             throw new UnsupportedOperationException("stub");
         }
 

@@ -27,36 +27,27 @@ class MembershipViewTest {
 
     @Test
     void liveMemberCountFiltersStates() {
-        var members = Set.of(
-                new Member(A1, MemberState.ALIVE, 0),
-                new Member(A2, MemberState.SUSPECTED, 0),
-                new Member(A3, MemberState.DEAD, 0)
-        );
+        var members = Set.of(new Member(A1, MemberState.ALIVE, 0),
+                new Member(A2, MemberState.SUSPECTED, 0), new Member(A3, MemberState.DEAD, 0));
         var view = new MembershipView(1, members, NOW);
         assertEquals(1, view.liveMemberCount());
     }
 
     @Test
     void isMemberFindsPresent() {
-        var view = new MembershipView(0, Set.of(
-                new Member(A1, MemberState.ALIVE, 0)
-        ), NOW);
+        var view = new MembershipView(0, Set.of(new Member(A1, MemberState.ALIVE, 0)), NOW);
         assertTrue(view.isMember(A1));
     }
 
     @Test
     void isMemberReturnsFalseForAbsent() {
-        var view = new MembershipView(0, Set.of(
-                new Member(A1, MemberState.ALIVE, 0)
-        ), NOW);
+        var view = new MembershipView(0, Set.of(new Member(A1, MemberState.ALIVE, 0)), NOW);
         assertFalse(view.isMember(A2));
     }
 
     @Test
     void isMemberIncludesDeadMembers() {
-        var view = new MembershipView(0, Set.of(
-                new Member(A1, MemberState.DEAD, 0)
-        ), NOW);
+        var view = new MembershipView(0, Set.of(new Member(A1, MemberState.DEAD, 0)), NOW);
         assertTrue(view.isMember(A1));
     }
 
@@ -68,11 +59,8 @@ class MembershipViewTest {
 
     @Test
     void hasQuorumAllAlive() {
-        var members = Set.of(
-                new Member(A1, MemberState.ALIVE, 0),
-                new Member(A2, MemberState.ALIVE, 0),
-                new Member(A3, MemberState.ALIVE, 0)
-        );
+        var members = Set.of(new Member(A1, MemberState.ALIVE, 0),
+                new Member(A2, MemberState.ALIVE, 0), new Member(A3, MemberState.ALIVE, 0));
         var view = new MembershipView(0, members, NOW);
         assertTrue(view.hasQuorum(75));
         assertTrue(view.hasQuorum(100));
@@ -80,11 +68,8 @@ class MembershipViewTest {
 
     @Test
     void hasQuorumWithSuspected() {
-        var members = Set.of(
-                new Member(A1, MemberState.ALIVE, 0),
-                new Member(A2, MemberState.ALIVE, 0),
-                new Member(A3, MemberState.SUSPECTED, 0)
-        );
+        var members = Set.of(new Member(A1, MemberState.ALIVE, 0),
+                new Member(A2, MemberState.ALIVE, 0), new Member(A3, MemberState.SUSPECTED, 0));
         var view = new MembershipView(0, members, NOW);
         // 2 of 3 alive = 66.7%, quorum at 75% should fail
         assertFalse(view.hasQuorum(75));
@@ -116,29 +101,24 @@ class MembershipViewTest {
 
     @Test
     void negativeEpochThrows() {
-        assertThrows(IllegalArgumentException.class, () ->
-                new MembershipView(-1, Set.of(), NOW));
+        assertThrows(IllegalArgumentException.class, () -> new MembershipView(-1, Set.of(), NOW));
     }
 
     @Test
     void nullMembersThrows() {
-        assertThrows(NullPointerException.class, () ->
-                new MembershipView(0, null, NOW));
+        assertThrows(NullPointerException.class, () -> new MembershipView(0, null, NOW));
     }
 
     @Test
     void nullTimestampThrows() {
-        assertThrows(NullPointerException.class, () ->
-                new MembershipView(0, Set.of(), null));
+        assertThrows(NullPointerException.class, () -> new MembershipView(0, Set.of(), null));
     }
 
     @Test
     void membersSetIsImmutable() {
-        var view = new MembershipView(0, Set.of(
-                new Member(A1, MemberState.ALIVE, 0)
-        ), NOW);
-        assertThrows(UnsupportedOperationException.class, () ->
-                view.members().add(new Member(A2, MemberState.ALIVE, 0)));
+        var view = new MembershipView(0, Set.of(new Member(A1, MemberState.ALIVE, 0)), NOW);
+        assertThrows(UnsupportedOperationException.class,
+                () -> view.members().add(new Member(A2, MemberState.ALIVE, 0)));
     }
 
     @Test

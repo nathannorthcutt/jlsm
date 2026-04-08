@@ -30,6 +30,9 @@ public enum TokenType {
     GT, // >
     GTE, // >=
 
+    // Arithmetic (unary minus for negative literals)
+    MINUS, // -
+
     // End of input
     EOF
 }

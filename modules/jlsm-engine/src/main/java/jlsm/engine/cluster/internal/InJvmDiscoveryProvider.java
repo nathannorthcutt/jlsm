@@ -6,14 +6,15 @@ import jlsm.engine.cluster.NodeAddress;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * In-JVM discovery provider for testing and single-process multi-engine deployments.
  *
  * <p>
- * Contract: Maintains a static shared set of registered node addresses. {@link #register}
- * adds the address, {@link #deregister} removes it, and {@link #discoverSeeds()} returns
- * a snapshot of all currently registered addresses. Thread-safe via {@link ConcurrentHashMap}.
+ * Contract: Maintains a static shared set of registered node addresses. {@link #register} adds the
+ * address, {@link #deregister} removes it, and {@link #discoverSeeds()} returns a snapshot of all
+ * currently registered addresses. Thread-safe via {@link ConcurrentHashMap}.
  *
  * <p>
  * Side effects: Modifies the static shared registration set.
@@ -21,10 +22,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Governed by: {@code .decisions/discovery-spi-design/adr.md}
  */
-public final class InJvmDiscoveryProvider implements DiscoveryProvider {
+public final class InJvmDiscoveryProvider implements DiscoveryProvider, AutoCloseable {
 
-    private static final ConcurrentHashMap<NodeAddress, Boolean> REGISTERED =
-            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<NodeAddress, Boolean> REGISTERED = new ConcurrentHashMap<>();
+
+    /** Addresses registered through this instance, deregistered on {@link #close()}. */
+    private final Set<NodeAddress> ownRegistrations = new CopyOnWriteArraySet<>();
 
     @Override
     public Set<NodeAddress> discoverSeeds() {
@@ -35,12 +38,26 @@ public final class InJvmDiscoveryProvider implements DiscoveryProvider {
     public void register(NodeAddress self) {
         Objects.requireNonNull(self, "self must not be null");
         REGISTERED.put(self, Boolean.TRUE);
+        ownRegistrations.add(self);
     }
 
     @Override
     public void deregister(NodeAddress self) {
         Objects.requireNonNull(self, "self must not be null");
         REGISTERED.remove(self);
+        ownRegistrations.remove(self);
+    }
+
+    /**
+     * Deregisters all addresses that were registered through this instance. Prevents static state
+     * leaking across lifecycle boundaries (e.g., between test runs).
+     */
+    @Override
+    public void close() {
+        for (NodeAddress addr : ownRegistrations) {
+            REGISTERED.remove(addr);
+        }
+        ownRegistrations.clear();
     }
 
     /**

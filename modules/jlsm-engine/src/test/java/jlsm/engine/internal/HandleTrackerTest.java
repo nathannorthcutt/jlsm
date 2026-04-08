@@ -118,9 +118,11 @@ class HandleTrackerTest {
 
     // ---- Eviction: per-table limit ----
 
+    // Updated by audit F-R1.cb.1.5: maxHandlesPerSourcePerTable > maxHandlesPerTable was a bug, now
+    // correctly rejected by hierarchy validation
     @Test
     void evictIfNeededTriggersWhenPerTableLimitExceeded() throws IOException {
-        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(100)
+        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(3)
                 .maxHandlesPerTable(3).maxTotalHandles(100).build()) {
 
             // Register from multiple sources to exceed per-table limit
@@ -138,10 +140,12 @@ class HandleTrackerTest {
 
     // ---- Eviction: total limit ----
 
+    // Updated by audit F-R1.cb.1.5: maxHandlesPerSourcePerTable > maxHandlesPerTable was a bug, now
+    // correctly rejected by hierarchy validation
     @Test
     void evictIfNeededTriggersWhenTotalLimitExceeded() throws IOException {
-        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(100)
-                .maxHandlesPerTable(100).maxTotalHandles(3).build()) {
+        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(3)
+                .maxHandlesPerTable(3).maxTotalHandles(3).build()) {
 
             tracker.register("users", "src-1");
             tracker.register("users", "src-2");
@@ -158,9 +162,11 @@ class HandleTrackerTest {
 
     // ---- Eviction: greedy-source-first ----
 
+    // Updated by audit F-R1.cb.1.5: maxHandlesPerSourcePerTable > maxHandlesPerTable was a bug, now
+    // correctly rejected by hierarchy validation
     @Test
     void greedySourceFirstEvictsSourceWithMostHandles() throws IOException {
-        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(100)
+        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(4)
                 .maxHandlesPerTable(4).maxTotalHandles(100).build()) {
 
             // src-greedy has 4 handles, src-modest has 1

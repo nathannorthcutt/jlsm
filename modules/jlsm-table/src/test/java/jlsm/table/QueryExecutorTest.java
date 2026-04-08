@@ -38,14 +38,14 @@ class QueryExecutorTest {
     @Test
     void testConstructorRejectsNullSchema() throws IOException {
         var registry = new IndexRegistry(testSchema(), List.of());
-        assertThrows(NullPointerException.class, () -> new QueryExecutor<String>(null, registry));
+        assertThrows(NullPointerException.class, () -> QueryExecutor.forStringKeys(null, registry));
         registry.close();
     }
 
     @Test
     void testConstructorRejectsNullRegistry() {
         assertThrows(NullPointerException.class,
-                () -> new QueryExecutor<String>(testSchema(), null));
+                () -> QueryExecutor.forStringKeys(testSchema(), null));
     }
 
     // ── Index-backed execution ──────────────────────────────────────────
@@ -65,7 +65,7 @@ class QueryExecutorTest {
         registry.onInsert(stringKey("pk2"), doc2);
         registry.onInsert(stringKey("pk3"), doc3);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
         var results = collect(executor.execute(new Predicate.Eq("name", "Alice")));
 
         assertEquals(2, results.size(), "Should find 2 entries with name=Alice");
@@ -90,7 +90,7 @@ class QueryExecutorTest {
         registry.onInsert(stringKey("pk2"), doc2);
         registry.onInsert(stringKey("pk3"), doc3);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
         var predicate = new Predicate.And(
                 List.of(new Predicate.Eq("name", "Alice"), new Predicate.Gte("age", 25)));
 
@@ -114,7 +114,7 @@ class QueryExecutorTest {
         registry.onInsert(stringKey("pk2"), doc2);
         registry.onInsert(stringKey("pk3"), doc3);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
         var predicate = new Predicate.Or(
                 List.of(new Predicate.Eq("name", "Alice"), new Predicate.Eq("name", "Bob")));
 

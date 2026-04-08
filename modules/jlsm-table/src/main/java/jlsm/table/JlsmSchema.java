@@ -28,19 +28,30 @@ public final class JlsmSchema {
     private final Map<String, Integer> fieldIndexMap;
 
     private JlsmSchema(String name, int version, List<FieldDefinition> fields, int maxDepth) {
-        assert name != null : "name must not be null";
-        assert fields != null : "fields must not be null";
-        assert maxDepth >= 0 && maxDepth <= ABSOLUTE_MAX_DEPTH : "maxDepth out of range";
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(fields, "fields must not be null");
+        if (version < 0) {
+            throw new IllegalArgumentException("version must not be negative, got: " + version);
+        }
+        if (maxDepth < 0 || maxDepth > ABSOLUTE_MAX_DEPTH) {
+            throw new IllegalArgumentException(
+                    "maxDepth out of range [0, " + ABSOLUTE_MAX_DEPTH + "], got: " + maxDepth);
+        }
 
         this.name = name;
         this.version = version;
         this.fields = List.copyOf(fields);
         this.maxDepth = maxDepth;
 
-        // Build field index map for O(1) lookup
+        // Build field index map for O(1) lookup — reject duplicates
         final Map<String, Integer> indexMap = new HashMap<>(fields.size() * 2);
         for (int i = 0; i < fields.size(); i++) {
-            indexMap.put(fields.get(i).name(), i);
+            final String fieldName = fields.get(i).name();
+            if (indexMap.containsKey(fieldName)) {
+                throw new IllegalArgumentException(
+                        "Duplicate field name '" + fieldName + "' in schema '" + name + "'");
+            }
+            indexMap.put(fieldName, i);
         }
         this.fieldIndexMap = Map.copyOf(indexMap);
     }
@@ -65,6 +76,23 @@ public final class JlsmSchema {
         return maxDepth;
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof JlsmSchema other)) {
+            return false;
+        }
+        return version == other.version && maxDepth == other.maxDepth
+                && Objects.equals(name, other.name) && Objects.equals(fields, other.fields);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, version, fields, maxDepth);
+    }
+
     /**
      * Returns the zero-based index of the field with the given name, or {@code -1} if no such field
      * exists.
@@ -86,6 +114,9 @@ public final class JlsmSchema {
      */
     public static Builder builder(String name, int version) {
         Objects.requireNonNull(name, "name must not be null");
+        if (version < 0) {
+            throw new IllegalArgumentException("version must not be negative, got: " + version);
+        }
         return new Builder(name, version, 0, DEFAULT_MAX_DEPTH, null);
     }
 
@@ -128,6 +159,9 @@ public final class JlsmSchema {
         public Builder field(String name, FieldType type) {
             Objects.requireNonNull(name, "name must not be null");
             Objects.requireNonNull(type, "type must not be null");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("field name must not be blank");
+            }
             assert name != null : "name must not be null";
             assert type != null : "type must not be null";
             fields.add(new FieldDefinition(name, type));
@@ -146,6 +180,9 @@ public final class JlsmSchema {
             Objects.requireNonNull(name, "name must not be null");
             Objects.requireNonNull(type, "type must not be null");
             Objects.requireNonNull(encryption, "encryption must not be null");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("field name must not be blank");
+            }
             assert name != null : "name must not be null";
             assert type != null : "type must not be null";
             assert encryption != null : "encryption must not be null";
@@ -183,6 +220,9 @@ public final class JlsmSchema {
         public Builder objectField(String name, Consumer<Builder> nested) {
             Objects.requireNonNull(name, "name must not be null");
             Objects.requireNonNull(nested, "nested must not be null");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("field name must not be blank");
+            }
             assert name != null : "name must not be null";
             assert nested != null : "nested consumer must not be null";
 
@@ -206,6 +246,10 @@ public final class JlsmSchema {
          * @throws IllegalArgumentException if {@code maxDepth} exceeds 25
          */
         public Builder maxDepth(int maxDepth) {
+            if (rootBuilder != null) {
+                throw new IllegalStateException("maxDepth can only be set on the root builder — "
+                        + "nested builders inherit maxDepth from the root");
+            }
             if (maxDepth > ABSOLUTE_MAX_DEPTH) {
                 throw new IllegalArgumentException("maxDepth " + maxDepth
                         + " exceeds absolute maximum of " + ABSOLUTE_MAX_DEPTH);

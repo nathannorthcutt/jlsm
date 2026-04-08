@@ -51,3 +51,12 @@
 - None — no direct KB coverage for this domain
 
 ---
+
+## 2026-03-30 — out-of-scope-promoted
+
+**Agent:** Curation Agent
+**Event:** out-of-scope-promoted
+**Items:** handle-priority-levels, cross-table-handle-budgets, handle-timeout-ttl, cross-table-transactions, remote-serialization-protocol
+**Summary:** 5 out-of-scope items promoted to tracked deferred decisions during /curate session.
+
+---

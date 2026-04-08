@@ -37,6 +37,13 @@ public final class FieldValueCodec {
     private FieldValueCodec() {
     }
 
+    private static void requireByteSize(MemorySegment encoded, long expected, String typeName) {
+        if (encoded.byteSize() != expected) {
+            throw new IllegalArgumentException(
+                    typeName + " expects " + expected + " bytes, got: " + encoded.byteSize());
+        }
+    }
+
     public static MemorySegment encode(Object value, FieldType fieldType) {
         Objects.requireNonNull(fieldType, "fieldType");
         final FieldType.Primitive p;
@@ -102,7 +109,7 @@ public final class FieldValueCodec {
     }
 
     private static byte decodeInt8(MemorySegment encoded) {
-        assert encoded.byteSize() == 1 : "INT8 expects 1 byte";
+        requireByteSize(encoded, 1, "INT8");
         return (byte) (encoded.get(BE_BYTE, 0) ^ Byte.MIN_VALUE);
     }
 
@@ -119,7 +126,7 @@ public final class FieldValueCodec {
     }
 
     private static short decodeInt16(MemorySegment encoded) {
-        assert encoded.byteSize() == 2 : "INT16 expects 2 bytes";
+        requireByteSize(encoded, 2, "INT16");
         return (short) (encoded.get(BE_SHORT, 0) ^ Short.MIN_VALUE);
     }
 
@@ -136,7 +143,7 @@ public final class FieldValueCodec {
     }
 
     private static int decodeInt32(MemorySegment encoded) {
-        assert encoded.byteSize() == 4 : "INT32 expects 4 bytes";
+        requireByteSize(encoded, 4, "INT32");
         return encoded.get(BE_INT, 0) ^ Integer.MIN_VALUE;
     }
 
@@ -157,7 +164,7 @@ public final class FieldValueCodec {
     }
 
     private static long decodeInt64(MemorySegment encoded) {
-        assert encoded.byteSize() == 8 : "INT64 expects 8 bytes";
+        requireByteSize(encoded, 8, "INT64");
         return encoded.get(BE_LONG, 0) ^ Long.MIN_VALUE;
     }
 
@@ -180,7 +187,7 @@ public final class FieldValueCodec {
     }
 
     private static short decodeFloat16(MemorySegment encoded) {
-        assert encoded.byteSize() == 2 : "FLOAT16 expects 2 bytes";
+        requireByteSize(encoded, 2, "FLOAT16");
         int bits = encoded.get(BE_SHORT, 0) & 0xFFFF;
         if ((bits & 0x8000) != 0) {
             bits = bits & 0x7FFF;
@@ -209,7 +216,7 @@ public final class FieldValueCodec {
     }
 
     private static float decodeFloat32(MemorySegment encoded) {
-        assert encoded.byteSize() == 4 : "FLOAT32 expects 4 bytes";
+        requireByteSize(encoded, 4, "FLOAT32");
         int bits = encoded.get(BE_INT, 0);
         if (bits < 0) {
             bits = bits & Integer.MAX_VALUE;
@@ -238,7 +245,7 @@ public final class FieldValueCodec {
     }
 
     private static double decodeFloat64(MemorySegment encoded) {
-        assert encoded.byteSize() == 8 : "FLOAT64 expects 8 bytes";
+        requireByteSize(encoded, 8, "FLOAT64");
         long bits = encoded.get(BE_LONG, 0);
         if (bits < 0) {
             bits = bits & Long.MAX_VALUE;
@@ -279,7 +286,7 @@ public final class FieldValueCodec {
     }
 
     private static boolean decodeBoolean(MemorySegment encoded) {
-        assert encoded.byteSize() == 1 : "BOOLEAN expects 1 byte";
+        requireByteSize(encoded, 1, "BOOLEAN");
         return encoded.get(BE_BYTE, 0) != 0;
     }
 

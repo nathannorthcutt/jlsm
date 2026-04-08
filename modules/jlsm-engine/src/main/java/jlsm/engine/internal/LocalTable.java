@@ -48,15 +48,19 @@ final class LocalTable implements Table {
     public void create(String key, JlsmDocument doc) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(doc, "doc must not be null");
-        checkValid();
-        delegate.create(key, doc);
+        synchronized (registration) {
+            checkValid();
+            delegate.create(key, doc);
+        }
     }
 
     @Override
     public Optional<JlsmDocument> get(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
-        checkValid();
-        return delegate.get(key);
+        synchronized (registration) {
+            checkValid();
+            return delegate.get(key);
+        }
     }
 
     @Override
@@ -64,51 +68,78 @@ final class LocalTable implements Table {
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(doc, "doc must not be null");
         Objects.requireNonNull(mode, "mode must not be null");
-        checkValid();
-        delegate.update(key, doc, mode);
+        synchronized (registration) {
+            checkValid();
+            delegate.update(key, doc, mode);
+        }
     }
 
     @Override
     public void delete(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
-        checkValid();
-        delegate.delete(key);
+        synchronized (registration) {
+            checkValid();
+            delegate.delete(key);
+        }
     }
 
     @Override
     public void insert(JlsmDocument doc) throws IOException {
         Objects.requireNonNull(doc, "doc must not be null");
-        checkValid();
         // Primary key is the first field in the schema by convention
-        assert !schema.fields().isEmpty() : "schema must have at least one field for primary key";
-        final String primaryKeyField = schema.fields().getFirst().name();
+        if (schema.fields().isEmpty()) {
+            throw new IllegalStateException(
+                    "schema must have at least one field to derive the primary key");
+        }
+        final var primaryField = schema.fields().getFirst();
+        final String primaryKeyField = primaryField.name();
+        final var pkType = primaryField.type();
+        if (pkType != jlsm.table.FieldType.Primitive.STRING
+                && !(pkType instanceof jlsm.table.FieldType.BoundedString)) {
+            throw new IllegalArgumentException("primary key field '" + primaryKeyField
+                    + "' must be a string type, but has type " + pkType);
+        }
         final String key = doc.getString(primaryKeyField);
-        assert key != null : "primary key value must not be null";
-        delegate.create(key, doc);
+        if (key == null) {
+            throw new IllegalArgumentException(
+                    "primary key field '" + primaryKeyField + "' must not be null in document");
+        }
+        synchronized (registration) {
+            checkValid();
+            delegate.create(key, doc);
+        }
     }
 
     @Override
     public TableQuery<String> query() {
-        checkValid();
-        throw new UnsupportedOperationException(
-                "Query binding not yet implemented — use scan() for now");
+        synchronized (registration) {
+            checkValid();
+            throw new UnsupportedOperationException(
+                    "Query binding not yet implemented — use scan() for now");
+        }
     }
 
     @Override
     public Iterator<TableEntry<String>> scan(String fromKey, String toKey) throws IOException {
         Objects.requireNonNull(fromKey, "fromKey must not be null");
         Objects.requireNonNull(toKey, "toKey must not be null");
-        checkValid();
-        return delegate.getAllInRange(fromKey, toKey);
+        synchronized (registration) {
+            checkValid();
+            return delegate.getAllInRange(fromKey, toKey);
+        }
     }
 
     @Override
     public TableMetadata metadata() {
-        return metadata;
+        synchronized (registration) {
+            checkValid();
+            return metadata;
+        }
     }
 
     @Override
     public void close() {
+        registration.invalidate(HandleEvictedException.Reason.EVICTION);
         tracker.release(registration);
     }
 
@@ -119,8 +150,11 @@ final class LocalTable implements Table {
      */
     private void checkValid() {
         if (registration.isInvalidated()) {
-            throw new HandleEvictedException(registration.tableName(), registration.sourceId(), 0,
-                    registration.allocationSite(), HandleEvictedException.Reason.EVICTION);
+            final HandleEvictedException.Reason reason = registration.invalidationReason();
+            assert reason != null : "invalidated registration must have a reason";
+            final int openHandles = tracker.handleCountForTable(registration.tableName());
+            throw new HandleEvictedException(registration.tableName(), registration.sourceId(),
+                    openHandles, registration.allocationSite(), reason);
         }
     }
 }

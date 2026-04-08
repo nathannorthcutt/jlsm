@@ -8,18 +8,18 @@ import java.util.Objects;
  *
  * <p>
  * Contract: Immutable configuration value created via {@link Builder}. All durations must be
- * positive. The {@code consensusQuorumPercent} must be in range [1, 100]. Sensible defaults
- * are provided by the builder.
+ * positive. The {@code consensusQuorumPercent} must be in range [1, 100]. Sensible defaults are
+ * provided by the builder.
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md},
  * {@code .decisions/rebalancing-grace-period-strategy/adr.md}
  *
- * @param gracePeriod          time to wait before treating a departed node as permanent
- * @param protocolPeriod       interval between membership protocol rounds
- * @param pingTimeout          timeout for a single ping/ack exchange
- * @param indirectProbes       number of indirect probe paths for failure detection
- * @param phiThreshold         phi accrual failure detector threshold
+ * @param gracePeriod time to wait before treating a departed node as permanent
+ * @param protocolPeriod interval between membership protocol rounds
+ * @param pingTimeout timeout for a single ping/ack exchange
+ * @param indirectProbes number of indirect probe paths for failure detection
+ * @param phiThreshold phi accrual failure detector threshold
  * @param consensusQuorumPercent percentage of nodes required for view-change consensus
  */
 public record ClusterConfig(Duration gracePeriod, Duration protocolPeriod, Duration pingTimeout,
@@ -60,9 +60,9 @@ public record ClusterConfig(Duration gracePeriod, Duration protocolPeriod, Durat
             throw new IllegalArgumentException(
                     "indirectProbes must be non-negative, got: " + indirectProbes);
         }
-        if (phiThreshold <= 0.0) {
+        if (!(phiThreshold > 0.0) || !Double.isFinite(phiThreshold)) {
             throw new IllegalArgumentException(
-                    "phiThreshold must be positive, got: " + phiThreshold);
+                    "phiThreshold must be a finite positive value, got: " + phiThreshold);
         }
         if (consensusQuorumPercent < 1 || consensusQuorumPercent > 100) {
             throw new IllegalArgumentException(
@@ -91,7 +91,8 @@ public record ClusterConfig(Duration gracePeriod, Duration protocolPeriod, Durat
         private double phiThreshold = DEFAULT_PHI_THRESHOLD;
         private int consensusQuorumPercent = DEFAULT_CONSENSUS_QUORUM_PERCENT;
 
-        private Builder() {}
+        private Builder() {
+        }
 
         public Builder gracePeriod(Duration gracePeriod) {
             this.gracePeriod = Objects.requireNonNull(gracePeriod, "gracePeriod must not be null");
