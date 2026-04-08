@@ -43,6 +43,13 @@ public interface ClusterTransport extends AutoCloseable {
     void registerHandler(MessageType type, MessageHandler handler);
 
     /**
+     * Deregisters the handler for the specified message type.
+     *
+     * @param type the message type whose handler should be removed; must not be null
+     */
+    void deregisterHandler(MessageType type);
+
+    /**
      * Closes the transport, releasing any resources.
      *
      * @throws Exception if closing fails

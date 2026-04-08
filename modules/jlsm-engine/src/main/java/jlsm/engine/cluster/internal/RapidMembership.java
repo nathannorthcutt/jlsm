@@ -26,6 +26,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -33,13 +34,20 @@ import java.util.concurrent.locks.ReentrantLock;
  * Rapid protocol implementation of {@link MembershipProtocol}.
  *
  * <p>
- * Contract: Implements the Rapid membership protocol with:
+ * Contract: Implements a Rapid-inspired membership protocol with:
  * <ul>
- * <li>Expander graph monitoring overlay (K observers per node)</li>
- * <li>Multi-process cut detection (alerts from multiple observers before suspecting)</li>
- * <li>Leaderless 75% consensus for view changes</li>
+ * <li>Unilateral view changes — each node independently accepts joins, leaves, and suspicions
+ * without requiring agreement from other nodes</li>
  * <li>Adaptive phi accrual edge failure detection via {@link PhiAccrualFailureDetector}</li>
+ * <li>View change propagation — view mutations are broadcast to alive members for convergence</li>
+ * <li>Epoch-ordered view acceptance — proposals with stale epochs are rejected</li>
  * </ul>
+ *
+ * <p>
+ * <strong>Limitation:</strong> This implementation does not include multi-process cut detection or
+ * quorum-based consensus for view changes. Each node acts on view change proposals independently.
+ * In a network partition, disjoint partitions may diverge. Future work may add configurable
+ * consensus (see {@code .decisions/cluster-membership-protocol/adr.md}).
  *
  * <p>
  * Uses {@link ClusterTransport} for messaging, {@link DiscoveryProvider} for bootstrap, and
@@ -47,7 +55,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * <p>
  * Side effects: Starts background threads for the protocol period loop. Modifies the membership
- * view on consensus. Notifies registered listeners of view changes.
+ * view on view change acceptance. Notifies registered listeners of view changes.
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
@@ -71,8 +79,8 @@ public final class RapidMembership implements MembershipProtocol {
 
     private volatile MembershipView currentView;
     private volatile boolean started;
-    private volatile boolean closed;
-    private ScheduledExecutorService scheduler;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private volatile ScheduledExecutorService scheduler;
 
     /**
      * Creates a new Rapid membership protocol instance.
@@ -97,11 +105,17 @@ public final class RapidMembership implements MembershipProtocol {
     @Override
     public void start(List<NodeAddress> seeds) throws IOException {
         Objects.requireNonNull(seeds, "seeds must not be null");
-        if (started) {
-            throw new IllegalStateException("Protocol already started");
-        }
-        if (closed) {
-            throw new IllegalStateException("Protocol is closed");
+        viewLock.lock();
+        try {
+            if (started) {
+                throw new IllegalStateException("Protocol already started");
+            }
+            if (closed.get()) {
+                throw new IllegalStateException("Protocol is closed");
+            }
+            started = true;
+        } finally {
+            viewLock.unlock();
         }
 
         registerHandlers();
@@ -109,56 +123,78 @@ public final class RapidMembership implements MembershipProtocol {
         // Initialize with self as the only member
         final var selfMember = new Member(localAddress, MemberState.ALIVE, 0);
         currentView = new MembershipView(0, Set.of(selfMember), Instant.now());
-        started = true;
 
-        // Try to join existing cluster via seeds
-        boolean joinedExisting = false;
-        for (NodeAddress seed : seeds) {
-            if (seed.equals(localAddress)) {
-                continue;
-            }
-            try {
-                joinedExisting = tryJoin(seed);
-                if (joinedExisting) {
-                    break;
+        try {
+            // Try to join existing cluster via seeds
+            boolean joinedExisting = false;
+            for (NodeAddress seed : seeds) {
+                if (seed.equals(localAddress)) {
+                    continue;
                 }
-            } catch (Exception e) {
-                // Seed unreachable, try next
-                assert e != null : "exception should not be null";
-            }
-        }
-
-        // Also try seeds from discovery provider
-        if (!joinedExisting) {
-            try {
-                final Set<NodeAddress> discovered = discovery.discoverSeeds();
-                for (NodeAddress seed : discovered) {
-                    if (seed.equals(localAddress)) {
-                        continue;
+                try {
+                    joinedExisting = tryJoin(seed);
+                    if (joinedExisting) {
+                        break;
                     }
-                    try {
-                        joinedExisting = tryJoin(seed);
-                        if (joinedExisting) {
-                            break;
+                } catch (Exception e) {
+                    // Seed unreachable, try next
+                    assert e != null : "exception should not be null";
+                }
+            }
+
+            // Also try seeds from discovery provider
+            if (!joinedExisting) {
+                try {
+                    final Set<NodeAddress> discovered = discovery.discoverSeeds();
+                    for (NodeAddress seed : discovered) {
+                        if (seed.equals(localAddress)) {
+                            continue;
                         }
-                    } catch (Exception e) {
-                        assert e != null : "exception should not be null";
+                        try {
+                            joinedExisting = tryJoin(seed);
+                            if (joinedExisting) {
+                                break;
+                            }
+                        } catch (Exception e) {
+                            assert e != null : "exception should not be null";
+                        }
                     }
+                } catch (IOException e) {
+                    // Discovery failed, proceed as single-node cluster
+                    assert e != null : "exception should not be null";
                 }
-            } catch (IOException e) {
-                // Discovery failed, proceed as single-node cluster
-                assert e != null : "exception should not be null";
             }
-        }
 
-        // Start background protocol loop
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            final Thread t = new Thread(r, "rapid-membership-" + localAddress.nodeId());
-            t.setDaemon(true);
-            return t;
-        });
-        scheduler.scheduleAtFixedRate(this::protocolTick, config.protocolPeriod().toMillis(),
-                config.protocolPeriod().toMillis(), TimeUnit.MILLISECONDS);
+            // Start background protocol loop
+            final var sched = Executors.newSingleThreadScheduledExecutor(r -> {
+                final Thread t = new Thread(r, "rapid-membership-" + localAddress.nodeId());
+                t.setDaemon(true);
+                return t;
+            });
+            scheduler = sched;
+
+            // Guard against concurrent close(): if close() ran between started=true and
+            // this point, it saw scheduler==null and skipped shutdown. We must detect that
+            // and shut down the scheduler ourselves to prevent a thread leak.
+            if (closed.get()) {
+                sched.shutdownNow();
+                started = false;
+                currentView = null;
+                transport.deregisterHandler(MessageType.PING);
+                transport.deregisterHandler(MessageType.VIEW_CHANGE);
+                return;
+            }
+
+            sched.scheduleAtFixedRate(this::protocolTick, config.protocolPeriod().toMillis(),
+                    config.protocolPeriod().toMillis(), TimeUnit.MILLISECONDS);
+        } catch (RuntimeException | Error ex) {
+            // Roll back partial start — deregister handlers, reset state
+            started = false;
+            currentView = null;
+            transport.deregisterHandler(MessageType.PING);
+            transport.deregisterHandler(MessageType.VIEW_CHANGE);
+            throw ex;
+        }
     }
 
     @Override
@@ -178,38 +214,51 @@ public final class RapidMembership implements MembershipProtocol {
 
     @Override
     public void leave() throws IOException {
-        if (!started || closed) {
+        if (!started || closed.get()) {
             return;
         }
 
-        // Announce departure to all known members
-        final MembershipView view = currentView;
-        assert view != null : "view should not be null when started";
+        // Announce departure to all known members, then close.
+        // close() must run even if transport.send() throws an unchecked exception —
+        // otherwise the scheduler and discovery registration leak.
+        try {
+            final MembershipView view = currentView;
+            assert view != null : "view should not be null when started";
 
-        final byte[] payload = encodeLeavePayload();
-        for (Member member : view.members()) {
-            if (member.address().equals(localAddress)) {
-                continue;
+            final byte[] payload = encodeLeavePayload();
+            for (Member member : view.members()) {
+                if (closed.get()) {
+                    break; // close() ran concurrently — abort send loop
+                }
+                if (member.address().equals(localAddress)) {
+                    continue;
+                }
+                try {
+                    transport.send(member.address(), new Message(MessageType.VIEW_CHANGE,
+                            localAddress, sequenceCounter.getAndIncrement(), payload));
+                } catch (IOException e) {
+                    // Best effort — some members may be unreachable
+                    assert e != null : "exception should not be null";
+                }
             }
-            try {
-                transport.send(member.address(), new Message(MessageType.VIEW_CHANGE, localAddress,
-                        sequenceCounter.getAndIncrement(), payload));
-            } catch (IOException e) {
-                // Best effort — some members may be unreachable
-                assert e != null : "exception should not be null";
-            }
+        } finally {
+            close();
         }
-
-        close();
     }
 
     @Override
     public void close() {
-        if (closed) {
+        if (!closed.compareAndSet(false, true)) {
             return;
         }
-        closed = true;
         started = false;
+
+        discovery.deregister(localAddress);
+
+        transport.deregisterHandler(MessageType.PING);
+        transport.deregisterHandler(MessageType.VIEW_CHANGE);
+
+        listeners.clear();
 
         if (scheduler != null) {
             scheduler.shutdownNow();
@@ -232,7 +281,12 @@ public final class RapidMembership implements MembershipProtocol {
         assert sender != null : "sender must not be null";
         assert msg != null : "msg must not be null";
 
-        failureDetector.recordHeartbeat(sender);
+        // Only record heartbeats from nodes in the current membership view.
+        // Without this guard, removed or unknown nodes pollute the failure detector's state.
+        final MembershipView view = currentView;
+        if (view != null && view.isMember(sender)) {
+            failureDetector.recordHeartbeat(sender);
+        }
 
         // Respond with ACK
         return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
@@ -245,8 +299,8 @@ public final class RapidMembership implements MembershipProtocol {
 
         final byte[] payload = msg.payload();
         if (payload.length == 0) {
-            return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
-                    sequenceCounter.getAndIncrement(), new byte[0]));
+            return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "Empty VIEW_CHANGE payload — possible truncation or corruption"));
         }
 
         final byte subType = payload[0];
@@ -258,13 +312,20 @@ public final class RapidMembership implements MembershipProtocol {
             return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
                     sequenceCounter.getAndIncrement(), new byte[0]));
         } else if (subType == MSG_VIEW_CHANGE_PROPOSAL) {
+            // Verify the sender is a current member — reject view injection from non-members
+            final MembershipView view = currentView;
+            if (view == null || !view.isMember(sender)) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException(
+                        "View change proposal rejected — sender is not a current member: "
+                                + sender));
+            }
             handleViewChangeProposal(sender, payload);
             return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
                     sequenceCounter.getAndIncrement(), new byte[0]));
         }
 
-        return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
-                sequenceCounter.getAndIncrement(), new byte[0]));
+        return CompletableFuture.failedFuture(new IllegalArgumentException(
+                "Unknown VIEW_CHANGE sub-type: 0x" + String.format("%02x", subType)));
     }
 
     private CompletableFuture<Message> handleJoinRequest(NodeAddress sender, byte[] payload) {
@@ -275,41 +336,73 @@ public final class RapidMembership implements MembershipProtocol {
                     sequenceCounter.getAndIncrement(), new byte[0]));
         }
 
-        // Add the joining node to our view
+        // View mutation under viewLock; listener notification and network I/O outside.
+        // Notifications and propagation must not hold viewLock — holding it during callbacks
+        // or network sends blocks all concurrent view mutations and risks deadlock.
+        MembershipView viewToPropagate = null;
+        MembershipView oldViewForPropagation = null;
+        MembershipView responseView = null;
+        Member joinedMember = null;
+
         viewLock.lock();
         try {
             final MembershipView oldView = currentView;
             assert oldView != null : "view should not be null";
 
-            if (oldView.isMember(joiningNode)) {
-                // Already a member, respond with current view
+            // Check if already an ALIVE member — if so, return current view without mutation
+            Member existing = null;
+            for (Member m : oldView.members()) {
+                if (m.address().equals(joiningNode)) {
+                    existing = m;
+                    break;
+                }
+            }
+            if (existing != null && existing.state() == MemberState.ALIVE) {
+                // Already alive, respond with current view
                 return CompletableFuture.completedFuture(new Message(MessageType.VIEW_CHANGE,
                         localAddress, sequenceCounter.getAndIncrement(),
                         encodeViewResponse(currentView)));
             }
 
-            final Set<Member> newMembers = new HashSet<>(oldView.members());
-            final var newMember = new Member(joiningNode, MemberState.ALIVE, 0);
+            // Either new member or DEAD member rejoining — build updated membership set
+            final Set<Member> newMembers = new HashSet<>();
+            for (Member m : oldView.members()) {
+                if (!m.address().equals(joiningNode)) {
+                    newMembers.add(m);
+                }
+            }
+            final var newMember = new Member(joiningNode, MemberState.ALIVE,
+                    existing != null ? existing.incarnation() + 1 : 0);
             newMembers.add(newMember);
             final MembershipView newView = new MembershipView(oldView.epoch() + 1, newMembers,
                     Instant.now());
             currentView = newView;
 
-            // Notify listeners
-            notifyViewChanged(oldView, newView);
-            notifyMemberJoined(newMember);
-
-            // Propagate the view change to other members
-            propagateViewChange(newView, oldView);
-
-            return CompletableFuture.completedFuture(new Message(MessageType.VIEW_CHANGE,
-                    localAddress, sequenceCounter.getAndIncrement(), encodeViewResponse(newView)));
+            // Capture for notification and propagation outside the lock
+            viewToPropagate = newView;
+            oldViewForPropagation = oldView;
+            responseView = newView;
+            joinedMember = newMember;
         } finally {
             viewLock.unlock();
         }
+
+        // Notify listeners outside viewLock — callbacks must not block view mutations
+        notifyViewChanged(oldViewForPropagation, viewToPropagate);
+        notifyMemberJoined(joinedMember);
+
+        // Propagate view change outside viewLock — network I/O must not block view mutations
+        propagateViewChange(viewToPropagate, oldViewForPropagation);
+
+        return CompletableFuture.completedFuture(new Message(MessageType.VIEW_CHANGE, localAddress,
+                sequenceCounter.getAndIncrement(), encodeViewResponse(responseView)));
     }
 
     private void handleLeaveNotification(NodeAddress leavingNode) {
+        MembershipView oldViewForNotify = null;
+        MembershipView newViewForNotify = null;
+        Member leftMember = null;
+
         viewLock.lock();
         try {
             final MembershipView oldView = currentView;
@@ -319,27 +412,45 @@ public final class RapidMembership implements MembershipProtocol {
                 return;
             }
 
+            // Skip if the member is already DEAD — duplicate leave should not bump epoch
+            for (Member m : oldView.members()) {
+                if (m.address().equals(leavingNode) && m.state() == MemberState.DEAD) {
+                    return;
+                }
+            }
+
+            // Reap previously DEAD members to prevent unbounded set growth (F-R1.ss.1.4).
+            // The currently leaving member is marked DEAD; all prior DEAD members are removed.
             final Set<Member> newMembers = new HashSet<>();
             Member leavingMember = null;
             for (Member m : oldView.members()) {
                 if (m.address().equals(leavingNode)) {
                     leavingMember = m;
                     newMembers.add(new Member(m.address(), MemberState.DEAD, m.incarnation()));
-                } else {
+                } else if (m.state() != MemberState.DEAD) {
                     newMembers.add(m);
                 }
+                // else: prior DEAD member — reaped to bound member set size
             }
 
             final MembershipView newView = new MembershipView(oldView.epoch() + 1, newMembers,
                     Instant.now());
             currentView = newView;
 
-            notifyViewChanged(oldView, newView);
-            if (leavingMember != null) {
-                notifyMemberLeft(leavingMember);
-            }
+            // Capture for notification outside the lock
+            oldViewForNotify = oldView;
+            newViewForNotify = newView;
+            leftMember = leavingMember;
         } finally {
             viewLock.unlock();
+        }
+
+        // Notify listeners outside viewLock — callbacks must not block view mutations
+        if (oldViewForNotify != null) {
+            notifyViewChanged(oldViewForNotify, newViewForNotify);
+            if (leftMember != null) {
+                notifyMemberLeft(leftMember);
+            }
         }
     }
 
@@ -350,32 +461,75 @@ public final class RapidMembership implements MembershipProtocol {
             return;
         }
 
+        MembershipView oldViewForNotify = null;
+        boolean accepted = false;
+
         viewLock.lock();
         try {
             final MembershipView oldView = currentView;
             assert oldView != null : "view should not be null";
 
-            // Accept the proposed view if it has a higher epoch
+            // Accept the proposed view if it has a higher epoch AND it does not
+            // drop any ALIVE members — a proposal that removes ALIVE members without
+            // a prior DEAD/SUSPECTED transition is rejected to prevent arbitrary ejection.
             if (proposedView.epoch() > oldView.epoch()) {
-                currentView = proposedView;
-
-                // Determine joins and leaves
-                notifyViewChanged(oldView, proposedView);
-
-                for (Member newMember : proposedView.members()) {
-                    if (!oldView.isMember(newMember.address())
-                            && newMember.state() == MemberState.ALIVE) {
-                        notifyMemberJoined(newMember);
+                boolean dropsAlive = false;
+                for (Member existing : oldView.members()) {
+                    if (existing.state() == MemberState.ALIVE
+                            && !proposedView.isMember(existing.address())) {
+                        dropsAlive = true;
+                        break;
                     }
                 }
-                for (Member oldMember : oldView.members()) {
-                    if (!proposedView.isMember(oldMember.address())) {
-                        notifyMemberLeft(oldMember);
-                    }
+                if (!dropsAlive) {
+                    currentView = proposedView;
+                    oldViewForNotify = oldView;
+                    accepted = true;
                 }
             }
         } finally {
             viewLock.unlock();
+        }
+
+        // Notify listeners outside viewLock — callbacks must not block view mutations
+        if (accepted) {
+            notifyViewChanged(oldViewForNotify, proposedView);
+
+            for (Member newMember : proposedView.members()) {
+                if (newMember.state() == MemberState.ALIVE) {
+                    // Notify if the member is entirely new OR was DEAD in the old view
+                    // (DEAD→ALIVE transition = rejoin). isMember returns true for DEAD
+                    // members, so we must check the old state explicitly.
+                    boolean wasAbsent = !oldViewForNotify.isMember(newMember.address());
+                    boolean wasDead = false;
+                    if (!wasAbsent) {
+                        for (Member old : oldViewForNotify.members()) {
+                            if (old.address().equals(newMember.address())
+                                    && old.state() == MemberState.DEAD) {
+                                wasDead = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (wasAbsent || wasDead) {
+                        notifyMemberJoined(newMember);
+                    }
+                }
+            }
+            for (Member oldMember : oldViewForNotify.members()) {
+                if (!proposedView.isMember(oldMember.address())) {
+                    notifyMemberLeft(oldMember);
+                } else if (oldMember.state() != MemberState.DEAD) {
+                    // Detect ALIVE/SUSPECTED → DEAD transitions within the proposed view
+                    for (Member proposed : proposedView.members()) {
+                        if (proposed.address().equals(oldMember.address())
+                                && proposed.state() == MemberState.DEAD) {
+                            notifyMemberLeft(oldMember);
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -395,9 +549,19 @@ public final class RapidMembership implements MembershipProtocol {
                     // Decode the view from the response
                     final MembershipView receivedView = decodeViewFromPayload(respPayload, 1);
                     if (receivedView != null) {
+                        MembershipView oldViewForNotify;
+                        MembershipView newViewForNotify;
                         viewLock.lock();
                         try {
-                            final MembershipView oldView = currentView;
+                            oldViewForNotify = currentView;
+                            // Epoch monotonicity guard: reject stale join responses whose
+                            // epoch is not strictly greater than the current view's epoch.
+                            // Without this guard, a concurrent view change (via
+                            // handleJoinRequest or handleViewChangeProposal) that advanced
+                            // the epoch would be overwritten by a stale seed response.
+                            if (receivedView.epoch() <= oldViewForNotify.epoch()) {
+                                return false;
+                            }
                             // Ensure we're in the received view
                             final Set<Member> members = new HashSet<>(receivedView.members());
                             if (!receivedView.isMember(localAddress)) {
@@ -405,10 +569,12 @@ public final class RapidMembership implements MembershipProtocol {
                             }
                             currentView = new MembershipView(receivedView.epoch(), members,
                                     Instant.now());
-                            notifyViewChanged(oldView, currentView);
+                            newViewForNotify = currentView;
                         } finally {
                             viewLock.unlock();
                         }
+                        // Notify listeners outside viewLock
+                        notifyViewChanged(oldViewForNotify, newViewForNotify);
                         return true;
                     }
                 }
@@ -421,7 +587,7 @@ public final class RapidMembership implements MembershipProtocol {
     }
 
     private void protocolTick() {
-        if (closed || !started) {
+        if (closed.get() || !started) {
             return;
         }
 
@@ -439,23 +605,65 @@ public final class RapidMembership implements MembershipProtocol {
                 continue;
             }
 
-            try {
-                transport.send(member.address(), new Message(MessageType.PING, localAddress,
-                        sequenceCounter.getAndIncrement(), new byte[0]));
-            } catch (IOException e) {
-                // Member may be unreachable — failure detector will handle it
-                assert e != null : "exception should not be null";
+            final NodeAddress target = member.address();
+            transport
+                    .request(target,
+                            new Message(MessageType.PING, localAddress,
+                                    sequenceCounter.getAndIncrement(), new byte[0]))
+                    .whenComplete((response, ex) -> {
+                        if (ex == null && response != null) {
+                            // ACK received — the remote node is responsive.
+                            // Record a heartbeat so the local failure detector reflects
+                            // the node's liveness symmetrically (not just from incoming
+                            // pings the remote node initiates).
+                            failureDetector.recordHeartbeat(target);
+                        }
+                        // On failure (ex != null): member may be unreachable — the phi
+                        // accrual detector will handle suspicion via elapsed time.
+                    });
+
+            // Re-check the current view before phi operations. A concurrent view mutation
+            // (e.g., handleLeaveNotification) may have removed this member since we captured
+            // the iteration snapshot. Without this check, we would compute phi and seed
+            // heartbeats for already-departed members.
+            final MembershipView freshView = currentView;
+            if (freshView == null || !isMemberAlive(freshView, target)) {
+                continue;
             }
 
             // Check phi for this member
             final double phi = failureDetector.phi(member.address());
-            if (phi > config.phiThreshold()) {
+            if (phi == 0.0) {
+                // No heartbeat history for this node — it joined but has never responded.
+                // Seed a heartbeat now so the phi clock starts ticking. On subsequent ticks,
+                // if no real heartbeat arrives from the node, elapsed time grows and phi
+                // will eventually exceed the threshold, triggering suspicion. Without this
+                // seed, phi() returns 0.0 forever for unresponsive nodes, making them immune
+                // to failure detection.
+                failureDetector.recordHeartbeat(member.address());
+            } else if (phi > config.phiThreshold()) {
                 handleSuspectedNode(member);
             }
         }
     }
 
+    /**
+     * Returns true if the given address belongs to an ALIVE member in the provided view.
+     */
+    private static boolean isMemberAlive(MembershipView view, NodeAddress address) {
+        for (Member m : view.members()) {
+            if (m.address().equals(address)) {
+                return m.state() == MemberState.ALIVE;
+            }
+        }
+        return false;
+    }
+
     private void handleSuspectedNode(Member suspected) {
+        MembershipView oldViewForNotify = null;
+        MembershipView newViewForNotify = null;
+        Member suspectedForNotify = null;
+
         viewLock.lock();
         try {
             final MembershipView oldView = currentView;
@@ -490,12 +698,20 @@ public final class RapidMembership implements MembershipProtocol {
                     Instant.now());
             currentView = newView;
 
-            notifyViewChanged(oldView, newView);
-            if (suspectedMember != null) {
-                notifyMemberSuspected(suspectedMember);
-            }
+            // Capture for notification outside the lock
+            oldViewForNotify = oldView;
+            newViewForNotify = newView;
+            suspectedForNotify = suspectedMember;
         } finally {
             viewLock.unlock();
+        }
+
+        // Notify listeners outside viewLock — callbacks must not block view mutations
+        if (oldViewForNotify != null) {
+            notifyViewChanged(oldViewForNotify, newViewForNotify);
+            if (suspectedForNotify != null) {
+                notifyMemberSuspected(suspectedForNotify);
+            }
         }
     }
 

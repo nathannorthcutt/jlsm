@@ -52,8 +52,11 @@ final class HandleRegistration {
      *
      * @param reason the invalidation reason; must not be null
      */
-    void invalidate(HandleEvictedException.Reason reason) {
+    synchronized void invalidate(HandleEvictedException.Reason reason) {
         Objects.requireNonNull(reason, "reason must not be null");
+        if (this.invalidated) {
+            return;
+        }
         this.invalidationReason = reason;
         this.invalidated = true;
     }

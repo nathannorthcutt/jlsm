@@ -1,7 +1,6 @@
 package jlsm.cache;
 
 import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -10,7 +9,6 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.junit.jupiter.api.Test;
@@ -25,23 +23,25 @@ class SharedStateAdversarialTest {
 
     // Finding: F-R1.shared_state.1.1
     // Bug: Builder.build() error message misleading when capacity not set — says
-    //      "capacity must be at least stripeCount (N), got: -1" instead of indicating
-    //      that capacity was never configured.
+    // "capacity must be at least stripeCount (N), got: -1" instead of indicating
+    // that capacity was never configured.
     // Correct behavior: The error message should clearly state that capacity was not set.
     // Fix location: StripedBlockCache.Builder.build(), capacity validation block
-    // Regression watch: Ensure the capacity-too-small case (capacity explicitly set but < stripeCount)
-    //                   still produces the original message.
+    // Regression watch: Ensure the capacity-too-small case (capacity explicitly set but <
+    // stripeCount)
+    // still produces the original message.
     // Finding: F-R1.shared_state.1.2
     // Bug: Constructor uses assert-only guards for stripeCount > 0 and capacity >= stripeCount.
-    //      With assertions enabled, these throw AssertionError (not IllegalArgumentException).
-    //      With assertions disabled (production), stripeCount=0 causes ArithmeticException
-    //      (division by zero) and stripeCount<0 causes NegativeArraySizeException.
+    // With assertions enabled, these throw AssertionError (not IllegalArgumentException).
+    // With assertions disabled (production), stripeCount=0 causes ArithmeticException
+    // (division by zero) and stripeCount<0 causes NegativeArraySizeException.
     // Correct behavior: Constructor should use runtime checks (if/throw IllegalArgumentException)
-    //      so that invalid state always produces a clear, informative exception regardless of -ea.
+    // so that invalid state always produces a clear, informative exception regardless of -ea.
     // Fix location: StripedBlockCache constructor, lines 37-38
     // Regression watch: Ensure normal builder path still works after adding runtime checks.
     @Test
-    void test_constructor_assertOnlyGuards_throwsIllegalArgumentNotAssertionError() throws Exception {
+    void test_constructor_assertOnlyGuards_throwsIllegalArgumentNotAssertionError()
+            throws Exception {
         // Use reflection to bypass build() validation and invoke the private constructor
         // with a Builder that has stripeCount=0, which should trigger the guard.
         var builder = StripedBlockCache.builder();
@@ -57,8 +57,8 @@ class SharedStateAdversarialTest {
         capacityField.set(builder, 100L);
 
         // Get the private constructor
-        Constructor<StripedBlockCache> ctor = StripedBlockCache.class.getDeclaredConstructor(
-                StripedBlockCache.Builder.class);
+        Constructor<StripedBlockCache> ctor = StripedBlockCache.class
+                .getDeclaredConstructor(StripedBlockCache.Builder.class);
         ctor.setAccessible(true);
 
         // Invoke: with assert-only guards, this throws AssertionError (with -ea)
@@ -73,11 +73,11 @@ class SharedStateAdversarialTest {
 
     // Finding: F-R1.shared_state.1.3
     // Bug: stripeIndex uses assert-only guard for stripeCount > 0. With assertions
-    //      disabled, stripeCount=0 causes ArithmeticException (% 0) instead of a clear
-    //      IllegalArgumentException. Method is package-private, accessible to any class
-    //      in jlsm.cache.
+    // disabled, stripeCount=0 causes ArithmeticException (% 0) instead of a clear
+    // IllegalArgumentException. Method is package-private, accessible to any class
+    // in jlsm.cache.
     // Correct behavior: Should throw IllegalArgumentException with informative message
-    //      when stripeCount <= 0, regardless of -ea flag.
+    // when stripeCount <= 0, regardless of -ea flag.
     // Fix location: StripedBlockCache.stripeIndex(), line 71
     // Regression watch: Ensure normal positive stripeCount calls still work after adding guard.
     @Test
@@ -105,7 +105,7 @@ class SharedStateAdversarialTest {
     // Finding: F-R1.shared_state.2.1
     // Bug: TOCTOU on closed flag allows put() after close(), leaking entries into a closed cache
     // Correct behavior: put() must throw IllegalStateException if close() has been called,
-    //                   even when the close() races with the put() call
+    // even when the close() races with the put() call
     // Fix location: LruBlockCache.put(), add closed re-check inside the lock
     // Regression watch: Ensure put() still works normally when cache is open
     @Test
@@ -114,9 +114,9 @@ class SharedStateAdversarialTest {
         // Strategy: force the exact TOCTOU interleaving deterministically.
         //
         // The bug scenario (in order):
-        //   1. put() reads closed == false (passes the guard)
-        //   2. close() sets closed = true, acquires lock, clears map, releases lock
-        //   3. put() acquires lock, inserts into the cleared map — leaked entry
+        // 1. put() reads closed == false (passes the guard)
+        // 2. close() sets closed = true, acquires lock, clears map, releases lock
+        // 3. put() acquires lock, inserts into the cleared map — leaked entry
         //
         // To force this: the test thread holds the cache's lock, then starts
         // close() on another thread. close() sets closed=true BEFORE acquiring
@@ -151,7 +151,7 @@ class SharedStateAdversarialTest {
                         putSucceeded.set(true);
                     } catch (IllegalStateException _) {
                         // Expected — cache was closed
-                    } catch (Exception _) {
+                    } catch ( Exception _) {
                         // Barrier timeout or interruption
                     }
                 });
@@ -168,7 +168,8 @@ class SharedStateAdversarialTest {
             });
 
             // Wait for all threads
-            for (var p : putters) p.join(5000);
+            for ( var p : putters)
+                p.join(5000);
             closer.join(5000);
 
             // Invariant: after close() has returned, the map must be empty.
@@ -185,18 +186,17 @@ class SharedStateAdversarialTest {
             }
         }
 
-        assertEquals(0, leakCount,
-                leakCount + " out of " + iterations + " iterations leaked entries "
-                        + "into a closed cache via put() TOCTOU");
+        assertEquals(0, leakCount, leakCount + " out of " + iterations
+                + " iterations leaked entries " + "into a closed cache via put() TOCTOU");
     }
 
     // Finding: F-R1.shared_state.2.2
     // Bug: TOCTOU on closed flag allows getOrLoad() after close(), executing loader
-    //      and inserting into closed cache. getOrLoad() checks closed outside the lock,
-    //      then acquires the lock and proceeds without re-checking closed.
+    // and inserting into closed cache. getOrLoad() checks closed outside the lock,
+    // then acquires the lock and proceeds without re-checking closed.
     // Correct behavior: getOrLoad() must throw IllegalStateException if close() has been
-    //                   called, even when close() races with the getOrLoad() call.
-    //                   The loader must NOT execute after close().
+    // called, even when close() races with the getOrLoad() call.
+    // The loader must NOT execute after close().
     // Fix location: LruBlockCache.getOrLoad(), add closed re-check inside both lock regions
     // Regression watch: Ensure getOrLoad() still works normally when cache is open
     @Test
@@ -236,7 +236,7 @@ class SharedStateAdversarialTest {
                         loadSucceeded.set(true);
                     } catch (IllegalStateException _) {
                         // Expected — cache was closed
-                    } catch (Exception _) {
+                    } catch ( Exception _) {
                         // Barrier timeout or interruption
                     }
                 });
@@ -254,7 +254,8 @@ class SharedStateAdversarialTest {
             });
 
             // Wait for all threads
-            for (var l : loaders) l.join(5000);
+            for ( var l : loaders)
+                l.join(5000);
             closer.join(5000);
 
             // Invariant: after close() has returned, the map must be empty.
@@ -269,16 +270,15 @@ class SharedStateAdversarialTest {
             }
         }
 
-        assertEquals(0, leakCount,
-                leakCount + " out of " + iterations + " iterations leaked entries "
-                        + "into a closed cache via getOrLoad() TOCTOU");
+        assertEquals(0, leakCount, leakCount + " out of " + iterations
+                + " iterations leaked entries " + "into a closed cache via getOrLoad() TOCTOU");
     }
 
     // Finding: F-R1.shared_state.2.4
     // Bug: Constructor relies on assert-only guard for capacity — disabled in production.
-    //      With assertions disabled, capacity <= 0 silently creates a degenerate cache.
+    // With assertions disabled, capacity <= 0 silently creates a degenerate cache.
     // Correct behavior: Constructor should throw IllegalArgumentException for capacity <= 0
-    //      regardless of -ea flag.
+    // regardless of -ea flag.
     // Fix location: LruBlockCache constructor, line 36
     // Regression watch: Ensure normal builder path still works after adding runtime check.
     @Test
@@ -294,8 +294,8 @@ class SharedStateAdversarialTest {
         capacityField.set(builder, 0L);
 
         // Get the private constructor
-        Constructor<LruBlockCache> ctor = LruBlockCache.class.getDeclaredConstructor(
-                LruBlockCache.Builder.class);
+        Constructor<LruBlockCache> ctor = LruBlockCache.class
+                .getDeclaredConstructor(LruBlockCache.Builder.class);
         ctor.setAccessible(true);
 
         // With assert-only guard: throws AssertionError (with -ea) or succeeds silently
@@ -309,11 +309,13 @@ class SharedStateAdversarialTest {
 
     // Finding: F-R1.shared_state.2.5
     // Bug: close() sets volatile closed flag before acquiring lock — get() sees closed=true
-    //      and throws IllegalStateException even though the map still has valid data (not yet cleared)
-    // Correct behavior: close() should set closed=true atomically with the map.clear() (inside the lock),
-    //      so that no concurrent operation sees an inconsistent state (closed=true but map populated)
+    // and throws IllegalStateException even though the map still has valid data (not yet cleared)
+    // Correct behavior: close() should set closed=true atomically with the map.clear() (inside the
+    // lock),
+    // so that no concurrent operation sees an inconsistent state (closed=true but map populated)
     // Fix location: LruBlockCache.close(), move closed=true inside the lock
-    // Regression watch: Ensure put()/getOrLoad() re-checks inside the lock still catch concurrent close
+    // Regression watch: Ensure put()/getOrLoad() re-checks inside the lock still catch concurrent
+    // close
     @Test
     @Timeout(10)
     void test_close_setsClosedBeforeLock_getThrowsPrematurely() throws Exception {
@@ -322,7 +324,7 @@ class SharedStateAdversarialTest {
         // 2. Test thread acquires the cache's internal lock (via reflection)
         // 3. Start close() on another thread — it sets closed=true, then blocks on lock
         // 4. Call get() on the main thread (without holding the lock) — with the bug,
-        //    get() sees closed=true and throws even though the map still has the value
+        // get() sees closed=true and throws even though the map still has the value
         // 5. Release the lock
         //
         // After fix (closed=true inside the lock), close() does NOT set closed=true
@@ -365,12 +367,13 @@ class SharedStateAdversarialTest {
 
     // Finding: F-R1.shared_state.2.3
     // Bug: size() callable after close() — inconsistent closed-state API behavior.
-    //      LruBlockCache.size() had no closed guard, returning 0 silently after close()
-    //      while all other methods (get/put/getOrLoad/evict) throw IllegalStateException.
-    //      StripedBlockCache.size() also lacks its own closed guard.
+    // LruBlockCache.size() had no closed guard, returning 0 silently after close()
+    // while all other methods (get/put/getOrLoad/evict) throw IllegalStateException.
+    // StripedBlockCache.size() also lacks its own closed guard.
     // Correct behavior: size() must throw IllegalStateException when cache is closed,
-    //      consistent with all other public methods on both LruBlockCache and StripedBlockCache.
-    // Fix location: LruBlockCache.size() — add closed check; StripedBlockCache.size() — add closed check
+    // consistent with all other public methods on both LruBlockCache and StripedBlockCache.
+    // Fix location: LruBlockCache.size() — add closed check; StripedBlockCache.size() — add closed
+    // check
     // Regression watch: ensure size() still returns correct value on open caches
     @Test
     void test_size_throwsAfterClose_lruAndStriped() {

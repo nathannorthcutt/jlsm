@@ -4,13 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.lang.foreign.Arena;
-import java.lang.foreign.MemorySegment;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -22,12 +18,12 @@ class ConcurrencyAdversarialTest {
 
     // Finding: F-R1.conc.1.1
     // Bug: StripedBlockCache.size() missing use-after-close guard — the closed check
-    //      is absent, unlike get/put/getOrLoad/evict/capacity which all check the volatile
-    //      closed flag before delegating to stripes. Without the guard, the exception
-    //      originates from LruBlockCache.size() at the stripe level, not StripedBlockCache.
+    // is absent, unlike get/put/getOrLoad/evict/capacity which all check the volatile
+    // closed flag before delegating to stripes. Without the guard, the exception
+    // originates from LruBlockCache.size() at the stripe level, not StripedBlockCache.
     // Correct behavior: size() must throw IllegalStateException with guard at StripedBlockCache
-    //      level, consistent with all other public methods. The exception's first stack frame
-    //      should be StripedBlockCache.size, not LruBlockCache.size.
+    // level, consistent with all other public methods. The exception's first stack frame
+    // should be StripedBlockCache.size, not LruBlockCache.size.
     // Fix location: StripedBlockCache.size() — add if (closed) throw guard before stripe iteration
     // Regression watch: ensure size() still returns correct value on open caches
     @Test
@@ -43,8 +39,8 @@ class ConcurrencyAdversarialTest {
         // from LruBlockCache.size() — the first element in the stack trace will be
         // LruBlockCache.size instead of StripedBlockCache.size.
         StackTraceElement origin = ex.getStackTrace()[0];
-        assertEquals("StripedBlockCache", origin.getClassName().substring(
-                        origin.getClassName().lastIndexOf('.') + 1),
+        assertEquals("StripedBlockCache",
+                origin.getClassName().substring(origin.getClassName().lastIndexOf('.') + 1),
                 "IllegalStateException must originate from StripedBlockCache.size(), "
                         + "not from a stripe-level LruBlockCache. Actual origin: "
                         + origin.getClassName() + "." + origin.getMethodName());
@@ -52,16 +48,16 @@ class ConcurrencyAdversarialTest {
 
     // Finding: F-R1.conc.1.2
     // Bug: TOCTOU race between StripedBlockCache closed-check and stripe operation.
-    //      Thread A reads closed==false at the StripedBlockCache level, then is preempted.
-    //      Thread B calls close(), setting closed=true and closing all stripes. Thread A
-    //      resumes and delegates to the stripe, which throws ISE from LruBlockCache's guard
-    //      instead of StripedBlockCache's guard. Under high contention, callers observe ISE
-    //      originating from LruBlockCache rather than StripedBlockCache.
+    // Thread A reads closed==false at the StripedBlockCache level, then is preempted.
+    // Thread B calls close(), setting closed=true and closing all stripes. Thread A
+    // resumes and delegates to the stripe, which throws ISE from LruBlockCache's guard
+    // instead of StripedBlockCache's guard. Under high contention, callers observe ISE
+    // originating from LruBlockCache rather than StripedBlockCache.
     // Correct behavior: When the TOCTOU race is hit, the ISE should still originate from
-    //      StripedBlockCache, not leak from the stripe level. All ISEs a caller sees must
-    //      come from StripedBlockCache.
+    // StripedBlockCache, not leak from the stripe level. All ISEs a caller sees must
+    // come from StripedBlockCache.
     // Fix location: StripedBlockCache.get/put/getOrLoad/evict — catch stripe-level ISE and
-    //      re-throw with StripedBlockCache-level origin, or synchronize close with operations
+    // re-throw with StripedBlockCache-level origin, or synchronize close with operations
     // Regression watch: ensure normal (non-racing) operations still work correctly
     @Test
     @Timeout(10)
@@ -131,11 +127,11 @@ class ConcurrencyAdversarialTest {
 
     // Finding: F-R1.concurrency.2.1
     // Bug: TOCTOU race — closed check outside lock allows get() on closed cache.
-    //      Thread A reads closed==false, Thread B closes cache (sets closed=true,
-    //      clears map under lock), Thread A acquires lock and runs map.get() returning
-    //      Optional.empty() instead of throwing IllegalStateException.
+    // Thread A reads closed==false, Thread B closes cache (sets closed=true,
+    // clears map under lock), Thread A acquires lock and runs map.get() returning
+    // Optional.empty() instead of throwing IllegalStateException.
     // Correct behavior: get() must throw IllegalStateException after close(), even
-    //      when the close races with the get.
+    // when the close races with the get.
     // Fix location: LruBlockCache.get() — add closed re-check inside the lock
     // Regression watch: ensure get() still returns values on open caches
     @Test
@@ -144,11 +140,11 @@ class ConcurrencyAdversarialTest {
         // Strategy: deterministic interleaving via reflection.
         // 1. Test thread acquires the cache's internal lock (via reflection).
         // 2. Thread A calls get() — passes the outer closed check (closed==false),
-        //    then blocks on lock.lock().
+        // then blocks on lock.lock().
         // 3. Test thread sets closed=true (via reflection) and releases lock.
         // 4. Thread A acquires the lock. Without an inner closed check, it proceeds
-        //    to map.get() on the (still populated but logically closed) cache.
-        //    With an inner closed check, it throws ISE.
+        // to map.get() on the (still populated but logically closed) cache.
+        // With an inner closed check, it throws ISE.
         // 5. We observe whether Thread A threw ISE or returned normally.
         var cache = LruBlockCache.builder().capacity(10).build();
 
@@ -200,15 +196,15 @@ class ConcurrencyAdversarialTest {
 
     // Finding: F-R1.concurrency.2.3
     // Bug: TOCTOU race — getOrLoad invokes the loader on a closed cache. After
-    //      the first lock section releases the lock (cache miss), close() can run
-    //      before the loader executes. The loader performs I/O for a dead cache.
-    //      Even though the second lock section re-checks closed, the unnecessary
-    //      I/O has already occurred — the contract says use-after-close must throw
-    //      ISE, not invoke the loader and then throw ISE.
+    // the first lock section releases the lock (cache miss), close() can run
+    // before the loader executes. The loader performs I/O for a dead cache.
+    // Even though the second lock section re-checks closed, the unnecessary
+    // I/O has already occurred — the contract says use-after-close must throw
+    // ISE, not invoke the loader and then throw ISE.
     // Correct behavior: getOrLoad() must re-check closed after the first lock
-    //      release and before invoking the loader, throwing ISE immediately.
+    // release and before invoking the loader, throwing ISE immediately.
     // Fix location: LruBlockCache.getOrLoad() — add closed check between first
-    //      lock release and loader invocation
+    // lock release and loader invocation
     // Regression watch: ensure getOrLoad() still loads on cache misses for open caches
     @Test
     @Timeout(10)
@@ -286,14 +282,14 @@ class ConcurrencyAdversarialTest {
 
     // Finding: F-R1.concurrency.2.6
     // Bug: size() has no inner closed re-check inside the lock — TOCTOU race.
-    //      Thread A reads closed==false at the outer check, Thread B closes cache
-    //      (sets closed=true, clears map under lock), Thread A acquires lock and
-    //      returns map.size() (0) instead of throwing IllegalStateException.
-    //      All other methods (get, put, getOrLoad, evict) re-check closed inside
-    //      the lock, making size() inconsistent.
+    // Thread A reads closed==false at the outer check, Thread B closes cache
+    // (sets closed=true, clears map under lock), Thread A acquires lock and
+    // returns map.size() (0) instead of throwing IllegalStateException.
+    // All other methods (get, put, getOrLoad, evict) re-check closed inside
+    // the lock, making size() inconsistent.
     // Correct behavior: size() must throw IllegalStateException after close(),
-    //      even when close races with size — the closed flag must be re-checked
-    //      inside the lock.
+    // even when close races with size — the closed flag must be re-checked
+    // inside the lock.
     // Fix location: LruBlockCache.size() — add closed re-check inside the lock
     // Regression watch: ensure size() still returns correct values on open caches
     @Test
@@ -302,10 +298,10 @@ class ConcurrencyAdversarialTest {
         // Strategy: deterministic interleaving via reflection (same as 2.1/2.4).
         // 1. Test thread acquires the cache's internal lock.
         // 2. Thread A calls size() — passes the outer closed check (closed==false),
-        //    then blocks on lock.lock().
+        // then blocks on lock.lock().
         // 3. Test thread sets closed=true (via reflection) and releases lock.
         // 4. Thread A acquires the lock. Without an inner closed check, it proceeds
-        //    to return map.size(). With an inner closed check, it throws ISE.
+        // to return map.size(). With an inner closed check, it throws ISE.
         var cache = LruBlockCache.builder().capacity(10).build();
 
         var lockField = LruBlockCache.class.getDeclaredField("lock");
@@ -352,12 +348,12 @@ class ConcurrencyAdversarialTest {
 
     // Finding: F-R1.concurrency.2.4
     // Bug: TOCTOU race — evict() has no inner closed check inside the lock.
-    //      Thread A reads closed==false at the outer check, Thread B closes cache
-    //      (sets closed=true, clears map under lock), Thread A acquires lock and
-    //      runs removeIf on the map instead of throwing IllegalStateException.
+    // Thread A reads closed==false at the outer check, Thread B closes cache
+    // (sets closed=true, clears map under lock), Thread A acquires lock and
+    // runs removeIf on the map instead of throwing IllegalStateException.
     // Correct behavior: evict() must throw IllegalStateException after close(),
-    //      even when close races with evict — the closed flag must be re-checked
-    //      inside the lock.
+    // even when close races with evict — the closed flag must be re-checked
+    // inside the lock.
     // Fix location: LruBlockCache.evict() — add closed re-check inside the lock
     // Regression watch: ensure evict() still removes entries on open caches
     @Test
@@ -366,10 +362,10 @@ class ConcurrencyAdversarialTest {
         // Strategy: deterministic interleaving via reflection (same as 2.1).
         // 1. Test thread acquires the cache's internal lock.
         // 2. Thread A calls evict() — passes the outer closed check (closed==false),
-        //    then blocks on lock.lock().
+        // then blocks on lock.lock().
         // 3. Test thread sets closed=true (via reflection) and releases lock.
         // 4. Thread A acquires the lock. Without an inner closed check, it proceeds
-        //    to removeIf on the map. With an inner closed check, it throws ISE.
+        // to removeIf on the map. With an inner closed check, it throws ISE.
         var cache = LruBlockCache.builder().capacity(10).build();
 
         var lockField = LruBlockCache.class.getDeclaredField("lock");

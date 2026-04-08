@@ -11,8 +11,7 @@ input=$(cat)
 
 # Try Python (best: native JSON parsing, subagent state)
 if command -v python3 &>/dev/null; then
-    output=$(echo "$input" | python3 "$SCRIPT_DIR/statusline.py" 2>/dev/null)
-    if [[ $? -eq 0 ]]; then
+    if output=$(echo "$input" | python3 "$SCRIPT_DIR/statusline.py" 2>/dev/null); then
         [[ -n "$output" ]] && echo -e "$output"
         exit 0
     fi
@@ -20,8 +19,7 @@ fi
 
 # Try Node.js
 if command -v node &>/dev/null; then
-    output=$(echo "$input" | node "$SCRIPT_DIR/statusline.js" 2>/dev/null)
-    if [[ $? -eq 0 ]]; then
+    if output=$(echo "$input" | node "$SCRIPT_DIR/statusline.js" 2>/dev/null); then
         [[ -n "$output" ]] && echo -e "$output"
         exit 0
     fi
@@ -29,3 +27,4 @@ fi
 
 # Fallback: bash (always available)
 echo "$input" | bash "$SCRIPT_DIR/statusline.sh"
+exit 0

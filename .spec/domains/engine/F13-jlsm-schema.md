@@ -151,7 +151,17 @@ R53. `JlsmSchema` does not implement `toString()`. The default `Object.toString(
 
 R54. `JlsmSchema` does not implement `Serializable` or any serialization interface. Persistence is handled externally. `[ABSENT]`
 
-R55. There is no field-count upper bound. A schema may contain an arbitrarily large number of fields. `[ABSENT]`
+R55. There is no field-count upper bound at the schema level. A schema may contain an arbitrarily large number of fields. The `DocumentSerializer` wire format imposes a 65535-field limit at the serialization boundary (see F12 R48). `[ABSENT]`
+
+### Audit-hardened requirements
+
+R56. `JlsmSchema.Builder.objectField()` must reject blank field names (empty or whitespace-only) with `IllegalArgumentException`, matching the validation performed by `field()`.
+
+R57. `FieldType.ObjectType.toSchema()` must propagate the parent schema's encryption specs for each field, not silently drop them.
+
+R58. `FieldType.ObjectType.toSchema()` must accept and propagate the parent schema's `maxDepth` configuration rather than hardcoding a default value.
+
+R59. `DocumentSerializer` must reject schemas with more than 65535 fields with `IllegalArgumentException` at serialization time, because the wire format encodes field count as an unsigned 16-bit integer.
 
 ---
 

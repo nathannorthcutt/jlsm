@@ -137,11 +137,12 @@ HEADER
             exit 0
         fi
 
-        # Update state for new stage
+        # Update state for new stage (atomic write)
         current_line=$(wc -l < "$transcript" 2>/dev/null || echo "1")
         printf '{"feature_dir":"%s","cached_stage":"%s","transcript":"%s","start_line":%s,"timestamp":"%s"}\n' \
             "$feature_dir" "$current_stage" "$transcript" "$((current_line + 1))" \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATE_FILE"
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${STATE_FILE}.tmp" \
+            && mv "${STATE_FILE}.tmp" "$STATE_FILE"
     fi
 
     exit 0
@@ -175,7 +176,8 @@ for status_file in .feature/*/status.md; do
     mkdir -p .claude
     printf '{"feature_dir":"%s","cached_stage":"%s","transcript":"%s","start_line":%s,"timestamp":"%s"}\n' \
         "$feature_dir" "$stage" "$transcript" "$((current_line + 1))" \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATE_FILE"
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${STATE_FILE}.tmp" \
+        && mv "${STATE_FILE}.tmp" "$STATE_FILE"
 
     exit 0
 done

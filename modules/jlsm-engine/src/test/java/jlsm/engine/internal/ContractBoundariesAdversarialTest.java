@@ -1,0 +1,373 @@
+package jlsm.engine.internal;
+
+import jlsm.engine.AllocationTracking;
+import jlsm.engine.HandleEvictedException;
+import jlsm.engine.TableMetadata;
+import jlsm.table.FieldType;
+import jlsm.table.JlsmDocument;
+import jlsm.table.JlsmSchema;
+import jlsm.table.JlsmTable;
+import jlsm.table.TableEntry;
+import jlsm.table.UpdateMode;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.Optional;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Adversarial tests for contract boundary violations in the engine handle tracking subsystem.
+ */
+class ContractBoundariesAdversarialTest {
+
+    // Finding: F-R1.cb.1.1
+    // Bug: register() does not call evictIfNeeded — handles accumulate beyond configured limits
+    // Correct behavior: After register(), handle count should not exceed
+    // maxHandlesPerSourcePerTable
+    // Fix location: HandleTracker.register() — should call evictIfNeeded(tableName) after inserting
+    // Regression watch: eviction must invalidate oldest handle, not the newly registered one
+    @Test
+    void test_HandleTracker_register_doesNotEnforceLimits() throws IOException {
+        final int perSourceLimit = 2;
+        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(perSourceLimit)
+                .maxHandlesPerTable(10).maxTotalHandles(10).build()) {
+
+            // Register 3 handles for the same table+source — exceeds perSourceLimit of 2
+            HandleRegistration reg1 = tracker.register("users", "src-1");
+            HandleRegistration reg2 = tracker.register("users", "src-1");
+            HandleRegistration reg3 = tracker.register("users", "src-1");
+
+            // After registration, limits should be enforced: at most 2 handles should be valid.
+            // The oldest handle (reg1) should have been evicted (invalidated).
+            assertTrue(reg1.isInvalidated(),
+                    "Oldest handle should be evicted when per-source-per-table limit is exceeded");
+
+            // The newest handles should still be valid
+            assertFalse(reg3.isInvalidated(), "Newest handle should remain valid after eviction");
+
+            // Total open handles should not exceed the per-source limit
+            var snapshot = tracker.snapshot();
+            assertTrue(snapshot.totalOpenHandles() <= perSourceLimit,
+                    "Total open handles (" + snapshot.totalOpenHandles()
+                            + ") should not exceed per-source-per-table limit (" + perSourceLimit
+                            + ")");
+        }
+    }
+
+    // Finding: F-R1.cb.1.2
+    // Bug: LocalTable.checkValid() passes hardcoded 0 for handleCountAtEviction
+    // Correct behavior: handleCountAtEviction should reflect the actual number of open handles
+    // Fix location: LocalTable.checkValid() — should query tracker for the real handle count
+    // Regression watch: handle count must be queried at eviction-check time, not cached
+    @Test
+    void test_LocalTable_checkValid_hardcodesZeroHandleCountAtEviction() throws IOException {
+        final JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("id", FieldType.Primitive.STRING).field("value", FieldType.Primitive.STRING)
+                .build();
+        final TableMetadata metadata = new TableMetadata("users", schema, Instant.now(),
+                TableMetadata.TableState.READY);
+
+        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(10)
+                .maxHandlesPerTable(10).maxTotalHandles(10)
+                .allocationTracking(AllocationTracking.OFF).build()) {
+
+            // Register multiple handles so the count is definitely > 0
+            HandleRegistration reg1 = tracker.register("users", "src-1");
+            HandleRegistration reg2 = tracker.register("users", "src-2");
+            HandleRegistration reg3 = tracker.register("users", "src-3");
+
+            // Invalidate reg1 to simulate eviction
+            reg1.invalidate(HandleEvictedException.Reason.EVICTION);
+
+            // Create a LocalTable with the invalidated registration
+            final var stub = new StubStringKeyedTable();
+            final LocalTable table = new LocalTable(stub, reg1, tracker, metadata);
+
+            // Calling get() triggers checkValid() which should throw HandleEvictedException
+            final HandleEvictedException ex = assertThrows(HandleEvictedException.class,
+                    () -> table.get("key"));
+
+            // The handleCountAtEviction should reflect the actual open handle count (>0)
+            // Bug: checkValid() passes hardcoded 0, so handleCountAtEviction() returns 0
+            assertTrue(ex.handleCountAtEviction() > 0,
+                    "handleCountAtEviction should be > 0 when handles are open, but got "
+                            + ex.handleCountAtEviction());
+        }
+    }
+
+    // Finding: F-R1.cb.1.11
+    // Bug: LocalEngine.createTable() does not close JlsmTable on handle registration failure
+    // Correct behavior: If handleTracker.register() throws, the JlsmTable created at line 99
+    // should be closed, removed from liveTables, and the catalog entry unregistered
+    // Fix location: LocalEngine.createTable() lines 99-106 — wrap in try-catch with rollback
+    // Regression watch: rollback must close jlsmTable before removing from liveTables/catalog
+    @Test
+    void test_LocalEngine_createTable_doesNotCloseJlsmTableOnHandleRegistrationFailure(
+            @TempDir Path tempDir) throws IOException {
+        // Build an engine, then close it so that handleTracker is closed.
+        // Calling createTable() after close will succeed at catalog.register() and
+        // createJlsmTable(), but handleTracker.register() will throw IllegalStateException.
+        final LocalEngine engine = LocalEngine.builder().rootDirectory(tempDir)
+                .memTableFlushThresholdBytes(4L * 1024 * 1024).build();
+        engine.close();
+
+        final JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("id", FieldType.Primitive.STRING).field("value", FieldType.Primitive.STRING)
+                .build();
+
+        // createTable should throw because handleTracker is closed
+        assertThrows(IllegalStateException.class, () -> engine.createTable("leaked", schema));
+
+        // After the failed createTable, the catalog entry should be rolled back.
+        // If the bug is present, the catalog still contains "leaked" and a new engine
+        // on the same directory would see a table with no properly initialized resources.
+        // With the fix, createTable rolls back: closes jlsmTable, removes from liveTables,
+        // unregisters from catalog.
+        try (LocalEngine engine2 = LocalEngine.builder().rootDirectory(tempDir)
+                .memTableFlushThresholdBytes(4L * 1024 * 1024).build()) {
+
+            // If rollback worked, "leaked" should NOT appear in the catalog
+            // (because the failed createTable cleaned up after itself).
+            // If the bug is present, the catalog on-disk still has the "leaked" table
+            // directory and metadata, so the new engine would find it — but the
+            // table's WAL/SSTable state may be inconsistent.
+            assertDoesNotThrow(() -> engine2.createTable("leaked", schema),
+                    "Should be able to create 'leaked' table on a fresh engine — "
+                            + "the failed createTable should have rolled back the catalog entry");
+        }
+    }
+
+    // Finding: F-R1.cb.1.4
+    // Bug: invalidateTable() removes sourceMap from ConcurrentHashMap before synchronizing —
+    // concurrent register() can create a new unsynchronized map for a dropped table
+    // Correct behavior: register() must not succeed for a table that is being invalidated
+    // Fix location: HandleTracker.invalidateTable() and/or register() — must prevent
+    // registration during or after invalidation of a table
+    // Regression watch: existing registrations must still be invalidated; normal
+    // register/invalidate
+    // without concurrency must continue to work
+    @Test
+    @Timeout(10)
+    void test_HandleTracker_invalidateTable_concurrentRegisterCreatesOrphanedHandle()
+            throws Exception {
+        // Run multiple iterations to increase the likelihood of hitting the race window.
+        // The race: invalidateTable does tableHandles.remove(tableName) then synchronized(old),
+        // while register does computeIfAbsent (creates new map) then synchronized(new) —
+        // the new registration is never invalidated because invalidateTable synchronized on
+        // the old removed map.
+        for (int iteration = 0; iteration < 200; iteration++) {
+            try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(100)
+                    .maxHandlesPerTable(100).maxTotalHandles(100)
+                    .allocationTracking(AllocationTracking.OFF).build()) {
+
+                // Pre-register a handle so invalidateTable has something to remove
+                HandleRegistration preExisting = tracker.register("users", "pre");
+
+                final CyclicBarrier barrier = new CyclicBarrier(2);
+                final AtomicReference<HandleRegistration> concurrentReg = new AtomicReference<>();
+                final AtomicReference<Throwable> registerError = new AtomicReference<>();
+
+                // Thread A: invalidateTable
+                Thread invalidator = Thread.ofVirtual().start(() -> {
+                    try {
+                        barrier.await(5, TimeUnit.SECONDS);
+                        tracker.invalidateTable("users",
+                                HandleEvictedException.Reason.TABLE_DROPPED);
+                    } catch (Exception e) {
+                        // ignore barrier exceptions
+                    }
+                });
+
+                // Thread B: register for the same table
+                Thread registerer = Thread.ofVirtual().start(() -> {
+                    try {
+                        barrier.await(5, TimeUnit.SECONDS);
+                        concurrentReg.set(tracker.register("users", "concurrent-src"));
+                    } catch (Throwable e) {
+                        registerError.set(e);
+                    }
+                });
+
+                invalidator.join(5000);
+                registerer.join(5000);
+
+                // If register() succeeded (no exception), the handle must either:
+                // 1. Have been invalidated (because invalidateTable saw it), OR
+                // 2. register() should have been rejected (not allowed for a dropped table)
+                // The bug: the handle is valid (not invalidated) for a dropped table.
+                HandleRegistration reg = concurrentReg.get();
+                if (reg != null) {
+                    // A registration was created for a table that was being/has been dropped.
+                    // It MUST be invalidated — a non-invalidated handle for a dropped table
+                    // is the bug this finding describes.
+                    assertTrue(reg.isInvalidated(),
+                            "Iteration " + iteration + ": Handle registered concurrently with "
+                                    + "invalidateTable must be invalidated — found a live handle "
+                                    + "for a dropped table");
+                }
+                // If registerError is set, register() threw (which is also acceptable behavior
+                // since the table was being dropped).
+
+                // Pre-existing handle must always be invalidated
+                assertTrue(preExisting.isInvalidated(),
+                        "Pre-existing handle must be invalidated after invalidateTable");
+            }
+        }
+    }
+
+    // Finding: F-R1.cb.1.5
+    // Bug: No hierarchical limit validation — maxHandlesPerSourcePerTable can exceed
+    // maxHandlesPerTable,
+    // and maxHandlesPerTable can exceed maxTotalHandles
+    // Correct behavior: Builder.build() should reject configurations where
+    // maxHandlesPerSourcePerTable > maxHandlesPerTable or maxHandlesPerTable > maxTotalHandles
+    // Fix location: HandleTracker.Builder.build() and LocalEngine.Builder.build()
+    // Regression watch: valid hierarchies (e.g., 4 <= 16 <= 64) must still be accepted
+    @Test
+    void test_HandleTrackerBuilder_allowsNonsensicalHierarchicalLimits() {
+        // Per-source (100) > per-table (10) — nonsensical: a single source can never
+        // use its full allocation because the table limit evicts first.
+        assertThrows(IllegalArgumentException.class,
+                () -> HandleTracker.builder().maxHandlesPerSourcePerTable(100)
+                        .maxHandlesPerTable(10).maxTotalHandles(1000).build(),
+                "maxHandlesPerSourcePerTable (100) exceeding maxHandlesPerTable (10) "
+                        + "should be rejected at build time");
+    }
+
+    @Test
+    void test_HandleTrackerBuilder_allowsPerTableExceedingTotalHandles() {
+        // Per-table (100) > total (10) — nonsensical: a single table can never
+        // use its full allocation because the total limit evicts first.
+        assertThrows(IllegalArgumentException.class,
+                () -> HandleTracker.builder().maxHandlesPerSourcePerTable(5).maxHandlesPerTable(100)
+                        .maxTotalHandles(10).build(),
+                "maxHandlesPerTable (100) exceeding maxTotalHandles (10) "
+                        + "should be rejected at build time");
+    }
+
+    @Test
+    void test_LocalEngineBuilder_allowsNonsensicalHierarchicalLimits(@TempDir Path tempDir) {
+        // Same hierarchy violation through LocalEngine.Builder
+        assertThrows(IllegalArgumentException.class,
+                () -> LocalEngine.builder().rootDirectory(tempDir).maxHandlesPerSourcePerTable(100)
+                        .maxHandlesPerTable(10).maxTotalHandles(1000).build(),
+                "maxHandlesPerSourcePerTable (100) exceeding maxHandlesPerTable (10) "
+                        + "should be rejected at build time in LocalEngine.Builder");
+    }
+
+    @Test
+    void test_HandleTrackerBuilder_acceptsValidHierarchy() {
+        // Valid hierarchy: per-source <= per-table <= total — must not throw
+        assertDoesNotThrow(() -> {
+            try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(4)
+                    .maxHandlesPerTable(16).maxTotalHandles(64).build()) {
+                // valid — should succeed
+            }
+        });
+    }
+
+    // Finding: F-R1.cb.1.6
+    // Bug: LocalTable.insert() uses assert-only guard for schema.fields() emptiness —
+    // with assertions disabled, getFirst() throws NoSuchElementException instead of
+    // a meaningful IllegalStateException
+    // Correct behavior: A runtime check should throw IllegalStateException with a clear
+    // message about the schema missing a primary key field
+    // Fix location: LocalTable.insert() line 90 — replace assert with runtime if/throw
+    // Regression watch: Normal schemas with fields must still work; the exception type
+    // must be IllegalStateException (not IllegalArgumentException — the schema is valid
+    // per JlsmSchema's contract, but the engine requires at least one field)
+    @Test
+    void test_LocalTable_insert_assertOnlyGuardForEmptySchemaFields() throws IOException {
+        // Create a schema with zero fields — JlsmSchema allows this
+        final JlsmSchema emptySchema = JlsmSchema.builder("empty", 1).build();
+        final TableMetadata metadata = new TableMetadata("empty_table", emptySchema, Instant.now(),
+                TableMetadata.TableState.READY);
+
+        try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(10)
+                .maxHandlesPerTable(10).maxTotalHandles(10)
+                .allocationTracking(AllocationTracking.OFF).build()) {
+
+            final HandleRegistration reg = tracker.register("empty_table", "test-src");
+            final var stub = new StubStringKeyedTable();
+            final LocalTable table = new LocalTable(stub, reg, tracker, metadata);
+
+            // Build a doc using a separate schema that has fields — the table's schema is empty
+            final JlsmSchema docSchema = JlsmSchema.builder("doc", 1)
+                    .field("id", FieldType.Primitive.STRING).build();
+            final JlsmDocument doc = JlsmDocument.of(docSchema, "id", "1");
+
+            // With assertions disabled, the assert is skipped and getFirst() throws
+            // NoSuchElementException. The fix should throw IllegalStateException with context.
+            final IllegalStateException ex = assertThrows(IllegalStateException.class,
+                    () -> table.insert(doc),
+                    "insert() on a table with an empty schema should throw IllegalStateException, "
+                            + "not NoSuchElementException");
+
+            // The message should mention the missing primary key field
+            assertTrue(ex.getMessage().contains("primary key") || ex.getMessage().contains("field"),
+                    "Exception message should mention primary key or field, got: "
+                            + ex.getMessage());
+        }
+    }
+
+    // Finding: F-R1.cb.1.8
+    // Bug: HandleEvictedException constructor uses assert-only validation for non-negative
+    // handleCountAtEviction — with assertions disabled, negative values are accepted
+    // Correct behavior: Constructor should throw IllegalArgumentException for negative
+    // handleCountAtEviction values
+    // Fix location: HandleEvictedException constructor line 54 — replace assert with runtime check
+    // Regression watch: Zero and positive values must still be accepted
+    @Test
+    void test_HandleEvictedException_acceptsNegativeHandleCountAtEviction() {
+        // With assertions disabled (production), the assert at line 54 is skipped.
+        // A negative handleCountAtEviction is nonsensical — it should be rejected
+        // by a runtime check, not just an assert.
+        assertThrows(IllegalArgumentException.class,
+                () -> new HandleEvictedException("table", "src", -1, null,
+                        HandleEvictedException.Reason.EVICTION),
+                "HandleEvictedException should reject negative handleCountAtEviction");
+    }
+
+    // ---- Stub for JlsmTable.StringKeyed ----
+
+    private static final class StubStringKeyedTable implements JlsmTable.StringKeyed {
+
+        @Override
+        public void create(String key, JlsmDocument doc) throws IOException {
+        }
+
+        @Override
+        public Optional<JlsmDocument> get(String key) throws IOException {
+            return Optional.empty();
+        }
+
+        @Override
+        public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
+        }
+
+        @Override
+        public void delete(String key) throws IOException {
+        }
+
+        @Override
+        public Iterator<TableEntry<String>> getAllInRange(String from, String to)
+                throws IOException {
+            return Collections.emptyIterator();
+        }
+
+        @Override
+        public void close() throws IOException {
+        }
+    }
+}

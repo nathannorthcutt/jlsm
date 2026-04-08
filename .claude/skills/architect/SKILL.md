@@ -30,13 +30,13 @@ Display opening header:
 - Check whether the invocation includes a disposition flag:
   - `/decisions defer "<problem>" [--until <condition>]` → lightweight deferred write, skip to **Step 0D**
   - `/decisions close "<problem>" [--reason <text>]` → lightweight closed write, skip to **Step 0C**
-  - No flag → full evaluation, continue to Step 1
+  - No flag → full evaluation, continue to Step 0.5
 
 - Extract the problem statement
 - Generate `problem-slug` in kebab-case (e.g. "vector search service" → "vector-search-service")
 - Check if `.decisions/<problem-slug>/` exists
   - If yes: read `adr.md` and `log.md`, ask whether this is a revision or a new problem
-  - If no: proceed to Step 1
+  - If no: proceed to Step 0.5
 
 ---
 
@@ -166,6 +166,77 @@ Stop.
 
 ---
 
+## Step 0.5 — Scope verification
+
+Before collecting constraints, verify the problem scope is complete by
+cross-referencing the problem statement against existing specs and decisions.
+
+**Dependency check:** If `.decisions/<slug>/adr.md` exists and has a
+`depends_on` field with entries, check whether those dependencies are
+resolved (status: confirmed). If any dependency is still deferred, warn:
+
+```
+This decision depends on <slug> which is still deferred.
+Evaluating out of order may produce a design that conflicts
+with the dependency's eventual resolution.
+```
+
+Use AskUserQuestion:
+- "Proceed anyway" — evaluate despite unresolved dependency
+- "Evaluate dependency first" — switch to evaluating the dependency
+- "Cancel" — stop
+
+### 0.5a — Extract keywords
+
+Extract 3-5 keywords from the problem statement. These should be core technical
+concepts, not generic words (e.g. for "Float16 serialization format" → `float16`,
+`serialization`, `encoding`, `numeric`, `format`).
+
+### 0.5b — Cross-reference search
+
+Search for entries that reference these keywords:
+
+1. **`.spec/domains/`** — scan requirement lines in all domain specs for keyword
+   matches. Use the same keyword extraction approach as `/spec` discovery mode.
+2. **`.decisions/CLAUDE.md`** — scan the master index for accepted/deferred ADRs
+   whose problem statements or recommendation summaries match keywords.
+
+If `.spec/` does not exist, skip the spec search. If `.decisions/` does not exist,
+skip the decisions search. If neither exists, skip this step entirely.
+
+### 0.5c — Surface broader scope
+
+If cross-references reveal that the problem's key concepts appear in specs or
+decisions the user did not mention, present the broader scope:
+
+```
+── Scope check ─────────────────────────────────
+The stated problem is: <problem statement>
+
+Cross-references found:
+  · .spec/domains/<domain>.md: "<matching requirement text>"
+    → This suggests the problem may also affect <feature/component>
+  · .decisions/<slug>/adr.md: "<related decision summary>"
+    → This prior decision constrains the same <concept>
+
+Should the scope include these?
+```
+
+Use AskUserQuestion with these options:
+- `Widen scope` (description: "Include the cross-referenced specs and decisions in the evaluation")
+- `Proceed with original scope` (description: "Keep the narrower scope — this is a deliberate choice")
+
+If **Widen scope**: append the additional scope to the problem statement. The widened scope
+carries through to constraint collection and KB survey.
+
+If **proceed**: note the narrower scope was a deliberate choice. Record a
+`scope-narrowed` entry in `log.md` so downstream agents know the boundary was
+intentional, not accidental.
+
+**If no cross-references found:** skip silently and proceed to Step 1.
+
+---
+
 ## Step 1 — Constraint collection gate
 
 Check whether the invocation includes a full constraint profile across all six dimensions.
@@ -205,7 +276,75 @@ Missing dimensions will be noted as unknowns and will reduce decision confidence
 2. Write `constraints.md` using the **Constraints File Template**
 3. Append the initial entry to `log.md` using the **Log Entry Template** with event `created`
 4. State the top 2–3 constraints that most narrow the solution space
-5. Proceed to Step 2
+5. Proceed to Step 1b
+
+---
+
+### Step 1b — Constraint falsification
+
+Before proceeding to KB survey, prove that the constraint profile is actually
+complete. The default assumption is **constraints are missing** — the agent must
+do work to demonstrate completeness, not work to find gaps.
+
+Display: `── Constraint falsification ────────────────`
+
+**For each constraint dimension — including those with values:**
+
+1. Read `.spec/domains/` files that touch the problem domain's constructs
+   (found at Step 0.5, or by keyword match against the problem statement)
+2. Read `.decisions/` ADRs for related problems (if any were surfaced at Step 0.5)
+3. Read `.kb/` category indexes for the problem domain
+
+**For each dimension, answer one of:**
+
+- **Found implied constraint:** The source implies a constraint the user did not
+  state. Surface it: "F02's spec requires long arithmetic for offsets — this implies
+  a correctness constraint on integer width. Should I add this?"
+- **Confirmed complete:** "Checked <N> sources (<list>). No additional implied
+  constraints found for <dimension>."
+
+**Present findings before proceeding:**
+
+```
+── Constraint falsification ────────────────────
+Checked: .spec/domains/<relevant>, .decisions/<related-slugs>, .kb/<categories>
+
+Implied constraints found:
+  · <dimension>: <source> implies <constraint description>
+  · <dimension>: <source> implies <constraint description>
+
+Confirmed complete:
+  · <dimension> — checked <N> sources, no implied constraints
+  · <dimension> — checked <N> sources, no implied constraints
+
+Add the implied constraints?
+```
+
+Use AskUserQuestion with these options:
+- `Add all` (description: "Add all implied constraints to the constraint profile")
+- `Select individual` (description: "Choose which implied constraints to add")
+
+If **Add all**: update `constraints.md` with the newly surfaced constraints. Append a
+`## Constraint Falsification — <YYYY-MM-DD>` section to constraints.md noting what
+was checked and what was added.
+
+If **Select individual**: add only the selected constraints.
+
+If user declines all: record that the agent checked and the user declined. The
+constraint file should note: "Falsification checked <N> sources. User declined
+implied constraints: <list>."
+
+**If no implied constraints found in any source:** record that falsification was
+performed and proceed:
+
+```
+── Constraint falsification ────────────────────
+Checked: <N> specs, <N> ADRs, <N> KB categories
+No implied constraints found beyond the user's stated profile.
+Proceeding to KB survey.
+```
+
+Proceed to Step 2.
 
 ---
 
@@ -261,7 +400,7 @@ files are loaded in Step 4.
 **Neutral presentation:** list candidates without editorial commentary.
 Do not indicate which candidate you expect to win, which seems "natural,"
 or which is "obviously" best. The user reviews the list and decides what
-to evaluate. Evaluation happens at Step 4, recommendation at Step 6.
+to evaluate. Evaluation happens at Step 4, recommendation at Step 7.
 
 ---
 
@@ -358,10 +497,25 @@ before loading subject files to control token cost:
      · vamana.md          — scored 2/5 complexity in <related-adr-slug>
      · brute-force.md     — scored 1/5 scalability in <related-adr-slug>
 
-     Load more?  Type **yes**  ·  or: proceed with these
    ```
 
-   If "yes": load the next batch. If proceed: continue with loaded candidates.
+   Use AskUserQuestion with these options:
+   - `Load more` (description: "Load the next batch of candidates for evaluation")
+   - `Proceed` (description: "Continue with the candidates already loaded")
+
+   If **Load more**: load the next batch. If **Proceed**: continue with loaded candidates.
+
+> **IMPORTANT: Prior scores are not evidence for current scoring.**
+>
+> Prior ADR scores come from different constraint profiles. They determine
+> **loading order only** — which candidates to examine first. Every loaded
+> candidate must be scored fresh from its KB entry against the **current**
+> constraints.
+>
+> Do NOT cite "scored 5 in previous ADR" as evidence for any score in this
+> evaluation. Do NOT carry forward prior scores as starting points. Do NOT
+> let a candidate's history in other decisions bias its evaluation here.
+> The KB entry is the evidence. The current constraints are the lens.
 
 **ADR staleness signal:** if any related ADR was accepted before new KB entries
 were added to the same category (entries exist that the ADR never evaluated),
@@ -397,11 +551,28 @@ For each loaded candidate:
 
 Weight scores by the user's stated priorities. Never override user priorities with generic defaults.
 
+**Inline score falsification:** For every score >= 4, immediately write a
+"Would be a 2 if:" line stating the specific scenario that would downgrade this
+score. This goes directly into evaluation.md as a sub-row beneath the score:
+
+```
+| Resources | 3 | 5 | 15 | Runs in <2GB RAM for 1M vectors (#memory-profile) |
+|           |   |   |    | **Would be a 2 if:** dataset exceeds 50M vectors and RAM stays at 16GB |
+```
+
+This makes thoroughness the path of least resistance: a score of 4 or 5 requires
+both a justification AND a downgrade scenario. A score of 3 or below requires only
+the justification. The agent must do more work to give a high score than a moderate
+one.
+
+Do NOT defer this to the falsification subagent at Step 6 — it happens inline
+during scoring so evaluation.md captures it as primary evidence.
+
 **Neutral scoring:** record scores factually. Do not declare a winner or
 express a preference during scoring. The scores speak for themselves — the
-recommendation is presented at Step 6a after all candidates (including
+recommendation is presented at Step 7a after all candidates (including
 composites) have been scored and the user can see the full comparison matrix.
-Even if one candidate dominates every dimension, the user confirms at Step 6.
+Even if one candidate dominates every dimension, the user confirms at Step 7.
 
 ### 4b2 — Identify composite candidates
 
@@ -435,10 +606,13 @@ satisfy constraints better than any single candidate. This is common when:
   Boundary: <routing rule — e.g. "A for hot path, B for cold storage">
   Why: <A scores 5 on X but 2 on Y; B scores 2 on X but 5 on Y; together they cover both>
 
-  Include this composite in the evaluation?  Type **yes**  ·  or: skip
 ```
 
-If "yes": add the composite to evaluation.md as a candidate row with a
+Use AskUserQuestion with these options:
+- `Include composite` (description: "Add this composite to the evaluation alongside individual candidates")
+- `Skip` (description: "Don't evaluate this composite — proceed with individual candidates only")
+
+If **Include composite**: add the composite to evaluation.md as a candidate row with a
 `(composite)` marker. Score each dimension using the component that handles
 that sub-problem. The ADR's Decision section should describe both components
 and the boundary rule.
@@ -474,10 +648,13 @@ I'd like to research additional approaches before making a recommendation:
   - <subject 1> (<topic>/<category>) — <why this might help>
   - <subject 2> (<topic>/<category>) — <why this might help>
 
-Commission research?  Type **yes**  ·  or: proceed with current candidates
 ```
 
-If "yes":
+Use AskUserQuestion with these options:
+- `Commission research` (description: "Research additional approaches before making a recommendation")
+- `Proceed` (description: "Evaluate with current candidates despite the coverage gap")
+
+If **Commission research**:
 - Write `research-brief.md` (append to existing if one was written at Step 3)
 - Invoke `/research` as a sub-agent for each subject
 - After research completes, re-run Step 4b (score the new candidates)
@@ -506,12 +683,98 @@ Every score row must include:
 
 ---
 
-## Step 6 — Deliberation loop (REQUIRED before writing adr.md)
+## Step 6 — Falsification (mandatory)
+
+After writing evaluation.md, launch a subagent to challenge the recommendation
+before presenting it to the user. This step is not skippable.
+
+Display: `── Falsification ───────────────────────────`
+
+### Subagent dispatch
+
+Launch a subagent with these inputs:
+- The comparison matrix from evaluation.md (all candidates, all scores)
+- The constraint profile from constraints.md
+- The recommended candidate (highest weighted total)
+- All rejected candidates
+
+### Subagent prompt
+
+> You are a falsification agent. Your job is to find reasons the recommendation
+> is wrong. You are not trying to be balanced — you are trying to break the
+> recommendation. If it survives, the decision is stronger.
+>
+> **Inputs provided:**
+> - Scoring matrix with all candidates and per-constraint scores
+> - Constraint profile with weights and priorities
+> - Recommended candidate and rejected candidates
+>
+> Perform these four challenges:
+>
+> **1. Score justification**
+> For each score >= 4 on the recommended candidate:
+> - Cite specific evidence from the KB entry that justifies this score.
+> - What would have to be true for this score to be a 2 instead?
+>
+> **2. Rejection challenge**
+> For the top rejected candidate (highest weighted total among rejected):
+> - What scenario or constraint reweight would make this the right choice?
+> - What is the strongest argument for this candidate over the recommendation?
+>
+> **3. Assumption exposure**
+> - What assumption, if wrong, would make the recommendation the worst choice?
+> - Name the single most dangerous assumption.
+>
+> **4. Missing candidate check**
+> - Is there an approach not represented in the KB that could score better?
+> - What search terms would find it?
+>
+> **Return format:**
+> ```
+> ## Challenged Scores
+> <For each score >= 4: the score, evidence for, evidence against, verdict (holds/weakened)>
+>
+> ## Strongest Counter-Argument
+> <Top rejected candidate name>
+> <The scenario where it wins>
+> <Why this scenario is or isn't likely given the constraints>
+>
+> ## Most Dangerous Assumption
+> <The assumption>
+> <What happens if it's wrong>
+>
+> ## Missing Candidates
+> <Any suggestions, or "None identified">
+> <Search terms if applicable>
+> ```
+>
+> **These sections are REQUIRED. Do not rename, merge, or omit sections.**
+> Every section must appear in the output even if the finding is "None identified"
+> or "No weakening found." An empty section header with a placeholder is acceptable;
+> a missing section is not.
+
+### After subagent returns
+
+1. Read the falsification results.
+2. If any challenged score's verdict is "weakened" AND the weakening would
+   change the weighted total ranking: re-score the affected candidates and
+   re-run the comparison matrix. If the recommendation changes, mark it
+   `[REVISED]` and update evaluation.md before proceeding.
+3. If missing candidates are identified: offer the user the choice to research
+   them (same flow as Step 4c) or proceed. Cap at the same 3-iteration
+   research limit.
+4. Incorporate the falsification results into the deliberation display at
+   Step 7a (see Falsification Results section below).
+5. Proceed to Step 7.
+
+---
+
+## Step 7 — Deliberation loop (REQUIRED before writing adr.md)
 
 **Do not write `adr.md` yet.** Present the recommendation in chat first.
 The ADR is only written after the user explicitly confirms.
 
-### 6a — Present the defence summary
+### 7a — Present the defence summary
 
 Display this in chat (do NOT write it to a file):
 
@@ -544,6 +807,17 @@ WHAT THIS DOES NOT SOLVE
   - <Limitation 1>
   - <Limitation 2>
 
+FALSIFICATION RESULTS
+  Challenged scores:
+    <Constraint> on <Candidate>: scored <N> — <holds | weakened>
+      Evidence for: <summary>
+      Evidence against: <summary>
+  Strongest counter-argument:
+    <Top rejected candidate> would win if <scenario>.
+    <Why recommendation still holds, or [REVISED] if it doesn't.>
+  Most dangerous assumption:
+    <The assumption and what breaks if it's wrong.>
+
 CONFIDENCE: <High | Medium | Low>
 <One sentence reason — e.g. "All six constraints specified; all candidates in KB.">
 ───────────────────────────────────────────────
@@ -559,7 +833,7 @@ I will answer questions and iterate until we reach an agreed position.
 ─────────────────────────────────────────────────────────────
 ```
 
-### 6b — Deliberation chat rules
+### 7b — Deliberation chat rules
 
 **If the user asks a clarifying question:**
 - Answer directly with a KB source reference if applicable
@@ -627,7 +901,7 @@ One per turn maximum. Only ask when genuinely ambiguous:
 Never re-ask questions already answered in the constraint profile.
 Never ask hypothetical or open-ended future questions.
 
-### 6c — Confirmation and write
+### 7c — Confirmation and write
 
 When the user confirms (any affirmative):
 
@@ -650,14 +924,17 @@ Decision written: .decisions/<slug>/adr.md
 ```
 Feature "<slug>" is paused waiting for this decision.
 
-  Type **yes**  to resume scoping  ·  or: stop
 ```
 
-If yes: invoke `/feature "<original description>"` to resume the scoping
+Use AskUserQuestion with these options:
+- `Resume scoping` (description: "Continue the paused feature's scoping interview")
+- `Stop` (description: "Leave the feature paused — resume manually later")
+
+If **Resume scoping**: invoke `/feature "<original description>"` to resume the scoping
 interview where it left off (the scoping agent reads status.md and continues
 from its checkpoint).
 
-If stop: display the manual command and stop.
+If **Stop**: display the manual command and stop.
 
 **If no paused feature found:** display the decision path and stop:
 ```
@@ -707,13 +984,13 @@ If stop: display the manual command and stop.
    These will appear in /decisions triage.
    ```
    If zero items are in the NOT Solve section: skip this step silently.
-6. Proceed to Step 7
+6. Proceed to Step 8
 
 ---
 
-## Step 7 — Update indexes and enforce context budget
+## Step 8 — Update indexes and enforce context budget
 
-1. The log entry was already written at Step 6c — do not write a second entry
+1. The log entry was already written at Step 7c — do not write a second entry
 2. Create or update `.decisions/<problem-slug>/CLAUDE.md` using the **Problem Index Template**
 3. Update `.decisions/CLAUDE.md` master index:
    - Add the problem to the Active Decisions table
@@ -1032,7 +1309,7 @@ This ADR should be re-evaluated if:
 
 ## Deliberation Log Entry Template
 
-Written to `log.md` at Step 6c immediately after the user confirms.
+Written to `log.md` at Step 7c immediately after the user confirms.
 
 ```markdown
 ## <YYYY-MM-DD> — decision-confirmed
@@ -1110,13 +1387,13 @@ Written to `log.md` at Step 6c immediately after the user confirms.
 | `deferred` | /decisions defer invoked — lightweight adr.md written with status deferred |
 | `closed` | /decisions close invoked — lightweight adr.md written with status closed |
 | `tangent-captured` | Topic raised and set aside during deliberation on another problem |
-| `out-of-scope-promoted` | Out-of-scope item from accepted ADR promoted to deferred stub via /curate or auto-created at Step 6c |
+| `out-of-scope-promoted` | Out-of-scope item from accepted ADR promoted to deferred stub via /curate or auto-created at Step 7c |
 
 ---
 
 ## Problem Index Template
 
-`.decisions/<problem-slug>/CLAUDE.md` — created or updated at Step 7.
+`.decisions/<problem-slug>/CLAUDE.md` — created or updated at Step 8.
 
 ```markdown
 ---
@@ -1190,45 +1467,69 @@ last_updated: "<YYYY-MM-DD>"
 
 ## Quality checklist (self-verify before ending session)
 
+For each item below, write the brief justification indicated. Do not check boxes —
+write the answer. If you cannot write a substantive answer, the item has not been met.
+
 **Evaluation**
-- [ ] Constraint profile complete — all six dimensions addressed or marked unknown
-- [ ] Top 2–3 binding constraints named explicitly before evaluation began
-- [ ] Every score in evaluation.md has a note and a KB path
-- [ ] Every KB subject read is listed in evaluation.md frontmatter candidates:
-- [ ] Hard disqualifiers called out explicitly, not just reflected in low scores
+
+1. **Constraint completeness:** Which dimension has the weakest specification, and
+   why is it sufficient to proceed? (If all six are strong, state which is most
+   likely to change and why it won't affect the recommendation.)
+
+2. **Binding constraints identified:** Name the top 2-3 binding constraints and
+   state when in the session they were locked (before or after evaluation began).
+
+3. **Weakest evidence link:** Which score in evaluation.md has the thinnest KB
+   backing, and why is it still sufficient for the recommendation to hold?
+
+4. **Candidate coverage:** Which KB subject read during evaluation contributed
+   least to the decision, and why was it still worth loading?
+
+5. **Hard disqualifier audit:** For each rejected candidate, state whether it was
+   rejected by hard disqualifier or by weighted total. If by total only, state the
+   margin.
+
+**Falsification**
+
+6. **Subagent completion:** State whether the falsification subagent returned all
+   four required sections (Challenged Scores, Strongest Counter-Argument, Most
+   Dangerous Assumption, Missing Candidates). If any section was thin, state what
+   it said.
+
+7. **Score challenge outcome:** For the highest-scored dimension on the recommended
+   candidate, restate the "Would be a 2 if" scenario from evaluation.md and whether
+   the falsification subagent found additional evidence for or against.
+
+8. **Counter-argument disposition:** State the strongest counter-argument from
+   falsification and why the recommendation survives it (or why it was revised).
+
+9. **Assumption risk:** Name the most dangerous assumption and what the user
+   confirmed about it during deliberation (or note it was not discussed).
 
 **Deliberation**
-- [ ] Defence summary presented in chat before any ADR was written
-- [ ] All user questions answered with KB references where applicable
-- [ ] Constraint updates from deliberation written to constraints.md
-- [ ] Revised summary re-presented with [REVISED] if recommendation changed
-- [ ] Override reason recorded before proceeding if override occurred
-- [ ] adr.md written only after explicit user confirmation
+
+10. **Sequence verified:** State that the defence summary was presented before any
+    ADR was written, and whether the user's first response was a confirmation,
+    challenge, or question.
+
+11. **Constraint drift:** State whether any constraints changed during deliberation,
+    and if so, whether constraints.md was updated.
+
+12. **Override record:** State whether an override occurred. If yes, state the
+    reason recorded. If no, write "No override."
 
 **ADR**
-- [ ] adr.md links to evaluation.md, constraints.md, and log.md in header table
-- [ ] adr.md links to every KB source (chosen and rejected) in KB Sources table
-- [ ] adr.md implementation guidance links to #key-parameters and #code-skeleton
-- [ ] adr.md names what the decision does NOT solve
-- [ ] adr.md names conditions for revision
-- [ ] Override note block present if override occurred
 
-**Log**
-- [ ] log.md has a decision-confirmed entry (Deliberation Log Entry Template)
-- [ ] Deliberation log entry records rounds, topics, assumptions confirmed, override status
-- [ ] Deliberation log entry lists every KB file read
-- [ ] Missing KB subjects have research-brief.md written before being excluded
+13. **Link integrity:** State the number of KB source links in adr.md and confirm
+    each points to an existing file.
+
+14. **Scope boundary:** Quote the first item from "What This Decision Does NOT
+    Solve" and confirm a deferred stub exists for it (or state why not).
+
+15. **Revision triggers:** State the most likely revision condition and estimate
+    when it might fire.
 
 **Indexes**
-- [ ] .decisions/<slug>/CLAUDE.md KB Sources table populated
-- [ ] .decisions/<slug>/CLAUDE.md ADR Version History populated
-- [ ] .decisions/CLAUDE.md master index updated, line count checked against 80-line cap
-- [ ] Oldest accepted rows moved to history.md if cap exceeded
 
-**Deferred / Closed / Tangents**
-- [ ] Any deferred problem: adr.md written with status `deferred`, Deferred row in CLAUDE.md
-- [ ] Any closed problem: adr.md written with status `closed`, Closed row in CLAUDE.md
-- [ ] Any tangent captured during deliberation: `tangent-captured` log entry written,
-      stub adr.md written, row added to parent problem's Tangents table in CLAUDE.md
-- [ ] Any out-of-scope item in adr.md "What This Decision Does NOT Solve": deferred
-      stub written, Deferred row in CLAUDE.md, `out-of-scope-promoted` log entry
+16. **Master index budget:** State the current line count of `.decisions/CLAUDE.md`
+    after updates, and whether any rows were archived to `history.md`.

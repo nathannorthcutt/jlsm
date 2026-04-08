@@ -29,6 +29,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class RendezvousOwnership {
 
+    /**
+     * Maximum number of cached entries per epoch. Beyond this limit, ownership is computed
+     * on-the-fly without caching to prevent unbounded heap growth from many unique partition IDs.
+     */
+    private static final int MAX_CACHE_ENTRIES_PER_EPOCH = 10_000;
+
     private final ConcurrentHashMap<Long, ConcurrentHashMap<String, NodeAddress>> cache = new ConcurrentHashMap<>();
 
     /**
@@ -58,7 +64,11 @@ public final class RendezvousOwnership {
         assert !ranked.isEmpty() : "ranked list must not be empty after live-member check";
 
         final NodeAddress owner = ranked.getFirst();
-        epochCache.put(id, owner);
+        // Only cache if the per-epoch map has not exceeded its size bound.
+        // Beyond the limit, ownership is computed on-the-fly to prevent unbounded heap growth.
+        if (epochCache.size() < MAX_CACHE_ENTRIES_PER_EPOCH) {
+            epochCache.put(id, owner);
+        }
         return owner;
     }
 

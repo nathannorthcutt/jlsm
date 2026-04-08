@@ -1,7 +1,7 @@
 ---
 {
   "id": "F04",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["engine"],
@@ -66,6 +66,8 @@ R16. The membership view must determine quorum by comparing the live member coun
 
 R17. The membership view must support membership testing: given a node identifier, it must report whether that node is a current member (alive or suspected) of the cluster.
 
+R82. The membership view must not report dead members as current members. Membership testing must distinguish between alive/suspected members (current) and dead members (departed). A dead node must be treated as a non-member for the purposes of join blocking, leave processing, and view change proposals. <!-- covers: F-R1.dispatch_routing.1.4, F-R1.dispatch_routing.1.5, F-R1.dispatch_routing.1.6, F-R1.ss.1.4, F-R1.ss.1.5 -->
+
 ### Failure detection
 
 R18. The failure detector must use a phi accrual model: it must maintain a sliding window of inter-heartbeat arrival times per monitored member and compute phi as negative log base 10 of (1 minus the CDF of the current heartbeat delay under a normal distribution fitted to the window).
@@ -75,6 +77,12 @@ R19. When the computed phi for a member exceeds the configured phi threshold, th
 R20. The failure detector must initialize its sliding window for a newly joined member with the configured protocol period as the initial expected heartbeat interval. The detector must not declare a new member suspected before receiving at least one heartbeat.
 
 R21. The failure detector's sliding window must have a bounded maximum size. When the window is full, the oldest sample must be evicted before adding a new one. The maximum window size must be configurable.
+
+R83. The failure detector must evict heartbeat history for members that have been removed from the membership view. Heartbeat records for departed members must not accumulate indefinitely. <!-- covers: F-R1.resource_lifecycle.1.5 -->
+
+R84. The membership protocol must record a heartbeat for newly joined members upon first contact. A member with no heartbeat history must not be immune to failure detection indefinitely. <!-- covers: F-R1.cb.2.2 -->
+
+R85. The failure detector's protocol tick must verify bidirectional reachability by recording heartbeats from probe acknowledgments, not just from incoming pings. Unidirectional probing (send only, no ACK-based heartbeat) can miss asymmetric network failures where the monitored node can receive but not send. <!-- covers: F-R1.cb.2.3 -->
 
 ### Discovery SPI
 
@@ -120,6 +128,20 @@ R39. The membership protocol must notify registered listeners of view changes, m
 
 R40. The graceful leave operation must notify the cluster of the departing member before ceasing protocol participation. After initiating leave, the member must not send further protocol messages. Other members must process the leave notification as a confirmed departure, not a suspicion.
 
+R86. The membership protocol's start operation must roll back all completed initialization steps (handler registration, discovery registration, scheduler creation) if any subsequent step throws an exception. After rollback, the protocol must be in the same state as before start was called. <!-- covers: F-R1.resource_lifecycle.1.3 -->
+
+R87. The membership protocol's lifecycle state transitions (not-started to started, started to closed) must be atomic. Concurrent calls to start must not result in duplicate resource allocation, and concurrent calls to close must not result in duplicate cleanup execution. <!-- covers: F-R1.conc.1.1, F-R1.conc.1.3, F-R1.concurrency.3.1, F-R1.concurrency.3.4 -->
+
+R88. The membership protocol must validate the sender of view change proposals against the current membership. Messages from non-members must be rejected. Empty message payloads and unknown sub-type bytes must be rejected with an error response, not silently acknowledged. <!-- covers: F-R1.dispatch_routing.1.7, F-R1.dispatch_routing.1.1, F-R1.dispatch_routing.1.3 -->
+
+R89. The membership protocol must not hold protocol-level locks during network I/O or listener notification callbacks. Lock scopes must be limited to in-memory state mutations. <!-- covers: F-R1.conc.1.4, F-R1.conc.1.5 -->
+
+R90. The membership protocol must reject view change proposals that drop members currently in the alive state from the membership set. Only members in the suspected or dead state may be removed by a view change. <!-- covers: F-R1.ss.1.10 -->
+
+R91. The membership protocol must not increment the epoch when processing a leave notification for a member that is already in the dead state. Duplicate leave notifications must be idempotent with respect to the epoch counter. <!-- covers: F-R1.dispatch_routing.1.5 -->
+
+R92. The membership protocol must reject received views with an epoch less than or equal to the current epoch. Epoch regression must be treated as an error, not silently applied. <!-- covers: F-R1.ss.1.6 -->
+
 ### Split-brain detection and handling
 
 R41. The membership protocol must detect a potential split-brain condition when the live member count drops below the configured quorum threshold. Upon detecting loss of quorum, the node must transition to a read-only or degraded mode and must refuse write operations that would change partition ownership.
@@ -133,6 +155,8 @@ R43. View merges after a partition heal must reconcile conflicting member states
 R44. The ownership model must assign partitions to nodes using rendezvous (highest random weight) hashing. For each partition, the node with the highest hash score for the (partition, node) pair must be the owner. The hash function must be deterministic and produce consistent results across all nodes given the same inputs.
 
 R45. Ownership assignments must be computed from the current membership view and cached by epoch. When the membership view epoch changes, the ownership cache must be invalidated and recomputed lazily or eagerly before serving the next query. Stale ownership data from a previous epoch must never be used to route queries.
+
+R93. The ownership cache must be bounded in the number of entries per epoch. When the bound is reached, the cache must evict the oldest entries rather than growing without limit. The bound must be configurable. <!-- covers: F-R1.concurrency.4.2 -->
 
 R46. Ownership must be deterministic: given the same membership view (same set of live members and same epoch), all nodes must independently compute identical ownership assignments for every partition. No coordination messages are required for ownership agreement.
 
@@ -154,6 +178,12 @@ R53. The grace period manager must not use wall-clock time for duration comparis
 
 R54. The grace period manager must handle concurrent departures independently. The grace period for one departed member must not affect or delay the grace period for another.
 
+R94. The grace period manager must remove expired departure records during expiration checks. Departure records that have been expired and processed must not remain in the manager's internal state indefinitely. <!-- covers: F-R1.cb.1.9, F-R1.resource_lifecycle.2.4 -->
+
+R95. The grace period manager must accept an injectable time source and must not call wall-clock methods directly. All duration comparisons within a single operation must use a single timestamp capture to prevent boundary inconsistencies between related checks. <!-- covers: F-R1.shared_state.4.2, F-R1.shared_state.4.3, F-R1.concurrency.4.3 -->
+
+R96. When a member that has already departed departs again (e.g., due to membership flapping), the grace period manager must retain the original departure timestamp. The grace period must be anchored to the first departure, not the most recent one. <!-- covers: F-R1.shared_state.4.5 -->
+
 ### Clustered engine
 
 R55. The clustered engine must wrap a local engine instance and augment it with cluster-aware behavior. The local engine must remain fully functional for locally-owned partitions regardless of cluster state.
@@ -164,15 +194,23 @@ R57. The clustered engine must join the cluster during startup by registering wi
 
 R58. The clustered engine must leave the cluster during shutdown by initiating a graceful protocol leave, deregistering from the discovery provider, and stopping the transport. Shutdown must be idempotent: calling shutdown on an already-shut-down engine must succeed silently.
 
+R97. The membership protocol's close operation must deregister the node from the discovery provider and deregister all transport message handlers before releasing other resources. Failure to deregister must not prevent the remaining shutdown sequence from executing. <!-- covers: F-R1.resource_lifecycle.1.1, F-R1.resource_lifecycle.1.2 -->
+
+R98. The clustered engine's table creation must detect and close a previously existing table proxy with the same name before registering the new proxy. If table creation fails after the local table is created, the local table must be rolled back (dropped). <!-- covers: F-R1.cb.1.6, F-R1.resource_lifecycle.2.6 -->
+
 ### Clustered table and scatter-gather queries
 
 R59. The clustered table must act as a partition-aware proxy over the local engine's tables. For each CRUD operation, the clustered table must determine the target partition and route the operation to the owning node.
+
+R99. The clustered table must share the same ownership instance as the clustered engine rather than creating an independent instance. Ownership cache state must be consistent across all tables and the engine within a single cluster node. <!-- covers: F-R1.cb.1.1, F-R1.shared_state.3.2, F-R1.resource_lifecycle.2.7 -->
 
 R60. For operations targeting locally-owned partitions, the clustered table must execute them directly on the local engine without any network round-trip.
 
 R61. For operations targeting remotely-owned partitions, the clustered table must serialize the operation as a message, send it via the transport to the owning node, and deserialize the response. The remote partition client must handle serialization and deserialization.
 
 R62. Queries that span multiple partitions must use scatter-gather execution: the clustered table must send the query to all relevant partition owners in parallel, collect responses, and merge results into a single unified result set.
+
+R100. The scan operation on a clustered table must close remote partition client instances after each partition's results have been collected, even on the normal (non-exception) path. <!-- covers: F-R1.resource_lifecycle.2.2 -->
 
 R63. The scatter-gather implementation must support partition pruning: if the query contains a predicate on the partition key, the clustered table must send the query only to the nodes owning partitions that match the predicate, not to all nodes.
 
@@ -191,6 +229,8 @@ R68. The remote partition client must serialize CRUD operations into the message
 R69. The remote partition client must deserialize responses and propagate remote exceptions as local exceptions. A remote node returning an error must result in an exception at the calling node, not a silent failure or corrupted result.
 
 R70. The remote partition client must set a per-request timeout on the transport's request future. If the future does not complete within the timeout, the client must cancel the future and report the partition as unavailable.
+
+R101. The remote partition client must serialize the full document content and operation mode for create, update, and delete operations. The client must deserialize non-empty response payloads for get and range scan operations. A stub implementation that discards payloads or returns empty results violates the partition-aware proxy contract. <!-- covers: F-R1.cb.1.2, F-R1.cb.1.3, F-R1.cb.1.4, F-R1.cb.1.5 -->
 
 ### Observability and diagnostics
 

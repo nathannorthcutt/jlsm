@@ -68,9 +68,11 @@ class TableMetadataTest {
 
     // --- Boundary ---
 
+    // Updated by audit F-R1.cb.2.7: assert-only empty name check was a bug, now correctly throws
+    // IllegalArgumentException
     @Test
     void testTableMetadataEmptyNameThrows() {
-        assertThrows(AssertionError.class, () -> new TableMetadata("", testSchema(), Instant.now(),
-                TableMetadata.TableState.READY));
+        assertThrows(IllegalArgumentException.class, () -> new TableMetadata("", testSchema(),
+                Instant.now(), TableMetadata.TableState.READY));
     }
 }

@@ -23,6 +23,10 @@ import java.util.Optional;
  * network overhead. This is the only implementation for the initial (in-process) deployment.
  *
  * <p>
+ * Null-rejection is handled at the interface level via default methods. The {@code doXxx} methods
+ * receive guaranteed non-null parameters.
+ *
+ * <p>
  * Governed by: .decisions/table-partitioning/adr.md — in-process execution, remote-capable
  * interface.
  */
@@ -30,6 +34,7 @@ public final class InProcessPartitionClient implements PartitionClient {
 
     private final PartitionDescriptor descriptor;
     private final JlsmTable.StringKeyed table;
+    private volatile boolean closed;
 
     /**
      * Creates an in-process partition client wrapping the given table.
@@ -58,45 +63,42 @@ public final class InProcessPartitionClient implements PartitionClient {
     }
 
     @Override
-    public void create(String key, JlsmDocument doc) throws IOException {
+    public void doCreate(String key, JlsmDocument doc) throws IOException {
         assert key != null : "key must not be null";
         assert doc != null : "doc must not be null";
-        Objects.requireNonNull(key, "key must not be null");
-        Objects.requireNonNull(doc, "doc must not be null");
         table.create(key, doc);
     }
 
     @Override
-    public Optional<JlsmDocument> get(String key) throws IOException {
+    public Optional<JlsmDocument> doGet(String key) throws IOException {
         assert key != null : "key must not be null";
-        Objects.requireNonNull(key, "key must not be null");
         return table.get(key);
     }
 
     @Override
-    public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
+    public void doUpdate(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         assert key != null : "key must not be null";
         assert doc != null : "doc must not be null";
         assert mode != null : "mode must not be null";
-        Objects.requireNonNull(key, "key must not be null");
-        Objects.requireNonNull(doc, "doc must not be null");
-        Objects.requireNonNull(mode, "mode must not be null");
         table.update(key, doc, mode);
     }
 
     @Override
-    public void delete(String key) throws IOException {
+    public void doDelete(String key) throws IOException {
         assert key != null : "key must not be null";
-        Objects.requireNonNull(key, "key must not be null");
         table.delete(key);
     }
 
     @Override
-    public Iterator<TableEntry<String>> getRange(String fromKey, String toKey) throws IOException {
+    public Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey)
+            throws IOException {
         assert fromKey != null : "fromKey must not be null";
         assert toKey != null : "toKey must not be null";
-        Objects.requireNonNull(fromKey, "fromKey must not be null");
-        Objects.requireNonNull(toKey, "toKey must not be null");
+        if (fromKey.compareTo(toKey) >= 0) {
+            throw new IllegalArgumentException(
+                    "fromKey must be strictly less than toKey — got fromKey=\"" + fromKey
+                            + "\", toKey=\"" + toKey + "\"");
+        }
         return table.getAllInRange(fromKey, toKey);
     }
 
@@ -107,7 +109,11 @@ public final class InProcessPartitionClient implements PartitionClient {
      * @throws UnsupportedOperationException always
      */
     @Override
-    public List<ScoredEntry<String>> query(Predicate predicate, int limit) throws IOException {
+    public List<ScoredEntry<String>> doQuery(Predicate predicate, int limit) throws IOException {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive, got: " + limit);
+        }
+        assert predicate != null : "predicate must not be null";
         throw new UnsupportedOperationException(
                 "query execution is not implemented in InProcessPartitionClient; "
                         + "use the PartitionedTable coordinator (WU-3)");
@@ -115,6 +121,10 @@ public final class InProcessPartitionClient implements PartitionClient {
 
     @Override
     public void close() throws IOException {
+        if (closed) {
+            return;
+        }
+        closed = true;
         table.close();
     }
 }

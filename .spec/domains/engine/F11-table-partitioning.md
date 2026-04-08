@@ -1,7 +1,7 @@
 ---
 {
   "id": "F11",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["engine"],
@@ -95,7 +95,7 @@ R32. For a key exactly equal to a partition boundary (where partition N's highKe
 
 R33. `RangeMap.overlapping(fromKey, toKey)` must return all partition descriptors whose ranges overlap the half-open query range [fromKey, toKey), in key order.
 
-R34. `RangeMap.overlapping` must return an empty list when `fromKey` is greater than or equal to `toKey` (empty or inverted range).
+R34. `RangeMap.overlapping` must return an empty list when `fromKey` is greater than or equal to `toKey` (empty or inverted range). Note: `PartitionedTable.getRange` rejects inverted ranges with `IllegalArgumentException` before reaching `RangeMap.overlapping`. Direct callers of `RangeMap.overlapping` still receive the empty-list behavior.
 
 R35. `RangeMap.overlapping` must return an empty list when the query range does not intersect any partition range.
 
@@ -125,6 +125,8 @@ R46. `PartitionClient.query(Predicate predicate, int limit)` must return a `List
 
 R47. All `PartitionClient` method parameter types and return types must be serializable-friendly (no MemorySegment, no raw byte arrays, no function references). This enables future remote implementations without changing the interface.
 
+R107. `PartitionClient` implementations must enforce null-rejection for all CRUD method parameters at the interface boundary. The interface must guarantee that no implementation receives a null key, document, predicate, or mode parameter.
+
 ### InProcessPartitionClient
 
 R48. `InProcessPartitionClient` must be a final class in `jlsm.table.internal` implementing `PartitionClient`.
@@ -136,6 +138,8 @@ R50. `InProcessPartitionClient` must delegate all CRUD operations (create, get, 
 R51. `InProcessPartitionClient.getRange` must delegate to the wrapped table's `getAllInRange` method.
 
 R52. `InProcessPartitionClient.close()` must close the wrapped table.
+
+R102. `InProcessPartitionClient.close()` must be idempotent. A second call must return immediately without delegating to the wrapped table's `close()`.
 
 ### ResultMerger -- top-k merge
 
@@ -155,6 +159,8 @@ R59. `ResultMerger.mergeTopK` must use a priority queue (max-heap by score) to p
 
 R60. When two entries have identical scores, `mergeTopK` must include both in the result set (ties are not broken by arbitrary elimination). The relative ordering of tied entries is unspecified.
 
+R108. `ResultMerger.mergeTopK` must reject null elements within the per-partition result lists with a `NullPointerException` whose message identifies the partition index and element index.
+
 ### ResultMerger -- ordered merge
 
 R61. `ResultMerger.mergeOrdered(List<Iterator<TableEntry<String>>> partitionIterators)` must return a single iterator that produces entries in global key order by performing an N-way merge.
@@ -168,6 +174,10 @@ R64. When a partition iterator is exhausted, it must be removed from the heap. T
 R65. When all partition iterators are exhausted, the merged iterator's `hasNext()` must return false and `next()` must throw `NoSuchElementException`.
 
 R66. If multiple partition iterators yield entries with the same key (which should not occur with correct routing but could occur during range queries that span partition boundaries), the merge must emit all such entries without deduplication.
+
+R104. The iterator returned by `ResultMerger.mergeOrdered` must implement `AutoCloseable`. Its `close()` method must close all source iterators that implement `AutoCloseable`, using the deferred close pattern (accumulate exceptions, throw first, suppress remaining).
+
+R105. When a source iterator throws during the N-way merge's `next()` advancement, the merge iterator must preserve the source iterator in the heap so that subsequent calls can retry or the caller can close the iterator. The source must not be silently dropped from the merge.
 
 ### PartitionedTable coordinator
 
@@ -187,6 +197,8 @@ R73. During `build()`, the builder must invoke the client factory once per descr
 
 R74. If the client factory throws for partition N, the builder must close all previously created clients (indices 0 through N-1) using the deferred close pattern before propagating the exception. Close failures must be added as suppressed exceptions.
 
+R106. The builder must propagate the schema (if set via `builder.schema(JlsmSchema)`) to the constructed `PartitionedTable`. `PartitionedTable` must expose the schema via a `schema()` accessor returning `Optional<JlsmSchema>`.
+
 ### PartitionedTable CRUD routing
 
 R75. `PartitionedTable.create(key, doc)` must route to the partition whose range contains the UTF-8 encoded key, using `RangeMap.routeKey`. It must reject null key or doc with a `NullPointerException`.
@@ -199,13 +211,25 @@ R78. `PartitionedTable.delete(key)` must route to the correct partition by key. 
 
 R79. String keys must be converted to `MemorySegment` using UTF-8 encoding for range map lookups. The encoding must use `StandardCharsets.UTF_8`.
 
+R109. `PartitionedTable`'s internal dispatch (`routeKey`, `getRange` fan-out) must use runtime null checks (`if`/`throw IllegalStateException`) when looking up a `PartitionClient` by descriptor ID, not assert-only guards.
+
+R110. `PartitionedTable`'s constructor must use runtime checks (`Objects.requireNonNull`, explicit `if`/`throw`) for all constructor parameters, not assert-only validation.
+
+R111. `PartitionedTable` must store the clients map as an unmodifiable view after construction. Post-construction mutation of the routing map must throw `UnsupportedOperationException`.
+
 ### PartitionedTable range queries
 
-R80. `PartitionedTable.getRange(fromKey, toKey)` must identify the minimal set of overlapping partitions via `RangeMap.overlapping`, query each, and merge the results in key order via `ResultMerger.mergeOrdered`.
+R80. `PartitionedTable.getRange(fromKey, toKey)` must identify the minimal set of overlapping partitions via `RangeMap.overlapping`, clip the query range to each partition's [lowKey, highKey) boundaries, query each partition with the clipped range, and merge the results in key order via `ResultMerger.mergeOrdered`.
 
 R81. `PartitionedTable.getRange` must reject null `fromKey` or `toKey` with a `NullPointerException`.
 
 R82. When the query range does not overlap any partition, `getRange` must return an empty iterator (not throw).
+
+R98. `PartitionedTable.getRange` must reject inverted or empty ranges (`fromKey >= toKey` in unsigned byte-lexicographic order) with an `IllegalArgumentException` before dispatching to partitions.
+
+R99. `PartitionedTable.getRange` must clip the caller's query range to each partition's [lowKey, highKey) boundaries before dispatching. The clipped `fromKey` is `max(fromKey, desc.lowKey())` and the clipped `toKey` is `min(toKey, desc.highKey())`, using unsigned byte-lexicographic comparison.
+
+R103. `PartitionedTable.getRange` must close all already-collected partition iterators (if they implement `Closeable` or `AutoCloseable`) when a subsequent partition dispatch fails, before propagating the exception. Close failures must be added as suppressed exceptions.
 
 ### PartitionedTable scatter-gather queries
 
@@ -222,6 +246,10 @@ R86. Each partition must receive the full `limit` value (not limit/P) to ensure 
 R87. `PartitionedTable.close()` must close all partition clients using the deferred close pattern: every client is closed even if one or more throw, and exceptions are accumulated. The first exception is thrown with remaining exceptions added as suppressed.
 
 R88. If the first accumulated exception is an `IOException`, it must be thrown directly. If it is a different exception type, it must be wrapped in an `IOException`.
+
+R100. `PartitionedTable` must reject all CRUD and range operations after `close()` has been called, throwing `IllegalStateException` with a message indicating the table is closed.
+
+R101. `PartitionedTable.close()` must be idempotent. A second call to `close()` must return immediately without re-iterating or re-closing partition clients.
 
 ### Partial partition failure
 

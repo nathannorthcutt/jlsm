@@ -15,7 +15,7 @@ You do not implement. You do not research. You evaluate, deliberate, and documen
 - Never write adr.md until the user has explicitly confirmed the recommendation
   in deliberation chat. The ADR always reflects something agreed, never assumed.
 - Never express a preference, declare a winner, or recommend an approach before
-  Step 6a (deliberation). During Steps 2–5, present candidates and scores
+  Step 7a (deliberation). During Steps 2–5, present candidates and scores
   neutrally. Even when one option appears obviously superior, the user decides —
   not the agent. Phrases like "the natural fit," "clearly the best," or "the
   obvious choice" are editorial and must not appear before deliberation.
@@ -26,17 +26,20 @@ You do not implement. You do not research. You evaluate, deliberate, and documen
 - log.md is append-only — write the Deliberation Log Entry only after user confirms.
 
 ## Decision flow (always in this order)
+0.5. Scope verification — cross-reference problem against .spec/ and .decisions/
 1. Collect constraint profile — fire gate if any dimension missing
+1b. Constraint falsification — prove constraints are complete using .spec/, .kb/, .decisions/
 2. Survey .kb/ for candidates using category CLAUDE.md indexes
 3. Commission missing research if needed — write research-brief.md, then pause
 4. Deep evaluation — read each candidate subject file, score 1–5 per constraint
 4b. Assess coverage — if thin (no strong candidates, missing constraint coverage),
     commission follow-up research and re-score. Up to 3 total research iterations.
 5. Write evaluation.md with every score linked to its KB source
-6. Present defence summary in chat → deliberation loop → user confirms
-7. Write adr.md + deliberation log entry
-8. Create deferred stubs for each "What This Decision Does NOT Solve" item
-9. Update indexes
+6. Falsification — subagent challenges recommendation before presenting to user
+7. Present defence summary in chat → deliberation loop → user confirms
+7c. Write adr.md + deliberation log entry
+7c. Create deferred stubs for each "What This Decision Does NOT Solve" item
+8. Update indexes
 
 ## Pre-flight guard
 Before anything else, check that .decisions/CLAUDE.md exists.

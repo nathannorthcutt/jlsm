@@ -182,6 +182,50 @@ was discovered):
 ```
 If "yes": invoke `/research <topic> <category> "<subject>"` as a sub-agent.
 
+### Feature footprint
+
+Always generate a feature footprint KB entry. This is not optional — every
+completed feature should leave a trace in the knowledge base.
+
+```
+── Feature Footprint ─────────────────────────
+  Generating KB entry for <slug>...
+  Domains: <domains from domains.md>
+  Key constructs: <new/modified types>
+```
+
+Invoke `/research architecture feature-footprints "<slug>"` as a sub-agent,
+providing it with:
+- The domains from domains.md
+- The key constructs from work-plan.md (new + modified)
+- Any adversarial findings (from known_issues.md if it exists)
+- Cross-references to ADRs created during this feature
+
+The research agent writes the entry following the template at
+`.kb/_refs/feature-footprint-template.md`.
+
+### Adversarial finding graduation
+
+If `.feature/<slug>/known_issues.md` exists and contains RESOLVED or TENDENCY
+entries (from aTDD rounds or audit passes):
+
+```
+── Adversarial Findings ──────────────────────
+  <n> RESOLVED patterns, <n> TENDENCY patterns found
+  These should be documented in .kb/ for future features.
+
+  Type **yes** to graduate findings to KB · or: skip
+```
+
+If "yes": for each significant pattern (not one-off fixes), invoke
+`/research <domain> adversarial-findings "<pattern-name>"` as a sub-agent.
+The research agent writes entries following the template at
+`.kb/_refs/adversarial-finding-template.md`.
+
+Group related findings — don't create a separate KB entry for every individual
+bug. A single entry per bug *class* (e.g., "assertion-based safety checks",
+"silent null returns on error paths") is the right granularity.
+
 ### Estimation calibration
 
 If token estimates were consistently off in one direction:
@@ -193,6 +237,36 @@ If token estimates were consistently off in one direction:
 ```
 This is informational only — no file is written. The user decides whether
 to adjust.
+
+---
+
+## Step 4b — Capability index update
+
+**Guard:** Only run this step if `.capabilities/CLAUDE.md` exists. If no
+capability index, skip silently.
+
+Check whether this feature contributes to an existing capability or
+introduces a new one.
+
+Read `.capabilities/CLAUDE.md` to get the current capability map.
+Read the feature brief to understand what was built.
+
+Use AskUserQuestion:
+- "Update existing capability" — this feature adds to or improves an
+  existing capability (select which one)
+- "Create new capability" — this feature introduces a genuinely new
+  project capability
+- "Quality improvement" — this feature is a performance fix, bug fix,
+  or internal improvement that doesn't change what the project can do
+  (add as `type: quality` feature entry on the parent capability)
+- "Skip" — don't update the capability index
+
+If "Update existing" or "Quality improvement": read the selected capability
+entry. Add this feature to the `features:` array with a one-line
+description. Update the Recently Updated table in CLAUDE.md.
+
+If "Create new": run `/capabilities add "<name>"` with the feature brief
+as context.
 
 ---
 
@@ -209,6 +283,8 @@ Append `retro-complete` to cycle-log.md:
 **TDD efficiency:** <n cycles>, <n escalations>, <n missing tests>
 **Actions taken:**
 - <ADR reviewed: <slug>> | <ADR created: <slug>> | <KB updated: <topic>>
+- Feature footprint: .kb/architecture/feature-footprints/<slug>.md
+- <If adversarial findings graduated:> Adversarial findings: <n> patterns → .kb/
 - ...
 ---
 ```
@@ -267,4 +343,5 @@ The retro command writes to:
 
 It does NOT directly write to `.decisions/` or `.kb/` — it invokes
 `/architect`, `/decisions revisit`, and `/research` as sub-agents, and those
-commands handle their own writes.
+commands handle their own writes. The feature footprint and adversarial finding
+graduation steps also use `/research` sub-agents.

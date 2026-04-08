@@ -114,7 +114,7 @@ fmt_tokens() {
 # ── Compute current context tokens ───────────────────────────────────────────
 
 current_ctx_tokens=""
-if [[ "$ctx_size" =~ ^[0-9]+$ && -n "$context_pct" ]]; then
+if [[ "$ctx_size" =~ ^[0-9]+$ && "$context_pct" =~ ^[0-9.]+$ ]]; then
     current_ctx_tokens=$(awk "BEGIN { printf \"%d\", $context_pct * $ctx_size / 100 }")
 fi
 
@@ -226,14 +226,16 @@ if [[ -f .claude/.token-state ]]; then
                     # by token-stop-hook.sh (transcript-based, more accurate).
                     printf '{"baseline_stage":"%s","baseline_ctx_tokens":%s,"baseline_timestamp":"%s"}\n' \
                         "$current_stage" "$current_ctx_tokens" \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BASELINE_FILE"
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${BASELINE_FILE}.tmp" \
+                        && mv "${BASELINE_FILE}.tmp" "$BASELINE_FILE"
                     baseline_ctx_tokens="$current_ctx_tokens"
 
                 elif [[ ! "$baseline_ctx_tokens" =~ ^[0-9]+$ ]]; then
                     # No valid baseline — initialize
                     printf '{"baseline_stage":"%s","baseline_ctx_tokens":%s,"baseline_timestamp":"%s"}\n' \
                         "$current_stage" "$current_ctx_tokens" \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$BASELINE_FILE"
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${BASELINE_FILE}.tmp" \
+                        && mv "${BASELINE_FILE}.tmp" "$BASELINE_FILE"
                     baseline_ctx_tokens="$current_ctx_tokens"
                 fi
 
@@ -306,3 +308,5 @@ if [[ ${#parts[@]} -gt 0 ]]; then
     done
     echo -e "$output"
 fi
+
+exit 0

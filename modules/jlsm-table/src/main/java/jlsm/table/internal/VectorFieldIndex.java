@@ -52,18 +52,19 @@ public final class VectorFieldIndex implements SecondaryIndex {
 
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        throw new UnsupportedOperationException("VectorFieldIndex.onInsert not implemented");
+        // Stub: no-op until real vector index implementation ships.
+        // Silently accepts mutations so tables with VECTOR indices can store documents.
     }
 
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
-        throw new UnsupportedOperationException("VectorFieldIndex.onUpdate not implemented");
+        // Stub: no-op until real vector index implementation ships.
     }
 
     @Override
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        throw new UnsupportedOperationException("VectorFieldIndex.onDelete not implemented");
+        // Stub: no-op until real vector index implementation ships.
     }
 
     @Override
@@ -73,8 +74,10 @@ public final class VectorFieldIndex implements SecondaryIndex {
 
     @Override
     public boolean supports(Predicate predicate) {
-        return predicate instanceof Predicate.VectorNearest vn
-                && vn.field().equals(definition.fieldName());
+        // Stub: lookup() throws UnsupportedOperationException, so supports() must return false.
+        // When lookup() is implemented, restore: predicate instanceof VectorNearest vn
+        // && vn.field().equals(definition.fieldName())
+        return false;
     }
 
     @Override

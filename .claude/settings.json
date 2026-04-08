@@ -25,7 +25,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/scripts/token-stop-hook.sh"
+            "command": "bash .claude/scripts/token-hook-wrapper.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/subagent-hook-wrapper.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/subagent-hook-wrapper.sh"
           }
         ]
       }
@@ -33,6 +53,6 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash .claude/scripts/statusline.sh"
+    "command": "bash .claude/scripts/statusline-wrapper.sh"
   }
 }

@@ -94,7 +94,7 @@ class TableIndicesRound2AdversarialTest {
         var doc = JlsmDocument.of(schema, "age", 30);
         registry.onInsert(stringKey("pk1"), doc);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
 
         // Pass Long value for INT32 field — scan-and-filter will do
         // Integer(30).compareTo(Long(25L)) → ClassCastException
@@ -113,7 +113,7 @@ class TableIndicesRound2AdversarialTest {
         var doc = JlsmDocument.of(schema, "age", 30);
         registry.onInsert(stringKey("pk1"), doc);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
         assertDoesNotThrow(() -> collect(executor.execute(new Predicate.Gte("age", 25L))),
                 "Scan-and-filter Gte with Long predicate on INT32 field should not crash");
 
@@ -128,7 +128,7 @@ class TableIndicesRound2AdversarialTest {
         var doc = JlsmDocument.of(schema, "age", 30);
         registry.onInsert(stringKey("pk1"), doc);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
         assertDoesNotThrow(() -> collect(executor.execute(new Predicate.Lt("age", 50L))),
                 "Scan-and-filter Lt with Long predicate on INT32 field should not crash");
 
@@ -143,7 +143,7 @@ class TableIndicesRound2AdversarialTest {
         var doc = JlsmDocument.of(schema, "age", 30);
         registry.onInsert(stringKey("pk1"), doc);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
         assertDoesNotThrow(() -> collect(executor.execute(new Predicate.Lte("age", 50L))),
                 "Scan-and-filter Lte with Long predicate on INT32 field should not crash");
 
@@ -158,7 +158,7 @@ class TableIndicesRound2AdversarialTest {
         var doc = JlsmDocument.of(schema, "age", 30);
         registry.onInsert(stringKey("pk1"), doc);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
 
         // Between with Long bounds on INT32 field
         assertDoesNotThrow(() -> collect(executor.execute(new Predicate.Between("age", 20L, 40L))),
@@ -167,25 +167,26 @@ class TableIndicesRound2AdversarialTest {
         registry.close();
     }
 
-    // ── SCAN-FILTER-TYPE-MISMATCH semantic correctness ──────────────────
-    // After fix: mismatched types should produce empty results (no match),
-    // not exceptions.
+    // ── SCAN-FILTER-TYPE-COERCION semantic correctness ──────────────────
+    // Updated by audit: compareCoerced now widens numeric types (Integer/Long/Float/Double)
+    // to a common type before comparison. Integer(30) > Long(25) correctly evaluates to true
+    // after widening both to long. This is the correct behavior — numeric predicates should
+    // work across compatible numeric types.
 
     @Test
-    void testScanAndFilterTypeMismatchReturnsNoResults() throws IOException {
+    void testScanAndFilterNumericCoercionReturnsResults() throws IOException {
         var schema = JlsmSchema.builder("test", 1).field("age", FieldType.int32()).build();
         var registry = new IndexRegistry(schema, List.of());
 
         var doc = JlsmDocument.of(schema, "age", 30);
         registry.onInsert(stringKey("pk1"), doc);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
 
-        // Long predicate on INT32 field — types don't match, should return empty
+        // Long predicate on INT32 field — numeric coercion widens both to long
         var results = collect(executor.execute(new Predicate.Gt("age", 25L)));
-        assertEquals(0, results.size(),
-                "Type-mismatched predicates should return empty results, not crash. "
-                        + "Integer(30) and Long(25) are incomparable.");
+        assertEquals(1, results.size(),
+                "Numeric coercion should widen Integer(30) and Long(25) to long — 30 > 25 is true");
 
         registry.close();
     }

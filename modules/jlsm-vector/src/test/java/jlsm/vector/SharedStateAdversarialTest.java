@@ -3,6 +3,7 @@ package jlsm.vector;
 import jlsm.bloom.PassthroughBloomFilter;
 import jlsm.core.indexing.SimilarityFunction;
 import jlsm.core.indexing.VectorIndex;
+import jlsm.core.indexing.VectorPrecision;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.model.Entry;
 import jlsm.core.tree.LsmTree;
@@ -35,8 +36,8 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Shared-state adversarial tests for IVF/HNSW constructs.
- * Test methods are added by prove-fix subagents for confirmed findings.
+ * Shared-state adversarial tests for IVF/HNSW constructs. Test methods are added by prove-fix
+ * subagents for confirmed findings.
  */
 class SharedStateAdversarialTest {
 
@@ -84,11 +85,11 @@ class SharedStateAdversarialTest {
 
     // Finding: F-R5.shared_state.1.1
     // Bug: Non-atomic index() allows concurrent re-index of the same docId to leave
-    //      orphaned posting entries under old centroids that are never cleaned up.
+    // orphaned posting entries under old centroids that are never cleaned up.
     // Correct behavior: After concurrent index() calls for the same docId complete,
-    //                   exactly one posting entry should exist across all centroids.
+    // exactly one posting entry should exist across all centroids.
     // Fix location: IvfFlat.index() — the read-modify-write of reverse lookup and
-    //               posting entries needs synchronization on the docId.
+    // posting entries needs synchronization on the docId.
     // Regression watch: Synchronization must not deadlock or serialize unrelated docIds.
     @Test
     void test_ivfFlat_index_concurrentReindexSameDocId_noOrphanedPostings() throws Exception {
@@ -96,36 +97,31 @@ class SharedStateAdversarialTest {
         int numClusters = 3;
 
         LsmTree tree = buildTree(1024 * 1024);
-        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(tree)
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(dims)
-                .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                .numClusters(numClusters)
-                .nprobe(numClusters)
-                .build();
+        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
+                .similarityFunction(SimilarityFunction.DOT_PRODUCT).numClusters(numClusters)
+                .nprobe(numClusters).build();
 
         // Seed 3 centroids with distinct vectors so they are well-separated
-        index.index(100L, new float[]{1.0f, 0.0f, 0.0f, 0.0f});
-        index.index(101L, new float[]{0.0f, 1.0f, 0.0f, 0.0f});
-        index.index(102L, new float[]{0.0f, 0.0f, 1.0f, 0.0f});
+        index.index(100L, new float[]{ 1.0f, 0.0f, 0.0f, 0.0f });
+        index.index(101L, new float[]{ 0.0f, 1.0f, 0.0f, 0.0f });
+        index.index(102L, new float[]{ 0.0f, 0.0f, 1.0f, 0.0f });
 
         // Target docId that will be concurrently re-indexed
         long targetDocId = 42L;
 
         // Pre-index the target so reverse lookup exists
-        index.index(targetDocId, new float[]{0.5f, 0.5f, 0.0f, 0.0f});
+        index.index(targetDocId, new float[]{ 0.5f, 0.5f, 0.0f, 0.0f });
 
         int numThreads = 4;
         int iterations = 50;
         CyclicBarrier barrier = new CyclicBarrier(numThreads);
 
         // Each thread re-indexes the same docId with vectors that map to different centroids
-        float[][] vectors = {
-                {1.0f, 0.0f, 0.0f, 0.0f},  // near centroid 0
-                {0.0f, 1.0f, 0.0f, 0.0f},  // near centroid 1
-                {0.0f, 0.0f, 1.0f, 0.0f},  // near centroid 2
-                {0.5f, 0.5f, 0.0f, 0.0f},  // near centroid 0 or 1
+        float[][] vectors = { { 1.0f, 0.0f, 0.0f, 0.0f }, // near centroid 0
+                { 0.0f, 1.0f, 0.0f, 0.0f }, // near centroid 1
+                { 0.0f, 0.0f, 1.0f, 0.0f }, // near centroid 2
+                { 0.5f, 0.5f, 0.0f, 0.0f }, // near centroid 0 or 1
         };
 
         List<Thread> threads = new ArrayList<>();
@@ -152,16 +148,15 @@ class SharedStateAdversarialTest {
             thread.join(30_000);
         }
 
-        assertTrue(errors.isEmpty(),
-                "Concurrent index() threw exceptions: " + errors);
+        assertTrue(errors.isEmpty(), "Concurrent index() threw exceptions: " + errors);
 
         // Count posting entries for targetDocId across ALL centroids
         byte[] targetDocIdBytes = LONG_DOC_ID_SERIALIZER.serialize(targetDocId)
                 .toArray(ValueLayout.JAVA_BYTE);
 
         // Scan all posting entries: keys starting with 0x01
-        MemorySegment postingScanStart = MemorySegment.ofArray(new byte[]{0x01});
-        MemorySegment postingScanEnd = MemorySegment.ofArray(new byte[]{0x02});
+        MemorySegment postingScanStart = MemorySegment.ofArray(new byte[]{ 0x01 });
+        MemorySegment postingScanEnd = MemorySegment.ofArray(new byte[]{ 0x02 });
 
         int postingCount = 0;
         Iterator<Entry> it = tree.scan(postingScanStart, postingScanEnd);
@@ -180,8 +175,7 @@ class SharedStateAdversarialTest {
         }
 
         assertEquals(1, postingCount,
-                "Expected exactly 1 posting for docId " + targetDocId
-                        + " but found " + postingCount
+                "Expected exactly 1 posting for docId " + targetDocId + " but found " + postingCount
                         + " — orphaned postings exist from concurrent re-index race");
 
         index.close();
@@ -189,12 +183,12 @@ class SharedStateAdversarialTest {
 
     // Finding: F-R5.shared_state.1.2
     // Bug: remove() does not acquire the per-docId striped lock, so a concurrent
-    //      index() can complete between remove()'s reverse-lookup read and its
-    //      delete calls, leaving an orphaned posting that is undeletable.
+    // index() can complete between remove()'s reverse-lookup read and its
+    // delete calls, leaving an orphaned posting that is undeletable.
     // Correct behavior: After remove() returns, no posting entry for the docId
-    //                   should exist in any centroid's posting list.
+    // should exist in any centroid's posting list.
     // Fix location: IvfFlat.remove() — wrap the reverse-lookup read + deletes
-    //               inside synchronized(lockFor(docIdBytes))
+    // inside synchronized(lockFor(docIdBytes))
     // Regression watch: Must use the same lock stripe as index() to prevent the race.
     @Test
     void test_ivfFlat_remove_concurrentIndexLeaveGhostPosting() throws Exception {
@@ -202,19 +196,15 @@ class SharedStateAdversarialTest {
         int numClusters = 3;
 
         LsmTree tree = buildTree(1024 * 1024);
-        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(tree)
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(dims)
-                .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                .numClusters(numClusters)
-                .nprobe(numClusters)
-                .build();
+        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
+                .similarityFunction(SimilarityFunction.DOT_PRODUCT).numClusters(numClusters)
+                .nprobe(numClusters).build();
 
         // Seed 3 centroids with orthogonal vectors
-        index.index(100L, new float[]{1.0f, 0.0f, 0.0f, 0.0f});
-        index.index(101L, new float[]{0.0f, 1.0f, 0.0f, 0.0f});
-        index.index(102L, new float[]{0.0f, 0.0f, 1.0f, 0.0f});
+        index.index(100L, new float[]{ 1.0f, 0.0f, 0.0f, 0.0f });
+        index.index(101L, new float[]{ 0.0f, 1.0f, 0.0f, 0.0f });
+        index.index(102L, new float[]{ 0.0f, 0.0f, 1.0f, 0.0f });
 
         long targetDocId = 77L;
         byte[] targetDocIdBytes = LONG_DOC_ID_SERIALIZER.serialize(targetDocId)
@@ -228,7 +218,7 @@ class SharedStateAdversarialTest {
         // After both finish each round, we check invariants.
         for (int round = 0; round < iterations; round++) {
             // Pre-index the target docId
-            index.index(targetDocId, new float[]{1.0f, 0.0f, 0.0f, 0.0f});
+            index.index(targetDocId, new float[]{ 1.0f, 0.0f, 0.0f, 0.0f });
 
             CyclicBarrier roundBarrier = new CyclicBarrier(2);
 
@@ -236,7 +226,7 @@ class SharedStateAdversarialTest {
             Thread indexer = Thread.ofVirtual().start(() -> {
                 try {
                     roundBarrier.await();
-                    index.index(targetDocId, new float[]{0.0f, 1.0f, 0.0f, 0.0f});
+                    index.index(targetDocId, new float[]{ 0.0f, 1.0f, 0.0f, 0.0f });
                 } catch (Exception e) {
                     synchronized (errors) {
                         errors.add(e);
@@ -259,20 +249,23 @@ class SharedStateAdversarialTest {
             indexer.join(10_000);
             remover.join(10_000);
 
-            if (!errors.isEmpty()) break;
+            if (!errors.isEmpty())
+                break;
 
             // After both threads complete, count postings for the target docId.
             // There should be either 0 (remove won) or 1 (index won) — never >1.
-            MemorySegment postingScanStart = MemorySegment.ofArray(new byte[]{0x01});
-            MemorySegment postingScanEnd = MemorySegment.ofArray(new byte[]{0x02});
+            MemorySegment postingScanStart = MemorySegment.ofArray(new byte[]{ 0x01 });
+            MemorySegment postingScanEnd = MemorySegment.ofArray(new byte[]{ 0x02 });
 
             int postingCount = 0;
             Iterator<Entry> it = tree.scan(postingScanStart, postingScanEnd);
             while (it.hasNext()) {
                 Entry entry = it.next();
-                if (!(entry instanceof Entry.Put)) continue;
+                if (!(entry instanceof Entry.Put))
+                    continue;
                 byte[] key = entry.key().toArray(ValueLayout.JAVA_BYTE);
-                if (key.length < 5) continue;
+                if (key.length < 5)
+                    continue;
                 byte[] docIdInKey = Arrays.copyOfRange(key, 5, key.length);
                 if (Arrays.equals(docIdInKey, targetDocIdBytes)) {
                     postingCount++;
@@ -280,8 +273,8 @@ class SharedStateAdversarialTest {
             }
 
             // Check reverse lookup presence
-            MemorySegment revKey = MemorySegment.ofArray(
-                    new byte[]{0x02, 0, 0, 0, 0, 0, 0, 0, 77});
+            MemorySegment revKey = MemorySegment
+                    .ofArray(new byte[]{ 0x02, 0, 0, 0, 0, 0, 0, 0, 77 });
             // Build the proper reverse key
             byte[] fullRevKey = new byte[1 + targetDocIdBytes.length];
             fullRevKey[0] = 0x02;
@@ -291,33 +284,31 @@ class SharedStateAdversarialTest {
             if (revLookup.isEmpty()) {
                 // remove() won — there should be 0 postings
                 assertEquals(0, postingCount,
-                        "Round " + round + ": reverse lookup deleted but "
-                                + postingCount + " ghost posting(s) remain — "
+                        "Round " + round + ": reverse lookup deleted but " + postingCount
+                                + " ghost posting(s) remain — "
                                 + "orphaned posting from concurrent remove()/index() race");
             } else {
                 // index() won — there should be exactly 1 posting
-                assertEquals(1, postingCount,
-                        "Round " + round + ": reverse lookup present but "
-                                + postingCount + " postings found (expected 1)");
+                assertEquals(1, postingCount, "Round " + round + ": reverse lookup present but "
+                        + postingCount + " postings found (expected 1)");
             }
 
             // Clean up for next round
             index.remove(targetDocId);
         }
 
-        assertTrue(errors.isEmpty(),
-                "Concurrent index()/remove() threw exceptions: " + errors);
+        assertTrue(errors.isEmpty(), "Concurrent index()/remove() threw exceptions: " + errors);
 
         index.close();
     }
 
     // Finding: F-R5.shared_state.1.3
     // Bug: NaN score in nearestCentroid causes incorrect centroid assignment. When the
-    //      first centroid's score is NaN (via dot product overflow with finite inputs),
-    //      bestScore is NaN and all subsequent comparisons return false (IEEE 754),
-    //      so the method always returns centroid 0 regardless of actual similarity.
+    // first centroid's score is NaN (via dot product overflow with finite inputs),
+    // bestScore is NaN and all subsequent comparisons return false (IEEE 754),
+    // so the method always returns centroid 0 regardless of actual similarity.
     // Correct behavior: NaN scores should be treated as worst-possible, and the centroid
-    //                   with the highest finite score should be selected.
+    // with the highest finite score should be selected.
     // Fix location: IvfFlat.nearestCentroid (LsmVectorIndex.java) — comparison logic
     // Regression watch: Fix must not change behavior for normal (finite) scores
     @Test
@@ -326,25 +317,22 @@ class SharedStateAdversarialTest {
         int numClusters = 2;
 
         LsmTree tree = buildTree(1024 * 1024);
-        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(tree)
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(dims)
-                .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                .numClusters(numClusters)
-                .nprobe(numClusters)
-                .build();
+        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
+                .similarityFunction(SimilarityFunction.DOT_PRODUCT).numClusters(numClusters)
+                .nprobe(numClusters).build();
 
         // Centroid 0: [MAX_VALUE, -MAX_VALUE, 0, 0]
-        // dot(query, centroid0) = MAX_VALUE*MAX_VALUE + MAX_VALUE*(-MAX_VALUE) = +Inf + (-Inf) = NaN
-        index.index(200L, new float[]{Float.MAX_VALUE, -Float.MAX_VALUE, 0.0f, 0.0f});
+        // dot(query, centroid0) = MAX_VALUE*MAX_VALUE + MAX_VALUE*(-MAX_VALUE) = +Inf + (-Inf) =
+        // NaN
+        index.index(200L, new float[]{ Float.MAX_VALUE, -Float.MAX_VALUE, 0.0f, 0.0f });
 
         // Centroid 1: [1, 0, 0, 0]
         // dot(query, centroid1) = MAX_VALUE*1 + MAX_VALUE*0 + 0 + 0 = MAX_VALUE (finite, positive)
-        index.index(201L, new float[]{1.0f, 0.0f, 0.0f, 0.0f});
+        index.index(201L, new float[]{ 1.0f, 0.0f, 0.0f, 0.0f });
 
         // Query vector that triggers NaN against centroid 0 but has clear affinity to centroid 1
-        float[] query = new float[]{Float.MAX_VALUE, Float.MAX_VALUE, 0.0f, 0.0f};
+        float[] query = new float[]{ Float.MAX_VALUE, Float.MAX_VALUE, 0.0f, 0.0f };
         long targetDocId = 300L;
         index.index(targetDocId, query);
 
@@ -354,16 +342,18 @@ class SharedStateAdversarialTest {
                 .toArray(ValueLayout.JAVA_BYTE);
 
         // Check which centroid has the posting for targetDocId
-        MemorySegment postingScanStart = MemorySegment.ofArray(new byte[]{0x01});
-        MemorySegment postingScanEnd = MemorySegment.ofArray(new byte[]{0x02});
+        MemorySegment postingScanStart = MemorySegment.ofArray(new byte[]{ 0x01 });
+        MemorySegment postingScanEnd = MemorySegment.ofArray(new byte[]{ 0x02 });
 
         int assignedCentroid = -1;
         Iterator<Entry> it = tree.scan(postingScanStart, postingScanEnd);
         while (it.hasNext()) {
             Entry entry = it.next();
-            if (!(entry instanceof Entry.Put)) continue;
+            if (!(entry instanceof Entry.Put))
+                continue;
             byte[] key = entry.key().toArray(ValueLayout.JAVA_BYTE);
-            if (key.length < 5) continue;
+            if (key.length < 5)
+                continue;
             byte[] docIdInKey = Arrays.copyOfRange(key, 5, key.length);
             if (Arrays.equals(docIdInKey, targetDocIdBytes)) {
                 assignedCentroid = ((key[1] & 0xFF) << 24) | ((key[2] & 0xFF) << 16)
@@ -371,21 +361,19 @@ class SharedStateAdversarialTest {
             }
         }
 
-        assertNotEquals(-1, assignedCentroid,
-                "Target docId should have a posting entry");
-        assertEquals(1, assignedCentroid,
-                "Vector should be assigned to centroid 1 (finite score " + Float.MAX_VALUE
-                        + ") not centroid 0 (NaN score from dot product overflow)");
+        assertNotEquals(-1, assignedCentroid, "Target docId should have a posting entry");
+        assertEquals(1, assignedCentroid, "Vector should be assigned to centroid 1 (finite score "
+                + Float.MAX_VALUE + ") not centroid 0 (NaN score from dot product overflow)");
 
         index.close();
     }
 
     // Finding: F-R5.shared_state.1.4
     // Bug: NaN scores in topNCentroids waste nprobe budget on invalid centroids.
-    //      Float.compare treats NaN as greater than all finite values, so NaN-scored
-    //      centroids sort first in descending order and consume the nprobe budget.
+    // Float.compare treats NaN as greater than all finite values, so NaN-scored
+    // centroids sort first in descending order and consume the nprobe budget.
     // Correct behavior: NaN-scored centroids should be ranked last (worst), so that
-    //                   the nprobe budget is spent on centroids with finite scores.
+    // the nprobe budget is spent on centroids with finite scores.
     // Fix location: IvfFlat.topNCentroids sort comparator (LsmVectorIndex.java)
     // Regression watch: Fix must preserve correct descending order for finite scores.
     @Test
@@ -396,45 +384,41 @@ class SharedStateAdversarialTest {
         int nprobe = 1;
 
         LsmTree tree = buildTree(1024 * 1024);
-        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(tree)
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(dims)
-                .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                .numClusters(numClusters)
-                .nprobe(nprobe)
-                .build();
+        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
+                .similarityFunction(SimilarityFunction.DOT_PRODUCT).numClusters(numClusters)
+                .nprobe(nprobe).build();
 
         // Centroid 0: triggers NaN via dot product overflow with the search query
         // dot(query, c0) = MAX_VALUE*MAX_VALUE + (-MAX_VALUE)*MAX_VALUE = +Inf + (-Inf) = NaN
         // But centroid 0 has a FINITE score against the target vector {0,0,0,1}:
         // dot({0,0,0,1}, c0) = 0 + 0 + 0 + 0 = 0
-        index.index(500L, new float[]{Float.MAX_VALUE, -Float.MAX_VALUE, 0.0f, 0.0f});
+        index.index(500L, new float[]{ Float.MAX_VALUE, -Float.MAX_VALUE, 0.0f, 0.0f });
 
         // Centroid 1: triggers NaN via dot product overflow with the search query
         // dot(query, c1) = (-MAX_VALUE)*MAX_VALUE + MAX_VALUE*MAX_VALUE = (-Inf) + (+Inf) = NaN
         // Also finite score against target: dot({0,0,0,1}, c1) = 0
-        index.index(501L, new float[]{-Float.MAX_VALUE, Float.MAX_VALUE, 0.0f, 0.0f});
+        index.index(501L, new float[]{ -Float.MAX_VALUE, Float.MAX_VALUE, 0.0f, 0.0f });
 
         // Centroid 2: has a clear finite positive score with the search query
         // dot(query, c2) = 0 + 0 + 0 + MAX_VALUE = MAX_VALUE (finite)
         // Also has best score against target: dot({0,0,0,1}, c2) = 1.0
-        index.index(502L, new float[]{0.0f, 0.0f, 0.0f, 1.0f});
+        index.index(502L, new float[]{ 0.0f, 0.0f, 0.0f, 1.0f });
 
         // Target doc: vector {0, 0, 0, 1} — nearest to centroid 2 (score=1.0 vs 0.0 for others)
         // nearestCentroid is already fixed to handle NaN, so assignment is correct.
         long targetDocId = 600L;
-        index.index(targetDocId, new float[]{0.0f, 0.0f, 0.0f, 1.0f});
+        index.index(targetDocId, new float[]{ 0.0f, 0.0f, 0.0f, 1.0f });
 
         // Query: {MAX_VALUE, MAX_VALUE, 0, MAX_VALUE}
         // dot(query, c0) = MAX_VALUE*MAX_VALUE + MAX_VALUE*(-MAX_VALUE) + 0 + 0 = +Inf-Inf = NaN
         // dot(query, c1) = MAX_VALUE*(-MAX_VALUE) + MAX_VALUE*MAX_VALUE + 0 + 0 = -Inf+Inf = NaN
         // dot(query, c2) = 0 + 0 + 0 + MAX_VALUE*1 = MAX_VALUE (finite, positive)
-        float[] query = new float[]{Float.MAX_VALUE, Float.MAX_VALUE, 0.0f, Float.MAX_VALUE};
+        float[] query = new float[]{ Float.MAX_VALUE, Float.MAX_VALUE, 0.0f, Float.MAX_VALUE };
 
         // With nprobe=1, only the top-ranked centroid is probed.
         // Bug: NaN centroids sort first (Float.compare puts NaN > all) → centroid 0 or 1
-        //      is probed → target not found (target is under centroid 2).
+        // is probed → target not found (target is under centroid 2).
         // Correct: centroid 2 (finite score MAX_VALUE) should be probed → target found.
         List<? extends VectorIndex.SearchResult<Long>> results = index.search(query, 10);
 
@@ -443,19 +427,19 @@ class SharedStateAdversarialTest {
         assertTrue(found,
                 "Target docId " + targetDocId + " should be found when searching with nprobe=1. "
                         + "NaN-scored centroids consumed the nprobe budget, skipping the "
-                        + "centroid with a finite score where the target lives. "
-                        + "Got results: " + results);
+                        + "centroid with a finite score where the target lives. " + "Got results: "
+                        + results);
 
         index.close();
     }
 
     // Finding: F-R5.shared_state.1.5
     // Bug: assignCentroid uses max(existingIds)+1 as new centroid ID — two concurrent
-    //      index() calls that both see centroids.size() < numClusters compute the same
-    //      newCid and one silently overwrites the other's centroid vector.
+    // index() calls that both see centroids.size() < numClusters compute the same
+    // newCid and one silently overwrites the other's centroid vector.
     // Correct behavior: Each centroid creation must produce a unique centroid ID; after
-    //                   numClusters centroids are created, exactly numClusters distinct
-    //                   centroid entries should exist in the tree.
+    // numClusters centroids are created, exactly numClusters distinct
+    // centroid entries should exist in the tree.
     // Fix location: IvfFlat.assignCentroid — centroid creation needs synchronization
     // Regression watch: Lock must not deadlock with per-docId locks in index()/remove()
     @Test
@@ -465,14 +449,10 @@ class SharedStateAdversarialTest {
         int numClusters = 16;
 
         LsmTree tree = buildTree(1024 * 1024);
-        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(tree)
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(dims)
-                .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                .numClusters(numClusters)
-                .nprobe(numClusters)
-                .build();
+        VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
+                .similarityFunction(SimilarityFunction.DOT_PRODUCT).numClusters(numClusters)
+                .nprobe(numClusters).build();
 
         // Launch numClusters threads simultaneously, each indexing a unique docId
         // with a distinct vector. Each should create a new centroid (since none exist yet).
@@ -504,12 +484,11 @@ class SharedStateAdversarialTest {
             thread.join(30_000);
         }
 
-        assertTrue(errors.isEmpty(),
-                "Concurrent index() threw exceptions: " + errors);
+        assertTrue(errors.isEmpty(), "Concurrent index() threw exceptions: " + errors);
 
         // Count distinct centroid entries in the tree
-        MemorySegment centroidScanStart = MemorySegment.ofArray(new byte[]{0x00});
-        MemorySegment centroidScanEnd = MemorySegment.ofArray(new byte[]{0x01});
+        MemorySegment centroidScanStart = MemorySegment.ofArray(new byte[]{ 0x00 });
+        MemorySegment centroidScanEnd = MemorySegment.ofArray(new byte[]{ 0x01 });
 
         int centroidCount = 0;
         Iterator<Entry> it = tree.scan(centroidScanStart, centroidScanEnd);
@@ -530,13 +509,13 @@ class SharedStateAdversarialTest {
 
     // Finding: F-R5.shared_state.2.1
     // Bug: Entry point read-then-write race in concurrent index() calls — two threads
-    //      both read the entry point, both compute newLevel > maxLayer, and both write
-    //      a new entry point. The second write silently overwrites the first, orphaning
-    //      the first thread's upper-layer structure.
+    // both read the entry point, both compute newLevel > maxLayer, and both write
+    // a new entry point. The second write silently overwrites the first, orphaning
+    // the first thread's upper-layer structure.
     // Correct behavior: After concurrent index() calls complete, the entry point's
-    //                   maxLayer must be >= the maximum layer count of any node in the index.
+    // maxLayer must be >= the maximum layer count of any node in the index.
     // Fix location: Hnsw.index() — the entry point read + conditional promotion at
-    //               lines 867, 945-948 must be atomic.
+    // lines 867, 945-948 must be atomic.
     // Regression watch: Synchronization must not deadlock or serialize the entire index() path.
     @Test
     void test_hnsw_index_concurrentEntryPointPromotion_noLostPromotions() throws Exception {
@@ -553,7 +532,7 @@ class SharedStateAdversarialTest {
         // mL = 1/ln(2) ≈ 1.4427
         // For level 0: nextDouble > 0.5
         // For level ~7: nextDouble ≈ 0.004 → -ln(0.004)*1.4427 ≈ 7.96
-        // For level ~2: nextDouble ≈ 0.2  → -ln(0.2)*1.4427  ≈ 2.32
+        // For level ~2: nextDouble ≈ 0.2 → -ln(0.2)*1.4427 ≈ 2.32
 
         var threadLevel = new ThreadLocal<Double>();
 
@@ -568,14 +547,9 @@ class SharedStateAdversarialTest {
             // Rebuild a fresh tree + index for each round to avoid accumulation effects
             LsmTree roundTree = buildTree(1024 * 1024);
             VectorIndex.Hnsw<Long> roundIndex = LsmVectorIndex.<Long>hnswBuilder()
-                    .lsmTree(roundTree)
-                    .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                    .dimensions(dims)
+                    .lsmTree(roundTree).docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
                     .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                    .maxConnections(maxConnections)
-                    .efConstruction(4)
-                    .efSearch(4)
-                    .build();
+                    .maxConnections(maxConnections).efConstruction(4).efSearch(4).build();
 
             // Replace random
             var roundRiggedRandom = new java.util.Random() {
@@ -589,7 +563,7 @@ class SharedStateAdversarialTest {
 
             // Seed with level 0
             threadLevel.set(0.9); // level 0
-            roundIndex.index(0L, new float[]{1.0f, 0.0f, 0.0f, 0.0f});
+            roundIndex.index(0L, new float[]{ 1.0f, 0.0f, 0.0f, 0.0f });
 
             int numThreads = 2;
             CyclicBarrier barrier = new CyclicBarrier(numThreads);
@@ -600,9 +574,11 @@ class SharedStateAdversarialTest {
                 try {
                     threadLevel.set(0.004); // level ~7-8
                     barrier.await();
-                    roundIndex.index(1L, new float[]{0.0f, 1.0f, 0.0f, 0.0f});
+                    roundIndex.index(1L, new float[]{ 0.0f, 1.0f, 0.0f, 0.0f });
                 } catch (Exception e) {
-                    synchronized (errors) { errors.add(e); }
+                    synchronized (errors) {
+                        errors.add(e);
+                    }
                 }
             }));
 
@@ -611,17 +587,21 @@ class SharedStateAdversarialTest {
                 try {
                     threadLevel.set(0.2); // level ~2
                     barrier.await();
-                    roundIndex.index(2L, new float[]{0.0f, 0.0f, 1.0f, 0.0f});
+                    roundIndex.index(2L, new float[]{ 0.0f, 0.0f, 1.0f, 0.0f });
                 } catch (Exception e) {
-                    synchronized (errors) { errors.add(e); }
+                    synchronized (errors) {
+                        errors.add(e);
+                    }
                 }
             }));
 
-            for (Thread t : threads) t.join(30_000);
-            if (!errors.isEmpty()) break;
+            for (Thread t : threads)
+                t.join(30_000);
+            if (!errors.isEmpty())
+                break;
 
             // Check invariant
-            byte[] entryPointKey = new byte[]{(byte) 0xFE};
+            byte[] entryPointKey = new byte[]{ (byte) 0xFE };
             Optional<MemorySegment> epOpt = roundTree.get(MemorySegment.ofArray(entryPointKey));
             assertTrue(epOpt.isPresent(), "Round " + round + ": EP should exist");
             byte[] epValue = epOpt.get().toArray(ValueLayout.JAVA_BYTE);
@@ -633,11 +613,13 @@ class SharedStateAdversarialTest {
                 byte[] docIdBytes = LONG_DOC_ID_SERIALIZER.serialize(docId)
                         .toArray(ValueLayout.JAVA_BYTE);
                 Optional<MemorySegment> nodeOpt = roundTree.get(MemorySegment.ofArray(docIdBytes));
-                if (nodeOpt.isEmpty()) continue;
+                if (nodeOpt.isEmpty())
+                    continue;
                 byte[] nodeBytes = nodeOpt.get().toArray(ValueLayout.JAVA_BYTE);
                 int layerCount = ((nodeBytes[4] & 0xFF) << 24) | ((nodeBytes[5] & 0xFF) << 16)
                         | ((nodeBytes[6] & 0xFF) << 8) | (nodeBytes[7] & 0xFF);
-                if (layerCount - 1 > maxNodeLayerIdx) maxNodeLayerIdx = layerCount - 1;
+                if (layerCount - 1 > maxNodeLayerIdx)
+                    maxNodeLayerIdx = layerCount - 1;
             }
 
             assertTrue(epMaxLayer >= maxNodeLayerIdx,
@@ -648,23 +630,21 @@ class SharedStateAdversarialTest {
             roundIndex.close();
         }
 
-        assertTrue(errors.isEmpty(),
-                "Concurrent index() threw exceptions: " + errors);
+        assertTrue(errors.isEmpty(), "Concurrent index() threw exceptions: " + errors);
     }
-
 
     // Finding: F-R5.shared_state.2.2
     // Bug: Concurrent index() calls produce lost bidirectional edge updates.
-    //      Two threads both read a shared neighbor's node, each appends itself,
-    //      and the second write silently overwrites the first — losing the first
-    //      thread's backlink from the shared neighbor.
+    // Two threads both read a shared neighbor's node, each appends itself,
+    // and the second write silently overwrites the first — losing the first
+    // thread's backlink from the shared neighbor.
     // Correct behavior: After concurrent index() calls complete, every selected
-    //                   neighbor's stored neighbor list must contain backlinks to
-    //                   ALL nodes that selected it — no lost edges.
+    // neighbor's stored neighbor list must contain backlinks to
+    // ALL nodes that selected it — no lost edges.
     // Fix location: Hnsw.index() bidirectional neighbor update (lines 920-941)
-    //               — the read-modify-write on neighbor nodes needs per-node locking.
+    // — the read-modify-write on neighbor nodes needs per-node locking.
     // Regression watch: Lock granularity must be per-neighbor-node, not global,
-    //                   to avoid serializing all concurrent index() calls.
+    // to avoid serializing all concurrent index() calls.
     @Test
     void test_hnsw_index_concurrentBidirectionalEdgeUpdate_noLostEdges() throws Exception {
         int dims = 4;
@@ -680,14 +660,9 @@ class SharedStateAdversarialTest {
         for (int round = 0; round < outerRounds; round++) {
             LsmTree roundTree = buildTree(1024 * 1024);
             VectorIndex.Hnsw<Long> roundIndex = LsmVectorIndex.<Long>hnswBuilder()
-                    .lsmTree(roundTree)
-                    .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                    .dimensions(dims)
+                    .lsmTree(roundTree).docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
                     .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                    .maxConnections(maxConnections)
-                    .efConstruction(64)
-                    .efSearch(64)
-                    .build();
+                    .maxConnections(maxConnections).efConstruction(64).efSearch(64).build();
 
             // Force all nodes to level 0 via a rigged Random that always returns
             // high nextDouble() values (producing level 0).
@@ -702,7 +677,7 @@ class SharedStateAdversarialTest {
 
             // Seed a single "hub" node at docId=0. All concurrent nodes will
             // connect to this hub because it is the only existing node.
-            roundIndex.index(0L, new float[]{1.0f, 0.0f, 0.0f, 0.0f});
+            roundIndex.index(0L, new float[]{ 1.0f, 0.0f, 0.0f, 0.0f });
 
             // Now index concurrentNodes simultaneously. Each is at level 0, and
             // the hub is the only neighbor they can discover. Each thread will
@@ -715,49 +690,59 @@ class SharedStateAdversarialTest {
             for (int t = 0; t < concurrentNodes; t++) {
                 long docId = 10L + t;
                 // Give each node a slightly different vector (all similar to hub)
-                float[] vec = new float[]{0.9f, 0.1f * t, 0.0f, 0.0f};
+                float[] vec = new float[]{ 0.9f, 0.1f * t, 0.0f, 0.0f };
                 threads.add(Thread.ofVirtual().start(() -> {
                     try {
                         barrier.await();
                         roundIndex.index(docId, vec);
                     } catch (Exception e) {
-                        synchronized (errors) { errors.add(e); }
+                        synchronized (errors) {
+                            errors.add(e);
+                        }
                     }
                 }));
             }
 
-            for (Thread t : threads) t.join(30_000);
-            if (!errors.isEmpty()) break;
+            for (Thread t : threads)
+                t.join(30_000);
+            if (!errors.isEmpty())
+                break;
 
             // Verify: the hub node (docId=0) must have backlinks to ALL
             // concurrentNodes nodes in its layer-0 neighbor list.
             byte[] hubDocIdBytes = LONG_DOC_ID_SERIALIZER.serialize(0L)
                     .toArray(ValueLayout.JAVA_BYTE);
-            Optional<MemorySegment> hubOpt = roundTree.get(
-                    MemorySegment.ofArray(hubDocIdBytes));
-            assertTrue(hubOpt.isPresent(),
-                    "Round " + round + ": hub node should exist");
+            Optional<MemorySegment> hubOpt = roundTree.get(MemorySegment.ofArray(hubDocIdBytes));
+            assertTrue(hubOpt.isPresent(), "Round " + round + ": hub node should exist");
 
             byte[] hubBytes = hubOpt.get().toArray(ValueLayout.JAVA_BYTE);
-            // Decode: [4-byte docIdLen][4-byte layerCount][layer0: 4-byte count + neighbors...]
-            int docIdLen = ((hubBytes[0] & 0xFF) << 24) | ((hubBytes[1] & 0xFF) << 16)
-                    | ((hubBytes[2] & 0xFF) << 8) | (hubBytes[3] & 0xFF);
-            int layerCount = ((hubBytes[4] & 0xFF) << 24) | ((hubBytes[5] & 0xFF) << 16)
-                    | ((hubBytes[6] & 0xFF) << 8) | (hubBytes[7] & 0xFF);
-            assertTrue(layerCount >= 1,
-                    "Round " + round + ": hub should have at least layer 0");
+            // Updated by audit F-R6.data_transformation.2.5: node format now uses
+            // per-neighbor length-prefixed encoding instead of fixed docIdLen
+            // Decode: [4-byte docIdLen][4-byte layerCount][layer0: 4-byte count +
+            // per-neighbor: [4-byte nbLen][nbLen bytes]...]
+            int off = 0;
+            int docIdLen = ((hubBytes[off] & 0xFF) << 24) | ((hubBytes[off + 1] & 0xFF) << 16)
+                    | ((hubBytes[off + 2] & 0xFF) << 8) | (hubBytes[off + 3] & 0xFF);
+            off += 4;
+            int layerCount = ((hubBytes[off] & 0xFF) << 24) | ((hubBytes[off + 1] & 0xFF) << 16)
+                    | ((hubBytes[off + 2] & 0xFF) << 8) | (hubBytes[off + 3] & 0xFF);
+            off += 4;
+            assertTrue(layerCount >= 1, "Round " + round + ": hub should have at least layer 0");
 
-            int layer0Count = ((hubBytes[8] & 0xFF) << 24) | ((hubBytes[9] & 0xFF) << 16)
-                    | ((hubBytes[10] & 0xFF) << 8) | (hubBytes[11] & 0xFF);
+            int layer0Count = ((hubBytes[off] & 0xFF) << 24) | ((hubBytes[off + 1] & 0xFF) << 16)
+                    | ((hubBytes[off + 2] & 0xFF) << 8) | (hubBytes[off + 3] & 0xFF);
+            off += 4;
 
-            // Collect neighbor docIds from layer 0
+            // Collect neighbor docIds from layer 0 (length-prefixed per neighbor)
             Set<Long> hubNeighborDocIds = new java.util.HashSet<>();
-            int off = 12;
             for (int n = 0; n < layer0Count; n++) {
-                byte[] nbId = Arrays.copyOfRange(hubBytes, off, off + docIdLen);
-                hubNeighborDocIds.add(LONG_DOC_ID_SERIALIZER.deserialize(
-                        MemorySegment.ofArray(nbId)));
-                off += docIdLen;
+                int nbLen = ((hubBytes[off] & 0xFF) << 24) | ((hubBytes[off + 1] & 0xFF) << 16)
+                        | ((hubBytes[off + 2] & 0xFF) << 8) | (hubBytes[off + 3] & 0xFF);
+                off += 4;
+                byte[] nbId = Arrays.copyOfRange(hubBytes, off, off + nbLen);
+                hubNeighborDocIds
+                        .add(LONG_DOC_ID_SERIALIZER.deserialize(MemorySegment.ofArray(nbId)));
+                off += nbLen;
             }
 
             // All concurrently-indexed nodes should appear as neighbors of the hub
@@ -767,33 +752,30 @@ class SharedStateAdversarialTest {
             }
 
             Set<Long> missing = expectedDocIds.stream()
-                    .filter(id -> !hubNeighborDocIds.contains(id))
-                    .collect(Collectors.toSet());
+                    .filter(id -> !hubNeighborDocIds.contains(id)).collect(Collectors.toSet());
 
             assertTrue(missing.isEmpty(),
-                    "Round " + round + ": hub node lost backlinks to " + missing.size()
-                            + " of " + concurrentNodes + " nodes. Missing docIds: "
-                            + missing + ". Hub has " + layer0Count + " neighbors: "
-                            + hubNeighborDocIds
+                    "Round " + round + ": hub node lost backlinks to " + missing.size() + " of "
+                            + concurrentNodes + " nodes. Missing docIds: " + missing + ". Hub has "
+                            + layer0Count + " neighbors: " + hubNeighborDocIds
                             + " — concurrent read-modify-write race dropped edges.");
 
             roundIndex.close();
         }
 
-        assertTrue(errors.isEmpty(),
-                "Concurrent index() threw exceptions: " + errors);
+        assertTrue(errors.isEmpty(), "Concurrent index() threw exceptions: " + errors);
     }
 
     // Finding: F-R5.shared_state.2.6
     // Bug: Soft-delete tombstone cleared before node write creates visibility window —
-    //      during re-index, tombstone is deleted (line 870) before the new node is written
-    //      (line 909), so a concurrent search sees the old (stale) node data as non-deleted.
+    // during re-index, tombstone is deleted (line 870) before the new node is written
+    // (line 909), so a concurrent search sees the old (stale) node data as non-deleted.
     // Correct behavior: The soft-delete tombstone should remain until the new node data
-    //                   has been written, so searches never see stale pre-removal vector data.
+    // has been written, so searches never see stale pre-removal vector data.
     // Fix location: Hnsw.index() — move lsmTree.delete(softDeleteKey) after the early
-    //               node write (line 909-910) or after the final node rewrite (line 955-956).
+    // node write (line 909-910) or after the final node rewrite (line 955-956).
     // Regression watch: Tombstone must still be cleared during re-index so the new node
-    //                   is visible to subsequent searches.
+    // is visible to subsequent searches.
     @Test
     void test_hnsw_index_reindexTombstoneVisibilityWindow_noStaleData() throws Exception {
         int dims = 4;
@@ -801,12 +783,12 @@ class SharedStateAdversarialTest {
 
         // The old vector and the new vector are intentionally very different
         // so we can detect which one a search returns.
-        float[] oldVector = new float[]{1.0f, 0.0f, 0.0f, 0.0f};
-        float[] newVector = new float[]{0.0f, 0.0f, 0.0f, 1.0f};
+        float[] oldVector = new float[]{ 1.0f, 0.0f, 0.0f, 0.0f };
+        float[] newVector = new float[]{ 0.0f, 0.0f, 0.0f, 1.0f };
 
         // Query that is similar to oldVector but dissimilar to newVector.
         // dot(query, oldVector) = 1.0, dot(query, newVector) = 0.0
-        float[] queryForOld = new float[]{1.0f, 0.0f, 0.0f, 0.0f};
+        float[] queryForOld = new float[]{ 1.0f, 0.0f, 0.0f, 0.0f };
 
         int rounds = 200;
         AtomicReference<String> violation = new AtomicReference<>();
@@ -814,14 +796,9 @@ class SharedStateAdversarialTest {
         for (int round = 0; round < rounds && violation.get() == null; round++) {
             LsmTree roundTree = buildTree(1024 * 1024);
             VectorIndex.Hnsw<Long> roundIndex = LsmVectorIndex.<Long>hnswBuilder()
-                    .lsmTree(roundTree)
-                    .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                    .dimensions(dims)
+                    .lsmTree(roundTree).docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
                     .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                    .maxConnections(maxConnections)
-                    .efConstruction(16)
-                    .efSearch(16)
-                    .build();
+                    .maxConnections(maxConnections).efConstruction(16).efSearch(16).build();
 
             // Force all nodes to level 0 so structure is simple
             var randomField = LsmVectorIndex.Hnsw.class.getDeclaredField("random");
@@ -854,7 +831,9 @@ class SharedStateAdversarialTest {
                     roundIndex.index(targetDocId, newVector);
                     reindexDone.set(true);
                 } catch (Exception e) {
-                    synchronized (errors) { errors.add(e); }
+                    synchronized (errors) {
+                        errors.add(e);
+                    }
                 }
             });
 
@@ -863,8 +842,8 @@ class SharedStateAdversarialTest {
                 try {
                     barrier.await();
                     while (!reindexDone.get()) {
-                        List<? extends VectorIndex.SearchResult<Long>> results =
-                                roundIndex.search(queryForOld, 10);
+                        List<? extends VectorIndex.SearchResult<Long>> results = roundIndex
+                                .search(queryForOld, 10);
                         for (var r : results) {
                             if (r.docId().equals(targetDocId)) {
                                 // Found the target doc in search results during re-index.
@@ -883,15 +862,16 @@ class SharedStateAdversarialTest {
                         }
                     }
                 } catch (Exception e) {
-                    synchronized (errors) { errors.add(e); }
+                    synchronized (errors) {
+                        errors.add(e);
+                    }
                 }
             });
 
             indexer.join(10_000);
             searcher.join(10_000);
 
-            assertTrue(errors.isEmpty(),
-                    "Round " + round + ": exceptions during test: " + errors);
+            assertTrue(errors.isEmpty(), "Round " + round + ": exceptions during test: " + errors);
 
             roundIndex.close();
         }
@@ -901,14 +881,14 @@ class SharedStateAdversarialTest {
 
     // Finding: F-R1.shared_state.3.2
     // Bug: No upper-bound validation on dimensions — Integer.MAX_VALUE accepted by setter
-    //      and validateBase(), causing integer overflow in downstream byte allocation
-    //      (dimensions * 4 for FLOAT32, dimensions * 2 for FLOAT16) and
-    //      OutOfMemoryError / NegativeArraySizeException at runtime.
+    // and validateBase(), causing integer overflow in downstream byte allocation
+    // (dimensions * 4 for FLOAT32, dimensions * 2 for FLOAT16) and
+    // OutOfMemoryError / NegativeArraySizeException at runtime.
     // Correct behavior: dimensions() setter should reject values that would overflow
-    //                   when multiplied by the largest bytesPerComponent (4 for FLOAT32).
+    // when multiplied by the largest bytesPerComponent (4 for FLOAT32).
     // Fix location: AbstractBuilder.dimensions() setter (LsmVectorIndex.java:311-315)
     // Regression watch: Upper bound must be <= Integer.MAX_VALUE / 4 to prevent overflow
-    //                   in all precision modes.
+    // in all precision modes.
     @Test
     void test_abstractBuilder_dimensions_integerMaxValue_rejectsOverflowProneDimensions() {
         // Integer.MAX_VALUE * 4 overflows int, producing a negative value.
@@ -940,14 +920,10 @@ class SharedStateAdversarialTest {
 
         // numClusters=1, nprobe=100 — nprobe far exceeds numClusters
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> LsmVectorIndex.<Long>ivfFlatBuilder()
-                        .lsmTree(tree)
-                        .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                        .dimensions(4)
-                        .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                        .numClusters(1)
-                        .nprobe(100)
-                        .build(),
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(tree)
+                        .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(4)
+                        .similarityFunction(SimilarityFunction.DOT_PRODUCT).numClusters(1)
+                        .nprobe(100).build(),
                 "build() should reject nprobe > numClusters as semantically invalid");
 
         assertTrue(ex.getMessage().contains("nprobe"),
@@ -957,37 +933,31 @@ class SharedStateAdversarialTest {
     // Finding: F-R5.shared_state.4.1
     // Bug: HNSW searchLayer entry node bypasses NaN check, corrupts both frontier and results heaps
     // Correct behavior: NaN-component vectors must be rejected at index() so they never become
-    //                   entry points whose NaN score corrupts searchLayer heap ordering
+    // entry points whose NaN score corrupts searchLayer heap ordering
     // Fix location: Hnsw.index() — validateFiniteComponents() call rejects NaN vectors;
-    //               searchLayer — Float.isFinite(entryScore) guard on entry node;
-    //               ScoredCandidate compact constructor — rejects non-finite scores
+    // searchLayer — Float.isFinite(entryScore) guard on entry node;
+    // ScoredCandidate compact constructor — rejects non-finite scores
     // Regression watch: All three defense layers must remain; removing input validation alone
-    //                   would re-expose the searchLayer corruption path
+    // would re-expose the searchLayer corruption path
     @Test
     void test_hnsw_searchLayer_nanEntryNode_rejectedAtIndexBoundary() throws Exception {
         int dims = 4;
 
         LsmTree tree = buildTree(1024 * 1024);
-        VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
-                .lsmTree(tree)
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(dims)
-                .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                .maxConnections(4)
-                .efConstruction(8)
-                .efSearch(8)
-                .build();
+        VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
+                .similarityFunction(SimilarityFunction.DOT_PRODUCT).maxConnections(4)
+                .efConstruction(8).efSearch(8).build();
 
         // Index a valid node first — this becomes the entry point
-        index.index(1L, new float[]{1.0f, 0.0f, 0.0f, 0.0f});
+        index.index(1L, new float[]{ 1.0f, 0.0f, 0.0f, 0.0f });
 
         // Attempt to index a vector with NaN components.
         // Before the fix, this would succeed and if this node became the entry point,
         // scoreNode would return NaN, which was added to both frontier and results
         // heaps without checking, corrupting Float.compare-based ordering.
-        float[] nanVector = new float[]{Float.NaN, 1.0f, 0.0f, 0.0f};
-        var ex = assertThrows(IllegalArgumentException.class,
-                () -> index.index(2L, nanVector),
+        float[] nanVector = new float[]{ Float.NaN, 1.0f, 0.0f, 0.0f };
+        var ex = assertThrows(IllegalArgumentException.class, () -> index.index(2L, nanVector),
                 "HNSW index() must reject vectors with NaN components to prevent "
                         + "searchLayer entry node from producing NaN scores that corrupt heaps");
 
@@ -996,23 +966,22 @@ class SharedStateAdversarialTest {
 
         // Verify the valid entry point is still searchable — the rejected NaN vector
         // did not corrupt any shared state
-        List<VectorIndex.SearchResult<Long>> results = index.search(
-                new float[]{1.0f, 0.0f, 0.0f, 0.0f}, 1);
+        List<VectorIndex.SearchResult<Long>> results = index
+                .search(new float[]{ 1.0f, 0.0f, 0.0f, 0.0f }, 1);
         assertEquals(1, results.size(),
                 "Search should still return the valid vector after NaN rejection");
-        assertEquals(1L, results.getFirst().docId(),
-                "Search should return the correct docId");
+        assertEquals(1L, results.getFirst().docId(), "Search should return the correct docId");
 
         index.close();
     }
 
     // Finding: F-R5.shared_state.4.5
     // Bug: EntryPoint record accepts negative maxLayer without validation.
-    //      If stored entry point data is corrupted to contain a negative maxLayer,
-    //      readEntryPoint() silently returns it. In index(), startLevel becomes
-    //      negative, skipping all layers, producing a disconnected node.
+    // If stored entry point data is corrupted to contain a negative maxLayer,
+    // readEntryPoint() silently returns it. In index(), startLevel becomes
+    // negative, skipping all layers, producing a disconnected node.
     // Correct behavior: readEntryPoint() should reject a negative maxLayer with
-    //                   an IllegalStateException (corrupt stored data).
+    // an IllegalStateException (corrupt stored data).
     // Fix location: Hnsw.EntryPoint compact constructor (LsmVectorIndex.java:1062)
     // Regression watch: Must not break normal entry point reads with maxLayer >= 0.
     @Test
@@ -1020,24 +989,18 @@ class SharedStateAdversarialTest {
         int dims = 4;
 
         LsmTree tree = buildTree(1024 * 1024);
-        VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
-                .lsmTree(tree)
-                .docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(dims)
-                .similarityFunction(SimilarityFunction.DOT_PRODUCT)
-                .maxConnections(4)
-                .efConstruction(16)
-                .efSearch(16)
-                .build();
+        VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(dims)
+                .similarityFunction(SimilarityFunction.DOT_PRODUCT).maxConnections(4)
+                .efConstruction(16).efSearch(16).build();
 
         // Index one node normally to establish the graph
-        index.index(1L, new float[]{1.0f, 0.0f, 0.0f, 0.0f});
+        index.index(1L, new float[]{ 1.0f, 0.0f, 0.0f, 0.0f });
 
         // Corrupt the entry point by writing a negative maxLayer directly to the tree.
         // Entry point key is 0xFE; value format is [4-byte BE maxLayer][docIdBytes].
-        byte[] epKey = new byte[]{(byte) 0xFE};
-        byte[] docIdBytes = LONG_DOC_ID_SERIALIZER.serialize(1L)
-                .toArray(ValueLayout.JAVA_BYTE);
+        byte[] epKey = new byte[]{ (byte) 0xFE };
+        byte[] docIdBytes = LONG_DOC_ID_SERIALIZER.serialize(1L).toArray(ValueLayout.JAVA_BYTE);
         // Encode maxLayer = -1 in big-endian
         byte[] corruptValue = new byte[4 + docIdBytes.length];
         int negativeLayer = -1;
@@ -1052,7 +1015,7 @@ class SharedStateAdversarialTest {
         // with an exception indicating corrupt data, NOT silently produce a
         // disconnected node.
         assertThrows(IllegalStateException.class,
-                () -> index.index(2L, new float[]{0.0f, 1.0f, 0.0f, 0.0f}),
+                () -> index.index(2L, new float[]{ 0.0f, 1.0f, 0.0f, 0.0f }),
                 "Negative maxLayer from corrupted entry point should throw "
                         + "IllegalStateException, not silently create a disconnected node");
 
@@ -1064,10 +1027,76 @@ class SharedStateAdversarialTest {
         // Integer.MAX_VALUE / 4 is the largest safe value for FLOAT32 (dimensions * 4 fits int).
         int maxSafe = Integer.MAX_VALUE / 4;
         // Should NOT throw — this is the boundary of acceptable values.
-        assertDoesNotThrow(
-                () -> LsmVectorIndex.<Long>ivfFlatBuilder().dimensions(maxSafe),
+        assertDoesNotThrow(() -> LsmVectorIndex.<Long>ivfFlatBuilder().dimensions(maxSafe),
                 "dimensions(Integer.MAX_VALUE / 4) should be accepted — "
                         + "it is the largest value where dimensions * 4 does not overflow");
+    }
+
+    // Finding: F-R2.shared_state.3.2
+    // Bug: MAX_DIMENSIONS guard is hardcoded to Integer.MAX_VALUE / 4 (for FLOAT32's
+    // 4 bytesPerComponent) and does not consult the precision. With FLOAT16
+    // (2 bytesPerComponent), dimensions up to Integer.MAX_VALUE / 2 are safe
+    // but the setter rejects them because the guard is precision-unaware.
+    // Correct behavior: The dimensions guard should be precision-aware — FLOAT16
+    // should allow dimensions up to Integer.MAX_VALUE / 2 since dimensions * 2
+    // does not overflow.
+    // Fix location: AbstractBuilder.dimensions() and validateBase() — compute
+    // max dimensions from precision.bytesPerComponent()
+    // Regression watch: FLOAT32 max dimensions must remain Integer.MAX_VALUE / 4
+    @Test
+    void test_abstractBuilder_dimensions_float16AllowsHigherMax() {
+        // With FLOAT16 (2 bytes/component), dimensions * 2 fits in int for values
+        // up to Integer.MAX_VALUE / 2. The value Integer.MAX_VALUE / 4 + 1 is
+        // rejected by the current hardcoded guard but is safe for FLOAT16.
+        int dimsOverFloat32Max = Integer.MAX_VALUE / 4 + 1;
+
+        // Set precision to FLOAT16 first, then set dimensions — should succeed
+        assertDoesNotThrow(
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().precision(VectorPrecision.FLOAT16)
+                        .dimensions(dimsOverFloat32Max),
+                "dimensions(" + dimsOverFloat32Max + ") should be accepted with FLOAT16 "
+                        + "because dimensions * 2 = " + ((long) dimsOverFloat32Max * 2)
+                        + " fits in int, but the precision-unaware MAX_DIMENSIONS guard rejects it");
+    }
+
+    @Test
+    void test_abstractBuilder_dimensions_float16MaxSafeBoundary() {
+        // Integer.MAX_VALUE / 2 is the largest safe value for FLOAT16
+        int maxSafeFloat16 = Integer.MAX_VALUE / 2;
+        assertDoesNotThrow(
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().precision(VectorPrecision.FLOAT16)
+                        .dimensions(maxSafeFloat16),
+                "dimensions(Integer.MAX_VALUE / 2) should be accepted with FLOAT16");
+    }
+
+    @Test
+    void test_abstractBuilder_dimensions_float16RejectsOverflow() {
+        // Integer.MAX_VALUE / 2 + 1 would overflow: (MAX/2 + 1) * 2 > Integer.MAX_VALUE
+        int overflowFloat16 = Integer.MAX_VALUE / 2 + 1;
+        assertThrows(IllegalArgumentException.class,
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().precision(VectorPrecision.FLOAT16)
+                        .dimensions(overflowFloat16),
+                "dimensions(Integer.MAX_VALUE / 2 + 1) should throw for FLOAT16 "
+                        + "because dimensions * 2 overflows int");
+    }
+
+    @Test
+    void test_abstractBuilder_validateBase_catchesPrecisionDimensionMismatch() throws IOException {
+        // Set dimensions with FLOAT16 (permissive), then switch to FLOAT32 (stricter).
+        // validateBase() must catch dimensions that are too large for the final precision.
+        LsmTree tree = buildTree(1024 * 1024);
+        int dimsOverFloat32Max = Integer.MAX_VALUE / 4 + 1;
+
+        assertThrows(IllegalArgumentException.class,
+                () -> LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(tree)
+                        .docIdSerializer(LONG_DOC_ID_SERIALIZER).precision(VectorPrecision.FLOAT16)
+                        .dimensions(dimsOverFloat32Max)
+                        .similarityFunction(SimilarityFunction.DOT_PRODUCT).numClusters(1)
+                        .precision(VectorPrecision.FLOAT32) // switch back to FLOAT32
+                        .build(),
+                "build() should reject dimensions that overflow with the final precision "
+                        + "even if they were valid when dimensions() was called with a "
+                        + "different precision");
     }
 
 }

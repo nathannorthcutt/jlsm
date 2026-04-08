@@ -11,19 +11,18 @@ input=$(cat)
 
 # Try Python (best: native JSON/JSONL parsing, no jq dependency)
 if command -v python3 &>/dev/null; then
-    echo "$input" | python3 "$SCRIPT_DIR/token-stop-hook.py" 2>/dev/null
-    if [[ $? -eq 0 ]]; then
+    if echo "$input" | python3 "$SCRIPT_DIR/token-stop-hook.py" 2>/dev/null; then
         exit 0
     fi
 fi
 
 # Try Node.js
 if command -v node &>/dev/null; then
-    echo "$input" | node "$SCRIPT_DIR/token-stop-hook.js" 2>/dev/null
-    if [[ $? -eq 0 ]]; then
+    if echo "$input" | node "$SCRIPT_DIR/token-stop-hook.js" 2>/dev/null; then
         exit 0
     fi
 fi
 
 # Fallback: bash (requires jq for full functionality)
 echo "$input" | bash "$SCRIPT_DIR/token-stop-hook.sh"
+exit 0

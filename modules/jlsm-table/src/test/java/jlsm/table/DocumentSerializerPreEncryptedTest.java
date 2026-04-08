@@ -161,14 +161,18 @@ class DocumentSerializerPreEncryptedTest {
 
     // ── Opaque (AES-GCM) pre-encrypted round-trip ───────────────────────
 
+    // Updated by audit F-R1.data_transform.1.2: GCM key derivation was plain truncation
+    // (first 32 bytes of 64-byte key), making the GCM key identical to the SIV CMAC
+    // sub-key. Now correctly derived via HMAC-SHA256 with domain-separated info string.
     @Test
-    void preEncrypted_roundTrip_opaqueField() {
+    void preEncrypted_roundTrip_opaqueField() throws Exception {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("secret", FieldType.string(), EncryptionSpec.opaque()).build();
 
-        // Create a key holder for GCM (32 bytes)
+        // Derive the GCM key the same way FieldEncryptionDispatch does:
+        // HMAC-SHA256(masterKey, "gcm-opaque-key") for independent sub-key derivation
         byte[] key64Copy = keyHolder64.getKeyBytes();
-        byte[] gcmKey = Arrays.copyOfRange(key64Copy, 0, 32);
+        byte[] gcmKey = hmacSha256DeriveKey(key64Copy, "gcm-opaque-key");
         Arrays.fill(key64Copy, (byte) 0);
         EncryptionKeyHolder gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
         jlsm.encryption.AesGcmEncryptor gcm = new jlsm.encryption.AesGcmEncryptor(gcmKeyHolder);
@@ -188,5 +192,12 @@ class DocumentSerializerPreEncryptedTest {
         JlsmDocument out = ser.deserialize(bytes);
 
         assertEquals("top-secret", out.getString("secret"));
+    }
+
+    /** Mirrors FieldEncryptionDispatch.hmacSha256 for test key derivation. */
+    private static byte[] hmacSha256DeriveKey(byte[] key, String info) throws Exception {
+        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(new javax.crypto.spec.SecretKeySpec(key, "HmacSHA256"));
+        return mac.doFinal(info.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

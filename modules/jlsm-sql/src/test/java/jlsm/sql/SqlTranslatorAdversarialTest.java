@@ -95,13 +95,14 @@ class SqlTranslatorAdversarialTest {
                 () -> translate("SELECT * FROM test WHERE age = 99999999999999999999"));
     }
 
-    /** FINDING-3: number just beyond Integer range should parse as Long */
+    /**
+     * FINDING-3: number just beyond Integer range is rejected for INT32 fields. Updated by audit
+     * F-R1.cb.2.6 — translator now validates integer range per field type
+     */
     @Test
-    void integerOverflowFallsToLong() throws SqlParseException {
-        // 2147483648 = Integer.MAX_VALUE + 1 — should parse as Long
-        var query = translate("SELECT * FROM test WHERE age = 2147483648");
-        assertTrue(query.predicate().isPresent());
-        var eq = assertInstanceOf(Predicate.Eq.class, query.predicate().get());
-        assertEquals(2147483648L, eq.value());
+    void integerOverflowFallsToLong() {
+        // 2147483648 = Integer.MAX_VALUE + 1 — exceeds INT32 range, must be rejected
+        assertThrows(SqlParseException.class,
+                () -> translate("SELECT * FROM test WHERE age = 2147483648"));
     }
 }

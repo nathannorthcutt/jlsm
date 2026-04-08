@@ -17,6 +17,10 @@ couldn't see because they each had a narrower scope.
 5. Stale KB — research that may have better approaches now given what's been built
 6. Implicit dependencies — gaps between independently-designed features
 7. Orphaned areas — high-churn files with no structured knowledge behind them
+8. Unspecified shared types — foundational types referenced by 3+ specs with no spec
+9. Spec obligations — DRAFT specs with unresolved conflicts blocking approval
+10. Spec-code drift — specs whose domain code changed after the spec was written
+11. Cross-reference gaps — KB entries and ADRs with missing related/source links
 
 **Flags:**
 - `--init` — first-time scan (ignores last-scanned SHA, good for new installs)
@@ -173,6 +177,104 @@ From "Out-of-Scope Items" in the scan summary:
 4. For each item, the user can: create a deferred stub, skip, or create all
    stubs from that parent ADR at once
 
+### 2h — Spec coverage analysis
+
+**Guard:** Only run this step if `.spec/` exists. If no spec directory, skip
+entirely — don't mention specs or suggest setting up specs.
+
+From "Spec Coverage Gaps" in the scan summary (if present):
+
+**Unspecified shared types:**
+1. Types referenced by 3+ specs that have no spec of their own
+2. These are foundational types with implicit contracts — multiple specs
+   depend on their behavior but nobody has defined what that behavior is
+3. Rank by reference count — higher count = more dependent specs = bigger risk
+
+**Specs with open obligations:**
+1. Specs with `[UNRESOLVED]` or `[CONFLICT]` markers or `open_obligations`
+   in frontmatter
+2. These are blocking downstream work — DRAFT specs can't be relied on until
+   obligations are resolved
+3. Higher obligation count = more blocking
+
+**Spec-code drift:**
+1. Specs whose domain files have been committed since the spec was created
+2. Higher commit count = more likely the spec no longer matches reality
+3. Cross-reference with ADR pressure — if the same area has both ADR pressure
+   and spec drift, it's a stronger signal
+
+**Undecided absent behaviors:**
+1. Specs with `[ABSENT]` requirements — behaviors that downstream specs assume
+   but the implementation doesn't provide
+2. These are unresolved design decisions: each `[ABSENT]` requirement needs an
+   explicit promote/preserve/defer choice
+3. Higher count = more implicit assumptions without backing decisions
+
+### 2i — Cross-reference repair candidates
+
+**Guard:** Only run this step if "Cross-Reference Candidates" section exists in
+the scan summary. If absent, skip entirely.
+
+From "Cross-Reference Candidates" in the scan summary:
+
+**KB entries with missing related links (tag overlap):**
+1. Entry pairs that share 2+ tags but have no `related` link between them
+2. Higher tag overlap = stronger signal that these entries should reference each other
+3. Entries in different categories are more valuable links — same-category entries
+   are already navigable via category indexes
+4. Assess whether the overlap is meaningful: shared tags like "performance" +
+   "caching" between a caching strategy and a benchmarking entry → likely related.
+   Shared tags like "java" + "testing" between unrelated entries → coincidental.
+
+**KB entries with overlapping applies_to:**
+1. Entries that target the same source files/patterns but don't reference each other
+2. These likely describe different aspects of the same code — a `related` link
+   helps the Research Agent find all relevant context when loading one entry
+3. Stronger signal than tag overlap because file paths are specific
+
+**ADR evaluation references not in KB Sources:**
+1. KB entries cited in evaluation.md scoring that don't appear in the ADR's
+   KB Sources Used table
+2. These are missing traceability links — the ADR used this research during
+   evaluation but doesn't formally reference it
+3. Fix is straightforward: add the missing row to the KB Sources table
+
+### 2j — Deferred audit feedback
+
+**Guard:** Only run this step if "Deferred Audit Feedback" section exists
+in the scan summary. If absent, skip entirely.
+
+From "Deferred Audit Feedback" in the scan summary:
+
+1. Each row is a `spec-updates.md` or `kb-suggestions.md` file from a
+   completed audit where the user skipped or deferred the feedback loop
+2. These contain ready-made spec requirements and KB pattern suggestions
+   that a prior audit produced — they don't need re-analysis, just review
+   and application
+3. Present as high-priority pick list items — the work is already done,
+   applying it is cheap
+
+When the user picks one of these items:
+- Read the file at the path shown in the scan summary
+- Present the contents using the same apply/review/skip (for specs) or
+  create/select/skip (for KB) menus from the audit feedback loop
+  (see audit SKILL.md Job 5a/5b for the exact flow)
+- After applying: rename the file from `<name>.md` to `<name>.applied.md`
+  so it won't be picked up by future curate scans or audit feedback loops
+
+### 2k — Decisions roadmap needed
+
+**Guard:** Only run this step if "Decisions Roadmap Needed" section exists
+in the scan summary. If absent, skip entirely.
+
+From "Decisions Roadmap Needed" in the scan summary:
+
+1. There are 10+ deferred decisions with no current roadmap
+2. Present as a high-priority pick list item: "N deferred decisions need
+   planning — run `/decisions roadmap` to cluster and prioritize"
+3. When the user picks this item: suggest running `/decisions roadmap` in
+   a separate session (roadmap is a planning skill, not a curate action)
+
 ---
 
 ## Step 3 — Present findings as a numbered pick list
@@ -199,12 +301,16 @@ worth exploring:
   3. <Area> (<files>) — <observation>.
      → I'll explore this area and surface anything worth documenting
 
-Pick a number to start, or:
-  all   — work through each item in order
-  done  — note remaining items for next /curate run
-
 Items you don't address are saved automatically — run /curate anytime to pick them up.
 ```
+
+Use AskUserQuestion to let the user choose. Build options dynamically:
+- If 4 or fewer items: one option per item (labeled with its number and
+  short description), plus `All` (description: "Work through each item in
+  order") and `Done` (description: "Note remaining items for next /curate run").
+- If more than 4 items: use `All`, `Done`, and `Other` (description: "Type
+  a number to start with"). If the user selects "Other", wait for them to
+  provide the item number as free text.
 
 ### Warm repo (has existing artifacts)
 
@@ -235,18 +341,40 @@ I scanned <N> commits since last review and found <N> items:
   7. <Shared files> — touched by <feature A> and <feature B>, no cross-coverage
      → I'll explore the interaction and flag anything missed
 
-  8. <Orphaned files> — <N> commits, no KB or decision coverage
-     → I'll research this area so future work has context
-
-  9. <parent-adr-slug> — <N> out-of-scope items with no deferred stubs
+  8. <parent-adr-slug> — <N> out-of-scope items with no deferred stubs
      → I'll show them and you can choose which to track as deferred decisions
 
-Pick a number to start, or:
-  all   — work through each item in order
-  done  — note remaining items for next /curate run
+  9. <TypeName> — referenced by <N> specs but has no spec of its own
+     → I'll run spec extraction to define its contract and find cross-spec conflicts
+
+ 10. Spec <ID> (<name>) — <N> unresolved conflicts blocking APPROVED status
+     → I'll show the conflicts so you can resolve them via /spec-author
+
+ 11. Spec <ID> (<name>) — <N> commits to related files since spec was written
+     → I'll check if the spec still matches the implementation via /spec-verify
+
+ 12. Spec <ID> (<name>) — <N> undecided [ABSENT] requirements need explicit decisions
+     → I'll show each one so you can promote, preserve, or defer
+
+ 13. <Orphaned files> — <N> commits, no KB or decision coverage
+     → I'll research this area so future work has context
+
+ 14. <N> KB entries may need `related` links — <N> tag-overlap pairs, <N> applies_to overlaps
+     → I'll show the most likely candidates so you can add or dismiss each link
+
+ 15. <adr-slug> — evaluation references <N> KB entries not in its Sources table
+     → I'll add the missing references to the ADR
 
 Items you don't address are saved automatically — run /curate anytime to pick them up.
 ```
+
+Use AskUserQuestion to let the user choose. Build options dynamically:
+- If 4 or fewer items: one option per item (labeled with its number and
+  short description), plus `All` (description: "Work through each item in
+  order") and `Done` (description: "Note remaining items for next /curate run").
+- If more than 4 items: use `All`, `Done`, and `Other` (description: "Type
+  a number to start with"). If the user selects "Other", wait for them to
+  provide the item number as free text.
 
 ### After completing an item
 
@@ -261,8 +389,15 @@ Done. <N> items remaining:
 
   2. ...
 
-Pick a number, or: done
 ```
+
+Use AskUserQuestion to let the user choose. Build options dynamically:
+- If 4 or fewer remaining items: one option per item (labeled with its number
+  and short description), plus `Done` (description: "Note remaining items for
+  next /curate run").
+- If more than 4 remaining items: use `Done` and `Other` (description: "Type
+  a number to continue with"). If the user selects "Other", wait for them to
+  provide the item number as free text.
 
 ### Nothing found
 
@@ -378,6 +513,88 @@ Or: create-all · skip-all
 - **create-all** → Apply create-stub to all items from that parent ADR
 - **skip** → Items resurface on next `/curate` run (no dismiss needed — once
   a stub exists, the scan deduplicates automatically)
+
+**Unspecified shared types:** Read the spec files that reference this type to
+understand the implicit contract. Then invoke `/spec-author extraction-mode`
+with the type name — this extracts the type's behavioral contract from the
+referencing specs and the source code, producing a standalone spec. Present
+summary: "This type is referenced by <N> specs. Here's what each spec assumes
+about it: <brief list>. Want me to extract its spec?"
+
+**Specs with open obligations:** Read the spec file and display the specific
+`[UNRESOLVED]` and `[CONFLICT]` markers with their surrounding context (2-3
+lines each direction). Present: "This spec has <N> unresolved items. Here they
+are: <list>." Offer: "Want me to run `/spec-resolve` to work through these?"
+
+**Spec-code drift:** Present the commit count and affected domains: "This spec
+was written on <date> and <N> commits have touched its domain files since.
+Want me to run `/spec-verify` to check if the spec still matches the
+implementation?" When the user accepts, invoke `/spec-verify` with the spec
+file path.
+
+**Undecided absent behaviors:** Read the spec file. Find all requirements
+tagged with `[ABSENT]`. For each one, display the requirement ID, the full
+requirement text, and any consuming specs that assume this behavior. Then
+offer the three choices:
+
+- **promote** — Rewrite as a positive requirement describing what the code
+  SHOULD do. Remove `[ABSENT]`, add `[UNIMPLEMENTED]`. This creates an open
+  obligation (implementation work needed).
+- **preserve** — Rewrite as a negative requirement documenting the intentional
+  absence ("X MUST NOT Y" instead of "X does not Y [ABSENT]"). Remove
+  `[ABSENT]`. This locks in the design choice.
+- **defer** — Leave `[ABSENT]` in place. It will resurface on the next
+  `/curate` run.
+
+Apply decisions directly to the spec file. After all `[ABSENT]` requirements
+in the spec are decided, summarize what changed: how many promoted (new work),
+how many preserved (documented decisions), how many deferred.
+
+**Cross-reference repair (KB related links):** Present candidates one at a time,
+highest overlap first. For each pair, show both entries' tags and the shared tags:
+
+```
+── Cross-reference candidate ───────────────────
+  Entry A: .kb/<path-a>
+    Tags: [tag1, tag2, tag3]
+  Entry B: .kb/<path-b>
+    Tags: [tag1, tag2, tag4]
+  Shared: [tag1, tag2]
+
+  add    — add related links in both entries
+  skip   — not related, won't resurface
+  defer  — resurface next /curate run
+```
+
+- **add**: Read both entries. Add entry B's relative path to entry A's `related`
+  array and vice versa. Both entries get the bidirectional link. Use the standard
+  frontmatter array format (`related: ["topic/category/subject.md"]`).
+- **skip**: Record as dismissed in curation state (`xref-dismissed`). Won't
+  resurface on future scans.
+- **defer**: Leave for next `/curate` run.
+
+For applies_to overlap candidates, present the same way but show the shared
+file paths instead of tags. Same action options.
+
+**Cross-reference repair (ADR KB Sources):** Present the ADR and its missing
+references together:
+
+```
+── Missing KB references in ADR ────────────────
+  ADR: .decisions/<slug>/adr.md
+  Missing from KB Sources table:
+    · .kb/<path> — referenced in evaluation.md scoring
+    · .kb/<path> — referenced in evaluation.md scoring
+
+  add-all — add all missing references to the ADR's KB Sources table
+  select  — choose which to add
+  skip    — these references aren't significant
+```
+
+- **add-all**: Read adr.md, add rows to the "KB Sources Used in This Decision"
+  table for each missing entry. Role column: "Referenced in evaluation."
+- **select**: Present each missing reference individually for add/skip.
+- **skip**: Record and move on. Won't resurface (the evaluation hasn't changed).
 
 After completing the action, mark it `resolved` in the review log. Then
 **ALWAYS re-present the remaining items** (renumbered) so the user can

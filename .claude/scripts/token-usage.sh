@@ -100,7 +100,8 @@ token_checkpoint() {
     mkdir -p "$feature_dir"
     printf 'transcript=%q\nstart_line=%s\nphase=%q\ntimestamp=%s\n' \
         "$transcript" "$((line_count + 1))" "$phase" \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$feature_dir/.token-checkpoint"
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$feature_dir/.token-checkpoint.tmp" \
+        && mv "$feature_dir/.token-checkpoint.tmp" "$feature_dir/.token-checkpoint"
 }
 
 # End a pipeline phase, append usage to token-log.md, return summary string.
@@ -120,9 +121,9 @@ token_summary() {
     fi
 
     local transcript start_line cp_timestamp
-    transcript="$(grep '^transcript=' "$checkpoint_file" | cut -d= -f2-)"
-    start_line="$(grep '^start_line=' "$checkpoint_file" | cut -d= -f2-)"
-    cp_timestamp="$(grep '^timestamp=' "$checkpoint_file" | cut -d= -f2-)"
+    transcript="$(grep '^transcript=' "$checkpoint_file" 2>/dev/null | cut -d= -f2- || true)"
+    start_line="$(grep '^start_line=' "$checkpoint_file" 2>/dev/null | cut -d= -f2- || true)"
+    cp_timestamp="$(grep '^timestamp=' "$checkpoint_file" 2>/dev/null | cut -d= -f2- || true)"
 
     if [[ -z "$transcript" || ! -f "$transcript" ]]; then
         echo "unknown"

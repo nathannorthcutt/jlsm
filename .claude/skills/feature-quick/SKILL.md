@@ -329,7 +329,9 @@ If "yes": proceed to Step 6.
 ## Step 6 — Refactor
 
 Same checklist as /feature-refactor, same cycle limits (warn at 3, stop at 5),
-same missing-test escalation rules.
+same missing-test escalation rules. **Skip Step 4b (adversarial audit pass)** —
+quick tasks don't have spec analysis findings to audit against, and the scope
+is too small for adversarial testing to add value.
 
 For a /feature-quick task the refactor is usually fast — most of the checklist will be
 "nothing to do here" for a small change. Work through it anyway; security and

@@ -5,7 +5,6 @@ import jlsm.table.PartitionDescriptor;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -41,6 +40,9 @@ public final class RangeMap {
     public RangeMap(PartitionConfig config) {
         Objects.requireNonNull(config, "config must not be null");
         this.descriptors = config.descriptors(); // already unmodifiable via PartitionConfig
+        if (this.descriptors.isEmpty()) {
+            throw new IllegalArgumentException("config must have at least one partition");
+        }
         assert !this.descriptors.isEmpty() : "config must have at least one partition";
     }
 
@@ -115,17 +117,21 @@ public final class RangeMap {
         if (compareKeys(fromKey, toKey) >= 0) {
             return List.of();
         }
-        // A partition [pLow, pHigh) overlaps query [from, to) iff:
-        // pLow < to AND pHigh > from
-        List<PartitionDescriptor> result = new ArrayList<>();
-        for (var d : descriptors) {
-            boolean lowBeforeTo = compareKeys(d.lowKey(), toKey) < 0;
-            boolean highAfterFrom = compareKeys(d.highKey(), fromKey) > 0;
-            if (lowBeforeTo && highAfterFrom) {
-                result.add(d);
-            }
+        // Partitions are contiguous and non-overlapping in key order, so overlapping
+        // descriptors form a contiguous subsequence. Use binary search (O(log P)) to
+        // find the first and last overlapping indices.
+
+        // Binary search for the first partition whose highKey > fromKey (start of overlap).
+        int startIdx = binarySearchFirstHighKeyAfter(fromKey);
+        if (startIdx >= descriptors.size()) {
+            return List.of();
         }
-        return List.copyOf(result);
+        // Binary search for the last partition whose lowKey < toKey (end of overlap).
+        int endIdx = binarySearchLastLowKeyBefore(toKey);
+        if (endIdx < 0 || endIdx < startIdx) {
+            return List.of();
+        }
+        return List.copyOf(descriptors.subList(startIdx, endIdx + 1));
     }
 
     /**
@@ -162,5 +168,51 @@ public final class RangeMap {
         int ba = Byte.toUnsignedInt(a.get(ValueLayout.JAVA_BYTE, mismatch));
         int bb = Byte.toUnsignedInt(b.get(ValueLayout.JAVA_BYTE, mismatch));
         return Integer.compare(ba, bb);
+    }
+
+    /**
+     * Binary search for the first partition index whose highKey > key. Since partitions are sorted
+     * by lowKey (and contiguous, so also sorted by highKey), this finds the first partition that
+     * could overlap a query starting at key.
+     *
+     * @param key the fromKey of the query range
+     * @return the index of the first overlapping partition, or descriptors.size() if none
+     */
+    private int binarySearchFirstHighKeyAfter(MemorySegment key) {
+        int lo = 0;
+        int hi = descriptors.size();
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            // highKey > key means this partition (and all after) could overlap
+            if (compareKeys(descriptors.get(mid).highKey(), key) > 0) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
+    }
+
+    /**
+     * Binary search for the last partition index whose lowKey < key. Since partitions are sorted by
+     * lowKey, this finds the last partition whose range could overlap a query ending at key.
+     *
+     * @param key the toKey of the query range
+     * @return the index of the last overlapping partition, or -1 if none
+     */
+    private int binarySearchLastLowKeyBefore(MemorySegment key) {
+        int lo = 0;
+        int hi = descriptors.size() - 1;
+        int result = -1;
+        while (lo <= hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (compareKeys(descriptors.get(mid).lowKey(), key) < 0) {
+                result = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return result;
     }
 }

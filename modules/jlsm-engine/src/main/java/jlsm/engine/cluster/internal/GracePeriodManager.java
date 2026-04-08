@@ -2,6 +2,7 @@ package jlsm.engine.cluster.internal;
 
 import jlsm.engine.cluster.NodeAddress;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
@@ -29,30 +30,59 @@ public final class GracePeriodManager {
 
     private final Duration gracePeriod;
     private final ConcurrentHashMap<NodeAddress, Instant> departures = new ConcurrentHashMap<>();
+    private volatile Clock clock;
 
     /**
-     * Creates a grace period manager with the specified duration.
+     * Creates a grace period manager with the specified duration using the system UTC clock.
      *
      * @param gracePeriod the grace period duration; must not be null and must be positive
      */
     public GracePeriodManager(Duration gracePeriod) {
+        this(gracePeriod, Clock.systemUTC());
+    }
+
+    /**
+     * Creates a grace period manager with the specified duration and clock source.
+     *
+     * @param gracePeriod the grace period duration; must not be null and must be positive
+     * @param clock the clock to use for time queries; must not be null
+     */
+    public GracePeriodManager(Duration gracePeriod, Clock clock) {
         Objects.requireNonNull(gracePeriod, "gracePeriod must not be null");
+        Objects.requireNonNull(clock, "clock must not be null");
         if (gracePeriod.isNegative() || gracePeriod.isZero()) {
             throw new IllegalArgumentException("gracePeriod must be positive");
         }
         this.gracePeriod = gracePeriod;
+        this.clock = clock;
+    }
+
+    /**
+     * Replaces the clock source used for grace period evaluation. Intended for testing to simulate
+     * clock jumps and deterministic time progression.
+     *
+     * @param clock the new clock; must not be null
+     */
+    public void setClock(Clock clock) {
+        Objects.requireNonNull(clock, "clock must not be null");
+        this.clock = clock;
     }
 
     /**
      * Records the departure of a node at the given time.
      *
      * @param node the departed node's address; must not be null
-     * @param departedAt the instant of departure; must not be null
+     * @param departedAt the instant of departure; must not be null and must not be in the future
      */
     public void recordDeparture(NodeAddress node, Instant departedAt) {
         Objects.requireNonNull(node, "node must not be null");
         Objects.requireNonNull(departedAt, "departedAt must not be null");
-        departures.put(node, departedAt);
+        if (departedAt.isAfter(clock.instant())) {
+            throw new IllegalArgumentException(
+                    "departedAt must not be in the future — a future timestamp would extend "
+                            + "the grace window beyond the configured duration");
+        }
+        departures.putIfAbsent(node, departedAt);
     }
 
     /**
@@ -62,13 +92,30 @@ public final class GracePeriodManager {
      * @return {@code true} if the node departed and the grace period has not expired
      */
     public boolean isInGracePeriod(NodeAddress node) {
+        return isInGracePeriod(node, clock.instant());
+    }
+
+    /**
+     * Returns whether the given node is in its grace period at the specified instant.
+     *
+     * <p>
+     * Use this overload together with {@link #expiredDepartures(Instant)} passing the same
+     * {@code now} value to get a consistent snapshot — the two results will never contradict each
+     * other for the same instant.
+     *
+     * @param node the node address to check; must not be null
+     * @param now the instant to evaluate against; must not be null
+     * @return {@code true} if the node departed and the grace period has not expired at {@code now}
+     */
+    public boolean isInGracePeriod(NodeAddress node, Instant now) {
         Objects.requireNonNull(node, "node must not be null");
+        Objects.requireNonNull(now, "now must not be null");
         final Instant departedAt = departures.get(node);
         if (departedAt == null) {
             return false;
         }
         final Instant expiry = departedAt.plus(gracePeriod);
-        return Instant.now().isBefore(expiry);
+        return now.isBefore(expiry);
     }
 
     /**
@@ -77,13 +124,31 @@ public final class GracePeriodManager {
      * @return a set of node addresses with expired grace periods; never null
      */
     public Set<NodeAddress> expiredDepartures() {
-        final Instant now = Instant.now();
+        return expiredDepartures(clock.instant());
+    }
+
+    /**
+     * Returns the set of nodes whose grace period has expired at the specified instant.
+     *
+     * <p>
+     * Use this overload together with {@link #isInGracePeriod(NodeAddress, Instant)} passing the
+     * same {@code now} value to get a consistent snapshot — the two results will never contradict
+     * each other for the same instant.
+     *
+     * @param now the instant to evaluate against; must not be null
+     * @return a set of node addresses with expired grace periods; never null
+     */
+    public Set<NodeAddress> expiredDepartures(Instant now) {
+        Objects.requireNonNull(now, "now must not be null");
         final Set<NodeAddress> expired = new HashSet<>();
-        for (var entry : departures.entrySet()) {
+        final var iterator = departures.entrySet().iterator();
+        while (iterator.hasNext()) {
+            final var entry = iterator.next();
             final Instant expiry = entry.getValue().plus(gracePeriod);
             assert expiry != null : "expiry must not be null";
             if (!now.isBefore(expiry)) {
                 expired.add(entry.getKey());
+                iterator.remove();
             }
         }
         return expired;

@@ -89,7 +89,7 @@ R27. `DocumentSerializer` must encode a `FLOAT32` `VectorType` field as `dimensi
 
 R28. `DocumentSerializer` must encode a `FLOAT16` `VectorType` field as `dimensions` consecutive big-endian 16-bit IEEE 754 half-precision values with no length prefix.
 
-R29. `DocumentSerializer` must assert at encode time that the provided vector array length equals the schema-declared `dimensions`.
+R29. `DocumentSerializer` must verify at encode time that the provided vector array length equals the schema-declared `dimensions`, throwing `IllegalArgumentException` on mismatch.
 
 ### DocumentSerializer — VectorType decode
 
@@ -130,6 +130,22 @@ R41. Two `VectorType` instances with different `dimensions` values must not be e
 R42. All existing tests that use `ArrayType` for non-vector fields must continue to pass without modification after `VectorType` is added.
 
 R43. All existing `IndexDefinition` tests must continue to pass after removal of `vectorDimensions`, given that `IndexDefinition` already has the three-component form `(fieldName, indexType, similarityFunction)`.
+
+### Audit-hardened requirements
+
+R44. `FieldType.arrayOf()` and `FieldType.objectOf()` must reject null arguments with a `NullPointerException` via `Objects.requireNonNull`, not via `assert` alone.
+
+R45. `DocumentSerializer` must verify at encode time that the provided vector array length equals the schema-declared dimensions using a runtime check (`IllegalArgumentException`), not an `assert` statement.
+
+R46. `DocumentSerializer` must validate at decode time that the byte buffer contains sufficient bytes for the vector dimensions before reading, throwing `IllegalArgumentException` with a descriptive message on truncated input.
+
+R47. `DocumentSerializer` must store the write-time boolean field count in the serialized schema header, and must validate it against the current schema's boolean count during deserialization to detect field type evolution mismatches.
+
+R48. `DocumentSerializer` must wrap field-level encode operations in error handling that re-throws type mismatches as `IllegalArgumentException` with the field name and expected type in the message.
+
+R49. `JsonWriter.writeVector` must validate that the vector array length matches the declared `VectorType.dimensions()` before serializing, throwing `IllegalArgumentException` on mismatch.
+
+R50. `DocumentSerializer` must reject schema version values exceeding 65535 with `IllegalArgumentException` at serialization time, because the wire format encodes version as an unsigned 16-bit integer.
 
 ---
 

@@ -181,6 +181,16 @@ R64. `JlsmDocument` does not validate that nested `JlsmDocument` values for `Obj
 
 R65. There is no `set` or `with` method for updating individual field values. Documents are write-once from the public API perspective. `[ABSENT]`
 
+### Audit-hardened requirements
+
+R66. `JlsmDocument.of` must reject duplicate field names in the `nameValuePairs` argument with an `IllegalArgumentException`, rather than silently accepting last-write-wins semantics.
+
+R67. `JlsmDocument.validateType` must enforce a maximum recursion depth when validating nested `ArrayType` fields, throwing `IllegalArgumentException` when the depth limit is exceeded.
+
+R68. `JlsmDocument.defensiveCopyIfVector` must perform a deep copy of nested arrays within `ArrayType` fields, not a shallow clone that leaves inner arrays shared with the caller.
+
+R69. `JlsmDocument.getLong()` must throw a descriptive `NullPointerException` with the field name when the field value is null, rather than allowing an unboxing NPE with no context.
+
 ---
 
 ## Design Narrative

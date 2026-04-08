@@ -175,23 +175,14 @@ class TableIndicesAdversarialTest {
     // ── Between mixed types (CONTRACT-GAP) ──────────────────────────────
     // Finding: Between doesn't validate type consistency of low/high.
 
+    // Updated by audit: Between constructor now validates type consistency eagerly at
+    // construction time rather than deferring to lookup. The fix moved the guard earlier
+    // in the call chain, which is the correct behavior per eager input validation rules.
     @Test
-    void testBetweenMixedTypesAtLookupTime() throws IOException {
-        var def = new IndexDefinition("age", IndexType.RANGE);
-        var index = new FieldIndex(def);
-
-        index.onInsert(stringKey("pk1"), 25);
-        index.onInsert(stringKey("pk2"), 35);
-
-        // Construct Between with Integer low and Long high — compiles fine
-        var predicate = new Predicate.Between("age", 20, 40L);
-
-        // Should throw IAE with a clear message about type mismatch,
-        // not crash deep in the codec layer
-        assertThrows(IllegalArgumentException.class, () -> collect(index.lookup(predicate)),
-                "Between with mixed types (Integer low, Long high) should throw IAE");
-
-        index.close();
+    void testBetweenMixedTypesAtConstructionTime() {
+        // Construct Between with Integer low and Long high — should throw IAE eagerly
+        assertThrows(IllegalArgumentException.class, () -> new Predicate.Between("age", 20, 40L),
+                "Between with mixed types (Integer low, Long high) should throw IAE at construction");
     }
 
     // ── Between inverted range (CONTRACT-GAP) ───────────────────────────
@@ -238,7 +229,7 @@ class TableIndicesAdversarialTest {
         registry.onInsert(stringKey("pk2"), doc2);
         registry.onInsert(stringKey("pk3"), doc3);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
         var results = collect(executor.execute(new Predicate.Ne("name", "Alice")));
 
         // Doc2 has name=null. Is null != "Alice" true or not?
@@ -272,7 +263,7 @@ class TableIndicesAdversarialTest {
         registry.onInsert(stringKey("pk2"), doc2);
         registry.onInsert(stringKey("pk3"), doc3);
 
-        var executor = new QueryExecutor<String>(schema, registry);
+        var executor = QueryExecutor.forStringKeys(schema, registry);
         var results = collect(executor.execute(new Predicate.Ne("name", "Alice")));
 
         // Index-backed Ne should produce the same result as scan-and-filter

@@ -166,15 +166,17 @@ class LsmVectorIndexFloat16AdversarialTest {
 
     @Test
     void encodeVector_float16Bytes_decodedAsFloat32_assertionFailsOnLengthMismatch() {
+        // Updated by audit F-R6.dt.1.4: assert-only check was a bug, now correctly
+        // throws IllegalArgumentException via runtime validation
         // F5: Encoding with FLOAT16 produces dim*2 bytes; decoding as FLOAT32 expects dim*4
         float[] input = { 1.0f, 2.0f, 3.0f };
         byte[] float16Bytes = LsmVectorIndex.encodeVector(input, VectorPrecision.FLOAT16);
 
-        // With assertions enabled, decodeVector(float16Bytes, 3, FLOAT32) should fail
+        // decodeVector(float16Bytes, 3, FLOAT32) should fail with runtime validation
         // because float16Bytes.length (6) != 3 * 4 (12)
-        assertThrows(AssertionError.class,
+        assertThrows(IllegalArgumentException.class,
                 () -> LsmVectorIndex.decodeVector(float16Bytes, 3, VectorPrecision.FLOAT32),
-                "Decoding FLOAT16 bytes as FLOAT32 should fail on length assertion");
+                "Decoding FLOAT16 bytes as FLOAT32 should fail on byte count mismatch");
     }
 
     @Test
@@ -259,19 +261,24 @@ class LsmVectorIndexFloat16AdversarialTest {
 
     @Test
     void encodeFloat16s_decodeFloat16s_dimensionByteMismatch_assertionFires() {
+        // Updated by audit F-R6.dt.1.4: assert-only check was a bug, now correctly
+        // throws IllegalArgumentException via runtime validation
         // F9: If byte count is not evenly divisible by bytesPerComponent,
         // decodeFloat16s should catch it via its byte-count assertion
         byte[] oddBytes = new byte[5]; // not divisible by 2
-        assertThrows(AssertionError.class, () -> LsmVectorIndex.decodeFloat16s(oddBytes, 2),
-                "decodeFloat16s should assert when bytes.length (5) != dimensions*2 (4)");
+        assertThrows(IllegalArgumentException.class,
+                () -> LsmVectorIndex.decodeFloat16s(oddBytes, 2),
+                "decodeFloat16s should throw when bytes.length (5) != dimensions*2 (4)");
     }
 
     @Test
     void decodeVector_float16_oddByteCount_assertionFires() {
+        // Updated by audit F-R6.dt.1.4: assert-only check was a bug, now correctly
+        // throws IllegalArgumentException via runtime validation
         // F9: decodeVector dispatches to decodeFloat16s which should catch mismatch
         byte[] oddBytes = new byte[7]; // 7 / 2 = 3 via integer division, but 3*2 = 6 != 7
         // Calling with dimensions=3 should fail because 7 != 3*2
-        assertThrows(AssertionError.class,
+        assertThrows(IllegalArgumentException.class,
                 () -> LsmVectorIndex.decodeVector(oddBytes, 3, VectorPrecision.FLOAT16),
                 "decodeVector should fail on byte count mismatch");
     }

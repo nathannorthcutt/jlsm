@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Arrays;
 
-import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.EncryptionKeyHolder;
 import jlsm.encryption.EncryptionSpec;
@@ -22,14 +21,6 @@ class EncryptMemoryDataAdversarialTest {
 
     private static byte[] key256() {
         final byte[] key = new byte[32];
-        for (int i = 0; i < key.length; i++) {
-            key[i] = (byte) (i + 1);
-        }
-        return key;
-    }
-
-    private static byte[] key512() {
-        final byte[] key = new byte[64];
         for (int i = 0; i < key.length; i++) {
             key[i] = (byte) (i + 1);
         }
@@ -159,11 +150,9 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void decodedPosting_mutatingDocIdAccessor_doesNotCorruptInternal() {
         // Vector: C4-1 — mutating returned docId should not corrupt the record
-        final EncryptionKeyHolder sivHolder = EncryptionKeyHolder.of(key512());
         final EncryptionKeyHolder opeHolder = EncryptionKeyHolder.of(key256());
-        final AesSivEncryptor siv = new AesSivEncryptor(sivHolder);
         final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(opeHolder, 100, 1000);
-        final PositionalPostingCodec codec = new PositionalPostingCodec(siv, ope);
+        final PositionalPostingCodec codec = new PositionalPostingCodec(ope);
 
         final byte[] docId = "doc-1".getBytes();
         final long[] positions = { 1, 5, 10 };
@@ -182,11 +171,9 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void decodedPosting_mutatingPositionsAccessor_doesNotCorruptInternal() {
         // Vector: C4-1 — mutating returned positions should not corrupt the record
-        final EncryptionKeyHolder sivHolder = EncryptionKeyHolder.of(key512());
         final EncryptionKeyHolder opeHolder = EncryptionKeyHolder.of(key256());
-        final AesSivEncryptor siv = new AesSivEncryptor(sivHolder);
         final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(opeHolder, 100, 1000);
-        final PositionalPostingCodec codec = new PositionalPostingCodec(siv, ope);
+        final PositionalPostingCodec codec = new PositionalPostingCodec(ope);
 
         final byte[] docId = "doc-1".getBytes();
         final long[] positions = { 1, 5, 10 };

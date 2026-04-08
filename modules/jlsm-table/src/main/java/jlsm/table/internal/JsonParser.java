@@ -209,11 +209,22 @@ public final class JsonParser {
             case FLOAT16 -> {
                 requireNumeric(fieldName, firstByte);
                 final float f = Float.parseFloat(parseNumberString(src, pos));
+                if (!Float.isFinite(f)) {
+                    throw new IllegalArgumentException(
+                            "Field '" + fieldName + "' FLOAT16 value is non-finite: "
+                                    + "numeric fields require finite values");
+                }
                 yield Float16.fromFloat(f);
             }
             case FLOAT32 -> {
                 requireNumeric(fieldName, firstByte);
-                yield Float.parseFloat(parseNumberString(src, pos));
+                final float f32 = Float.parseFloat(parseNumberString(src, pos));
+                if (!Float.isFinite(f32)) {
+                    throw new IllegalArgumentException(
+                            "Field '" + fieldName + "' FLOAT32 value is non-finite: "
+                                    + "numeric fields require finite values");
+                }
+                yield f32;
             }
             case FLOAT64 -> {
                 requireNumeric(fieldName, firstByte);
@@ -273,8 +284,13 @@ public final class JsonParser {
             }
             pos[0]++;
         }
-        return Float.parseFloat(
+        final float value = Float.parseFloat(
                 new String(src, start, pos[0] - start, java.nio.charset.StandardCharsets.US_ASCII));
+        if (!Float.isFinite(value)) {
+            throw new IllegalArgumentException("Non-finite float value at position " + start
+                    + ": vector and numeric fields require finite values");
+        }
+        return value;
     }
 
     private Object[] parseArray(byte[] src, int[] pos, FieldType.ArrayType at, String fieldName,

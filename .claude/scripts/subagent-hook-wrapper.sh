@@ -10,19 +10,18 @@ input=$(cat)
 
 # Try Python
 if command -v python3 &>/dev/null; then
-    echo "$input" | python3 "$SCRIPT_DIR/subagent-hook.py" 2>/dev/null
-    if [[ $? -eq 0 ]]; then
+    if echo "$input" | python3 "$SCRIPT_DIR/subagent-hook.py" 2>/dev/null; then
         exit 0
     fi
 fi
 
 # Try Node.js
 if command -v node &>/dev/null; then
-    echo "$input" | node "$SCRIPT_DIR/subagent-hook.js" 2>/dev/null
-    if [[ $? -eq 0 ]]; then
+    if echo "$input" | node "$SCRIPT_DIR/subagent-hook.js" 2>/dev/null; then
         exit 0
     fi
 fi
 
 # Fallback: bash
 echo "$input" | bash "$SCRIPT_DIR/subagent-hook.sh"
+exit 0

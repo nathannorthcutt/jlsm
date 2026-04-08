@@ -6,6 +6,8 @@ import jlsm.table.Float16;
 import jlsm.table.JlsmDocument;
 import jlsm.table.JlsmSchema;
 
+import java.util.Objects;
+
 /**
  * Serializes a {@link JlsmDocument} to a JSON string.
  *
@@ -26,6 +28,10 @@ public final class JsonWriter {
      * @return a JSON string
      */
     public String write(JlsmDocument doc, int indent) {
+        Objects.requireNonNull(doc, "doc");
+        if (indent < 0) {
+            throw new IllegalArgumentException("indent must not be negative");
+        }
         assert doc != null : "doc must not be null";
         assert indent >= 0 : "indent must not be negative";
 
@@ -144,6 +150,17 @@ public final class JsonWriter {
         assert value != null : "value must not be null";
         assert sb != null : "sb must not be null";
 
+        final int actualLength;
+        if (vt.elementType() == FieldType.Primitive.FLOAT32) {
+            actualLength = ((float[]) value).length;
+        } else {
+            actualLength = ((short[]) value).length;
+        }
+        if (actualLength != vt.dimensions()) {
+            throw new IllegalArgumentException("vector array length " + actualLength
+                    + " does not match declared dimensions " + vt.dimensions());
+        }
+
         sb.append('[');
         if (vt.elementType() == FieldType.Primitive.FLOAT32) {
             final float[] vec = (float[]) value;
@@ -157,6 +174,8 @@ public final class JsonWriter {
                 writeFloat(vec[i], sb);
             }
         } else {
+            assert vt.elementType() == FieldType.Primitive.FLOAT16
+                    : "writeVector: unsupported VectorType elementType: " + vt.elementType();
             final short[] vec = (short[]) value;
             for (int i = 0; i < vec.length; i++) {
                 if (i > 0) {

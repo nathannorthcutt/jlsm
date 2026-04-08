@@ -53,12 +53,39 @@ public final class ClusteredTable implements Table {
     private final ClusterTransport transport;
     private final MembershipProtocol membership;
     private final NodeAddress localAddress;
-    private final RendezvousOwnership ownership = new RendezvousOwnership();
+    private final RendezvousOwnership ownership;
     private volatile PartialResultMetadata lastPartialResult;
     private volatile boolean closed;
 
     /**
-     * Creates a new clustered table proxy.
+     * Creates a new clustered table proxy with a shared ownership instance.
+     *
+     * @param tableMetadata the metadata for this table; must not be null
+     * @param transport the cluster transport for remote communication; must not be null
+     * @param membership the membership protocol for resolving partition owners; must not be null
+     * @param localAddress the address of the local node; must not be null
+     * @param ownership the shared ownership resolver; must not be null. Using a shared instance
+     *            ensures that eviction events from view changes (propagated by the engine) apply to
+     *            the same cache used by this table, preventing stale routing after membership
+     *            changes.
+     */
+    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+            MembershipProtocol membership, NodeAddress localAddress,
+            RendezvousOwnership ownership) {
+        this.tableMetadata = Objects.requireNonNull(tableMetadata,
+                "tableMetadata must not be null");
+        this.transport = Objects.requireNonNull(transport, "transport must not be null");
+        this.membership = Objects.requireNonNull(membership, "membership must not be null");
+        this.localAddress = Objects.requireNonNull(localAddress, "localAddress must not be null");
+        this.ownership = Objects.requireNonNull(ownership, "ownership must not be null");
+    }
+
+    /**
+     * Creates a new clustered table proxy with a private ownership instance.
+     *
+     * <p>
+     * Prefer the 5-argument constructor when a shared {@link RendezvousOwnership} is available
+     * (e.g., from {@link ClusteredEngine}) so that view-change evictions apply to the same cache.
      *
      * @param tableMetadata the metadata for this table; must not be null
      * @param transport the cluster transport for remote communication; must not be null
@@ -67,11 +94,7 @@ public final class ClusteredTable implements Table {
      */
     public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress) {
-        this.tableMetadata = Objects.requireNonNull(tableMetadata,
-                "tableMetadata must not be null");
-        this.transport = Objects.requireNonNull(transport, "transport must not be null");
-        this.membership = Objects.requireNonNull(membership, "membership must not be null");
-        this.localAddress = Objects.requireNonNull(localAddress, "localAddress must not be null");
+        this(tableMetadata, transport, membership, localAddress, new RendezvousOwnership());
     }
 
     @Override
@@ -175,6 +198,8 @@ public final class ClusteredTable implements Table {
                 iterators.add(it);
             } catch (IOException e) {
                 unavailable.add(node.nodeId());
+            } finally {
+                client.close();
             }
         }
 
@@ -202,6 +227,7 @@ public final class ClusteredTable implements Table {
     @Override
     public void close() {
         closed = true;
+        ownership.evictBefore(Long.MAX_VALUE);
     }
 
     // ---- Private helpers ----
@@ -210,12 +236,18 @@ public final class ClusteredTable implements Table {
      * Resolves the owner node for a given key using rendezvous hashing. Uses the table name as the
      * partition identifier for ownership.
      */
-    private NodeAddress resolveOwner(String key) {
+    private NodeAddress resolveOwner(String key) throws IOException {
         assert key != null : "key must not be null";
         final MembershipView view = membership.currentView();
+
+        // Evict stale ownership cache entries for epochs older than the current view.
+        // Without this, old epoch entries accumulate without bound because ClusteredTable's
+        // private RendezvousOwnership is not notified of view changes by ClusteredEngine.
+        ownership.evictBefore(view.epoch());
+
         final Set<NodeAddress> liveNodes = collectLiveNodes(view);
         if (liveNodes.isEmpty()) {
-            throw new IllegalStateException("No live members in the cluster");
+            throw new IOException("No live members in the cluster");
         }
         // Use rendezvous hashing to pick the owner from live nodes
         return ownership.assignOwner(tableMetadata.name() + "/" + key, view);
@@ -243,7 +275,8 @@ public final class ClusteredTable implements Table {
         assert owner != null : "owner must not be null";
         final PartitionDescriptor desc = new PartitionDescriptor(0L, PLACEHOLDER_LOW,
                 PLACEHOLDER_HIGH, owner.nodeId(), 0L);
-        return new RemotePartitionClient(desc, owner, transport, findLocalAddress());
+        return new RemotePartitionClient(desc, owner, transport, findLocalAddress(),
+                tableMetadata.schema());
     }
 
     /**
@@ -253,7 +286,8 @@ public final class ClusteredTable implements Table {
         assert target != null : "target must not be null";
         final PartitionDescriptor desc = new PartitionDescriptor(0L, PLACEHOLDER_LOW,
                 PLACEHOLDER_HIGH, target.nodeId(), 0L);
-        return new RemotePartitionClient(desc, target, transport, findLocalAddress());
+        return new RemotePartitionClient(desc, target, transport, findLocalAddress(),
+                tableMetadata.schema());
     }
 
     /**

@@ -48,10 +48,13 @@ public final class HandleEvictedException extends IllegalStateException {
         super(buildMessage(tableName, sourceId, handleCountAtEviction, reason));
         this.tableName = Objects.requireNonNull(tableName, "tableName must not be null");
         this.sourceId = Objects.requireNonNull(sourceId, "sourceId must not be null");
+        if (handleCountAtEviction < 0) {
+            throw new IllegalArgumentException(
+                    "handleCountAtEviction must be non-negative, got " + handleCountAtEviction);
+        }
         this.handleCountAtEviction = handleCountAtEviction;
         this.allocationSite = allocationSite == null ? null : allocationSite.clone();
         this.reason = Objects.requireNonNull(reason, "reason must not be null");
-        assert handleCountAtEviction >= 0 : "handleCountAtEviction must be non-negative";
     }
 
     private static String buildMessage(String tableName, String sourceId, int handleCountAtEviction,

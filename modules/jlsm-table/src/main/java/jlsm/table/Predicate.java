@@ -74,6 +74,10 @@ public sealed interface Predicate {
             Objects.requireNonNull(field);
             Objects.requireNonNull(low);
             Objects.requireNonNull(high);
+            if (low.getClass() != high.getClass()) {
+                throw new IllegalArgumentException("low and high must be the same type, got "
+                        + low.getClass().getName() + " and " + high.getClass().getName());
+            }
         }
     }
 
@@ -85,6 +89,9 @@ public sealed interface Predicate {
         public FullTextMatch {
             Objects.requireNonNull(field);
             Objects.requireNonNull(query);
+            if (query.isBlank()) {
+                throw new IllegalArgumentException("query must not be empty or blank");
+            }
         }
     }
 
@@ -96,6 +103,9 @@ public sealed interface Predicate {
         public VectorNearest {
             Objects.requireNonNull(field);
             Objects.requireNonNull(queryVector);
+            if (queryVector.length == 0) {
+                throw new IllegalArgumentException("queryVector must not be empty");
+            }
             if (topK <= 0) {
                 throw new IllegalArgumentException("topK must be positive");
             }
@@ -118,6 +128,11 @@ public sealed interface Predicate {
             if (children.size() < 2) {
                 throw new IllegalArgumentException("And requires at least 2 children");
             }
+            for (int i = 0; i < children.size(); i++) {
+                if (children.get(i) == null) {
+                    throw new NullPointerException("And children must not contain null elements");
+                }
+            }
             children = List.copyOf(children);
         }
     }
@@ -128,6 +143,11 @@ public sealed interface Predicate {
             Objects.requireNonNull(children);
             if (children.size() < 2) {
                 throw new IllegalArgumentException("Or requires at least 2 children");
+            }
+            for (int i = 0; i < children.size(); i++) {
+                if (children.get(i) == null) {
+                    throw new NullPointerException("Or children must not contain null elements");
+                }
             }
             children = List.copyOf(children);
         }

@@ -34,7 +34,7 @@ import jlsm.encryption.EncryptionKeyHolder;
  * <p>
  * Governed by: .decisions/encrypted-index-strategy/adr.md
  */
-public final class SseEncryptedIndex {
+public final class SseEncryptedIndex implements AutoCloseable {
 
     /** Tag length for AES-GCM encryption of docIds. */
     private static final int GCM_TAG_BITS = 128;
@@ -49,6 +49,13 @@ public final class SseEncryptedIndex {
     private final byte[] prfKey;
     /** Key material for AES-GCM docId encryption. */
     private final byte[] encKey;
+    /** Cached AES key spec for encrypt/decrypt — avoids per-call cloning of encKey. */
+    private final SecretKeySpec aesKeySpec;
+    /** Cached HMAC key spec for prfKey — avoids per-call cloning in deriveToken/deriveAddress. */
+    private final SecretKeySpec hmacKeySpec;
+
+    /** Closed flag — set by {@link #close()} to reject subsequent operations. */
+    private volatile boolean closed;
 
     /**
      * Backing store: address (derived from token + counter) -> encrypted entry. Each entry is:
@@ -74,6 +81,11 @@ public final class SseEncryptedIndex {
         this.encKey = deriveSubKey(keyBytes, "SSE-ENC-KEY");
         Arrays.fill(keyBytes, (byte) 0);
 
+        // Cache the AES key spec to avoid per-call SecretKeySpec cloning of encKey
+        this.aesKeySpec = new SecretKeySpec(encKey, 0, Math.min(encKey.length, 32), "AES");
+        // Cache the HMAC key spec to avoid per-call SecretKeySpec cloning of prfKey
+        this.hmacKeySpec = new SecretKeySpec(prfKey, "HmacSHA256");
+
         this.store = new ConcurrentHashMap<>();
         this.termCounters = new ConcurrentHashMap<>();
     }
@@ -87,8 +99,9 @@ public final class SseEncryptedIndex {
      * @throws NullPointerException if term is null
      */
     public byte[] deriveToken(String term) {
+        ensureOpen();
         Objects.requireNonNull(term, "term must not be null");
-        return hmacSha256(prfKey, term.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return hmacSha256(hmacKeySpec, term.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     /**
@@ -100,22 +113,34 @@ public final class SseEncryptedIndex {
      * @throws NullPointerException if term or docId is null
      */
     public void add(String term, byte[] docId) {
+        ensureOpen();
         Objects.requireNonNull(term, "term must not be null");
         Objects.requireNonNull(docId, "docId must not be null");
 
         final byte[] token = deriveToken(term);
 
-        // Increment state counter for forward privacy
+        // Get or create the per-term counter. Synchronize on it to ensure
+        // atomicity of counter-increment + store-put: search() scans
+        // positions 0..N and breaks on the first null, so no position < counter
+        // may be absent from the store when another thread can observe the
+        // incremented counter value.
         final AtomicInteger counter = termCounters.computeIfAbsent(term, k -> new AtomicInteger(0));
-        final int stateNum = counter.getAndIncrement();
 
-        // Derive storage address from token + counter
-        final byte[] address = deriveAddress(token, stateNum);
+        synchronized (counter) {
+            if (counter.get() == Integer.MAX_VALUE) {
+                throw new IllegalStateException(
+                        "Per-term counter overflow: term has reached Integer.MAX_VALUE entries");
+            }
+            final int stateNum = counter.getAndIncrement();
 
-        // Encrypt the docId
-        final byte[] encryptedEntry = encryptDocId(docId, address);
+            // Derive storage address from token + counter
+            final byte[] address = deriveAddress(token, stateNum);
 
-        store.put(new ByteArrayKey(address), encryptedEntry);
+            // Encrypt the docId
+            final byte[] encryptedEntry = encryptDocId(docId, address);
+
+            store.put(new ByteArrayKey(address), encryptedEntry);
+        }
     }
 
     /**
@@ -127,6 +152,7 @@ public final class SseEncryptedIndex {
      * @throws NullPointerException if term or docId is null
      */
     public void delete(String term, byte[] docId) {
+        ensureOpen();
         Objects.requireNonNull(term, "term must not be null");
         Objects.requireNonNull(docId, "docId must not be null");
 
@@ -166,13 +192,15 @@ public final class SseEncryptedIndex {
      * @throws NullPointerException if token is null
      */
     public List<byte[]> search(byte[] token) {
+        ensureOpen();
         Objects.requireNonNull(token, "token must not be null");
 
         final List<byte[]> results = new ArrayList<>();
 
-        // We need to find the term that maps to this token. Since we store counters by term,
-        // iterate all possible counter values. We scan addresses starting from 0 until we
-        // hit a miss.
+        // Scan addresses starting from counter 0. The synchronized block in add()
+        // ensures that counter positions are populated in order — when counter N
+        // is visible via getAndIncrement, all positions 0..N-1 are already in the
+        // store. A null entry therefore means no more entries exist for this token.
         for (int i = 0;; i++) {
             final byte[] address = deriveAddress(token, i);
             final ByteArrayKey key = new ByteArrayKey(address);
@@ -189,6 +217,37 @@ public final class SseEncryptedIndex {
         }
 
         return results;
+    }
+
+    /**
+     * Closes this SSE index, zeroing derived key material (prfKey and encKey) and rejecting
+     * subsequent operations. Idempotent — multiple calls are safe.
+     */
+    @Override
+    public void close() {
+        if (!closed) {
+            closed = true;
+            Arrays.fill(prfKey, (byte) 0);
+            Arrays.fill(encKey, (byte) 0);
+            try {
+                aesKeySpec.destroy();
+            } catch (javax.security.auth.DestroyFailedException e) {
+                // Best-effort cleanup — SecretKeySpec.destroy() may not be supported
+                // on all JDK implementations
+            }
+            try {
+                hmacKeySpec.destroy();
+            } catch (javax.security.auth.DestroyFailedException e) {
+                // Best-effort cleanup
+            }
+        }
+    }
+
+    /** Throws {@link IllegalStateException} if this index has been closed. */
+    private void ensureOpen() {
+        if (closed) {
+            throw new IllegalStateException("SseEncryptedIndex has been closed");
+        }
     }
 
     // ── Internal helpers ────────────────────────────────────────────────────
@@ -213,9 +272,7 @@ public final class SseEncryptedIndex {
             final byte[] iv = Arrays.copyOf(ivSource, GCM_IV_BYTES);
 
             final Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            final SecretKeySpec keySpec = new SecretKeySpec(encKey, 0, Math.min(encKey.length, 32),
-                    "AES");
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec, new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.init(Cipher.ENCRYPT_MODE, aesKeySpec, new GCMParameterSpec(GCM_TAG_BITS, iv));
             cipher.updateAAD(address);
 
             final byte[] encrypted = cipher.doFinal(docId);
@@ -235,17 +292,18 @@ public final class SseEncryptedIndex {
      * Decrypts a docId from an encrypted entry.
      */
     private byte[] decryptDocId(byte[] entry, byte[] address) {
-        assert entry != null : "entry must not be null";
-        assert entry.length > 1 + GCM_IV_BYTES : "entry too short for decryption";
+        Objects.requireNonNull(entry, "entry must not be null");
+        if (entry.length <= 1 + GCM_IV_BYTES) {
+            throw new IllegalArgumentException("entry too short for decryption: length "
+                    + entry.length + ", minimum " + (2 + GCM_IV_BYTES));
+        }
 
         try {
             final byte[] iv = Arrays.copyOfRange(entry, 1, 1 + GCM_IV_BYTES);
             final byte[] encrypted = Arrays.copyOfRange(entry, 1 + GCM_IV_BYTES, entry.length);
 
             final Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            final SecretKeySpec keySpec = new SecretKeySpec(encKey, 0, Math.min(encKey.length, 32),
-                    "AES");
-            cipher.init(Cipher.DECRYPT_MODE, keySpec, new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.init(Cipher.DECRYPT_MODE, aesKeySpec, new GCMParameterSpec(GCM_TAG_BITS, iv));
             cipher.updateAAD(address);
 
             return cipher.doFinal(encrypted);
@@ -263,15 +321,32 @@ public final class SseEncryptedIndex {
     }
 
     /**
-     * Computes HMAC-SHA256.
+     * Computes HMAC-SHA256 using a pre-built key spec (avoids per-call key material cloning).
      */
-    private static byte[] hmacSha256(byte[] key, byte[] data) {
+    private static byte[] hmacSha256(SecretKeySpec keySpec, byte[] data) {
         try {
             final Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            mac.init(keySpec);
             return mac.doFinal(data);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("HMAC-SHA256 computation failed", e);
+        }
+    }
+
+    /**
+     * Computes HMAC-SHA256 from raw key bytes. Creates a temporary {@link SecretKeySpec} and
+     * destroys it after use to avoid leaving key material clones on the heap.
+     */
+    private static byte[] hmacSha256(byte[] key, byte[] data) {
+        final SecretKeySpec keySpec = new SecretKeySpec(key, "HmacSHA256");
+        try {
+            return hmacSha256(keySpec, data);
+        } finally {
+            try {
+                keySpec.destroy();
+            } catch (javax.security.auth.DestroyFailedException e) {
+                // Best-effort cleanup
+            }
         }
     }
 

@@ -35,12 +35,12 @@ public final class StripedBlockCache implements BlockCache {
 
     private StripedBlockCache(Builder builder) {
         if (builder.stripeCount <= 0) {
-            throw new IllegalArgumentException("stripeCount must be positive, got: " + builder.stripeCount);
+            throw new IllegalArgumentException(
+                    "stripeCount must be positive, got: " + builder.stripeCount);
         }
         if (builder.capacity < builder.stripeCount) {
-            throw new IllegalArgumentException(
-                    "capacity must be >= stripeCount, got capacity=" + builder.capacity
-                            + ", stripeCount=" + builder.stripeCount);
+            throw new IllegalArgumentException("capacity must be >= stripeCount, got capacity="
+                    + builder.capacity + ", stripeCount=" + builder.stripeCount);
         }
 
         this.stripeCount = builder.stripeCount;

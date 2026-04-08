@@ -69,7 +69,9 @@ public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
      */
     public record BindMarker(int index) implements Comparable<BindMarker> {
         public BindMarker {
-            assert index >= 0 : "bind marker index must be >= 0";
+            if (index < 0) {
+                throw new IllegalArgumentException("bind marker index must be >= 0, got: " + index);
+            }
         }
 
         @Override
@@ -84,12 +86,17 @@ public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
      * @param field the vector field name
      * @param parameterIndex the bind parameter index for the query vector
      * @param metric the distance metric string (e.g. "cosine", "euclidean", "dot")
+     * @param ascending true for ASC (default), false for DESC
      */
-    public record VectorDistanceOrder(String field, int parameterIndex, String metric) {
+    public record VectorDistanceOrder(String field, int parameterIndex, String metric,
+            boolean ascending) {
         public VectorDistanceOrder {
             Objects.requireNonNull(field, "field");
             Objects.requireNonNull(metric, "metric");
-            assert parameterIndex >= 0 : "parameterIndex must be >= 0";
+            if (parameterIndex < 0) {
+                throw new IllegalArgumentException(
+                        "parameterIndex must be >= 0, got: " + parameterIndex);
+            }
         }
     }
 }

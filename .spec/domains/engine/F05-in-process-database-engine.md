@@ -37,6 +37,8 @@ R7. Closing the engine must be idempotent: calling close on an already-closed en
 
 R8. After the engine is closed, all mutating operations (create table, drop table) must throw an IllegalStateException. The exception message must indicate the engine is closed.
 
+R89. Handle registration must be rejected after the tracker or engine has been closed. Attempting to register a handle after shutdown must throw an IllegalStateException. [Audit: F-R1.concurrency.1.7]
+
 R9. After the engine is closed, all read operations (list tables, get table, table metadata, metrics) must throw an IllegalStateException.
 
 ### Table creation
@@ -56,6 +58,8 @@ R15. On successful table creation, the engine must persist the table's metadata 
 R16. Each table must be stored in a dedicated subdirectory under the engine's root directory. The subdirectory name must be deterministically derived from the table name.
 
 R17. If directory creation for a new table fails (I/O error, permissions), the engine must not add the table to the catalog. The operation must throw an IOException.
+
+R87. If table creation fails after the storage directory has been created (e.g., catalog registration error, handle tracker failure), the engine must roll back by removing the directory and any partial state. No orphaned resources may remain. [Audit: F-R1.cb.1.11]
 
 ### Table metadata and introspection
 
@@ -103,6 +107,8 @@ R35. The table handle must support deleting a document by key, delegating to the
 
 R36. Every data operation on a table handle must validate that the handle is still valid (table not dropped, engine not closed) before delegating. Invalid handles must throw an IllegalStateException.
 
+R83. Table handle operations must synchronize validity checks with the operation they guard. The validity check and the delegated operation must execute atomically with respect to concurrent invalidation. [Audit: F-R1.concurrency.1.4]
+
 ### Query pass-through
 
 R37. The table handle must support executing queries via the fluent query API provided by the underlying table implementation.
@@ -115,9 +121,13 @@ R39. Query and scan operations must validate handle validity before execution, c
 
 R40. The engine must track all outstanding table handles. The total number of open handles must be bounded by a configurable maximum.
 
+R80. The engine must enforce handle limits by invoking eviction checks on every new handle registration. A registration that would exceed any configured limit must trigger eviction before the registration completes. [Audit: F-R1.cb.1.1]
+
 R41. The maximum handles per table must be independently configurable with a default value.
 
 R42. The maximum handles per source per table must be independently configurable with a default value. A source is identified by a caller-provided tag or, if allocation tracking is enabled, by the calling thread or stack.
+
+R91. The source identifier used for per-source handle tracking must be unique per caller. When allocation tracking uses thread identity, the identifier must be the thread ID (not the thread name), which is guaranteed unique by the JVM. [Audit: F-R1.shared_state.2.4]
 
 R43. The engine must support three allocation tracking modes: off, caller tag, and full stack. The default mode must be off.
 
@@ -126,6 +136,8 @@ R44. When the handle limit for a source is reached, the engine must evict the le
 R45. When the per-table handle limit is reached and no single-source eviction can free a slot, the engine must evict the least recently used handle across all sources for that table.
 
 R46. When the global handle limit is reached and no per-table eviction can free a slot, the engine must evict the least recently used handle across all tables.
+
+R81. When the global handle limit is reached and eviction is required, the engine must evict from the table with the highest handle count, not from the table that triggered the limit check. [Audit: F-R1.resource_lifecycle.1.8]
 
 R47. An evicted handle must reject all subsequent operations with an exception that includes the eviction reason: eviction pressure, engine shutdown, or table dropped.
 
@@ -145,9 +157,13 @@ R52. The table catalog must persist table metadata to a file within the engine's
 
 R53. The catalog must survive engine restarts: all tables that were in a ready or loading state at shutdown must be recoverable on the next startup.
 
+R85. The catalog must persist the table state (ready, loading, dropped, error) for each table entry. A table recovered from the catalog must reflect the state it had when the metadata was last written. [Audit: F-R1.cb.2.3]
+
 R54. Catalog writes must be atomic with respect to crashes: a crash during a catalog write must not leave the catalog in a corrupt or unreadable state. The implementation must use a write-then-rename pattern or equivalent.
 
 R55. The catalog must store sufficient information to reconstruct the table's schema and locate its storage directory without scanning subdirectories.
+
+R84. The catalog must persist all schema field definitions including field name, field type, and type-specific parameters (e.g., length bounds). A table recovered from the catalog must have a schema identical to the schema provided at creation time. [Audit: F-R1.cb.2.2]
 
 R56. The catalog must reject duplicate table names at the persistence layer. If a catalog file on disk already contains a table with the same name as one being added, the write must fail.
 
@@ -162,6 +178,8 @@ R59. On startup, if the catalog file is absent, the engine must treat the root d
 R60. On startup, if the catalog file is present but corrupt (not parseable), the engine must throw an IOException rather than silently starting with an empty catalog. Data loss must never be silent.
 
 R61. On startup, if a table's underlying LSM tree data is corrupt (WAL replay failure, SSTable corruption), the engine must transition that table to the error state and continue starting the remaining tables. The engine must not abort startup due to a single table's corruption.
+
+R86. If reading a table's metadata fails during startup recovery (I/O error, corrupt data), the engine must not delete the table's storage directory. The engine must mark the table as errored and preserve its data for manual recovery. [Audit: F-R1.cb.2.4]
 
 ### Engine metrics
 
@@ -179,6 +197,8 @@ R66. Concurrent create-table calls with different names must both succeed indepe
 
 R67. Concurrent create-table calls with the same name must result in exactly one success and one illegal argument exception. Neither call may corrupt the catalog.
 
+R88. Concurrent table creation calls with different names must not interfere with each other's storage directories. A failed concurrent registration must only clean up its own resources. [Audit: F-R1.cb.2.6]
+
 R68. A drop-table call concurrent with an in-progress query on the same table must not cause the query to throw an unexpected exception. The query must either complete with results obtained before the drop, or throw an IllegalStateException indicating the table was dropped.
 
 R69. Handle eviction must be safe under concurrent access. Two threads evicting handles simultaneously must not corrupt the handle tracker's internal state.
@@ -193,6 +213,8 @@ R72. The engine builder must reject a maximum handles-per-source-per-table value
 
 R73. The engine builder must reject a maximum handles-per-table value that exceeds the maximum total handles value at build time with an illegal argument exception.
 
+R90. The engine builder must reject handle limit configurations where per-source-per-table exceeds per-table, or per-table exceeds total. Contradictory limits must be detected at build time. [Audit: F-R1.cb.1.5]
+
 ### JPMS module boundaries
 
 R74. The engine module must declare a JPMS module that exports only the public API package. Internal implementation packages (catalog, handle tracker, local engine internals) must not be exported.
@@ -204,6 +226,8 @@ R76. The engine's public API must not expose types from internal packages of any
 ### Resource cleanup
 
 R77. Closing a table handle must release its registration from the handle tracker. The handle count must decrease by one.
+
+R82. When a handle is released (via close or explicit release), the handle must be immediately invalidated before being removed from the tracker. A released handle must not pass validity checks. [Audit: F-R1.resource_lifecycle.1.4]
 
 R78. If an error occurs while closing one table during engine shutdown, the engine must continue closing the remaining tables. All accumulated errors must be reported after all tables have been closed.
 

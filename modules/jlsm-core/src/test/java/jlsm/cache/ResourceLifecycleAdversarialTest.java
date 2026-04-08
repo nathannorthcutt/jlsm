@@ -7,7 +7,6 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -21,10 +20,11 @@ class ResourceLifecycleAdversarialTest {
 
     // Finding: F-R1.resource_lifecycle.1.2
     // Bug: StripedBlockCache.close() catches only RuntimeException — an Error thrown
-    //      by stripe.close() propagates immediately, skipping close() for remaining stripes
+    // by stripe.close() propagates immediately, skipping close() for remaining stripes
     // Correct behavior: all stripes must be closed even if one throws an Error
     // Fix location: StripedBlockCache.close(), catch clause at line 197
-    // Regression watch: ensure deferred exception pattern still accumulates RuntimeExceptions correctly
+    // Regression watch: ensure deferred exception pattern still accumulates RuntimeExceptions
+    // correctly
     @Test
     void test_StripedBlockCache_close_errorInStripeSkipsRemainingStripes() throws Exception {
         var cache = StripedBlockCache.builder().stripeCount(3).capacity(3).build();
@@ -65,9 +65,9 @@ class ResourceLifecycleAdversarialTest {
 
     // Finding: F-R1.resource_lifecycle.1.3
     // Bug: LruBlockCache.getOrLoad holds the ReentrantLock during the external loader callback,
-    //      blocking all other cache operations (get, put, evict, close) for the duration of the load
+    // blocking all other cache operations (get, put, evict, close) for the duration of the load
     // Correct behavior: the loader should execute outside the lock so concurrent cache operations
-    //                    are not blocked during I/O
+    // are not blocked during I/O
     // Fix location: LruBlockCache.getOrLoad(), lines 94-107
     // Regression watch: ensure the loaded value is still inserted atomically (no duplicate loads)
     @Test
@@ -98,8 +98,7 @@ class ResourceLifecycleAdversarialTest {
         });
 
         // Wait for loader to start executing
-        assertTrue(loaderStarted.await(5, TimeUnit.SECONDS),
-                "loader should have started");
+        assertTrue(loaderStarted.await(5, TimeUnit.SECONDS), "loader should have started");
 
         // Thread 2: try to get a DIFFERENT key while the loader is running
         var getThread = Thread.ofVirtual().start(() -> {
@@ -114,7 +113,7 @@ class ResourceLifecycleAdversarialTest {
         // If the lock is NOT held (correct behavior), the get completes quickly
         assertTrue(concurrentGetCompleted.get(),
                 "get() on a different key should not be blocked while loader executes — "
-                + "lock must not be held during loader callback");
+                        + "lock must not be held during loader callback");
 
         // Clean up
         loaderCanFinish.countDown();

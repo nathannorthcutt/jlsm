@@ -21,11 +21,12 @@ brief.md, and initialises status.md as the restart checkpoint.
      ───────────────────────────────────────────────
      Scoping is already complete for '<slug>'.
      Brief: .feature/<slug>/brief.md
-
-       Type **yes**  to proceed to domain analysis  ·  or: stop
      ```
-     If "yes": invoke /feature-domains "<slug>" as a sub-agent immediately.
-     If "stop": display `Next: /feature-domains "<slug>"` and stop.
+     Use AskUserQuestion with options:
+       - "Proceed to domain analysis"
+       - "Stop"
+     If "Proceed to domain analysis": invoke /feature-domains "<slug>" as a sub-agent immediately.
+     If "Stop": display `Next: /feature-domains "<slug>"` and stop.
      Stop if the user says "redo" or "update brief" — proceed with re-scoping.
    - If stage is `scoping` and substage is `in-progress`:
      Display the opening header, then say "Scoping was in progress — resuming
@@ -260,24 +261,24 @@ Display:
 ```
 ── Feature branch ──────────────────────────────
   Suggested branch: <expanded branch name>
-
-  Type: create  to checkout a new branch now  ·  or: skip
 ```
 
-If "create": run `git checkout -b <branch-name>`. Display the result.
+Use AskUserQuestion with options:
+  - "Create branch" (description: checks out the suggested branch)
+  - "Skip" (description: continue without creating a branch)
+
+If "Create branch": run `git checkout -b <branch-name>`. Display the result.
 If the branch already exists locally, run `git checkout <branch-name>` instead.
-If "skip": continue without creating a branch.
+If "Skip": continue without creating a branch.
 
 ### Step 5b — Continue
 
-```
-───────────────────────────────────────────────
-  Type **yes**  ·  or: stop
-───────────────────────────────────────────────
-```
+Use AskUserQuestion with options:
+  - "Continue"
+  - "Stop"
 
-If "yes": invoke /feature-domains "<slug>" as a sub-agent immediately.
-If "stop":
+If "Continue": invoke /feature-domains "<slug>" as a sub-agent immediately.
+If "Stop":
 ```
 When you're ready:
   /feature-domains "<slug>"
@@ -330,6 +331,7 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 |-------|--------|-----------|-------------|---------------|-------|
 | Scoping | in-progress | — | — | — | |
 | Domains | not-started | — | — | — | |
+| Spec Authoring | not-started | — | — | — | if .spec/ exists |
 | Planning | not-started | — | — | — | |
 | Testing | not-started | — | — | — | cycle 0 |
 | Implementation | not-started | — | — | — | cycle 0 |

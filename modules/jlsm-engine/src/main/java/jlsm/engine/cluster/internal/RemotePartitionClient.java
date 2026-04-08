@@ -5,6 +5,7 @@ import jlsm.engine.cluster.Message;
 import jlsm.engine.cluster.MessageType;
 import jlsm.engine.cluster.NodeAddress;
 import jlsm.table.JlsmDocument;
+import jlsm.table.JlsmSchema;
 import jlsm.table.PartitionClient;
 import jlsm.table.PartitionDescriptor;
 import jlsm.table.Predicate;
@@ -15,6 +16,7 @@ import jlsm.table.UpdateMode;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -24,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -54,16 +57,25 @@ public final class RemotePartitionClient implements PartitionClient {
     /** Default timeout for request-response exchanges, in milliseconds. */
     private static final long DEFAULT_TIMEOUT_MS = 30_000L;
 
+    /**
+     * Tracks the number of RemotePartitionClient instances that have been constructed but not yet
+     * closed. Used for resource lifecycle verification — a non-zero count after a call site
+     * completes indicates a client leak.
+     */
+    private static final AtomicInteger OPEN_INSTANCES = new AtomicInteger(0);
+
     private final PartitionDescriptor descriptor;
     private final NodeAddress owner;
     private final ClusterTransport transport;
     private final NodeAddress localAddress;
+    private final JlsmSchema schema;
     private final long timeoutMs;
     private final AtomicLong sequenceCounter = new AtomicLong(0);
     private volatile boolean closed;
 
     /**
-     * Creates a remote partition client with the default timeout.
+     * Creates a remote partition client with the default timeout and no schema (document
+     * deserialization on get() is not supported).
      *
      * @param descriptor the partition descriptor; must not be null
      * @param owner the address of the partition owner; must not be null
@@ -72,7 +84,23 @@ public final class RemotePartitionClient implements PartitionClient {
      */
     public RemotePartitionClient(PartitionDescriptor descriptor, NodeAddress owner,
             ClusterTransport transport, NodeAddress localAddress) {
-        this(descriptor, owner, transport, localAddress, DEFAULT_TIMEOUT_MS);
+        this(descriptor, owner, transport, localAddress, null, DEFAULT_TIMEOUT_MS);
+    }
+
+    /**
+     * Creates a remote partition client with a schema for document deserialization and the default
+     * timeout.
+     *
+     * @param descriptor the partition descriptor; must not be null
+     * @param owner the address of the partition owner; must not be null
+     * @param transport the cluster transport; must not be null
+     * @param localAddress the local node address (for message sender field); must not be null
+     * @param schema the document schema for deserializing get() responses; must not be null
+     */
+    public RemotePartitionClient(PartitionDescriptor descriptor, NodeAddress owner,
+            ClusterTransport transport, NodeAddress localAddress, JlsmSchema schema) {
+        this(descriptor, owner, transport, localAddress,
+                Objects.requireNonNull(schema, "schema must not be null"), DEFAULT_TIMEOUT_MS);
     }
 
     /**
@@ -82,18 +110,22 @@ public final class RemotePartitionClient implements PartitionClient {
      * @param owner the address of the partition owner; must not be null
      * @param transport the cluster transport; must not be null
      * @param localAddress the local node address (for message sender field); must not be null
+     * @param schema the document schema for deserializing get() responses; may be null
      * @param timeoutMs timeout in milliseconds for request-response; must be positive
      */
     public RemotePartitionClient(PartitionDescriptor descriptor, NodeAddress owner,
-            ClusterTransport transport, NodeAddress localAddress, long timeoutMs) {
+            ClusterTransport transport, NodeAddress localAddress, JlsmSchema schema,
+            long timeoutMs) {
         this.descriptor = Objects.requireNonNull(descriptor, "descriptor must not be null");
         this.owner = Objects.requireNonNull(owner, "owner must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
         this.localAddress = Objects.requireNonNull(localAddress, "localAddress must not be null");
+        this.schema = schema;
         if (timeoutMs <= 0) {
             throw new IllegalArgumentException("timeoutMs must be positive, got: " + timeoutMs);
         }
         this.timeoutMs = timeoutMs;
+        OPEN_INSTANCES.incrementAndGet();
     }
 
     @Override
@@ -102,18 +134,15 @@ public final class RemotePartitionClient implements PartitionClient {
     }
 
     @Override
-    public void create(String key, JlsmDocument doc) throws IOException {
-        Objects.requireNonNull(key, "key must not be null");
-        Objects.requireNonNull(doc, "doc must not be null");
+    public void doCreate(String key, JlsmDocument doc) throws IOException {
         checkNotClosed();
 
-        final byte[] payload = encodeKeyPayload(OP_CREATE, key);
+        final byte[] payload = encodeKeyDocPayload(OP_CREATE, key, doc);
         sendRequestAndAwait(payload);
     }
 
     @Override
-    public Optional<JlsmDocument> get(String key) throws IOException {
-        Objects.requireNonNull(key, "key must not be null");
+    public Optional<JlsmDocument> doGet(String key) throws IOException {
         checkNotClosed();
 
         final byte[] payload = encodeKeyPayload(OP_GET, key);
@@ -125,26 +154,24 @@ public final class RemotePartitionClient implements PartitionClient {
         if (responsePayload.length == 0) {
             return Optional.empty();
         }
-        // In-JVM: the response handler will provide a meaningful document.
-        // For now, we return empty for empty payload, present signal for non-empty.
-        // Full document deserialization will be wired when the message format is finalized.
-        return Optional.empty();
+        if (schema == null) {
+            // No schema provided — cannot deserialize the document.
+            return Optional.empty();
+        }
+        final String json = new String(responsePayload, StandardCharsets.UTF_8);
+        return Optional.of(JlsmDocument.fromJson(json, schema));
     }
 
     @Override
-    public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
-        Objects.requireNonNull(key, "key must not be null");
-        Objects.requireNonNull(doc, "doc must not be null");
-        Objects.requireNonNull(mode, "mode must not be null");
+    public void doUpdate(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         checkNotClosed();
 
-        final byte[] payload = encodeKeyPayload(OP_UPDATE, key);
+        final byte[] payload = encodeKeyDocModePayload(OP_UPDATE, key, doc, mode);
         sendRequestAndAwait(payload);
     }
 
     @Override
-    public void delete(String key) throws IOException {
-        Objects.requireNonNull(key, "key must not be null");
+    public void doDelete(String key) throws IOException {
         checkNotClosed();
 
         final byte[] payload = encodeKeyPayload(OP_DELETE, key);
@@ -152,9 +179,8 @@ public final class RemotePartitionClient implements PartitionClient {
     }
 
     @Override
-    public Iterator<TableEntry<String>> getRange(String fromKey, String toKey) throws IOException {
-        Objects.requireNonNull(fromKey, "fromKey must not be null");
-        Objects.requireNonNull(toKey, "toKey must not be null");
+    public Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey)
+            throws IOException {
         checkNotClosed();
 
         final byte[] fromBytes = fromKey.getBytes(StandardCharsets.UTF_8);
@@ -166,14 +192,42 @@ public final class RemotePartitionClient implements PartitionClient {
         buf.putInt(toBytes.length);
         buf.put(toBytes);
 
-        sendRequestAndAwait(buf.array());
-        // Response deserialization of entries will be wired with full message format.
-        return Collections.emptyIterator();
+        final Message response = sendRequestAndAwait(buf.array());
+
+        assert response != null : "response must not be null after successful await";
+        final byte[] responsePayload = response.payload();
+        if (responsePayload.length == 0) {
+            return Collections.emptyIterator();
+        }
+        if (schema == null) {
+            // No schema provided — cannot deserialize entries.
+            return Collections.emptyIterator();
+        }
+
+        // Response format: [4-byte entry count][entries...]
+        // Each entry: [4-byte key-length][key-bytes][4-byte doc-length][doc-json-bytes]
+        final ByteBuffer responseBuf = ByteBuffer.wrap(responsePayload);
+        final int entryCount = responseBuf.getInt();
+        final List<TableEntry<String>> entries = new ArrayList<>(entryCount);
+        for (int i = 0; i < entryCount; i++) {
+            final int keyLen = responseBuf.getInt();
+            final byte[] keyBytes = new byte[keyLen];
+            responseBuf.get(keyBytes);
+            final String key = new String(keyBytes, StandardCharsets.UTF_8);
+
+            final int docLen = responseBuf.getInt();
+            final byte[] docBytes = new byte[docLen];
+            responseBuf.get(docBytes);
+            final String json = new String(docBytes, StandardCharsets.UTF_8);
+            final JlsmDocument doc = JlsmDocument.fromJson(json, schema);
+
+            entries.add(new TableEntry<>(key, doc));
+        }
+        return Collections.unmodifiableList(entries).iterator();
     }
 
     @Override
-    public List<ScoredEntry<String>> query(Predicate predicate, int limit) throws IOException {
-        Objects.requireNonNull(predicate, "predicate must not be null");
+    public List<ScoredEntry<String>> doQuery(Predicate predicate, int limit) throws IOException {
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive, got: " + limit);
         }
@@ -190,7 +244,27 @@ public final class RemotePartitionClient implements PartitionClient {
 
     @Override
     public void close() throws IOException {
-        closed = true;
+        if (!closed) {
+            closed = true;
+            OPEN_INSTANCES.decrementAndGet();
+        }
+    }
+
+    /**
+     * Returns the number of RemotePartitionClient instances that are currently open (constructed
+     * but not yet closed). Intended for resource lifecycle testing.
+     *
+     * @return the count of open instances
+     */
+    public static int openInstances() {
+        return OPEN_INSTANCES.get();
+    }
+
+    /**
+     * Resets the open instance counter. Intended for test cleanup only.
+     */
+    public static void resetOpenInstanceCounter() {
+        OPEN_INSTANCES.set(0);
     }
 
     // ---- Private helpers ----
@@ -205,6 +279,48 @@ public final class RemotePartitionClient implements PartitionClient {
         buf.put(opcode);
         buf.putInt(keyBytes.length);
         buf.put(keyBytes);
+        return buf.array();
+    }
+
+    /**
+     * Encodes a key+document operation payload:
+     * [opcode][key-length][key-bytes][doc-length][doc-json-bytes].
+     */
+    private byte[] encodeKeyDocPayload(byte opcode, String key, JlsmDocument doc) {
+        assert key != null : "key must not be null";
+        assert doc != null : "doc must not be null";
+        final byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        final byte[] docBytes = doc.toJson().getBytes(StandardCharsets.UTF_8);
+        final ByteBuffer buf = ByteBuffer.allocate(1 + 4 + keyBytes.length + 4 + docBytes.length);
+        buf.put(opcode);
+        buf.putInt(keyBytes.length);
+        buf.put(keyBytes);
+        buf.putInt(docBytes.length);
+        buf.put(docBytes);
+        return buf.array();
+    }
+
+    /**
+     * Encodes a key+document+mode operation payload:
+     * [opcode][key-length][key-bytes][doc-length][doc-json-bytes][mode-length][mode-name-bytes].
+     */
+    private byte[] encodeKeyDocModePayload(byte opcode, String key, JlsmDocument doc,
+            UpdateMode mode) {
+        assert key != null : "key must not be null";
+        assert doc != null : "doc must not be null";
+        assert mode != null : "mode must not be null";
+        final byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+        final byte[] docBytes = doc.toJson().getBytes(StandardCharsets.UTF_8);
+        final byte[] modeBytes = mode.name().getBytes(StandardCharsets.UTF_8);
+        final ByteBuffer buf = ByteBuffer
+                .allocate(1 + 4 + keyBytes.length + 4 + docBytes.length + 4 + modeBytes.length);
+        buf.put(opcode);
+        buf.putInt(keyBytes.length);
+        buf.put(keyBytes);
+        buf.putInt(docBytes.length);
+        buf.put(docBytes);
+        buf.putInt(modeBytes.length);
+        buf.put(modeBytes);
         return buf.array();
     }
 

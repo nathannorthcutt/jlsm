@@ -350,9 +350,12 @@ for f in "$KIT_ROOT_APPLY"/rules/*.md; do
 done
 
 echo "  Updating scripts..."
-for f in "$KIT_ROOT_APPLY"/scripts/*.sh; do
-    [[ -f "$f" ]] && apply_file "$f" "$PROJECT_ROOT/.claude/scripts/$(basename "$f")"
-done
+while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    # Preserve subdirectory structure (e.g. scripts/narrative/model.py)
+    rel="${f#"$KIT_ROOT_APPLY"/scripts/}"
+    apply_file "$f" "$PROJECT_ROOT/.claude/scripts/$rel"
+done < <(find "$KIT_ROOT_APPLY/scripts" -type f \( -name '*.sh' -o -name '*.py' -o -name '*.js' \))
 
 echo "  Updating upgrade.sh..."
 apply_file "$KIT_ROOT_APPLY/upgrade.sh" "$PROJECT_ROOT/.claude/upgrade.sh"
@@ -381,10 +384,131 @@ if [[ -f "$DECISIONS_INDEX" ]]; then
     fi
 fi
 
+# .spec/CLAUDE.md: skip if it has any domain rows
+SPEC_INDEX="$PROJECT_ROOT/.spec/CLAUDE.md"
+if [[ -f "$SPEC_INDEX" ]]; then
+    if grep -q "^| " "$SPEC_INDEX" 2>/dev/null; then
+        echo -e "  ${YELLOW}skip${NC}  .spec/CLAUDE.md  (has user domains — not overwritten)"
+        ((skipped_user++)) || true
+    else
+        apply_file "$KIT_ROOT_APPLY/spec/CLAUDE.md" "$SPEC_INDEX"
+    fi
+else
+    # First install of spec system — create seed
+    if [[ -f "$KIT_ROOT_APPLY/spec/CLAUDE.md" ]]; then
+        mkdir -p "$PROJECT_ROOT/.spec"
+        apply_file "$KIT_ROOT_APPLY/spec/CLAUDE.md" "$SPEC_INDEX"
+    fi
+fi
+
 # _refs are safe to update — they're reference fragments, not user content
 for f in "$KIT_ROOT_APPLY"/kb/_refs/*.md; do
     [[ -f "$f" ]] && apply_file "$f" "$PROJECT_ROOT/.kb/_refs/$(basename "$f")"
 done
+
+# ── Patch settings.json hooks (#22) ──────────────────────────────────────────
+# Only touch vallorcine-managed hooks (scripts referencing .claude/scripts/).
+# User hooks are preserved untouched.
+
+SETTINGS_FILE="$PROJECT_ROOT/.claude/settings.json"
+
+if [[ -f "$SETTINGS_FILE" ]]; then
+    echo "  Patching settings.json hooks..."
+    patched=0
+
+    # ── Migrate old direct script references to wrappers ─────────────
+    if grep -qF "token-stop-hook.sh" "$SETTINGS_FILE" 2>/dev/null; then
+        sed -i 's|token-stop-hook\.sh|token-hook-wrapper.sh|g' "$SETTINGS_FILE"
+        echo -e "  ${GREEN}migrate${NC} Stop hook → token-hook-wrapper.sh"
+        ((patched++)) || true
+    fi
+    if grep -q 'statusline\.sh[^a-z]' "$SETTINGS_FILE" 2>/dev/null && \
+       ! grep -qF "statusline-wrapper.sh" "$SETTINGS_FILE" 2>/dev/null; then
+        sed -i 's|scripts/statusline\.sh|scripts/statusline-wrapper.sh|g' "$SETTINGS_FILE"
+        echo -e "  ${GREEN}migrate${NC} Status line → statusline-wrapper.sh"
+        ((patched++)) || true
+    fi
+
+    # ── Remove stale hooks (e.g. retired dashboard) ──────────────────
+    if grep -qF "dashboard-stop-hook" "$SETTINGS_FILE" 2>/dev/null; then
+        if command -v jq &>/dev/null; then
+            jq '(.hooks.Stop // []) |= [.[] | select(.hooks | all(.command | test("dashboard") | not))]' \
+                "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+            echo -e "  ${RED}remove${NC} stale dashboard-stop-hook"
+            ((patched++)) || true
+        else
+            echo -e "  ${YELLOW}warn${NC}  dashboard-stop-hook is stale — remove manually (jq not available)"
+        fi
+    fi
+
+    # ── Add missing hooks (requires jq for safe JSON manipulation) ───
+    if command -v jq &>/dev/null; then
+        # Stop hook (token tracking)
+        if ! grep -qF "token-hook-wrapper.sh" "$SETTINGS_FILE" 2>/dev/null; then
+            jq '.hooks.Stop = ((.hooks.Stop // []) + [{
+                "hooks": [{
+                    "type": "command",
+                    "command": "bash .claude/scripts/token-hook-wrapper.sh"
+                }]
+            }])' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+            echo -e "  ${GREEN}add${NC}    Stop hook (token-hook-wrapper.sh)"
+            ((patched++)) || true
+        fi
+
+        # Status line
+        if ! grep -qF "statusline" "$SETTINGS_FILE" 2>/dev/null; then
+            jq '.statusLine = {
+                "type": "command",
+                "command": "bash .claude/scripts/statusline-wrapper.sh"
+            }' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+            echo -e "  ${GREEN}add${NC}    Status line (statusline-wrapper.sh)"
+            ((patched++)) || true
+        fi
+
+        # SubagentStart/SubagentStop hooks
+        if ! grep -qF "subagent-hook" "$SETTINGS_FILE" 2>/dev/null; then
+            jq '.hooks.SubagentStart = ((.hooks.SubagentStart // []) + [{
+                "hooks": [{
+                    "type": "command",
+                    "command": "bash .claude/scripts/subagent-hook-wrapper.sh"
+                }]
+            }]) | .hooks.SubagentStop = ((.hooks.SubagentStop // []) + [{
+                "hooks": [{
+                    "type": "command",
+                    "command": "bash .claude/scripts/subagent-hook-wrapper.sh"
+                }]
+            }])' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+            echo -e "  ${GREEN}add${NC}    SubagentStart/SubagentStop hooks"
+            ((patched++)) || true
+        fi
+
+        # Script permissions
+        if ! grep -qF "curate-scan.sh" "$SETTINGS_FILE" 2>/dev/null; then
+            jq '.permissions.allow = ((.permissions.allow // []) + [
+                "Bash(bash .claude/scripts/curate-scan.sh:*)",
+                "Bash(bash .claude/scripts/kb-freshness-check.sh:*)",
+                "Bash(bash .claude/scripts/version-check.sh:*)",
+                "Bash(bash .claude/scripts/ensure-merge-driver.sh:*)",
+                "Bash(bash .claude/scripts/adr-validate.sh:*)",
+                "Bash(bash .claude/scripts/index-verify.sh:*)",
+                "Bash(bash .claude/scripts/narrative-wrapper.sh:*)"
+            ] | unique)' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+            echo -e "  ${GREEN}add${NC}    Script permissions"
+            ((patched++)) || true
+        fi
+    else
+        # No jq — can only do sed-based migrations (already done above)
+        if ! grep -qF "subagent-hook" "$SETTINGS_FILE" 2>/dev/null || \
+           ! grep -qF "statusline" "$SETTINGS_FILE" 2>/dev/null; then
+            echo -e "  ${YELLOW}warn${NC}  settings.json may be missing hooks — jq not available for safe patching"
+            echo -e "         Re-run install.sh or add hooks manually"
+        fi
+    fi
+
+    if [[ $patched -eq 0 ]]; then
+        echo -e "  ${YELLOW}skip${NC}  settings.json hooks already up to date"
+    fi
+fi
 
 # ── Remove stale files ────────────────────────────────────────────────────────
 # Any file listed in the old installed manifest but absent from the new kit

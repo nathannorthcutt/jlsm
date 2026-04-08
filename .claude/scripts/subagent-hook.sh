@@ -34,9 +34,10 @@ fi
 case "$event" in
     SubagentStart)
         mkdir -p .claude
-        # Write JSON state
+        # Write JSON state (atomic: write to .tmp then rename)
         printf '{"active":true,"agent_id":"%s","description":"%s","started":"%s"}\n' \
-            "$agent_id" "$description" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATE_FILE"
+            "$agent_id" "$description" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${STATE_FILE}.tmp" \
+            && mv "${STATE_FILE}.tmp" "$STATE_FILE"
         ;;
     SubagentStop)
         rm -f "$STATE_FILE"

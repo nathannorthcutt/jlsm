@@ -28,10 +28,15 @@ public final class JlsmSchema {
     private final Map<String, Integer> fieldIndexMap;
 
     private JlsmSchema(String name, int version, List<FieldDefinition> fields, int maxDepth) {
-        assert name != null : "name must not be null";
-        assert version >= 0 : "version must not be negative";
-        assert fields != null : "fields must not be null";
-        assert maxDepth >= 0 && maxDepth <= ABSOLUTE_MAX_DEPTH : "maxDepth out of range";
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(fields, "fields must not be null");
+        if (version < 0) {
+            throw new IllegalArgumentException("version must not be negative, got: " + version);
+        }
+        if (maxDepth < 0 || maxDepth > ABSOLUTE_MAX_DEPTH) {
+            throw new IllegalArgumentException(
+                    "maxDepth out of range [0, " + ABSOLUTE_MAX_DEPTH + "], got: " + maxDepth);
+        }
 
         this.name = name;
         this.version = version;
@@ -215,6 +220,9 @@ public final class JlsmSchema {
         public Builder objectField(String name, Consumer<Builder> nested) {
             Objects.requireNonNull(name, "name must not be null");
             Objects.requireNonNull(nested, "nested must not be null");
+            if (name.isBlank()) {
+                throw new IllegalArgumentException("field name must not be blank");
+            }
             assert name != null : "name must not be null";
             assert nested != null : "nested consumer must not be null";
 
@@ -238,6 +246,10 @@ public final class JlsmSchema {
          * @throws IllegalArgumentException if {@code maxDepth} exceeds 25
          */
         public Builder maxDepth(int maxDepth) {
+            if (rootBuilder != null) {
+                throw new IllegalStateException("maxDepth can only be set on the root builder — "
+                        + "nested builders inherit maxDepth from the root");
+            }
             if (maxDepth > ABSOLUTE_MAX_DEPTH) {
                 throw new IllegalArgumentException("maxDepth " + maxDepth
                         + " exceeds absolute maximum of " + ABSOLUTE_MAX_DEPTH);

@@ -10,7 +10,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.Objects;
-import java.util.TreeMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import jlsm.table.DuplicateKeyException;
 import jlsm.table.FieldType;
@@ -37,11 +38,13 @@ public final class FieldIndex implements SecondaryIndex {
     public FieldIndex(IndexDefinition definition, FieldType schemaFieldType) throws IOException {
         Objects.requireNonNull(definition, "definition");
         IndexType type = definition.indexType();
-        assert type == IndexType.EQUALITY || type == IndexType.RANGE || type == IndexType.UNIQUE
-                : "FieldIndex only supports EQUALITY, RANGE, or UNIQUE";
+        if (type != IndexType.EQUALITY && type != IndexType.RANGE && type != IndexType.UNIQUE) {
+            throw new IllegalArgumentException(
+                    "FieldIndex only supports EQUALITY, RANGE, or UNIQUE — got " + type);
+        }
         this.definition = definition;
         this.schemaFieldType = schemaFieldType;
-        this.entries = new TreeMap<>();
+        this.entries = new ConcurrentSkipListMap<>();
     }
 
     /**
@@ -64,6 +67,9 @@ public final class FieldIndex implements SecondaryIndex {
      * @throws DuplicateKeyException if the value already exists in a UNIQUE index
      */
     void checkUnique(Object fieldValue) throws IOException {
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         if (definition.indexType() != IndexType.UNIQUE || fieldValue == null) {
             return;
         }
@@ -77,7 +83,9 @@ public final class FieldIndex implements SecondaryIndex {
 
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        assert !closed : "Index is closed";
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         if (fieldValue == null) {
             return;
         }
@@ -91,24 +99,37 @@ public final class FieldIndex implements SecondaryIndex {
             }
         }
 
-        entries.computeIfAbsent(encoded, _ -> new ArrayList<>()).add(copySegment(primaryKey));
+        entries.computeIfAbsent(encoded, _ -> new CopyOnWriteArrayList<>())
+                .add(copySegment(primaryKey));
     }
 
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
-        assert !closed : "Index is closed";
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         if (oldFieldValue != null) {
             removeEntry(primaryKey, oldFieldValue);
         }
         if (newFieldValue != null) {
-            onInsert(primaryKey, newFieldValue);
+            try {
+                onInsert(primaryKey, newFieldValue);
+            } catch (IOException | RuntimeException ex) {
+                // Restore old entry to avoid orphaning the primary key from the index
+                if (oldFieldValue != null) {
+                    onInsert(primaryKey, oldFieldValue);
+                }
+                throw ex;
+            }
         }
     }
 
     @Override
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        assert !closed : "Index is closed";
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         if (fieldValue == null) {
             return;
         }
@@ -117,7 +138,9 @@ public final class FieldIndex implements SecondaryIndex {
 
     @Override
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
-        assert !closed : "Index is closed";
+        if (closed) {
+            throw new IllegalStateException("Index is closed");
+        }
         return switch (predicate) {
             case Predicate.Eq eq -> lookupEq(eq.value());
             case Predicate.Ne ne -> lookupNe(ne.value());
@@ -126,7 +149,9 @@ public final class FieldIndex implements SecondaryIndex {
             case Predicate.Lt lt -> lookupLt(lt.value());
             case Predicate.Lte lte -> lookupLte(lte.value());
             case Predicate.Between between -> lookupBetween(between.low(), between.high());
-            default -> Collections.emptyIterator();
+            default -> throw new UnsupportedOperationException(
+                    "FieldIndex does not support predicate type: "
+                            + predicate.getClass().getSimpleName());
         };
     }
 
@@ -276,6 +301,11 @@ public final class FieldIndex implements SecondaryIndex {
         if (schemaFieldType != null) {
             return schemaFieldType;
         }
+        if (value instanceof Short) {
+            throw new IllegalStateException(
+                    "Short is ambiguous between INT16 and FLOAT16; use the two-arg constructor "
+                            + "FieldIndex(definition, schemaFieldType) to specify the intended encoding");
+        }
         return inferFieldType(value);
     }
 
@@ -298,6 +328,15 @@ public final class FieldIndex implements SecondaryIndex {
      * Byte array wrapper with unsigned bytewise comparison for use as TreeMap key.
      */
     record ByteArrayKey(byte[] data) implements Comparable<ByteArrayKey> {
+
+        ByteArrayKey {
+            data = data.clone();
+        }
+
+        @Override
+        public byte[] data() {
+            return data.clone();
+        }
 
         @Override
         public int compareTo(ByteArrayKey other) {

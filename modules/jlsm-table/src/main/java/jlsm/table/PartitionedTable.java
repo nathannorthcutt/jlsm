@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,19 +33,24 @@ import java.util.function.Function;
 public final class PartitionedTable implements Closeable {
 
     private final PartitionConfig config;
+    private final JlsmSchema schema; // nullable — schema is optional
     private final RangeMap rangeMap;
     // Ordered map: descriptor id → client (insertion order matches config order)
     private final Map<Long, PartitionClient> clients;
+    private volatile boolean closed;
 
-    private PartitionedTable(PartitionConfig config, RangeMap rangeMap,
+    private PartitionedTable(PartitionConfig config, JlsmSchema schema, RangeMap rangeMap,
             Map<Long, PartitionClient> clients) {
-        assert config != null : "config must not be null";
-        assert rangeMap != null : "rangeMap must not be null";
-        assert clients != null : "clients must not be null";
-        assert !clients.isEmpty() : "clients must not be empty";
+        Objects.requireNonNull(config, "config must not be null");
+        Objects.requireNonNull(rangeMap, "rangeMap must not be null");
+        Objects.requireNonNull(clients, "clients must not be null");
+        if (clients.isEmpty()) {
+            throw new IllegalArgumentException("clients must not be empty");
+        }
         this.config = config;
+        this.schema = schema;
         this.rangeMap = rangeMap;
-        this.clients = clients;
+        this.clients = Collections.unmodifiableMap(clients);
     }
 
     /**
@@ -65,6 +71,7 @@ public final class PartitionedTable implements Closeable {
      * @throws DuplicateKeyException if the key already exists
      */
     public void create(String key, JlsmDocument doc) throws IOException {
+        checkNotClosed();
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(doc, "doc must not be null");
         final PartitionClient client = routeKey(key);
@@ -79,6 +86,7 @@ public final class PartitionedTable implements Closeable {
      * @throws IOException if the read fails
      */
     public Optional<JlsmDocument> get(String key) throws IOException {
+        checkNotClosed();
         Objects.requireNonNull(key, "key must not be null");
         final PartitionClient client = routeKey(key);
         return client.get(key);
@@ -93,6 +101,7 @@ public final class PartitionedTable implements Closeable {
      * @throws IOException if the write fails
      */
     public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
+        checkNotClosed();
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(doc, "doc must not be null");
         Objects.requireNonNull(mode, "mode must not be null");
@@ -107,6 +116,7 @@ public final class PartitionedTable implements Closeable {
      * @throws IOException if the write fails
      */
     public void delete(String key) throws IOException {
+        checkNotClosed();
         Objects.requireNonNull(key, "key must not be null");
         final PartitionClient client = routeKey(key);
         client.delete(key);
@@ -124,18 +134,39 @@ public final class PartitionedTable implements Closeable {
      * @throws IOException if any partition read fails
      */
     public Iterator<TableEntry<String>> getRange(String fromKey, String toKey) throws IOException {
+        checkNotClosed();
         Objects.requireNonNull(fromKey, "fromKey must not be null");
         Objects.requireNonNull(toKey, "toKey must not be null");
+        if (fromKey.compareTo(toKey) >= 0) {
+            throw new IllegalArgumentException(
+                    "fromKey must be strictly less than toKey: fromKey=\"" + fromKey
+                            + "\", toKey=\"" + toKey + "\"");
+        }
         final MemorySegment fromSeg = toSegment(fromKey);
         final MemorySegment toSeg = toSegment(toKey);
         final List<PartitionDescriptor> overlapping = rangeMap.overlapping(fromSeg, toSeg);
         // overlapping may be empty when query range does not intersect any partition
 
         final List<Iterator<TableEntry<String>>> iterators = new ArrayList<>(overlapping.size());
-        for (final PartitionDescriptor desc : overlapping) {
-            final PartitionClient client = clients.get(desc.id());
-            assert client != null : "no client found for descriptor id " + desc.id();
-            iterators.add(client.getRange(fromKey, toKey));
+        try {
+            for (final PartitionDescriptor desc : overlapping) {
+                final PartitionClient client = clients.get(desc.id());
+                if (client == null) {
+                    throw new IllegalStateException(
+                            "no client found for descriptor id " + desc.id());
+                }
+                // Clip the query range to partition boundaries to avoid unnecessary scanning.
+                // Each partition receives [max(fromKey, lowKey), min(toKey, highKey)).
+                final String clippedFrom = compareSegments(fromSeg, desc.lowKey()) > 0 ? fromKey
+                        : fromSegment(desc.lowKey());
+                final String clippedTo = compareSegments(toSeg, desc.highKey()) < 0 ? toKey
+                        : fromSegment(desc.highKey());
+                iterators.add(client.getRange(clippedFrom, clippedTo));
+            }
+        } catch (final Exception e) {
+            // Close any already-collected iterators to prevent resource leaks.
+            closeIterators(iterators);
+            throw e;
         }
         return ResultMerger.mergeOrdered(iterators);
     }
@@ -175,6 +206,15 @@ public final class PartitionedTable implements Closeable {
     }
 
     /**
+     * Returns the schema shared by all partitions, if one was set during construction.
+     *
+     * @return the schema, or empty if no schema was provided to the builder
+     */
+    public Optional<JlsmSchema> schema() {
+        return Optional.ofNullable(schema);
+    }
+
+    /**
      * Closes all partition clients. Uses the deferred close pattern: all clients are closed even if
      * one or more throw, and exceptions are accumulated. If any client fails to close, the first
      * exception is thrown with remaining exceptions added as suppressed.
@@ -183,6 +223,10 @@ public final class PartitionedTable implements Closeable {
      */
     @Override
     public void close() throws IOException {
+        if (closed) {
+            return;
+        }
+        closed = true;
         Exception firstException = null;
         for (final PartitionClient client : clients.values()) {
             try {
@@ -216,7 +260,7 @@ public final class PartitionedTable implements Closeable {
      *            suppressed
      */
     private static void closeAllClients(Map<Long, PartitionClient> clients, Exception cause) {
-        assert cause != null : "cause must not be null";
+        Objects.requireNonNull(cause, "cause");
         for (final PartitionClient client : clients.values()) {
             try {
                 client.close();
@@ -231,6 +275,15 @@ public final class PartitionedTable implements Closeable {
     // -------------------------------------------------------------------------
 
     /**
+     * Throws {@link IllegalStateException} if this table has been closed.
+     */
+    private void checkNotClosed() {
+        if (closed) {
+            throw new IllegalStateException("PartitionedTable is closed");
+        }
+    }
+
+    /**
      * Routes the given string key to its owning partition client.
      *
      * @param key the string key
@@ -242,7 +295,9 @@ public final class PartitionedTable implements Closeable {
         final MemorySegment keySeg = toSegment(key);
         final PartitionDescriptor desc = rangeMap.routeKey(keySeg);
         final PartitionClient client = clients.get(desc.id());
-        assert client != null : "no client registered for descriptor id " + desc.id();
+        if (client == null) {
+            throw new IllegalStateException("no client registered for descriptor id " + desc.id());
+        }
         return client;
     }
 
@@ -252,9 +307,66 @@ public final class PartitionedTable implements Closeable {
      * @param key the string key
      * @return the key as a MemorySegment
      */
+    /**
+     * Closes any iterators in the list that implement {@link Closeable}, accumulating exceptions
+     * via deferred-close pattern. Used to clean up partially-collected iterators when a subsequent
+     * partition dispatch fails.
+     */
+    private static void closeIterators(List<Iterator<TableEntry<String>>> iterators) {
+        IOException deferred = null;
+        for (final Iterator<TableEntry<String>> it : iterators) {
+            if (it instanceof Closeable c) {
+                try {
+                    c.close();
+                } catch (final IOException e) {
+                    if (deferred == null) {
+                        deferred = e;
+                    } else {
+                        deferred.addSuppressed(e);
+                    }
+                }
+            }
+        }
+        // Deferred exceptions from closing iterators are suppressed — the primary
+        // dispatch exception takes precedence.
+    }
+
     private static MemorySegment toSegment(String key) {
         assert key != null : "key must not be null";
         return MemorySegment.ofArray(key.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Converts a {@link MemorySegment} back to a string using UTF-8 decoding.
+     *
+     * @param seg the segment to decode
+     * @return the decoded string
+     */
+    private static String fromSegment(MemorySegment seg) {
+        assert seg != null : "seg must not be null";
+        return new String(seg.toArray(java.lang.foreign.ValueLayout.JAVA_BYTE),
+                StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Unsigned byte-lexicographic comparison of two segments.
+     *
+     * @return negative if a &lt; b, 0 if equal, positive if a &gt; b
+     */
+    private static int compareSegments(MemorySegment a, MemorySegment b) {
+        final long mismatch = a.mismatch(b);
+        if (mismatch == -1L) {
+            return 0;
+        }
+        if (mismatch == a.byteSize()) {
+            return -1;
+        }
+        if (mismatch == b.byteSize()) {
+            return 1;
+        }
+        return Integer.compare(
+                Byte.toUnsignedInt(a.get(java.lang.foreign.ValueLayout.JAVA_BYTE, mismatch)),
+                Byte.toUnsignedInt(b.get(java.lang.foreign.ValueLayout.JAVA_BYTE, mismatch)));
     }
 
     // -------------------------------------------------------------------------
@@ -354,7 +466,7 @@ public final class PartitionedTable implements Closeable {
 
             assert clients.size() == config.partitionCount()
                     : "client count must match partition count";
-            return new PartitionedTable(config, rangeMap, clients);
+            return new PartitionedTable(config, schema, rangeMap, clients);
         }
     }
 }

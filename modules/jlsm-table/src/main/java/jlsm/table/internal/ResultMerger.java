@@ -75,6 +75,11 @@ public final class ResultMerger {
             final List<ScoredEntry<K>> partition = partitionResults.get(i);
             Objects.requireNonNull(partition,
                     "partition result list must not be null (index " + i + ")");
+            for (int j = 0; j < partition.size(); j++) {
+                Objects.requireNonNull(partition.get(j),
+                        "scored entry element must not be null (partition " + i + ", element " + j
+                                + ")");
+            }
             heap.addAll(partition);
         }
 
@@ -107,6 +112,12 @@ public final class ResultMerger {
     public static Iterator<TableEntry<String>> mergeOrdered(
             List<Iterator<TableEntry<String>>> partitionIterators) {
         Objects.requireNonNull(partitionIterators, "partitionIterators must not be null");
+        for (int i = 0; i < partitionIterators.size(); i++) {
+            if (partitionIterators.get(i) == null) {
+                throw new NullPointerException(
+                        "partition iterator at index " + i + " must not be null");
+            }
+        }
         return new MergingIterator(partitionIterators);
     }
 
@@ -118,7 +129,8 @@ public final class ResultMerger {
      * An iterator that performs an N-way merge of pre-sorted partition iterators using a min-heap.
      * Each heap entry wraps the current head element from one partition iterator.
      */
-    private static final class MergingIterator implements Iterator<TableEntry<String>> {
+    private static final class MergingIterator
+            implements Iterator<TableEntry<String>>, AutoCloseable {
 
         /** Heap entry: the current head element from a single partition iterator. */
         private record HeapEntry(TableEntry<String> entry, Iterator<TableEntry<String>> source) {
@@ -129,8 +141,12 @@ public final class ResultMerger {
 
         private final PriorityQueue<HeapEntry> heap;
 
+        /** All source iterators — retained so close() can release resources on abandonment. */
+        private final List<Iterator<TableEntry<String>>> sourceIterators;
+
         MergingIterator(List<Iterator<TableEntry<String>>> partitionIterators) {
             assert partitionIterators != null : "partitionIterators must not be null";
+            this.sourceIterators = List.copyOf(partitionIterators);
             this.heap = new PriorityQueue<>(Math.max(1, partitionIterators.size()), KEY_ORDER);
             for (final Iterator<TableEntry<String>> it : partitionIterators) {
                 assert it != null : "individual partition iterator must not be null";
@@ -152,11 +168,44 @@ public final class ResultMerger {
             }
             final HeapEntry head = heap.poll();
             assert head != null : "polled entry must not be null";
-            // Advance the source iterator and re-offer its next element
-            if (head.source().hasNext()) {
-                heap.offer(new HeapEntry(head.source().next(), head.source()));
+            // Advance the source iterator and re-offer its next element.
+            // If the source throws, re-offer the current head so the source is not
+            // silently lost from the heap — callers can retry after transient errors.
+            try {
+                if (head.source().hasNext()) {
+                    heap.offer(new HeapEntry(head.source().next(), head.source()));
+                }
+            } catch (final RuntimeException ex) {
+                heap.offer(head);
+                throw ex;
             }
             return head.entry();
+        }
+
+        /**
+         * Closes any source iterators that implement {@link AutoCloseable}, releasing resources
+         * held by abandoned iteration. Safe to call multiple times.
+         */
+        @Override
+        public void close() throws Exception {
+            Exception deferred = null;
+            for (final Iterator<TableEntry<String>> it : sourceIterators) {
+                if (it instanceof AutoCloseable ac) {
+                    try {
+                        ac.close();
+                    } catch (final Exception e) {
+                        if (deferred == null) {
+                            deferred = e;
+                        } else {
+                            deferred.addSuppressed(e);
+                        }
+                    }
+                }
+            }
+            heap.clear();
+            if (deferred != null) {
+                throw deferred;
+            }
         }
     }
 }

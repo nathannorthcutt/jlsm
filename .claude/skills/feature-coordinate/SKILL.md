@@ -126,12 +126,16 @@ The coordinator runs a **completion-driven loop** instead of batch-wait:
    single response — Claude Code runs them in parallel.
 
 2. **Monitor** — as each sub-agent returns:
-   a. Read its `units/WU-N/status.md` to check the result.
-   b. If refactor complete → mark `complete` in the feature-level Work Units table.
-   c. If escalation → handle immediately (see escalation handling below).
-   d. **Check for newly unblocked units** — scan the Work Units table for any
+   a. **Verify working directory** — run `pwd` and confirm it is the project
+      root (not a `.claude/worktrees/` path). If in a worktree path, `cd` back
+      to the project root before any file operations. This prevents phantom
+      "file not found" errors after subagent completion.
+   b. Read its `units/WU-N/status.md` to check the result.
+   c. If refactor complete → mark `complete` in the feature-level Work Units table.
+   d. If escalation → handle immediately (see escalation handling below).
+   e. **Check for newly unblocked units** — scan the Work Units table for any
       unit whose dependencies are now all `complete` and status is `not-started`.
-   e. If new units are ready → launch them immediately as sub-agents.
+   f. If new units are ready → launch them immediately as sub-agents.
       Display: `  → WU-<n>: <name> (unblocked by WU-<completed>)`
 
 3. **Repeat** until all units are complete or blocked by escalations.
@@ -174,11 +178,45 @@ Balanced mode uses the simpler batch approach:
    dependencies are `complete`. Group as the current batch.
 2. **Launch** all batch units as parallel sub-agents.
 3. **Wait** for all sub-agents in the batch to return.
-4. **Check results** — mark completed units, handle escalations.
-5. **Loop** — go back to step 1 for the next batch.
+4. **Verify working directory** — same as speed mode Step 2.2a. Always
+   confirm `pwd` is the project root after subagents complete.
+5. **Check results** — mark completed units, handle escalations.
+6. **Loop** — go back to step 1 for the next batch.
 
 This is the same behaviour as before — predictable batch boundaries with
 clear checkpoints between batches.
+
+---
+
+## Step 2c — Stall detection
+
+Subagents can hang silently with no output or progress. The coordinator
+cannot set hard timeouts (Claude Code does not expose this), but it should
+surface staleness to the user.
+
+**Between sub-agent checks:** if a sub-agent has been running with no status.md
+update for an extended period, note this in the TodoWrite checklist:
+
+```
+"activeForm": "running — no status update in >10m ⚠️"
+```
+
+**If the user reports a stall or asks about progress:** check the unit's
+`status.md` for the last substage update. If the substage has not changed,
+advise the user:
+
+```
+── Possible stall ────────────────────────────
+  WU-<n>: last status update was <substage> at <time>
+
+Options:
+  wait   — continue waiting (may resolve on its own)
+  kill   — cancel the subagent and retry this unit
+  skip   — mark unit as failed, block dependents
+```
+
+This is advisory — the coordinator cannot kill subagents directly. The user
+must cancel manually if needed. The coordinator can then retry the unit.
 
 ---
 
@@ -214,9 +252,13 @@ When all units are complete (or between batches in balanced mode):
 - If `automation_mode: manual` and units remain:
   ```
   More units ready.
-    Type **yes**  ·  or: stop
   ```
-  If "yes": continue. If "stop": display resume command and stop.
+
+  Use AskUserQuestion with two options:
+  - "Continue" (description: process next ready units)
+  - "Stop" (description: display resume command and stop)
+
+  If "Continue": continue. If "Stop": display resume command and stop.
 
 ---
 
@@ -231,7 +273,46 @@ Read each `units/WU-N/cycle-log.md`. Merge into feature-level `cycle-log.md`:
 - Prefix each entry header with `[WU-N]`
 - Example: `## <YYYY-MM-DD> — [WU-2] tests-written`
 
-### 4b — Run integration tests
+### 4b — Post-coordination verification
+
+Before running integration tests, verify the final state is clean. This
+catches worktree confusion, silent failures, or partial writes from subagents.
+
+1. **Verify working directory** — confirm `pwd` is the project root.
+
+2. **Verify all expected files exist** — for each work unit, read the unit's
+   `work-plan.md` section and check that every file listed in its constructs
+   exists on disk. Collect any missing files.
+
+3. **Run the full test suite** (5-minute Bash timeout) — not per-unit tests,
+   the complete suite from the project root (read test command from
+   project-config.md). If the suite hangs, investigate before retrying.
+   This catches cross-unit regressions that per-unit tests wouldn't see.
+
+4. **Report results:**
+   ```
+   ── Verification ──────────────────────────────
+     Files: <n>/<n> present ✓
+     Tests: <n> passing ✓
+   ```
+
+   If any files are missing or tests fail:
+   ```
+   ── Verification ──────────────────────────────
+     Files: <n>/<total> present
+       MISSING: <path> (WU-<n>)
+       MISSING: <path> (WU-<n>)
+     Tests: <n> failing
+
+   How would you like to proceed?
+     retry <WU-n>  — re-run a specific work unit
+     continue      — proceed despite issues
+     stop          — pause for manual investigation
+   ```
+
+   Wait for user input before continuing.
+
+### 4c — Run integration tests
 
 Run integration tests (equivalent to refactor Step 2f). In parallel mode,
 integration tests are deferred from individual refactor stages to here.
@@ -258,13 +339,13 @@ Run it. Three possible outcomes:
 **If no integration test command is configured:** check for integration test
 directories. If found, note for manual check. If not found, skip silently.
 
-### 4c — Update feature-level status
+### 4d — Update feature-level status
 
 Update feature-level status.md:
 - All units marked `complete` in Work Units table
 - Stage → `refactor`, substage → `refactor complete`
 
-### 4d — Hand off
+### 4e — Hand off
 
 Read the Stage Completion table from status.md and display a token summary:
 
@@ -294,10 +375,14 @@ Merged cycle log: .feature/<slug>/cycle-log.md
 - If `automation_mode: manual`:
   ```
   Feature is ready for PR.
-    Type **yes**  ·  or: stop
   ```
-  If "yes": invoke `/feature-pr "<slug>"`.
-  If "stop": display `Next: /feature-pr "<slug>"` and stop.
+
+  Use AskUserQuestion with two options:
+  - "Create PR" (description: invoke /feature-pr)
+  - "Stop" (description: display resume command)
+
+  If "Create PR": invoke `/feature-pr "<slug>"`.
+  If "Stop": display `Next: /feature-pr "<slug>"` and stop.
 
 ---
 

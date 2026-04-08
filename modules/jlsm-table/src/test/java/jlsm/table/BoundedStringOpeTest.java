@@ -212,10 +212,23 @@ class BoundedStringOpeTest {
                 "Error should mention OrderPreserving or bounded: " + ex.getMessage());
     }
 
+    // Updated by audit F-R1.shared_state.8.3: BoundedString(6) with OPE was incorrectly
+    // allowed — maxLength > 2 exceeds OPE limit and causes silent data truncation. Now
+    // correctly rejected by IndexRegistry.validateOrderPreservingFieldType.
     @Test
-    void rangeIndex_boundedString_orderPreserving_allowed() throws IOException {
+    void rangeIndex_boundedString6_orderPreserving_rejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("code", FieldType.string(6), EncryptionSpec.orderPreserving()).build();
+
+        var defs = List.of(new IndexDefinition("code", IndexType.RANGE));
+        assertThrows(IllegalArgumentException.class, () -> new IndexRegistry(schema, defs),
+                "BoundedString(6) with OPE must be rejected — maxLength exceeds OPE limit of 2");
+    }
+
+    @Test
+    void rangeIndex_boundedString2_orderPreserving_allowed() throws IOException {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("code", FieldType.string(2), EncryptionSpec.orderPreserving()).build();
 
         var defs = List.of(new IndexDefinition("code", IndexType.RANGE));
         var registry = new IndexRegistry(schema, defs);

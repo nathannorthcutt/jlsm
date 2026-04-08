@@ -87,6 +87,32 @@ with the matching term so the user can see why they were surfaced.
 **Cost control:** category indexes are ~10-30 lines each. Even on a large KB
 (50 categories), the scan costs ~1-2K tokens — less than a single subject file.
 
+#### 1c — Relevance gate (prune before deep reads)
+
+After 1a and 1b, you have a set of candidate categories. Before proceeding,
+assess whether each candidate is relevant to the *specific question*, not just
+the general topic area.
+
+For each candidate category, you have its one-paragraph description and
+contents table from the category CLAUDE.md. Ask: "Given the specific
+question, would reading entries from this category help answer it?"
+
+- If a candidate category is clearly irrelevant to the specific question,
+  drop it. Example: question is "how does encryption at rest work" — drop
+  a "key-cache-concurrency" category even if it matched on "encryption."
+- If unsure, keep it — false negatives are worse than false positives at
+  this stage.
+
+**Result set sanity check:**
+- If 0 candidates remain after pruning: broaden — re-run 1b with different
+  keywords, or note a KB gap.
+- If 10+ candidates remain: the question may be too broad. Note the count
+  to the user and ask if they want to narrow the scope, or proceed with
+  the top candidates (those from 1a take priority over 1b keyword matches).
+
+This gate is a single judgment step, not a loop. It uses only the index
+content already loaded — no new file reads.
+
 #### Staleness check
 
 For each candidate from 1a and 1b, note the `Last Updated` date from
@@ -111,6 +137,19 @@ When loading subject files, read only the relevant section:
 - "How do I implement X?" → `## algorithm-steps` + `## code-skeleton`
 - "What are the parameters?" → `### key-parameters` only
 - "How does X compare to Y?" → `## tradeoffs` from both subjects
+
+#### Following `related` links (depth-1 only)
+
+When a loaded subject file has a `related:` frontmatter field with entries,
+these are cross-topic links to other KB entries. Follow them at **depth 1
+only** — read the linked entry's `## summary` section to assess relevance
+to the current question. Do NOT follow the linked entry's own `related`
+links (that would be depth 2+).
+
+Only include a related entry in the answer if its summary is directly
+relevant to the question being asked. A related link is a hint, not a
+mandate to read — most related entries won't be relevant to the specific
+question.
 
 ### Step 3 — Display the answer
 

@@ -4,6 +4,7 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
@@ -20,7 +21,7 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>
  * Governed by: .kb/algorithms/encryption/searchable-encryption-schemes.md
  */
-public final class AesGcmEncryptor {
+public final class AesGcmEncryptor implements AutoCloseable {
 
     private static final int IV_LENGTH = 12;
     private static final int TAG_BITS = 128;
@@ -33,6 +34,7 @@ public final class AesGcmEncryptor {
     /** Cached SecretKeySpec — immutable, safe to share across threads. */
     private final SecretKeySpec keySpec;
     private final ThreadLocal<SecureRandom> random;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     /**
      * Creates an AES-GCM encryptor using the given key holder.
@@ -65,6 +67,7 @@ public final class AesGcmEncryptor {
      */
     public byte[] encrypt(byte[] plaintext) {
         Objects.requireNonNull(plaintext, "plaintext must not be null");
+        ensureOpen();
         try {
             final byte[] iv = new byte[IV_LENGTH];
             random.get().nextBytes(iv);
@@ -96,6 +99,7 @@ public final class AesGcmEncryptor {
      */
     public byte[] decrypt(byte[] ciphertext) {
         Objects.requireNonNull(ciphertext, "ciphertext must not be null");
+        ensureOpen();
         if (ciphertext.length < OVERHEAD) {
             throw new IllegalArgumentException("Ciphertext too short: minimum " + OVERHEAD
                     + " bytes, got " + ciphertext.length);
@@ -114,6 +118,26 @@ public final class AesGcmEncryptor {
                     e);
         } catch (GeneralSecurityException e) {
             throw new SecurityException("AES-GCM decryption failed", e);
+        }
+    }
+
+    /**
+     * Removes per-thread Cipher and SecureRandom entries for the calling thread and marks this
+     * encryptor as closed. Subsequent calls to {@link #encrypt} or {@link #decrypt} will throw
+     * {@link IllegalStateException}. Idempotent.
+     */
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
+        cipher.remove();
+        random.remove();
+    }
+
+    private void ensureOpen() {
+        if (closed.get()) {
+            throw new IllegalStateException("AesGcmEncryptor has been closed");
         }
     }
 }

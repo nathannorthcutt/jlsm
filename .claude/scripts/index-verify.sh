@@ -12,7 +12,8 @@
 # Output: nothing if consistent, warnings if repaired.
 # Performance: ~5-20ms typical (directory listing + grep).
 
-set -euo pipefail
+# Note: no set -euo pipefail — this script is called automatically before
+# commands that read indexes. It must never block, always exits 0.
 
 CHECK_KB=0
 CHECK_DECISIONS=0
@@ -87,7 +88,7 @@ if [[ "$CHECK_KB" == "1" && -d ".kb" && -f ".kb/CLAUDE.md" ]]; then
 
     # Check Recently Added has entries if subject files exist
     subject_count="$(find .kb -name '*.md' ! -name 'CLAUDE.md' ! -path '*/_refs/*' ! -path '*/_archive*' 2>/dev/null | wc -l)"
-    recently_added_count="$(sed -n '/## Recently Added/,/^## /p' ".kb/CLAUDE.md" 2>/dev/null | grep -c '^|[^-]' | grep -v 'Date' || echo 0)"
+    recently_added_count="$(sed -n '/## Recently Added/,/^## /p' ".kb/CLAUDE.md" 2>/dev/null | grep -v 'Date' | grep -c '^|[^-]' || echo 0)"
 
     if [[ "$subject_count" -gt 0 && "$recently_added_count" -le 1 ]]; then
         # Recently Added is empty but subjects exist — rebuild from file dates

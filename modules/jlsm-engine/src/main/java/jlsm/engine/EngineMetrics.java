@@ -20,8 +20,14 @@ public record EngineMetrics(int tableCount, int totalOpenHandles,
         Map<String, Map<String, Integer>> handlesPerSourcePerTable) {
 
     public EngineMetrics {
-        assert tableCount >= 0 : "tableCount must be non-negative";
-        assert totalOpenHandles >= 0 : "totalOpenHandles must be non-negative";
+        if (tableCount < 0) {
+            throw new IllegalArgumentException(
+                    "tableCount must be non-negative, got: " + tableCount);
+        }
+        if (totalOpenHandles < 0) {
+            throw new IllegalArgumentException(
+                    "totalOpenHandles must be non-negative, got: " + totalOpenHandles);
+        }
         Objects.requireNonNull(handlesPerTable, "handlesPerTable must not be null");
         Objects.requireNonNull(handlesPerSourcePerTable,
                 "handlesPerSourcePerTable must not be null");

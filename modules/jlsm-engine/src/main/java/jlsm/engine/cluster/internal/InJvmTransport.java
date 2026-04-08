@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * In-JVM transport for testing and single-process multi-engine deployments.
@@ -31,7 +32,7 @@ public final class InJvmTransport implements ClusterTransport {
 
     private final NodeAddress localAddress;
     private final ConcurrentHashMap<MessageType, MessageHandler> handlers = new ConcurrentHashMap<>();
-    private volatile boolean closed;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     /**
      * Creates and registers a new in-JVM transport for the given local address.
@@ -52,7 +53,7 @@ public final class InJvmTransport implements ClusterTransport {
     public void send(NodeAddress target, Message msg) throws IOException {
         Objects.requireNonNull(target, "target must not be null");
         Objects.requireNonNull(msg, "msg must not be null");
-        if (closed) {
+        if (closed.get()) {
             throw new IOException("Transport is closed");
         }
         final var targetTransport = REGISTRY.get(target);
@@ -60,17 +61,21 @@ public final class InJvmTransport implements ClusterTransport {
             throw new IOException("No transport registered for target: " + target);
         }
         final var handler = targetTransport.handlers.get(msg.type());
-        if (handler != null) {
-            handler.handle(localAddress, msg);
+        if (handler == null) {
+            throw new IOException("No handler registered for type: " + msg.type());
         }
-        // Fire-and-forget: no handler means silent drop
+        try {
+            handler.handle(localAddress, msg);
+        } catch (RuntimeException _) {
+            // Fire-and-forget: swallow handler exceptions so sending node is unaffected
+        }
     }
 
-    @Override
+    @ Override
     public CompletableFuture<Message> request(NodeAddress target, Message msg) {
         Objects.requireNonNull(target, "target must not be null");
         Objects.requireNonNull(msg, "msg must not be null");
-        if (closed) {
+        if (closed.get()) {
             return CompletableFuture.failedFuture(new IOException("Transport is closed"));
         }
         final var targetTransport = REGISTRY.get(target);
@@ -90,16 +95,23 @@ public final class InJvmTransport implements ClusterTransport {
     public void registerHandler(MessageType type, MessageHandler handler) {
         Objects.requireNonNull(type, "type must not be null");
         Objects.requireNonNull(handler, "handler must not be null");
-        assert !closed : "Cannot register handler on closed transport";
+        if (closed.get()) {
+            throw new IllegalStateException("Cannot register handler on closed transport");
+        }
         handlers.put(type, handler);
     }
 
     @Override
+    public void deregisterHandler(MessageType type) {
+        Objects.requireNonNull(type, "type must not be null");
+        handlers.remove(type);
+    }
+
+    @Override
     public void close() {
-        if (closed) {
+        if (!closed.compareAndSet(false, true)) {
             return;
         }
-        closed = true;
         REGISTRY.remove(localAddress);
         handlers.clear();
     }
@@ -119,6 +131,9 @@ public final class InJvmTransport implements ClusterTransport {
      * Clears the global registry. For test cleanup only.
      */
     public static void clearRegistry() {
+        for (final var transport : REGISTRY.values()) {
+            transport.close();
+        }
         REGISTRY.clear();
     }
 }

@@ -3,7 +3,6 @@ package jlsm.table.internal;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
-import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 
 /**
@@ -26,20 +25,15 @@ public final class PositionalPostingCodec {
      */
     private static final int MIN_POSTING_SIZE = 4 + 1 + 4 + 8;
 
-    private final AesSivEncryptor detEncryptor;
     private final BoldyrevaOpeEncryptor opeEncryptor;
 
     /**
-     * Creates a positional posting codec with the given encryptors.
+     * Creates a positional posting codec with the given OPE encryptor.
      *
-     * @param detEncryptor the deterministic encryptor for term values
      * @param opeEncryptor the order-preserving encryptor for term positions
      */
-    public PositionalPostingCodec(AesSivEncryptor detEncryptor,
-            BoldyrevaOpeEncryptor opeEncryptor) {
-        Objects.requireNonNull(detEncryptor, "detEncryptor must not be null");
+    public PositionalPostingCodec(BoldyrevaOpeEncryptor opeEncryptor) {
         Objects.requireNonNull(opeEncryptor, "opeEncryptor must not be null");
-        this.detEncryptor = detEncryptor;
         this.opeEncryptor = opeEncryptor;
     }
 
@@ -60,12 +54,28 @@ public final class PositionalPostingCodec {
             throw new IllegalArgumentException("positions must not be empty");
         }
 
+        if (docId.length == 0) {
+            throw new IllegalArgumentException("docId must not be empty");
+        }
         assert docId.length > 0 : "docId should have at least one byte";
+
+        // Validate position values before delegating to OPE encryptor — OPE domain is [1..M]
+        for (int i = 0; i < positions.length; i++) {
+            if (positions[i] < 1) {
+                throw new IllegalArgumentException("position[" + i
+                        + "] must be >= 1 (OPE domain starts at 1), got " + positions[i]);
+            }
+        }
 
         // OPE-encrypt each position
         final long[] encryptedPositions = new long[positions.length];
         for (int i = 0; i < positions.length; i++) {
-            encryptedPositions[i] = opeEncryptor.encrypt(positions[i]);
+            try {
+                encryptedPositions[i] = opeEncryptor.encrypt(positions[i]);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("position[" + i + "] value " + positions[i]
+                        + " is outside OPE encryptor domain bounds", e);
+            }
         }
 
         // Build the encoded posting:
@@ -113,8 +123,9 @@ public final class PositionalPostingCodec {
         if (positionCount <= 0) {
             throw new IllegalArgumentException("Invalid position count: " + positionCount);
         }
-        if (buffer.remaining() < positionCount * 8) {
-            throw new IllegalArgumentException("Posting truncated: expected " + (positionCount * 8)
+        final long requiredBytes = (long) positionCount * 8;
+        if (buffer.remaining() < requiredBytes) {
+            throw new IllegalArgumentException("Posting truncated: expected " + requiredBytes
                     + " bytes for positions, got " + buffer.remaining());
         }
 
@@ -123,6 +134,10 @@ public final class PositionalPostingCodec {
             encryptedPositions[i] = buffer.getLong();
         }
 
+        if (buffer.remaining() != 0) {
+            throw new IllegalArgumentException("Posting has " + buffer.remaining()
+                    + " trailing bytes after valid content — possibly corrupt");
+        }
         assert buffer.remaining() == 0 : "buffer should be fully consumed";
         return new DecodedPosting(docId, encryptedPositions);
     }

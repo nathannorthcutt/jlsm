@@ -3,6 +3,7 @@ package jlsm.cache;
 import org.junit.jupiter.api.Test;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -137,80 +138,96 @@ class StripedBlockCacheAdversarialTest {
 
     // --- F1: getOrLoad atomicity — concurrent callers should not duplicate loader ---
 
+    // Updated by audit block-cache-hardening: getOrLoad now releases the lock before calling
+    // the loader to avoid blocking all cache operations during I/O. This means concurrent callers
+    // for the same key may both invoke the loader, but only one result is kept (double-checked
+    // locking pattern). The loader may be called up to N times where N is the number of concurrent
+    // threads, but the cache entry is consistent.
     @Test
-    void getOrLoadInvokesLoaderExactlyOnceUnderConcurrency() throws InterruptedException {
-        // F1: Two threads race getOrLoad for the same key. The loader should be
-        // invoked exactly once. The default BlockCache.getOrLoad is non-atomic
-        // (get → miss → load → put), so both threads may invoke the loader.
+    void getOrLoadReturnsConsistentValueUnderConcurrency() throws InterruptedException {
         try (var cache = LruBlockCache.builder().capacity(10).build()) {
             var loaderCount = new AtomicInteger(0);
             var startLatch = new CountDownLatch(1);
             var doneLatch = new CountDownLatch(2);
+            var results = new MemorySegment[2];
 
-            Runnable task = () -> {
-                try {
-                    startLatch.await();
-                    cache.getOrLoad(1L, 0L, () -> {
-                        loaderCount.incrementAndGet();
-                        // Simulate slow disk I/O to widen the race window
-                        try {
-                            Thread.sleep(50);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                        return MemorySegment.ofArray(new byte[]{ 42 });
-                    });
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    doneLatch.countDown();
-                }
-            };
-
-            Thread.ofVirtual().start(task);
-            Thread.ofVirtual().start(task);
+            for (int i = 0; i < 2; i++) {
+                final int idx = i;
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        startLatch.await();
+                        results[idx] = cache.getOrLoad(1L, 0L, () -> {
+                            loaderCount.incrementAndGet();
+                            try {
+                                Thread.sleep(50);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                            return MemorySegment.ofArray(new byte[]{ 42 });
+                        });
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
             startLatch.countDown();
             doneLatch.await();
 
-            assertEquals(1, loaderCount.get(),
-                    "loader should be invoked exactly once — concurrent getOrLoad must be atomic per key");
+            // Loader may be called once or twice (lock released during load), but both
+            // callers must receive a valid result containing the expected data
+            assertTrue(loaderCount.get() >= 1 && loaderCount.get() <= 2,
+                    "loader may be invoked 1-2 times (lock released during load), got: "
+                            + loaderCount.get());
+            assertNotNull(results[0], "first caller must receive a result");
+            assertNotNull(results[1], "second caller must receive a result");
+            assertEquals((byte) 42, results[0].get(ValueLayout.JAVA_BYTE, 0));
+            assertEquals((byte) 42, results[1].get(ValueLayout.JAVA_BYTE, 0));
         }
     }
 
+    // Updated by audit block-cache-hardening: same rationale as lruBlockCache test above —
+    // getOrLoad releases the lock during loading, so concurrent callers may both invoke the loader.
     @Test
-    void stripedGetOrLoadInvokesLoaderExactlyOnceUnderConcurrency() throws InterruptedException {
-        // F1: Same test against StripedBlockCache
+    void stripedGetOrLoadReturnsConsistentValueUnderConcurrency() throws InterruptedException {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
             var loaderCount = new AtomicInteger(0);
             var startLatch = new CountDownLatch(1);
             var doneLatch = new CountDownLatch(2);
+            var results = new MemorySegment[2];
 
-            Runnable task = () -> {
-                try {
-                    startLatch.await();
-                    cache.getOrLoad(1L, 0L, () -> {
-                        loaderCount.incrementAndGet();
-                        try {
-                            Thread.sleep(50);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                        return MemorySegment.ofArray(new byte[]{ 42 });
-                    });
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    doneLatch.countDown();
-                }
-            };
-
-            Thread.ofVirtual().start(task);
-            Thread.ofVirtual().start(task);
+            for (int i = 0; i < 2; i++) {
+                final int idx = i;
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        startLatch.await();
+                        results[idx] = cache.getOrLoad(1L, 0L, () -> {
+                            loaderCount.incrementAndGet();
+                            try {
+                                Thread.sleep(50);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                            return MemorySegment.ofArray(new byte[]{ 42 });
+                        });
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        doneLatch.countDown();
+                    }
+                });
+            }
             startLatch.countDown();
             doneLatch.await();
 
-            assertEquals(1, loaderCount.get(),
-                    "loader should be invoked exactly once — concurrent getOrLoad must be atomic per key");
+            assertTrue(loaderCount.get() >= 1 && loaderCount.get() <= 2,
+                    "loader may be invoked 1-2 times (lock released during load), got: "
+                            + loaderCount.get());
+            assertNotNull(results[0], "first caller must receive a result");
+            assertNotNull(results[1], "second caller must receive a result");
+            assertEquals((byte) 42, results[0].get(ValueLayout.JAVA_BYTE, 0));
+            assertEquals((byte) 42, results[1].get(ValueLayout.JAVA_BYTE, 0));
         }
     }
 

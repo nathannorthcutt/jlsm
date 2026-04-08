@@ -65,6 +65,21 @@ public final class PhiAccrualFailureDetector {
     }
 
     /**
+     * Removes all heartbeat history for the specified node.
+     *
+     * <p>
+     * Callers should invoke this when a node departs the cluster (graceful leave or confirmed
+     * failure) to prevent unbounded growth of the internal history map in long-running clusters
+     * with high node churn.
+     *
+     * @param node the address of the node to remove; must not be null
+     */
+    public void remove(NodeAddress node) {
+        Objects.requireNonNull(node, "node must not be null");
+        heartbeatHistory.remove(node);
+    }
+
+    /**
      * Computes the current phi value for the specified node.
      *
      * @param node the address of the node to check; must not be null
@@ -83,16 +98,54 @@ public final class PhiAccrualFailureDetector {
      */
     public double phi(NodeAddress node, long nowNanos) {
         Objects.requireNonNull(node, "node must not be null");
-        final HeartbeatHistory history = heartbeatHistory.get(node);
-        if (history == null || history.count() < 2) {
+
+        // Snapshot HeartbeatHistory fields atomically inside compute() to prevent torn
+        // reads. HeartbeatHistory is not thread-safe — its fields (lastNanos, sum,
+        // sumSquares, size) can be mutated by recordHeartbeat() inside compute(). Reading
+        // via get() outside compute() risks observing a partially updated state where
+        // e.g. lastNanos is updated but sum/size are stale, producing negative elapsed
+        // or inconsistent mean/stddev values.
+        final double[] snapshot = new double[4]; // [count, lastNanos, mean, stddev]
+        final boolean[] present = { false };
+        heartbeatHistory.compute(node, (_, history) -> {
+            if (history == null) {
+                return null;
+            }
+            present[0] = true;
+            snapshot[0] = history.count();
+            snapshot[1] = history.lastHeartbeatNanos();
+            if (snapshot[0] >= 2) {
+                snapshot[2] = history.mean();
+                snapshot[3] = history.stddev();
+            }
+            return history;
+        });
+
+        if (!present[0] || snapshot[0] < 2) {
             return 0.0;
         }
-        final long elapsed = nowNanos - history.lastHeartbeatNanos();
+
+        final long elapsed = nowNanos - (long) snapshot[1];
+        // In concurrent usage, nowNanos (captured by the caller before acquiring the
+        // bucket lock) can be behind lastNanos (read atomically inside compute()). This
+        // happens when a recordHeartbeat() acquired the lock first and advanced lastNanos.
+        // A negative elapsed means the node heartbeated after the check timestamp — it is
+        // definitely alive — so return 0.0 (minimum phi).
+        if (elapsed < 0) {
+            return 0.0;
+        }
         assert elapsed >= 0 : "elapsed time must be non-negative";
 
         final double elapsedMs = elapsed / 1_000_000.0;
-        final double mean = history.mean();
-        final double stddev = history.stddev();
+        final double mean = snapshot[2];
+        final double stddev = snapshot[3];
+
+        // Fail-safe: if floating-point corruption produced NaN in the heartbeat
+        // statistics, treat the node as maximally suspect rather than silently
+        // returning 0.0 (which would make a corrupted node appear perfectly healthy).
+        if (Double.isNaN(mean) || Double.isNaN(stddev)) {
+            return Double.MAX_VALUE;
+        }
 
         // Avoid division by zero: if stddev is essentially zero, use a small epsilon
         final double effectiveStddev = Math.max(stddev, 0.1);
@@ -197,6 +250,14 @@ public final class PhiAccrualFailureDetector {
 
         void record(long nowNanos) {
             final double intervalMs = (nowNanos - lastNanos) / 1_000_000.0;
+            // Runtime guard: non-monotonic timestamps (e.g., from clock adjustments or
+            // out-of-order heartbeats) would inject negative intervals into sum/sumSquares,
+            // corrupting mean and stddev for the entire window rotation. Skip the negative
+            // interval but still advance lastNanos to prevent repeated negatives.
+            if (intervalMs < 0) {
+                lastNanos = nowNanos;
+                return;
+            }
             assert intervalMs >= 0 : "interval must be non-negative";
             lastNanos = nowNanos;
 

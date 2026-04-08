@@ -137,18 +137,18 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
     @Test
     void ivfFlat_float16_nanVectorDoesNotCorruptOtherResults() throws IOException {
         // F01 R27: Vectors with NaN components that reach the index produce NaN scores.
-        //          NaN scores must be excluded from search results (silent degradation).
+        // NaN scores must be excluded from search results (silent degradation).
         // F01 R13: The document layer rejects non-finite values, so the index layer
-        //          validates and rejects NaN at index(). To test search-path resilience
-        //          per R27, inject a NaN vector directly into the backing LSM tree,
-        //          simulating data corruption or encoding edge cases.
+        // validates and rejects NaN at index(). To test search-path resilience
+        // per R27, inject a NaN vector directly into the backing LSM tree,
+        // simulating data corruption or encoding edge cases.
         // Expectation: search returns only finite-scored results; the NaN vector is
-        //              invisible to search but does not crash or displace valid results.
+        // invisible to search but does not crash or displace valid results.
         LsmTree tree = buildTree(Long.MAX_VALUE);
-        try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder()
-                .lsmTree(tree).docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2).similarityFunction(SimilarityFunction.COSINE)
-                .precision(VectorPrecision.FLOAT16).build()) {
+        try (VectorIndex.IvfFlat<Long> index = LsmVectorIndex.<Long>ivfFlatBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(2)
+                .similarityFunction(SimilarityFunction.COSINE).precision(VectorPrecision.FLOAT16)
+                .build()) {
 
             // Index a normal vector through the public API
             index.index(1L, new float[]{ 1.0f, 0.0f });
@@ -192,15 +192,15 @@ class LsmVectorIndexFloat16AdversarialRound2Test {
     @Test
     void hnsw_float16_nanVectorDoesNotCorruptOtherResults() throws IOException {
         // F01 R27: Same as above but for HNSW. Inject NaN below the validation boundary
-        //          to test that HNSW search filters non-finite scores per F01 R25a.
+        // to test that HNSW search filters non-finite scores per F01 R25a.
         // The HNSW node format includes neighbor links, so we index a valid vector first
         // then overwrite its stored data with a NaN vector to corrupt the stored value
         // while preserving valid graph structure.
         LsmTree tree = buildTree(Long.MAX_VALUE);
-        try (VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder()
-                .lsmTree(tree).docIdSerializer(LONG_DOC_ID_SERIALIZER)
-                .dimensions(2).similarityFunction(SimilarityFunction.COSINE)
-                .precision(VectorPrecision.FLOAT16).build()) {
+        try (VectorIndex.Hnsw<Long> index = LsmVectorIndex.<Long>hnswBuilder().lsmTree(tree)
+                .docIdSerializer(LONG_DOC_ID_SERIALIZER).dimensions(2)
+                .similarityFunction(SimilarityFunction.COSINE).precision(VectorPrecision.FLOAT16)
+                .build()) {
 
             // Index two valid vectors to build graph structure
             index.index(1L, new float[]{ 1.0f, 0.0f });

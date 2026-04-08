@@ -15,6 +15,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Cluster-aware engine that distributes tables and partitions across cluster members.
@@ -48,7 +49,7 @@ public final class ClusteredEngine implements Engine {
     private final ClusterConfig config;
     private final NodeAddress localAddress;
     private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
-    private volatile boolean closed;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     private ClusteredEngine(Builder builder) {
         this.localEngine = Objects.requireNonNull(builder.localEngine, "localEngine");
@@ -90,13 +91,44 @@ public final class ClusteredEngine implements Engine {
         final Table localTable = localEngine.createTable(name, schema);
         assert localTable != null : "localEngine.createTable must return non-null";
 
-        // Create a clustered proxy for distributed access
-        final TableMetadata metadata = localTable.metadata();
-        final ClusteredTable clustered = new ClusteredTable(metadata, transport, membership,
-                localAddress);
-        clusteredTables.put(name, clustered);
+        // Create a clustered proxy for distributed access — roll back local table on failure
+        final ClusteredTable clustered;
+        try {
+            final TableMetadata metadata = localTable.metadata();
+            clustered = new ClusteredTable(metadata, transport, membership, localAddress,
+                    ownership);
+            final ClusteredTable previous = clusteredTables.put(name, clustered);
+            if (previous != null) {
+                previous.close();
+            }
 
-        return localTable;
+            // Guard against TOCTOU race with close(): if close() ran between
+            // checkNotClosed() and the put above, the new entry was added after
+            // close() iterated/cleared the map — it would be orphaned. Re-check
+            // and clean up if the engine was closed concurrently.
+            if (closed.get()) {
+                final ClusteredTable orphan = clusteredTables.remove(name);
+                if (orphan != null) {
+                    orphan.close();
+                }
+                final var closedEx = new IOException("ClusteredEngine is closed");
+                try {
+                    localEngine.dropTable(name);
+                } catch (IOException dropEx) {
+                    closedEx.addSuppressed(dropEx);
+                }
+                throw closedEx;
+            }
+        } catch (RuntimeException ex) {
+            try {
+                localEngine.dropTable(name);
+            } catch (IOException dropEx) {
+                ex.addSuppressed(dropEx);
+            }
+            throw ex;
+        }
+
+        return clustered;
     }
 
     @Override
@@ -153,16 +185,23 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public void close() throws IOException {
-        if (closed) {
+        if (!closed.compareAndSet(false, true)) {
             return;
         }
-        closed = true;
 
         final List<IOException> errors = new ArrayList<>();
 
-        // Close all clustered table proxies
+        // Close all clustered table proxies (deferred exception collection)
         for (final ClusteredTable ct : clusteredTables.values()) {
-            ct.close();
+            try {
+                ct.close();
+            } catch (Exception e) {
+                if (e instanceof IOException ioe) {
+                    errors.add(ioe);
+                } else {
+                    errors.add(new IOException("Failed to close clustered table", e));
+                }
+            }
         }
         clusteredTables.clear();
 
@@ -191,6 +230,17 @@ public final class ClusteredEngine implements Engine {
             errors.add(e);
         }
 
+        // Close cluster transport
+        try {
+            transport.close();
+        } catch (Exception e) {
+            if (e instanceof IOException ioe) {
+                errors.add(ioe);
+            } else {
+                errors.add(new IOException("Failed to close cluster transport", e));
+            }
+        }
+
         if (!errors.isEmpty()) {
             final IOException primary = errors.getFirst();
             for (int i = 1; i < errors.size(); i++) {
@@ -203,13 +253,13 @@ public final class ClusteredEngine implements Engine {
     // ---- Private helpers ----
 
     private void checkNotClosed() throws IOException {
-        if (closed) {
+        if (closed.get()) {
             throw new IOException("ClusteredEngine is closed");
         }
     }
 
     private void checkNotClosedUnchecked() {
-        if (closed) {
+        if (closed.get()) {
             throw new IllegalStateException("ClusteredEngine is closed");
         }
     }
@@ -218,8 +268,8 @@ public final class ClusteredEngine implements Engine {
      * Handles membership view changes by triggering ownership rebalancing.
      */
     private void onViewChanged(MembershipView oldView, MembershipView newView) {
-        assert oldView != null : "oldView must not be null";
-        assert newView != null : "newView must not be null";
+        Objects.requireNonNull(oldView, "oldView must not be null");
+        Objects.requireNonNull(newView, "newView must not be null");
 
         // Evict stale ownership cache entries
         ownership.evictBefore(newView.epoch());
@@ -251,6 +301,9 @@ public final class ClusteredEngine implements Engine {
                 gracePeriodManager.recordReturn(newMember.address());
             }
         }
+
+        // Clean up expired departure entries to prevent unbounded map growth
+        gracePeriodManager.expiredDepartures();
     }
 
     /**

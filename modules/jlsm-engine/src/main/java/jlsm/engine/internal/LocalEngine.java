@@ -31,6 +31,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -60,6 +61,9 @@ final class LocalEngine implements Engine {
     /** Per-table SSTable ID counters. */
     private final ConcurrentHashMap<String, AtomicLong> idCounters = new ConcurrentHashMap<>();
 
+    /** Idempotent close guard. */
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
     private LocalEngine(Builder builder) throws IOException {
         this.rootDirectory = Objects.requireNonNull(builder.rootDirectory,
                 "rootDirectory must not be null");
@@ -84,8 +88,18 @@ final class LocalEngine implements Engine {
         return new Builder();
     }
 
+    /**
+     * Throws {@link IllegalStateException} if the engine has been closed.
+     */
+    private void ensureOpen() {
+        if (closed.get()) {
+            throw new IllegalStateException("Engine is closed");
+        }
+    }
+
     @Override
     public Table createTable(String name, JlsmSchema schema) throws IOException {
+        ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
         Objects.requireNonNull(schema, "schema must not be null");
         if (name.isEmpty()) {
@@ -95,19 +109,59 @@ final class LocalEngine implements Engine {
         // Register in catalog (throws if already exists)
         final TableMetadata metadata = catalog.register(name, schema);
 
-        // Create the live JlsmTable.StringKeyed for this table
-        final JlsmTable.StringKeyed jlsmTable = createJlsmTable(name, schema);
-        liveTables.put(name, jlsmTable);
+        // Atomically get or create the live table — computeIfAbsent ensures only one
+        // thread creates the JlsmTable (WAL + tree) even if a concurrent getTable() races
+        // with this createTable(). Using put() would unconditionally overwrite an entry
+        // that getTable's computeIfAbsent already inserted, leaking the overwritten table.
+        final JlsmTable.StringKeyed jlsmTable;
+        try {
+            jlsmTable = liveTables.computeIfAbsent(name, tableName -> {
+                try {
+                    return createJlsmTable(tableName, schema);
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
+        } catch (java.io.UncheckedIOException e) {
+            // Rollback: unregister from catalog since table creation failed
+            try {
+                catalog.unregister(name);
+            } catch (Exception suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e.getCause();
+        }
 
-        // Register handle
-        final String sourceId = Thread.currentThread().getName();
-        final HandleRegistration registration = handleTracker.register(name, sourceId);
+        // Register handle — rollback jlsmTable and catalog on failure
+        // Use threadId() — unique per thread (including virtual threads). getName() is not
+        // unique: virtual threads can share names, causing per-source limits to be shared.
+        final String sourceId = String.valueOf(Thread.currentThread().threadId());
+        final HandleRegistration registration;
+        try {
+            registration = handleTracker.register(name, sourceId);
+        } catch (Exception e) {
+            // Rollback: close the jlsmTable and remove from liveTables
+            liveTables.remove(name);
+            try {
+                jlsmTable.close();
+            } catch (Exception suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            // Rollback: unregister from catalog
+            try {
+                catalog.unregister(name);
+            } catch (Exception suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
+        }
 
         return new LocalTable(jlsmTable, registration, handleTracker, metadata);
     }
 
     @Override
     public Table getTable(String name) throws IOException {
+        ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
@@ -116,20 +170,23 @@ final class LocalEngine implements Engine {
         final TableMetadata metadata = catalog.get(name)
                 .orElseThrow(() -> new IOException("Table does not exist: " + name));
 
-        // Get or lazily create the live table
-        JlsmTable.StringKeyed jlsmTable = liveTables.get(name);
-        if (jlsmTable == null) {
-            jlsmTable = createJlsmTable(name, metadata.schema());
-            final JlsmTable.StringKeyed existing = liveTables.putIfAbsent(name, jlsmTable);
-            if (existing != null) {
-                // Another thread created the table concurrently — close ours and use theirs
-                jlsmTable.close();
-                jlsmTable = existing;
-            }
+        // Atomically get or lazily create the live table — computeIfAbsent ensures
+        // only one thread creates the JlsmTable (WAL + tree) per table name
+        final JlsmTable.StringKeyed jlsmTable;
+        try {
+            jlsmTable = liveTables.computeIfAbsent(name, tableName -> {
+                try {
+                    return createJlsmTable(tableName, metadata.schema());
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
+        } catch (java.io.UncheckedIOException e) {
+            throw e.getCause();
         }
 
-        // Register handle
-        final String sourceId = Thread.currentThread().getName();
+        // Register handle — use threadId() for unique per-thread identity
+        final String sourceId = String.valueOf(Thread.currentThread().threadId());
         final HandleRegistration registration = handleTracker.register(name, sourceId);
 
         return new LocalTable(jlsmTable, registration, handleTracker, metadata);
@@ -137,6 +194,7 @@ final class LocalEngine implements Engine {
 
     @Override
     public void dropTable(String name) throws IOException {
+        ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
@@ -160,17 +218,20 @@ final class LocalEngine implements Engine {
 
     @Override
     public Collection<TableMetadata> listTables() {
+        ensureOpen();
         return catalog.list();
     }
 
     @Override
     public TableMetadata tableMetadata(String name) {
+        ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
         return catalog.get(name).orElse(null);
     }
 
     @Override
     public EngineMetrics metrics() {
+        ensureOpen();
         final EngineMetrics snapshot = handleTracker.snapshot();
         // Override tableCount with actual catalog count
         final int catalogTableCount = catalog.list().size();
@@ -180,6 +241,10 @@ final class LocalEngine implements Engine {
 
     @Override
     public void close() throws IOException {
+        if (!closed.compareAndSet(false, true)) {
+            return; // already closed — idempotent
+        }
+
         // Invalidate all handles
         handleTracker.invalidateAll(HandleEvictedException.Reason.ENGINE_SHUTDOWN);
 
@@ -350,6 +415,15 @@ final class LocalEngine implements Engine {
         LocalEngine build() throws IOException {
             if (rootDirectory == null) {
                 throw new IllegalStateException("rootDirectory must be set");
+            }
+            if (maxHandlesPerSourcePerTable > maxHandlesPerTable) {
+                throw new IllegalArgumentException("maxHandlesPerSourcePerTable ("
+                        + maxHandlesPerSourcePerTable + ") must not exceed maxHandlesPerTable ("
+                        + maxHandlesPerTable + ")");
+            }
+            if (maxHandlesPerTable > maxTotalHandles) {
+                throw new IllegalArgumentException("maxHandlesPerTable (" + maxHandlesPerTable
+                        + ") must not exceed maxTotalHandles (" + maxTotalHandles + ")");
             }
             return new LocalEngine(this);
         }

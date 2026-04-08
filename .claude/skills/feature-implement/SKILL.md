@@ -83,10 +83,14 @@ Invoke /feature-refactor "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
 Implementation is already complete for cycle <n>.
 All tests were passing as of: <date from status.md>
 
-  Type **yes**  to proceed to refactor  ·  or: stop
 ```
-If "yes": invoke /feature-refactor "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
-If "stop": display `Next: /feature-refactor "<slug>"` and stop.
+
+Use AskUserQuestion with two options:
+- "Proceed to refactor"
+- "Stop"
+
+If "Proceed to refactor": invoke /feature-refactor "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "Stop": display `Next: /feature-refactor "<slug>"` and stop.
 
 **If Implementation is `in-progress`:**
 - Say: "Implementation was in progress for cycle <n> — checking current test state."
@@ -126,12 +130,14 @@ Display:
 
   manual  — I'll stop after each stage and wait for your command.
 
-Type: auto  or  manual
 ```
 
-Wait for input:
-- "auto" (or "autonomous"): set `automation_mode: autonomous` in status.md
-- "manual": set `automation_mode: manual` in status.md
+Use AskUserQuestion with two options:
+- "Auto" (description: cycles run without stopping, pauses only if input needed)
+- "Manual" (description: stop after each stage, wait for command)
+
+- If "Auto": set `automation_mode: autonomous` in status.md
+- If "Manual": set `automation_mode: manual` in status.md
 
 ---
 
@@ -191,7 +197,14 @@ Read:
    dependency unit, read only the public interface (signatures + contracts from
    work-plan.md). Do not read their implementation files or test files.
 
-Run the test suite. Confirm all new tests are currently failing.
+Run the test suite (5-minute Bash timeout per tdd-protocol). If the suite times
+out: run individual test methods to isolate which test is hanging. For hanging
+tests, check for missing @Timeout, blocking waits without duration, or deadlocks
+in test setup. If a test from a prior work unit hangs, skip it for regression
+checking and note it in the output. If the current work unit's test hangs, the
+implementation may have introduced a deadlock — check lock ordering before
+retrying. Do not retry the full suite without isolating first.
+Confirm all new tests are currently failing.
 Update status.md substage → `implementing`.
 
 ---
@@ -204,9 +217,13 @@ Skip any construct whose tests are already passing (idempotent re-entry).
 For each construct:
 1. Read its contract (docstring/comment in the stub)
 2. Read the relevant test(s) to understand what is expected
-3. Implement only what the contract specifies
-4. Run the tests for this construct — confirm they pass before moving on
-5. Update status.md substage → "implemented: <construct name>" after each passing unit
+3. Before any Edit, re-read the target file at the lines being changed — prior
+   constructs may have modified it. Do not rely on earlier reads.
+4. Implement only what the contract specifies
+5. Run the tests for this construct — confirm they pass before moving on
+6. After a successful compile, re-read the edited lines to verify the edit
+   persisted (earlier work unit edits can silently revert if old_string was stale).
+7. Update status.md substage → "implemented: <construct name>" after each passing unit
 
 If a test fails unexpectedly after implementation: see Escalation Protocol.
 
@@ -222,7 +239,54 @@ If a test fails unexpectedly after implementation: see Escalation Protocol.
 
 If a test cannot be satisfied given the work plan's constraints:
 
-**Step 0 — Check escalation count.** Read cycle-log.md and count
+**Step 0a — Check for spec conflict.** Before escalating, check whether the
+failure is caused by contradictory requirements rather than a bad test or
+bad contract.
+
+1. Check the failing test for a `covers: R<N>` or `Finding:` comment that
+   links it to a specific requirement or spec.
+2. Check all PASSING tests in the same test class/file for `covers:` or
+   `Finding:` comments referencing different requirements or specs.
+3. If a passing test and the failing test reference requirements from
+   different specs, AND those requirements describe contradictory behavior
+   for the same construct or method (e.g., one requires null return, the
+   other requires an exception for the same input condition):
+
+   **Do NOT escalate to the Test Writer.** This is a requirement
+   contradiction, not an implementation bug or a wrong test.
+
+   Append `spec-conflict` to cycle-log.md:
+   ```markdown
+   ## <YYYY-MM-DD> — spec-conflict
+   **Agent:** ⚙️ Code Writer
+   **Cycle:** <n>
+   **Passing test:** `<test name>` — covers: <requirement ID> from <spec/source>
+   **Failing test:** `<test name>` — covers: <requirement ID> from <spec/source>
+   **Construct:** <construct or method under test>
+   **Conflict:** <what the two requirements demand and why they contradict>
+   ---
+   ```
+
+   Update status.md substage → `spec-conflict-detected`.
+
+   Display:
+   ```
+   🛑  SPEC CONFLICT DETECTED
+   ───────────────────────────────────────────────
+   Passing: <test name> (covers: <R_N> from <spec/source>)
+   Failing: <test name> (covers: <R_N> from <spec/source>)
+   Both test the same construct/method but expect contradictory behavior.
+   This is a requirement contradiction, not an implementation bug.
+
+   Escalate to /spec-author to resolve <R_N> vs <R_N>.
+   ```
+
+   Stop implementation for this work unit until the conflict is resolved.
+   Do NOT proceed to the escalation steps below.
+
+4. If no spec conflict is found, continue with the normal escalation flow.
+
+**Step 0b — Check escalation count.** Read cycle-log.md and count
 `code-escalation` entries for the same test name.
 
 - **3rd escalation on the same test:** hard stop. Do NOT escalate to the
@@ -277,7 +341,10 @@ Do not wait for user input — the escalation is already logged.
 
 ## Step 3 — Final verification
 
-Run the full test suite. Confirm:
+Run the full test suite (5-minute Bash timeout). If the suite times out: run
+individual test methods to isolate the hanger. For hanging tests from a prior
+work unit, skip and note them. For the current work unit's test, check for
+deadlocks or lock ordering issues before retrying. Confirm:
 - All new tests pass
 - No previously passing tests broken
 - No test files were modified
@@ -349,13 +416,14 @@ Work unit progress:
   → WU-2: <n> — ready (unblocked)
   ○ WU-3: <n> — blocked (waiting on WU-2)
 
-───────────────────────────────────────────────
-  Type **yes**  ·  or: stop
-───────────────────────────────────────────────
 ```
 
-If "yes": invoke `/feature-refactor "<slug>"<  --unit WU-<n>>` as a sub-agent.
-If "stop":
+Use AskUserQuestion with two options:
+- "Continue"
+- "Stop"
+
+If "Continue": invoke `/feature-refactor "<slug>"<  --unit WU-<n>>` as a sub-agent.
+If "Stop":
 ```
 When you're ready:
   /feature-refactor "<slug>"<  --unit WU-<n>>

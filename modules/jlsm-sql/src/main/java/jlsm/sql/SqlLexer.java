@@ -2,6 +2,7 @@ package jlsm.sql;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -143,6 +144,10 @@ public final class SqlLexer {
                         pos++;
                     }
                 }
+                case '-' -> {
+                    tokens.add(new Token(TokenType.MINUS, "-", pos));
+                    pos++;
+                }
                 default -> throw new SqlParseException(
                         "Unrecognised character '" + ch + "' at position " + pos, pos);
             }
@@ -182,7 +187,8 @@ public final class SqlLexer {
                 start);
     }
 
-    private int readNumericLiteral(String sql, int start, List<Token> tokens) {
+    private int readNumericLiteral(String sql, int start, List<Token> tokens)
+            throws SqlParseException {
         int pos = start;
         final int len = sql.length();
         boolean seenDot = false;
@@ -197,6 +203,13 @@ public final class SqlLexer {
             } else {
                 break;
             }
+        }
+
+        if (seenDot && sql.charAt(pos - 1) == '.') {
+            throw new SqlParseException(
+                    "Malformed numeric literal '" + sql.substring(start, pos)
+                            + "' — trailing dot with no fractional digits at position " + start,
+                    start);
         }
 
         tokens.add(new Token(TokenType.NUMBER_LITERAL, sql.substring(start, pos), start));
@@ -217,7 +230,7 @@ public final class SqlLexer {
         }
 
         final String text = sql.substring(start, pos);
-        final String upper = text.toUpperCase();
+        final String upper = text.toUpperCase(Locale.ROOT);
         final TokenType keyword = KEYWORDS.get(upper);
 
         if (keyword != null) {

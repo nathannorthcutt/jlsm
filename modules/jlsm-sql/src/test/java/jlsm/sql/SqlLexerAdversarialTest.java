@@ -17,15 +17,14 @@ class SqlLexerAdversarialTest {
 
     // ── FINDING-4: Trailing-dot numeric literal ──────────────────────
 
-    /** FINDING-4: "42." (trailing dot, no fractional part) should be handled consistently */
+    /**
+     * FINDING-4: "42." (trailing dot, no fractional part) must be rejected as malformed. Updated by
+     * audit F-R1.cb.1.4 — lexer now throws SqlParseException for trailing-dot literals
+     */
     @Test
-    void trailingDotNumericLiteral() throws SqlParseException {
-        var tokens = lexer.tokenize("42.");
-        // The lexer should either reject this or produce a well-formed numeric literal
-        // Currently produces "42." — verify it's at least a NUMBER_LITERAL
-        assertEquals(TokenType.NUMBER_LITERAL, tokens.get(0).type());
-        // The text should be parseable as a number
-        assertDoesNotThrow(() -> Double.parseDouble(tokens.get(0).text()));
+    void trailingDotNumericLiteral() {
+        // The lexer rejects trailing-dot numeric literals as malformed
+        assertThrows(SqlParseException.class, () -> lexer.tokenize("42."));
     }
 
     // ── FINDING-6: SQL keywords as field names ───────────────────────

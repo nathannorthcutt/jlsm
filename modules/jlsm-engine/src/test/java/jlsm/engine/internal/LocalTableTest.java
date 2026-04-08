@@ -312,13 +312,14 @@ class LocalTableTest {
         assertThrows(HandleEvictedException.class, () -> table.scan("a", "z"));
     }
 
+    // Updated by audit F-R1.cb.2.8: metadata() without validity check was a bug, now correctly
+    // throws HandleEvictedException
     @Test
-    void metadataWorksOnEvictedHandle() {
+    void metadataThrowsOnEvictedHandle() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
         final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
-        // metadata() does NOT check validity
-        assertSame(metadata, table.metadata());
+        assertThrows(HandleEvictedException.class, table::metadata);
     }
 
     // ---- Stub JlsmTable.StringKeyed ----

@@ -127,10 +127,14 @@ Tests are already written for cycle <n><  · WU-<n>>.
 Test plan: .feature/<slug>/test-plan.md
 All tests verified failing.
 
-  Type **yes**  to proceed to implementation  ·  or: stop
 ```
-If "yes": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
-If "stop": display `Next: /feature-implement "<slug>"` and stop.
+
+Use AskUserQuestion with two options:
+- "Proceed to implementation"
+- "Stop"
+
+If "Proceed to implementation": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "Stop": display `Next: /feature-implement "<slug>"` and stop.
 
 If Testing is `in-progress`:
 - Check which test files already exist
@@ -221,6 +225,25 @@ If work unit is active, load only what is needed for that unit:
 
 If --add-missing: load only the missing test cases from cycle-log.md.
 
+### Step 1a — Resolve hardened specs (if available)
+
+Check whether the project has a `.spec/` directory with a manifest:
+
+```bash
+bash .claude/scripts/spec-resolve.sh "<feature brief title or description>" 8000 2>/dev/null
+```
+
+If the script succeeds and produces a non-empty bundle, store the output as
+SPEC_BUNDLE. This bundle contains behavioral requirements (R1, R2, ...) that
+the spec system has already hardened.
+
+If the script fails, `.spec/` does not exist, or the bundle is empty: set
+SPEC_BUNDLE to empty. All subsequent spec-aware steps fall back to their
+original behavior.
+
+**Do not read `.spec/` files directly.** The resolver handles file discovery,
+domain matching, transitive dependency expansion, and token budgeting.
+
 ---
 
 ## Step 1b — Construct analysis (derive tests from interfaces)
@@ -253,6 +276,165 @@ plan alongside the existing Happy path, Error, and Boundary sections.
 stubs. A construct with no paired methods gets no round-trip tests. The goal
 is to catch the 3-5 tests the refactor agent would flag, not to double the
 test count.
+
+---
+
+## Step 1c — Spec analysis pre-pass (both lenses)
+
+Analyze the work-plan contracts and stubs across two complementary lenses to
+identify risks BEFORE writing tests. This step prevents bugs from being written
+rather than finding them after implementation.
+
+### KB integration
+
+If `.kb/CLAUDE.md` exists, scan the Topic Map for categories relevant to this
+feature's domain (e.g., encryption, indexing, serialization, compression).
+Read any `type: adversarial-finding` entries in matching categories — they
+contain bug patterns discovered in prior features that may recur here. Add
+matching patterns to the Lens B checklist below.
+
+### Project rules as audit vectors
+
+Check for project-specific rules that define what "correct" means beyond
+general best practices. Rules in `.claude/rules/`, `CONTRIBUTING.md`, and
+accepted ADRs in `.decisions/` all constrain implementation. Violations of
+project rules are bugs — add them to Lens B. Examples: memory discipline
+rules, architectural constraints, testing conventions, coding standards.
+
+### Lens A — Requirement operationalization / Contract gaps
+
+**Conflict pre-check:** Before operationalizing requirements, check if
+SPEC_BUNDLE contains a `## Conflicts` section. If it does, extract all
+CONFLICT and INVALIDATES lines. For each conflicting requirement pair
+(e.g., F03.R8 and F07.R56), mark both requirements as:
+
+```
+UNTESTABLE: spec conflict — requirements <R_X> and <R_Y> contradict
+```
+
+Do NOT write tests for these requirements. Contradictory specs would produce
+contradictory tests — one asserting "must accept" while another asserts
+"must reject" for the same behavior. Include the UNTESTABLE entries in the
+test plan's defensive section so the conflict is visible but not acted upon.
+
+Proceed with operationalizing all non-conflicting requirements as normal.
+
+**If SPEC_BUNDLE is non-empty (hardened specs available):**
+
+The bundle contains behavioral requirements (R1, R2, ...) from hardened specs.
+Operationalize each requirement into test cases:
+
+1. Extract every requirement ID (R1, R2, ...) and its behavioral description
+   from the `## Feature Requirements` section of the bundle.
+2. For each requirement, ask: **"Can I write a test that verifies this
+   requirement against the constructs in the work plan?"**
+   - If yes: create one or more test cases that exercise the requirement.
+     Tag each test with the requirement ID it covers (e.g., `covers: R3`).
+   - If the requirement is abstract or cross-cutting (e.g., "the system must
+     be resilient to X"): identify which construct is responsible for that
+     behavior and write a concrete test against it.
+   - If the requirement cannot be tested at the unit/integration level (e.g.,
+     deployment constraints): note it as `UNTESTABLE: <reason>` in the
+     defensive section. Do not silently drop it.
+3. After operationalizing all spec requirements, apply the contract-gap table
+   below as a **supplement** — the spec may not cover every edge case the
+   interface implies. Any gap found that isn't already covered by a spec
+   requirement becomes a CONTRACT-GAP finding.
+4. Check for open obligations in the bundle's `## Open Obligations` section.
+   Each obligation is a spec-level TODO that must be addressed. Convert
+   applicable obligations into test cases.
+
+**If SPEC_BUNDLE is empty (no hardened specs — fallback):**
+
+For each contract in the work plan, apply the contract-gap table below as the
+primary analysis tool. This is the original Lens A behavior.
+
+**Contract-gap table (primary in fallback mode, supplement in spec mode):**
+
+| Question | What to test |
+|----------|-------------|
+| What happens at boundary values? | Empty inputs, zero-length, max capacity, single element |
+| What happens with null at every layer? | Constructor args, method params, stored fields, return values |
+| Are error cases exhaustive? | Invalid combinations, inverted ranges, type mismatches |
+| Are composite operations atomic? | If step A succeeds but step B fails, what state? |
+| Are mutable inputs defensively copied? | Arrays, collections crossing trust boundaries |
+| What equality semantics do keys use? | Identity vs content (especially byte[], arrays) |
+
+### Lens B — Implementation risk patterns (what code typically gets wrong)
+
+**Spec-aware scoping:** If SPEC_BUNDLE is non-empty, use the spec requirements
+as the boundary of what is "specified behavior." Lens B then focuses on:
+- Behaviors the spec **did not anticipate** — interactions, edge cases, and
+  failure modes that fall outside any R_N requirement
+- Gaps **between** requirements — where two requirements interact but neither
+  fully specifies the combined behavior
+- Implementation assumptions the spec takes for granted (e.g., thread safety,
+  ordering, resource cleanup) without an explicit requirement
+
+When specs are available, tag each Lens B finding with whether it is:
+- `SPEC-BOUNDARY` — the spec has a relevant requirement but doesn't cover
+  this specific edge case
+- `SPEC-BLIND-SPOT` — no spec requirement addresses this area at all
+- `IMPL-RISK` — standard implementation risk (same as no-spec mode)
+
+If SPEC_BUNDLE is empty, proceed with the standard implementation risk analysis
+below without spec-boundary tagging.
+
+For each construct in scope, trace the full data flow — not just the construct
+itself but its inputs, outputs, and data carriers. This prevents multi-pass
+discovery where each audit finds the next layer.
+
+**Level 1 — The construct itself:**
+- `byte[]` or arrays used as map/set keys — identity equality, not content
+- Mutable arrays/collections stored by reference without defensive copying
+- Float/double encoding — sign-bit handling differences between integer and IEEE 754
+- Multi-step mutations that aren't atomic — delete-then-insert, check-then-act
+- Switch/instanceof that don't cover all sealed interface subtypes
+- Silent truncation or Math.min instead of fail-fast on mismatched dimensions/sizes
+- Not-equals predicates interacting with null field values
+- Resource lifecycle — double-close, use-after-close, deferred exception aggregation
+- Validation that should happen at construction but is deferred to usage
+- Any patterns from adversarial KB entries loaded above
+
+**Level 2 — Inputs (who calls this construct, what do they pass?):**
+- Are callers validated at the trust boundary, or is invalid input silently accepted?
+- Per project rules, should out-of-range values be rejected at entry rather than
+  handled downstream? (fail-fast principle)
+- Can callers pass values that are technically valid but semantically wrong?
+  (e.g., NaN as a score, negative capacity, inverted range bounds)
+
+**Level 3 — Outputs (what does this construct return, can consumers misuse it?):**
+- Do returned references expose mutable internal state? (check accessors, not just constructors)
+- Are returned collections unmodifiable, or can consumers corrupt internal state?
+- Can the return value be in a state the consumer doesn't expect? (null, empty, partial)
+
+**Level 4 — Data carriers (records, DTOs, result types):**
+- Do data carrier types enforce their own invariants at construction?
+  (null fields, NaN scores, negative counts, empty required fields)
+- Do records with mutable fields (arrays, collections, MemorySegment) have
+  correct equals/hashCode? (identity vs content semantics)
+- Are carriers immutable once constructed, or can state leak through accessors?
+
+**Scoping:** Trace all 4 levels on every construct in the current work unit.
+If the work unit has many constructs, prioritize depth on constructs flagged
+by Lens A or Level 1 findings, but do not skip levels entirely.
+
+### Output
+
+For each finding, note:
+- The construct and contract section it applies to
+- The finding type:
+  - `SPEC-REQ` — directly operationalized from a spec requirement (Lens A, spec mode)
+  - `CONTRACT-GAP` — gap not covered by any spec requirement (Lens A)
+  - `SPEC-BOUNDARY` — spec-adjacent edge case (Lens B, spec mode)
+  - `SPEC-BLIND-SPOT` — no spec coverage at all (Lens B, spec mode)
+  - `IMPL-RISK` — standard implementation risk (Lens B)
+- A specific defensive test case to add to the test plan
+- If from a spec requirement: the requirement ID (e.g., `R3`)
+
+These findings feed directly into the test plan as a "Defensive (from spec analysis)"
+section. Do NOT write a separate spec-analysis.md file — the findings are integrated
+into the test plan in the next step.
 
 ---
 
@@ -301,14 +483,30 @@ Boundary values
 Structural (from interface analysis)
   N. test_<name> — <scenario> — pattern: <round-trip | lifecycle | interaction | ...>
   ...
+Spec requirements (from hardened specs)          ← only when specs loaded
+  N. test_<name> — <scenario> — covers: R<N>
+  ...
+Defensive (from spec analysis)
+  N. test_<name> — <scenario> — finding: <CONTRACT-GAP | SPEC-BOUNDARY | SPEC-BLIND-SPOT | IMPL-RISK>: <description>
+  ...
 ───────────────────────────────────────────────
+Spec analysis: <N> SPEC-REQ + <N> CONTRACT-GAP + <N> IMPL-RISK findings → <N> defensive tests
+              [if specs loaded: <N> requirements operationalized, <N> untestable]
 Does this cover the acceptance criteria? Any to add or remove?
 ───────────────────────────────────────────────
 ```
 
-The plan MUST include "Boundary values" and "Structural" sections. If either has
-no applicable tests (rare), state why explicitly. The structural section should
-list which interface patterns were checked and found not applicable.
+The plan MUST include "Boundary values", "Structural", and "Defensive" sections.
+If any section has no applicable tests (rare), state why explicitly. The structural
+section should list which interface patterns were checked and found not applicable.
+The defensive section should summarize how many findings came from each lens and
+any adversarial KB patterns that were checked.
+
+**When specs were loaded:** The defensive section should additionally report:
+- How many spec requirements were operationalized (SPEC-REQ count)
+- How many requirements were marked UNTESTABLE and why
+- How many SPEC-BOUNDARY and SPEC-BLIND-SPOT findings were identified
+- Which requirement IDs each defensive test covers
 
 Wait for confirmation. Update status.md substage → `writing-tests` after confirm.
 
@@ -320,6 +518,10 @@ Write to the test directory from project-config.md.
 
 **Idempotent:** check whether each test already exists before writing.
 Append to existing test files rather than overwriting; do not duplicate tests.
+Before editing an existing test file, re-read it to pick up any additions from
+prior test-writing passes — stale reads cause Edit old_string mismatches or
+silent overwrites. After writing each test method, re-read the file to verify
+the method is present.
 
 Rules:
 - Test names describe behaviour: `test_returns_error_when_input_is_empty`
@@ -336,7 +538,10 @@ Update status.md substage → `verifying-failures` after writing.
 
 ## Step 4 — Verify tests fail
 
-Run the test suite.
+Run the test suite (5-minute Bash timeout per tdd-protocol). If the suite times
+out: run individual test methods to isolate which test is hanging. For hanging
+tests, add a @Timeout annotation or rewrite with a non-blocking approach. Do
+not retry the full suite without isolating first.
 
 Expected: all new tests fail with NotImplementedError or import/compile error.
 
@@ -362,6 +567,43 @@ Read the most recent `code-escalation` entry from cycle-log.md. Extract:
 - The escalation count (N of 3)
 
 Read the test file and the relevant contract section from work-plan.md.
+
+### Step E1a — Check for spec conflict
+
+If the escalation entry's conflict description contains "SPEC CONFLICT" or
+the substage in status.md is `spec-conflict-detected`, this is a requirement
+contradiction — not a test or contract problem.
+
+**Do NOT rewrite the test.** Instead:
+
+1. Mark both the passing and failing tests as BLOCKED in cycle-log.md:
+   ```markdown
+   ## <YYYY-MM-DD> — tests-blocked-spec-conflict
+   **Agent:** 🧪 Test Writer
+   **Cycle:** <n>
+   **Blocked tests:** `<passing test>`, `<failing test>`
+   **Reason:** Contradictory spec requirements — <R_N> vs <R_N>
+   **Resolution:** Requires /spec-author to reconcile conflicting requirements
+   ---
+   ```
+
+2. Display:
+   ```
+   🧪 TEST WRITER · spec conflict · <slug>
+   ───────────────────────────────────────────────
+   This escalation is a spec conflict, not a test or contract problem.
+   Both tests are correct given their respective requirements — the
+   requirements themselves contradict each other.
+
+   Blocked tests:
+     - <passing test> (covers: <R_N>)
+     - <failing test> (covers: <R_N>)
+
+   Run /spec-author to resolve the conflicting requirements, then
+   re-run /feature-test "<slug>" to unblock.
+   ```
+
+3. Stop. Do not proceed to Step E2.
 
 ### Step E2 — Diagnose
 
@@ -489,6 +731,8 @@ Write `.feature/<slug>/test-plan.md` (or append cycle section if it exists):
 ### Coverage
 - Acceptance criteria covered: <n>/<total>
 - Error cases covered: <n>
+- Spec requirements operationalized: <n>/<total> (omit if no specs loaded)
+- Untestable requirements: <list or none> (omit if no specs loaded)
 - Gaps noted: <any>
 ```
 
@@ -535,13 +779,14 @@ Display:
 ───────────────────────────────────────────────
 Tests written and verified failing. Cycle <n><  · WU-<n>>.
 
-───────────────────────────────────────────────
-  Type **yes**  ·  or: stop
-───────────────────────────────────────────────
 ```
 
-If "yes": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
-If "stop":
+Use AskUserQuestion with two options:
+- "Continue"
+- "Stop"
+
+If "Continue": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "Stop":
 ```
 When you're ready:
   /feature-implement "<slug>"<  --unit WU-<n>>

@@ -327,6 +327,18 @@ R133. `ByteArrayKey.compareTo` must compare byte arrays using unsigned byte valu
 
 R134. `ByteArrayKey` must implement `equals` and `hashCode` based on array content, not reference identity.
 
+### Audit-hardened requirements
+
+R135. `IndexRegistry` read-only query methods (`findIndex`, `isEmpty`, `resolveEntry`, `allEntries`, `schema`) must acquire the read lock before checking the closed flag and accessing internal state.
+
+R136. `IndexRegistry.onUpdate` and `IndexRegistry.onDelete` must place the `documentStore` mutation inside the try/catch rollback scope, matching the transactional consistency pattern used by `onInsert`.
+
+R137. `IndexRegistry.close()` must accumulate exceptions from all resources (indices and arena) using the deferred exception pattern, never silently losing an exception when multiple resources fail.
+
+R138. `IndexRegistry` must reject an `EQUALITY` index on a `BOOLEAN` field with an `IllegalArgumentException`, matching the rejection behavior of `RANGE` and `UNIQUE` index types on `BOOLEAN`.
+
+R139. `IndexRegistry.extractFieldValue` must return a defensive copy of vector arrays (`float[]` and `short[]`), not a reference to the document's internal array.
+
 ---
 
 ## Design Narrative

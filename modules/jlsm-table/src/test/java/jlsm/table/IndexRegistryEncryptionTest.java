@@ -125,6 +125,10 @@ class IndexRegistryEncryptionTest {
 
     // ── FULL_TEXT index on Deterministic field → allowed ─────────────────
 
+    // Updated by audit F-R1.shared_state.8.3: IndexRegistry constructor now wraps
+    // createIndex failures in IOException (with cleanup of already-created indices).
+    // The FullTextFieldIndex stub throws UnsupportedOperationException, which is now
+    // wrapped in IOException. We verify the cause is UOE (not IAE from encryption validation).
     @Test
     void fullTextIndex_deterministicField_allowed() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -134,11 +138,12 @@ class IndexRegistryEncryptionTest {
         // FullTextFieldIndex is currently a stub that throws UnsupportedOperationException.
         // The encryption validation passes (no IllegalArgumentException), but index creation
         // fails because the full-text index itself is not yet implemented.
-        // We verify that the thrown exception is UnsupportedOperationException (from the stub),
-        // NOT IllegalArgumentException (which would indicate encryption validation failure).
-        var ex = assertThrows(UnsupportedOperationException.class,
-                () -> new IndexRegistry(schema, defs));
-        assertEquals("Not implemented", ex.getMessage());
+        // The IndexRegistry constructor wraps this in IOException with cleanup.
+        var ex = assertThrows(IOException.class, () -> new IndexRegistry(schema, defs));
+        assertInstanceOf(UnsupportedOperationException.class, ex.getCause(),
+                "Root cause should be the FULL_TEXT stub's UnsupportedOperationException, "
+                        + "not an encryption validation failure");
+        assertEquals("Not implemented", ex.getCause().getMessage());
     }
 
     // ── FULL_TEXT index on Opaque field → throws IAE ─────────────────────

@@ -135,6 +135,33 @@ Decisions older than the 5 most recent accepted: [history.md](history.md)
 
 ---
 
+## Step 3b — Create .capabilities/ structure (missing files only)
+
+**.capabilities/CLAUDE.md**
+
+```markdown
+# Project Capabilities
+
+> Managed by vallorcine agents. Use /capabilities to query.
+> Each entry describes what the project can do — linking to specs,
+> decisions, KB research, and feature history.
+
+## Capability Map
+
+| Capability | Status | Tags | Features | Specs |
+|-----------|--------|------|----------|-------|
+
+## Recently Updated (last 5)
+
+| Date | Capability | Change |
+|------|-----------|--------|
+```
+
+If the project already has features, specs, or decisions, suggest running
+`/capabilities backfill` to bootstrap the index from existing artifacts.
+
+---
+
 ## Step 4 — Infer and write project profile
 
 Before asking the user anything, read the following files if they exist:
@@ -369,8 +396,9 @@ Print a summary of what was found, created, and skipped. Then show:
 ───────────────────────────────────────────────
 🔧 SETUP complete
 ───────────────────────────────────────────────
-  KB:        .kb/CLAUDE.md
-  Decisions: .decisions/CLAUDE.md
+  KB:           .kb/CLAUDE.md
+  Decisions:    .decisions/CLAUDE.md
+  Capabilities: .capabilities/CLAUDE.md
   Features:  .feature/project-config.md
   .gitignore updated
 

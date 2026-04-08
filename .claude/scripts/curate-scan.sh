@@ -436,8 +436,7 @@ while IFS= read -r src_file; do
     if [[ "$matched" == "0" ]]; then
         # Source changed but no corresponding test changed
         # Count how many commits touched this source file
-        src_commits="$(grep -c "$src_file" "$TMPDIR_SCAN/churn.txt" 2>/dev/null || true)"
-        : "${src_commits:=0}"
+        src_commits="$(grep -c "$src_file" "$TMPDIR_SCAN/churn.txt" 2>/dev/null || echo 0)"
         if [[ "$src_commits" -gt 0 ]]; then
             echo "$src_commits|$src_file" >> "$TMPDIR_SCAN/test-drift.txt"
         fi
@@ -538,6 +537,414 @@ if [[ -d ".decisions" ]]; then
             fi
         done < "$adr_file"
     done
+fi
+
+# ── Analysis 10: Spec coverage signals ─────────────────────────────────────
+# Three spec signals: unspecified shared types, open obligations, spec-code drift.
+# All require .spec/ to exist — skip silently if absent.
+
+> "$TMPDIR_SCAN/spec-unspecified.txt"
+> "$TMPDIR_SCAN/spec-obligations.txt"
+> "$TMPDIR_SCAN/spec-drift.txt"
+> "$TMPDIR_SCAN/spec-absent.txt"
+
+if [[ -d ".spec" && -d ".spec/domains" ]]; then
+
+    # ── 10a: Unspecified shared types ──────────────────────────────────────
+    # Find CamelCase type names referenced in 3+ spec files that have no
+    # spec of their own.
+
+    > "$TMPDIR_SCAN/spec-type-refs.txt"
+
+    # Extract CamelCase words from all spec files, record which spec references them
+    find .spec/domains -name '*.md' 2>/dev/null | while IFS= read -r spec_file; do
+        spec_base="$(basename "$spec_file" .md)"
+        # Extract CamelCase identifiers (2+ chars, starts uppercase, has lowercase)
+        (grep -oE '\b[A-Z][a-z]+([A-Z][a-z]*)+\b' "$spec_file" 2>/dev/null || true) \
+            | sort -u \
+            | while IFS= read -r type_name; do
+                [[ -z "$type_name" ]] && continue
+                echo "$type_name|$spec_base"
+            done
+    done >> "$TMPDIR_SCAN/spec-type-refs.txt"
+
+    if [[ -s "$TMPDIR_SCAN/spec-type-refs.txt" ]]; then
+        # Count distinct spec files per type name
+        cut -d'|' -f1 "$TMPDIR_SCAN/spec-type-refs.txt" \
+            | sort | uniq -c | sort -rn \
+            | awk '$1 >= 3' > "$TMPDIR_SCAN/spec-type-counts.txt" 2>/dev/null || true
+
+        # Build list of spec file base names for cross-reference
+        find .spec/domains -name '*.md' 2>/dev/null \
+            | xargs -I{} basename {} .md \
+            | sort -u > "$TMPDIR_SCAN/spec-names.txt" 2>/dev/null || true
+
+        while IFS= read -r line; do
+            ref_count="$(echo "$line" | awk '{print $1}')"
+            type_name="$(echo "$line" | awk '{$1=""; print $0}' | sed 's/^ //')"
+            # Check if any spec file name contains this type name (case-insensitive)
+            type_lower="$(echo "$type_name" | tr '[:upper:]' '[:lower:]')"
+            has_spec=0
+            while IFS= read -r spec_name; do
+                spec_lower="$(echo "$spec_name" | tr '[:upper:]' '[:lower:]')"
+                if [[ "$spec_lower" == *"$type_lower"* ]]; then
+                    has_spec=1
+                    break
+                fi
+            done < "$TMPDIR_SCAN/spec-names.txt"
+
+            if [[ "$has_spec" -eq 0 ]]; then
+                # Collect which specs reference this type
+                referencing_specs="$(grep "^${type_name}|" "$TMPDIR_SCAN/spec-type-refs.txt" \
+                    | cut -d'|' -f2 | sort -u | tr '\n' ',' | sed 's/,$//')"
+                echo "UNSPECIFIED|$type_name|$ref_count|$referencing_specs" >> "$TMPDIR_SCAN/spec-unspecified.txt"
+            fi
+        done < "$TMPDIR_SCAN/spec-type-counts.txt"
+
+        sort -t'|' -k3 -rn "$TMPDIR_SCAN/spec-unspecified.txt" -o "$TMPDIR_SCAN/spec-unspecified.txt" 2>/dev/null || true
+    fi
+
+    # ── 10b: Specs with open obligations ──────────────────────────────────
+    # Scan specs for open_obligations in frontmatter or [UNRESOLVED]/[CONFLICT] markers
+
+    find .spec/domains -name '*.md' 2>/dev/null | while IFS= read -r spec_file; do
+        spec_base="$(basename "$spec_file" .md)"
+        obligation_count=0
+        obligations=""
+
+        # Check frontmatter for open_obligations
+        fm_obligations="$(sed -n '/^---$/,/^---$/p' "$spec_file" 2>/dev/null \
+            | grep 'open_obligations' | head -1 || true)"
+
+        # Count [UNRESOLVED] and [CONFLICT] markers in body
+        unresolved_count="$(grep -c '\[UNRESOLVED\]' "$spec_file" 2>/dev/null || echo 0)"
+        conflict_count="$(grep -c '\[CONFLICT\]' "$spec_file" 2>/dev/null || echo 0)"
+        obligation_count=$((unresolved_count + conflict_count))
+
+        # Extract obligation text for display
+        if [[ "$obligation_count" -gt 0 ]]; then
+            obligations="$(grep -oE '\[UNRESOLVED\][^.]*\.|\[CONFLICT\][^.]*\.' "$spec_file" 2>/dev/null \
+                | head -5 | tr '\n' ';' | sed 's/;$//' || true)"
+            echo "OBLIGATION|$spec_base|$obligation_count|$obligations" >> "$TMPDIR_SCAN/spec-obligations.txt"
+        fi
+
+        # Also check for DRAFT status with open_obligations in frontmatter
+        if [[ -n "$fm_obligations" && "$obligation_count" -eq 0 ]]; then
+            ob_text="$(echo "$fm_obligations" | sed 's/.*open_obligations:[[:space:]]*//' | tr -d '[]"' || true)"
+            if [[ -n "$ob_text" ]]; then
+                ob_count="$(echo "$ob_text" | tr ',' '\n' | grep -c '[a-z]' 2>/dev/null || echo 1)"
+                echo "OBLIGATION|$spec_base|$ob_count|$ob_text" >> "$TMPDIR_SCAN/spec-obligations.txt"
+            fi
+        fi
+    done
+
+    sort -t'|' -k3 -rn "$TMPDIR_SCAN/spec-obligations.txt" -o "$TMPDIR_SCAN/spec-obligations.txt" 2>/dev/null || true
+
+    # ── 10c: Spec-code drift ──────────────────────────────────────────────
+    # For each spec, check if its domain files have been committed after the
+    # spec's created date.
+
+    find .spec/domains -name '*.md' 2>/dev/null | while IFS= read -r spec_file; do
+        spec_base="$(basename "$spec_file" .md)"
+
+        # Extract created date from frontmatter
+        created_date="$(sed -n '/^---$/,/^---$/p' "$spec_file" 2>/dev/null \
+            | grep -m1 '^created:' | awk '{print $2}' | tr -d '"' || true)"
+        [[ -z "$created_date" ]] && continue
+
+        # Extract domain/files references from the spec
+        # Look for domains: field in frontmatter or file paths in body
+        domain_dir=""
+        # Try to extract domains from frontmatter
+        domains_field="$(sed -n '/^---$/,/^---$/p' "$spec_file" 2>/dev/null \
+            | grep -m1 '^domains:' | sed 's/^domains:[[:space:]]*//' | tr -d '[]"' || true)"
+
+        if [[ -n "$domains_field" ]]; then
+            # Count commits to domain directories since spec creation
+            commit_count=0
+            IFS=',' read -ra domain_list <<< "$domains_field"
+            for domain in "${domain_list[@]}"; do
+                domain="$(echo "$domain" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+                [[ -z "$domain" ]] && continue
+                # Count git commits touching files in this domain since spec date
+                dc="$(git log --oneline --since="$created_date" -- "$domain" 2>/dev/null | wc -l || echo 0)"
+                commit_count=$((commit_count + dc))
+            done
+
+            if [[ "$commit_count" -gt 0 ]]; then
+                domain_desc="$(echo "$domains_field" | sed 's/,/, /g')"
+                echo "DRIFT|$spec_base|$created_date|$commit_count|$domain_desc" >> "$TMPDIR_SCAN/spec-drift.txt"
+            fi
+        else
+            # Fallback: extract file paths from spec body (lines with src/ or similar)
+            file_paths="$(grep -oE '(src|lib|pkg|app|internal)/[a-zA-Z0-9_/.-]+' "$spec_file" 2>/dev/null \
+                | sort -u | head -20 || true)"
+            if [[ -n "$file_paths" ]]; then
+                commit_count=0
+                while IFS= read -r fpath; do
+                    [[ -z "$fpath" ]] && continue
+                    # Get the directory containing the file
+                    fdir="$(dirname "$fpath")"
+                    dc="$(git log --oneline --since="$created_date" -- "$fdir" 2>/dev/null | wc -l || echo 0)"
+                    commit_count=$((commit_count + dc))
+                done <<< "$file_paths"
+
+                if [[ "$commit_count" -gt 0 ]]; then
+                    echo "DRIFT|$spec_base|$created_date|$commit_count|inferred from file paths" >> "$TMPDIR_SCAN/spec-drift.txt"
+                fi
+            fi
+        fi
+    done
+
+    sort -t'|' -k4 -rn "$TMPDIR_SCAN/spec-drift.txt" -o "$TMPDIR_SCAN/spec-drift.txt" 2>/dev/null || true
+
+    # ── 10d: Specs with [ABSENT] requirements ────────────────────────────
+    # Scan spec files for [ABSENT] markers that need explicit decisions.
+
+    > "$TMPDIR_SCAN/spec-absent.txt"
+
+    find .spec/domains -name '*.md' 2>/dev/null | while IFS= read -r spec_file; do
+        spec_base="$(basename "$spec_file" .md)"
+
+        # Find lines with [ABSENT] markers and extract requirement IDs
+        absent_lines="$(grep -n '\[ABSENT\]' "$spec_file" 2>/dev/null || true)"
+        [[ -z "$absent_lines" ]] && continue
+
+        absent_count="$(echo "$absent_lines" | wc -l)"
+        # Extract requirement IDs (R<number>) from lines containing [ABSENT]
+        req_ids="$(echo "$absent_lines" \
+            | grep -oE 'R[0-9]+' 2>/dev/null \
+            | sort -t'R' -k1 -n \
+            | tr '\n' ',' | sed 's/,$//' || true)"
+        [[ -z "$req_ids" ]] && req_ids="(no IDs found)"
+
+        echo "ABSENT|$spec_base|$absent_count|$req_ids" >> "$TMPDIR_SCAN/spec-absent.txt"
+    done
+
+    sort -t'|' -k3 -rn "$TMPDIR_SCAN/spec-absent.txt" -o "$TMPDIR_SCAN/spec-absent.txt" 2>/dev/null || true
+
+fi
+
+# ── Analysis 11: Cross-reference repair candidates ──────────────────────────
+# Detect missing related links between KB entries (tag overlap, applies_to overlap)
+# and missing KB source references in ADRs.
+
+> "$TMPDIR_SCAN/xref-kb-tags.txt"
+> "$TMPDIR_SCAN/xref-kb-applies.txt"
+> "$TMPDIR_SCAN/xref-adr-kb.txt"
+
+if [[ -d ".kb" ]]; then
+
+    # ── 11a: KB tag overlap candidates ───────────────────────────────────────
+    # Extract tags and related arrays from KB entries. For pairs with 2+ shared
+    # tags in different categories where related is empty, emit as candidate.
+
+    # Build a tag index: one line per entry with path|category|tags|related-empty
+    > "$TMPDIR_SCAN/kb-tag-index.txt"
+    (find .kb -name '*.md' -not -name 'CLAUDE.md' -not -path '*/_refs/*' -not -path '*/_archive*' 2>/dev/null || true) | while IFS= read -r kb_file; do
+        # Extract frontmatter between --- delimiters
+        frontmatter="$(sed -n '1{/^---$/!q};1,/^---$/p' "$kb_file" 2>/dev/null | tail -n +2 || true)"
+        if [[ -z "$frontmatter" ]]; then continue; fi
+
+        # Extract tags array (handles ["tag1", "tag2"] format)
+        tags_line="$(echo "$frontmatter" | grep -m1 '^tags:' || true)"
+        if [[ -z "$tags_line" ]]; then continue; fi
+        tags="$(echo "$tags_line" | sed 's/^tags:[[:space:]]*//' | tr -d '[]"' | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | tr '\n' ',' | sed 's/,$//')"
+        if [[ -z "$tags" ]]; then continue; fi
+
+        # Extract related array — check if empty
+        related_line="$(echo "$frontmatter" | grep -m1 '^related:' || true)"
+        related_empty=0
+        if [[ -z "$related_line" ]] || echo "$related_line" | grep -q '\[\]' 2>/dev/null; then
+            related_empty=1
+        fi
+
+        # Extract category (second path component after .kb/)
+        category="$(echo "$kb_file" | awk -F/ '{print $2"/"$3}')"
+
+        echo "$kb_file|$category|$tags|$related_empty" >> "$TMPDIR_SCAN/kb-tag-index.txt"
+    done
+
+    # Compare pairs for tag overlap (only entries with empty related)
+    if [[ -s "$TMPDIR_SCAN/kb-tag-index.txt" ]]; then
+        entry_count=$(wc -l < "$TMPDIR_SCAN/kb-tag-index.txt")
+        if [[ "$entry_count" -gt 1 ]]; then
+            # Read all entries into arrays for pairwise comparison
+            while IFS='|' read -r path_a cat_a tags_a empty_a; do
+                # Only consider entries with empty related as source
+                [[ "$empty_a" != "1" ]] && continue
+                while IFS='|' read -r path_b cat_b tags_b empty_b; do
+                    # Skip self and same-category pairs
+                    [[ "$path_a" = "$path_b" ]] && continue
+                    [[ "$cat_a" = "$cat_b" ]] && continue
+                    # Skip if already emitted (canonical order)
+                    [[ "$path_a" > "$path_b" ]] && continue
+
+                    # Count tag overlap
+                    shared=""
+                    overlap=0
+                    for tag in $(echo "$tags_a" | tr ',' '\n'); do
+                        if echo ",$tags_b," | grep -qF ",$tag," 2>/dev/null; then
+                            overlap=$((overlap + 1))
+                            if [[ -n "$shared" ]]; then
+                                shared="$shared, $tag"
+                            else
+                                shared="$tag"
+                            fi
+                        fi
+                    done
+
+                    if [[ "$overlap" -ge 2 ]]; then
+                        echo "TAG_OVERLAP|$path_a|$path_b|$overlap|$shared" >> "$TMPDIR_SCAN/xref-kb-tags.txt"
+                    fi
+                done < "$TMPDIR_SCAN/kb-tag-index.txt"
+            done < "$TMPDIR_SCAN/kb-tag-index.txt"
+        fi
+    fi
+
+    sort -t'|' -k4 -rn "$TMPDIR_SCAN/xref-kb-tags.txt" -o "$TMPDIR_SCAN/xref-kb-tags.txt" 2>/dev/null || true
+
+    # ── 11b: KB applies_to overlap candidates ────────────────────────────────
+    # Entries targeting the same files/patterns in different categories.
+
+    > "$TMPDIR_SCAN/kb-applies-index.txt"
+    (find .kb -name '*.md' -not -name 'CLAUDE.md' -not -path '*/_refs/*' -not -path '*/_archive*' 2>/dev/null || true) | while IFS= read -r kb_file; do
+        frontmatter="$(sed -n '1{/^---$/!q};1,/^---$/p' "$kb_file" 2>/dev/null | tail -n +2 || true)"
+        if [[ -z "$frontmatter" ]]; then continue; fi
+
+        applies_line="$(echo "$frontmatter" | grep -m1 '^applies_to:' || true)"
+        if [[ -z "$applies_line" ]]; then continue; fi
+        applies="$(echo "$applies_line" | sed 's/^applies_to:[[:space:]]*//' | tr -d '[]"' | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort | tr '\n' ',' | sed 's/,$//')"
+        if [[ -z "$applies" ]] || [[ "$applies" = "[]" ]]; then continue; fi
+
+        related_line="$(echo "$frontmatter" | grep -m1 '^related:' || true)"
+        related_empty=0
+        if [[ -z "$related_line" ]] || echo "$related_line" | grep -q '\[\]' 2>/dev/null; then
+            related_empty=1
+        fi
+
+        category="$(echo "$kb_file" | awk -F/ '{print $2"/"$3}')"
+        echo "$kb_file|$category|$applies|$related_empty" >> "$TMPDIR_SCAN/kb-applies-index.txt"
+    done
+
+    if [[ -s "$TMPDIR_SCAN/kb-applies-index.txt" ]]; then
+        while IFS='|' read -r path_a cat_a applies_a empty_a; do
+            [[ "$empty_a" != "1" ]] && continue
+            while IFS='|' read -r path_b cat_b applies_b empty_b; do
+                [[ "$path_a" = "$path_b" ]] && continue
+                [[ "$cat_a" = "$cat_b" ]] && continue
+                [[ "$path_a" > "$path_b" ]] && continue
+
+                shared=""
+                for ap in $(echo "$applies_a" | tr ',' '\n'); do
+                    if echo ",$applies_b," | grep -qF ",$ap," 2>/dev/null; then
+                        if [[ -n "$shared" ]]; then
+                            shared="$shared, $ap"
+                        else
+                            shared="$ap"
+                        fi
+                    fi
+                done
+
+                if [[ -n "$shared" ]]; then
+                    echo "APPLIES_OVERLAP|$path_a|$path_b|$shared" >> "$TMPDIR_SCAN/xref-kb-applies.txt"
+                fi
+            done < "$TMPDIR_SCAN/kb-applies-index.txt"
+        done < "$TMPDIR_SCAN/kb-applies-index.txt"
+    fi
+
+fi
+
+# ── 11c: ADR evaluation → KB refs gap ───────────────────────────────────────
+# KB paths referenced in evaluation.md but not in adr.md KB Sources table.
+
+if [[ -d ".decisions" ]]; then
+    (find .decisions -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true) | while IFS= read -r adr_dir; do
+        eval_file="$adr_dir/evaluation.md"
+        adr_file="$adr_dir/adr.md"
+        [[ -f "$eval_file" ]] || continue
+        [[ -f "$adr_file" ]] || continue
+
+        slug="$(basename "$adr_dir")"
+
+        # Extract .kb/ paths from evaluation.md
+        eval_kb_paths="$( (grep -oE '\.kb/[a-zA-Z0-9_/.-]+\.md' "$eval_file" 2>/dev/null || true) | sort -u)"
+        [[ -z "$eval_kb_paths" ]] && continue
+
+        # Extract .kb/ paths from adr.md (KB Sources table + any inline refs)
+        adr_kb_paths="$( (grep -oE '\.kb/[a-zA-Z0-9_/.-]+\.md' "$adr_file" 2>/dev/null || true) | sort -u)"
+
+        # Find paths in eval but not in adr
+        while IFS= read -r kb_path; do
+            if ! echo "$adr_kb_paths" | grep -qF "$kb_path" 2>/dev/null; then
+                echo "ADR_KB_GAP|$slug|$kb_path" >> "$TMPDIR_SCAN/xref-adr-kb.txt"
+            fi
+        done <<< "$eval_kb_paths"
+    done
+fi
+
+# ── Analysis 12: Deferred audit feedback ─────────────────────────────────────
+# Find spec-updates.md and kb-suggestions.md left behind by audits where the
+# user skipped the feedback loop (or the feedback loop didn't wait).
+
+touch "$TMPDIR_SCAN/audit-feedback.txt"
+
+if [[ -d ".feature" ]]; then
+    # Skip .applied.md files — those were already processed
+    (find .feature -path "*/audit/run-*/spec-updates.md" -o -path "*/audit/run-*/kb-suggestions.md" 2>/dev/null || true) | grep -v '\.applied\.md$' | while IFS= read -r feedback_file; do
+        [[ -f "$feedback_file" ]] || continue
+        # Extract feature slug from path: .feature/<slug>/audit/run-NNN/<file>
+        slug="$(echo "$feedback_file" | sed 's|^\.feature/||; s|/audit/.*||')"
+        run="$(echo "$feedback_file" | grep -oE 'run-[0-9]+' || echo 'unknown')"
+        filename="$(basename "$feedback_file")"
+        # Count items (lines starting with ## or ### that look like suggestions)
+        item_count="$( (grep -cE '^##+ ' "$feedback_file" 2>/dev/null || true) )"
+        [[ "$item_count" -eq 0 ]] && item_count=1
+        echo "AUDIT_FEEDBACK|$slug|$run|$filename|$item_count|$feedback_file" >> "$TMPDIR_SCAN/audit-feedback.txt"
+    done
+fi
+
+# ── Analysis 13: Decisions roadmap needed ────────────────────────────────────
+# Check if there are enough deferred decisions to warrant a roadmap pass.
+
+touch "$TMPDIR_SCAN/roadmap-needed.txt"
+
+if [[ -d ".decisions" ]]; then
+    deferred_count=0
+    while IFS= read -r slug_dir; do
+        adr_file="$slug_dir/adr.md"
+        [[ -f "$adr_file" ]] || continue
+        if grep -qE 'status:.*"?deferred"?' "$adr_file" 2>/dev/null; then
+            deferred_count=$((deferred_count + 1))
+        fi
+    done < <(find .decisions -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true)
+
+    if [[ $deferred_count -ge 10 ]]; then
+        roadmap_status="none"
+        if [[ -f ".decisions/roadmap.md" ]]; then
+            # Check staleness: is roadmap older than newest deferred ADR?
+            roadmap_ts="$(date -r ".decisions/roadmap.md" '+%s' 2>/dev/null || echo 0)"
+            newest_deferred_ts=0
+            while IFS= read -r slug_dir; do
+                adr_file="$slug_dir/adr.md"
+                [[ -f "$adr_file" ]] || continue
+                if grep -qE 'status:.*"?deferred"?' "$adr_file" 2>/dev/null; then
+                    adr_ts="$(date -r "$adr_file" '+%s' 2>/dev/null || echo 0)"
+                    [[ "$adr_ts" -gt "$newest_deferred_ts" ]] && newest_deferred_ts="$adr_ts"
+                fi
+            done < <(find .decisions -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true)
+
+            if [[ "$newest_deferred_ts" -gt "$roadmap_ts" ]]; then
+                roadmap_status="stale"
+            else
+                roadmap_status="current"
+            fi
+        fi
+
+        if [[ "$roadmap_status" != "current" ]]; then
+            echo "ROADMAP_NEEDED|$deferred_count|$roadmap_status" >> "$TMPDIR_SCAN/roadmap-needed.txt"
+        fi
+    fi
 fi
 
 # ── Write summary file ──────────────────────────────────────────────────────
@@ -719,6 +1126,130 @@ if [[ -s "$TMPDIR_SCAN/out-of-scope.txt" ]]; then
     echo "" >> "$SUMMARY_FILE"
 fi
 
+# Cross-reference candidates
+has_xref_signals=0
+if [[ -s "$TMPDIR_SCAN/xref-kb-tags.txt" ]] || [[ -s "$TMPDIR_SCAN/xref-kb-applies.txt" ]] || [[ -s "$TMPDIR_SCAN/xref-adr-kb.txt" ]]; then
+    echo "## Cross-Reference Candidates" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    has_xref_signals=1
+fi
+
+if [[ -s "$TMPDIR_SCAN/xref-kb-tags.txt" ]]; then
+    echo "### KB entries with missing related links (tag overlap)" >> "$SUMMARY_FILE"
+    echo "Entry pairs sharing 2+ tags in different categories with no related link:" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Entry A | Entry B | Shared Tags | Overlap |" >> "$SUMMARY_FILE"
+    echo "|---------|---------|-------------|---------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ path_a path_b overlap shared; do
+        echo "| $path_a | $path_b | $shared | $overlap |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/xref-kb-tags.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+if [[ -s "$TMPDIR_SCAN/xref-kb-applies.txt" ]]; then
+    echo "### KB entries with overlapping applies_to" >> "$SUMMARY_FILE"
+    echo "Entry pairs targeting the same files in different categories with no related link:" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Entry A | Entry B | Shared Paths |" >> "$SUMMARY_FILE"
+    echo "|---------|---------|--------------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ path_a path_b shared; do
+        echo "| $path_a | $path_b | $shared |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/xref-kb-applies.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+if [[ -s "$TMPDIR_SCAN/xref-adr-kb.txt" ]]; then
+    echo "### ADR evaluation references not in KB Sources" >> "$SUMMARY_FILE"
+    echo "KB entries cited in evaluation scoring but missing from the ADR's KB Sources table:" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| ADR | Missing KB Reference |" >> "$SUMMARY_FILE"
+    echo "|-----|---------------------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ slug kb_path; do
+        echo "| $slug | $kb_path |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/xref-adr-kb.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+# Spec coverage gaps
+has_spec_signals=0
+if [[ -s "$TMPDIR_SCAN/spec-unspecified.txt" ]] || [[ -s "$TMPDIR_SCAN/spec-obligations.txt" ]] || [[ -s "$TMPDIR_SCAN/spec-drift.txt" ]] || [[ -s "$TMPDIR_SCAN/spec-absent.txt" ]]; then
+    echo "## Spec Coverage Gaps" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    has_spec_signals=1
+fi
+
+if [[ -s "$TMPDIR_SCAN/spec-unspecified.txt" ]]; then
+    echo "### Unspecified shared types" >> "$SUMMARY_FILE"
+    echo "Types referenced by 3+ specs that have no spec of their own:" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Type | Ref Count | Referenced By |" >> "$SUMMARY_FILE"
+    echo "|------|-----------|---------------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ type_name ref_count specs; do
+        echo "| $type_name | $ref_count | $specs |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/spec-unspecified.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+if [[ -s "$TMPDIR_SCAN/spec-obligations.txt" ]]; then
+    echo "### Specs with open obligations" >> "$SUMMARY_FILE"
+    echo "Specs with unresolved conflicts or open obligations:" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Spec | Open Count | Details |" >> "$SUMMARY_FILE"
+    echo "|------|------------|---------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ spec_name ob_count details; do
+        echo "| $spec_name | $ob_count | $details |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/spec-obligations.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+if [[ -s "$TMPDIR_SCAN/spec-drift.txt" ]]; then
+    echo "### Spec-code drift" >> "$SUMMARY_FILE"
+    echo "Specs whose domain files have changed since the spec was created:" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Spec | Created | Commits Since | Domains |" >> "$SUMMARY_FILE"
+    echo "|------|---------|---------------|---------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ spec_name created commits domains; do
+        echo "| $spec_name | $created | $commits | $domains |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/spec-drift.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+if [[ -s "$TMPDIR_SCAN/spec-absent.txt" ]]; then
+    echo "### Undecided absent behaviors" >> "$SUMMARY_FILE"
+    echo "Specs with [ABSENT] requirements that need explicit decisions:" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ spec_name absent_count req_ids; do
+        echo "$spec_name — $absent_count [ABSENT] requirements: $req_ids" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/spec-absent.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+# Deferred audit feedback
+if [[ -s "$TMPDIR_SCAN/audit-feedback.txt" ]]; then
+    echo "## Deferred Audit Feedback" >> "$SUMMARY_FILE"
+    echo "Audit feedback files that were skipped or deferred:" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Feature | Run | Type | Items | Path |" >> "$SUMMARY_FILE"
+    echo "|---------|-----|------|-------|------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ slug run filename item_count path; do
+        type_label="spec updates"
+        [[ "$filename" == "kb-suggestions.md" ]] && type_label="KB patterns"
+        echo "| $slug | $run | $type_label | $item_count | $path |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/audit-feedback.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+# Decisions roadmap needed
+if [[ -s "$TMPDIR_SCAN/roadmap-needed.txt" ]]; then
+    echo "## Decisions Roadmap Needed" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ count status; do
+        echo "$count deferred decisions with no current roadmap (status: $status)." >> "$SUMMARY_FILE"
+        echo "Run \`/decisions roadmap\` to cluster, classify, and prioritize." >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/roadmap-needed.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
 # ── Report ───────────────────────────────────────────────────────────────────
 
 echo "Scan complete: $COMMIT_COUNT commits analyzed"
@@ -735,3 +1266,22 @@ echo "  ADRs to revisit: $(wc -l < "$TMPDIR_SCAN/adr-revisit.txt" 2>/dev/null ||
 echo "  Test-source drift: $(wc -l < "$TMPDIR_SCAN/test-drift.txt" 2>/dev/null || echo 0)"
 echo "  Backfill candidates: $(wc -l < "$TMPDIR_SCAN/backfill-candidates.txt" 2>/dev/null || echo 0)"
 echo "  Out-of-scope items: $(wc -l < "$TMPDIR_SCAN/out-of-scope.txt" 2>/dev/null || echo 0)"
+echo "  Unspecified shared types: $(wc -l < "$TMPDIR_SCAN/spec-unspecified.txt" 2>/dev/null || echo 0)"
+echo "  Specs with obligations: $(wc -l < "$TMPDIR_SCAN/spec-obligations.txt" 2>/dev/null || echo 0)"
+echo "  Spec-code drift: $(wc -l < "$TMPDIR_SCAN/spec-drift.txt" 2>/dev/null || echo 0)"
+echo "  Specs with [ABSENT] reqs: $(wc -l < "$TMPDIR_SCAN/spec-absent.txt" 2>/dev/null || echo 0)"
+xref_total=$(( $(wc -l < "$TMPDIR_SCAN/xref-kb-tags.txt" 2>/dev/null || echo 0) + $(wc -l < "$TMPDIR_SCAN/xref-kb-applies.txt" 2>/dev/null || echo 0) + $(wc -l < "$TMPDIR_SCAN/xref-adr-kb.txt" 2>/dev/null || echo 0) ))
+echo "  Deferred audit feedback: $(wc -l < "$TMPDIR_SCAN/audit-feedback.txt" 2>/dev/null || echo 0)"
+echo "  Cross-ref candidates: $xref_total"
+echo "  Roadmap needed: $(wc -l < "$TMPDIR_SCAN/roadmap-needed.txt" 2>/dev/null || echo 0)"
+
+# ── Update curation state ─────────────────────────────────────────────────
+
+cat > "$STATE_FILE" << STATE
+Last scanned: $CURRENT_SHA
+Scan date: $SCAN_DATE
+Commits: $COMMIT_COUNT
+Window: ${WINDOW_MONTHS} months
+STATE
+
+exit 0

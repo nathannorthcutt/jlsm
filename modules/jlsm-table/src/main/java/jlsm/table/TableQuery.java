@@ -98,9 +98,12 @@ public final class TableQuery<K> {
     }
 
     TableQuery<K> addPredicate(Predicate predicate) {
-        assert predicate != null : "predicate must not be null";
-        if (root == null || nextMode == CombineMode.NONE) {
+        Objects.requireNonNull(predicate, "predicate");
+        if (root == null) {
             root = predicate;
+        } else if (nextMode == CombineMode.NONE) {
+            throw new IllegalStateException(
+                    "A predicate is already set — use and() or or() to combine predicates");
         } else if (nextMode == CombineMode.AND) {
             root = new Predicate.And(List.of(root, predicate));
         } else {
@@ -121,8 +124,8 @@ public final class TableQuery<K> {
         private final String fieldName;
 
         FieldClause(TableQuery<K> query, String fieldName) {
-            assert query != null : "query must not be null";
-            assert fieldName != null : "fieldName must not be null";
+            Objects.requireNonNull(query, "query");
+            Objects.requireNonNull(fieldName, "fieldName");
             this.query = query;
             this.fieldName = fieldName;
         }

@@ -13,11 +13,22 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Path;
 import java.util.AbstractList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
+import jlsm.bloom.blocked.BlockedBloomFilter;
+import jlsm.core.compression.CompressionCodec;
+import jlsm.core.model.Entry;
+import java.util.Iterator;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -385,6 +396,421 @@ class SharedStateAdversarialTest {
 
         assertInstanceOf(java.io.IOException.class, ex.getCause(),
                 "UncheckedIOException should wrap an IOException");
+    }
+
+    // Finding: F-R1.shared_state.1.2
+    // Bug: TOCTOU between checkNotClosed() and readLazyChannel() in get() — get() can
+    // return a valid result after close() has logically marked the reader as closed
+    // Correct behavior: get() should throw IllegalStateException if the reader becomes
+    // closed between the initial checkNotClosed() call and the result return
+    // Fix location: TrieSSTableReader.get(MemorySegment) — add post-read closed check
+    // Regression watch: Ensure single-threaded get() still returns correct results
+    @Test
+    void test_get_toctou_returnsDataAfterLogicalClose_shouldThrowISE() throws Exception {
+        // Write a v2 SSTable with a known key, then open it eagerly.
+        Path sstPath = tempDir.resolve("toctou.sst");
+        MemorySegment key = MemorySegment.ofArray("testkey".getBytes());
+        MemorySegment value = MemorySegment.ofArray("testvalue".getBytes());
+        try (var writer = new TrieSSTableWriter(1L, new Level(0), sstPath,
+                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.none())) {
+            writer.append(new Entry.Put(key, value, new SequenceNumber(1L)));
+            writer.finish();
+        }
+
+        // Open eagerly to get a valid reader with real keyIndex and eagerData.
+        TrieSSTableReader baseReader = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer(), null, CompressionCodec.none());
+
+        // Verify get() works before the attack
+        assertTrue(baseReader.get(key).isPresent(), "baseline get() should find the key");
+
+        // Extract all internal fields from the base reader via reflection
+        Constructor<TrieSSTableReader> ctor = TrieSSTableReader.class.getDeclaredConstructor(
+                SSTableMetadata.class, jlsm.sstable.internal.KeyIndex.class,
+                jlsm.core.bloom.BloomFilter.class, long.class, byte[].class,
+                SeekableByteChannel.class, jlsm.core.cache.BlockCache.class,
+                jlsm.sstable.internal.CompressionMap.class, Map.class);
+        ctor.setAccessible(true);
+
+        Field metadataField = TrieSSTableReader.class.getDeclaredField("metadata");
+        metadataField.setAccessible(true);
+        SSTableMetadata metadata = (SSTableMetadata) metadataField.get(baseReader);
+
+        Field keyIndexField = TrieSSTableReader.class.getDeclaredField("keyIndex");
+        keyIndexField.setAccessible(true);
+        var keyIndex = (jlsm.sstable.internal.KeyIndex) keyIndexField.get(baseReader);
+
+        Field dataEndField = TrieSSTableReader.class.getDeclaredField("dataEnd");
+        dataEndField.setAccessible(true);
+        long dataEnd = dataEndField.getLong(baseReader);
+
+        Field eagerDataField = TrieSSTableReader.class.getDeclaredField("eagerData");
+        eagerDataField.setAccessible(true);
+        byte[] eagerData = (byte[]) eagerDataField.get(baseReader);
+
+        Field compressionMapField = TrieSSTableReader.class.getDeclaredField("compressionMap");
+        compressionMapField.setAccessible(true);
+        var compressionMap = (jlsm.sstable.internal.CompressionMap) compressionMapField
+                .get(baseReader);
+
+        Field codecMapField = TrieSSTableReader.class.getDeclaredField("codecMap");
+        codecMapField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var codecMap = (Map<Byte, jlsm.core.compression.CompressionCodec>) codecMapField
+                .get(baseReader);
+
+        baseReader.close();
+
+        // Create a poisoned bloom filter that sets the closed flag on mightContain().
+        // This deterministically injects close() between checkNotClosed() and the read:
+        // 1. get() calls checkNotClosed() → passes (closed=false)
+        // 2. get() calls bloomFilter.mightContain(key) → sets closed=true, returns true
+        // 3. get() proceeds to read and decode the entry
+        // 4. Without fix: get() returns the entry — TOCTOU
+        // 5. With fix: post-read checkNotClosed() detects closed=true → throws ISE
+        var poisonedReader = new AtomicReference<TrieSSTableReader>();
+        jlsm.core.bloom.BloomFilter closingBloom = new jlsm.core.bloom.BloomFilter() {
+            @Override
+            public void add(MemorySegment k) {
+            }
+
+            @Override
+            public boolean mightContain(MemorySegment k) {
+                try {
+                    Field f = TrieSSTableReader.class.getDeclaredField("closed");
+                    f.setAccessible(true);
+                    f.setBoolean(poisonedReader.get(), true);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                return true;
+            }
+
+            @Override
+            public double falsePositiveRate() {
+                return 0.0;
+            }
+
+            @Override
+            public MemorySegment serialize() {
+                return MemorySegment.ofArray(new byte[0]);
+            }
+        };
+
+        TrieSSTableReader toctouReader = ctor.newInstance(metadata, keyIndex, closingBloom, dataEnd,
+                eagerData, null, null, compressionMap, codecMap);
+        poisonedReader.set(toctouReader);
+
+        // Without the post-read checkNotClosed(), this returns Optional<Entry> — bug.
+        // With the fix, this throws IllegalStateException.
+        assertThrows(IllegalStateException.class, () -> toctouReader.get(key),
+                "get() should throw IllegalStateException when closed flag is set during "
+                        + "execution (between pre-read check and return), but it returned data "
+                        + "— TOCTOU vulnerability present");
+    }
+
+    // Finding: F-R1.shared_state.1.5
+    // Bug: readAndDecompressBlock writes to BlockCache after reader is logically closed —
+    // blockCache.put() at line 416 executes between the poisoned bloom (which sets
+    // closed=true) and the post-read checkNotClosed() in get()
+    // Correct behavior: readAndDecompressBlock should skip the blockCache.put() when the
+    // reader is logically closed, preventing mutations to shared external state after close
+    // Fix location: TrieSSTableReader.readAndDecompressBlock — add closed guard before
+    // blockCache.put()
+    // Regression watch: Ensure blockCache.put() still occurs for normal (non-closed) reads
+    @Test
+    void test_readAndDecompressBlock_writesToCacheAfterLogicalClose_shouldSkipCachePut()
+            throws Exception {
+        // Write a v2 SSTable with a known key
+        Path sstPath = tempDir.resolve("cache-after-close.sst");
+        MemorySegment key = MemorySegment.ofArray("cachekey".getBytes());
+        MemorySegment value = MemorySegment.ofArray("cacheval".getBytes());
+        try (var writer = new TrieSSTableWriter(1L, new Level(0), sstPath,
+                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.none())) {
+            writer.append(new Entry.Put(key, value, new SequenceNumber(1L)));
+            writer.finish();
+        }
+
+        // Open eagerly to extract internal fields
+        TrieSSTableReader baseReader = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer(), null, CompressionCodec.none());
+        assertTrue(baseReader.get(key).isPresent(), "baseline get() should find the key");
+
+        // Extract internal fields via reflection
+        Constructor<TrieSSTableReader> ctor = TrieSSTableReader.class.getDeclaredConstructor(
+                SSTableMetadata.class, jlsm.sstable.internal.KeyIndex.class,
+                jlsm.core.bloom.BloomFilter.class, long.class, byte[].class,
+                SeekableByteChannel.class, jlsm.core.cache.BlockCache.class,
+                jlsm.sstable.internal.CompressionMap.class, Map.class);
+        ctor.setAccessible(true);
+
+        Field metadataField = TrieSSTableReader.class.getDeclaredField("metadata");
+        metadataField.setAccessible(true);
+        SSTableMetadata metadata = (SSTableMetadata) metadataField.get(baseReader);
+
+        Field keyIndexField = TrieSSTableReader.class.getDeclaredField("keyIndex");
+        keyIndexField.setAccessible(true);
+        var keyIndex = (jlsm.sstable.internal.KeyIndex) keyIndexField.get(baseReader);
+
+        Field dataEndField = TrieSSTableReader.class.getDeclaredField("dataEnd");
+        dataEndField.setAccessible(true);
+        long dataEnd = dataEndField.getLong(baseReader);
+
+        Field eagerDataField = TrieSSTableReader.class.getDeclaredField("eagerData");
+        eagerDataField.setAccessible(true);
+        byte[] eagerData = (byte[]) eagerDataField.get(baseReader);
+
+        Field compressionMapField = TrieSSTableReader.class.getDeclaredField("compressionMap");
+        compressionMapField.setAccessible(true);
+        var compressionMap = (jlsm.sstable.internal.CompressionMap) compressionMapField
+                .get(baseReader);
+
+        Field codecMapField = TrieSSTableReader.class.getDeclaredField("codecMap");
+        codecMapField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        var codecMap = (Map<Byte, jlsm.core.compression.CompressionCodec>) codecMapField
+                .get(baseReader);
+
+        baseReader.close();
+
+        // Spy BlockCache that tracks put() calls after the reader is logically closed
+        var putCalledAfterClose = new AtomicBoolean(false);
+        var closedRef = new AtomicReference<TrieSSTableReader>();
+        jlsm.core.cache.BlockCache spyCache = new jlsm.core.cache.BlockCache() {
+            @Override
+            public Optional<MemorySegment> get(long sstableId, long blockOffset) {
+                return Optional.empty(); // always miss — force the read + put path
+            }
+
+            @Override
+            public void put(long sstableId, long blockOffset, MemorySegment block) {
+                // Check if the reader is closed at the time of this put()
+                try {
+                    Field f = TrieSSTableReader.class.getDeclaredField("closed");
+                    f.setAccessible(true);
+                    if (f.getBoolean(closedRef.get())) {
+                        putCalledAfterClose.set(true);
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+            @Override
+            public void evict(long sstableId) {
+            }
+
+            @Override
+            public long size() {
+                return 0;
+            }
+
+            @Override
+            public long capacity() {
+                return 100;
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        // Poisoned bloom filter: sets closed=true during mightContain()
+        var poisonedReader = new AtomicReference<TrieSSTableReader>();
+        jlsm.core.bloom.BloomFilter closingBloom = new jlsm.core.bloom.BloomFilter() {
+            @Override
+            public void add(MemorySegment k) {
+            }
+
+            @Override
+            public boolean mightContain(MemorySegment k) {
+                try {
+                    Field f = TrieSSTableReader.class.getDeclaredField("closed");
+                    f.setAccessible(true);
+                    f.setBoolean(poisonedReader.get(), true);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+                return true;
+            }
+
+            @Override
+            public double falsePositiveRate() {
+                return 0.0;
+            }
+
+            @Override
+            public MemorySegment serialize() {
+                return MemorySegment.ofArray(new byte[0]);
+            }
+        };
+
+        // Create reader with spy cache and poisoned bloom
+        TrieSSTableReader reader = ctor.newInstance(metadata, keyIndex, closingBloom, dataEnd,
+                eagerData, null, spyCache, compressionMap, codecMap);
+        poisonedReader.set(reader);
+        closedRef.set(reader);
+
+        // get() will: checkNotClosed() → bloom.mightContain() [sets closed=true]
+        // → readAndDecompressBlock() → blockCache.put() [BUG: writes to cache while closed]
+        // → return → checkNotClosed() → throws ISE
+        // The ISE is expected (from the F-R1.shared_state.1.2 fix), but the cache put
+        // should NOT have happened.
+        assertThrows(IllegalStateException.class, () -> reader.get(key));
+
+        assertFalse(putCalledAfterClose.get(),
+                "readAndDecompressBlock wrote to BlockCache after reader was logically closed "
+                        + "— blockCache.put() should be skipped when closed=true");
+    }
+
+    // Finding: F-R1.shared_state.1.1
+    // Bug: close() is not atomic — double-close race can close lazyChannel twice
+    // Correct behavior: close() should use atomic CAS so only one thread ever
+    // proceeds past the closed guard, ensuring lazyChannel.close() is called exactly once
+    // Fix location: TrieSSTableReader.close() (~lines 331-338)
+    // Regression watch: Ensure single-threaded close still works correctly
+    @Test
+    void test_close_atomicity_doubleCloseRace_channelClosedExactlyOnce() throws Exception {
+        // Spy channel that counts close() invocations
+        var closeCount = new AtomicInteger(0);
+        SeekableByteChannel spyChannel = new SeekableByteChannel() {
+            @Override
+            public int read(ByteBuffer dst) {
+                return -1;
+            }
+
+            @Override
+            public int write(ByteBuffer src) {
+                return 0;
+            }
+
+            @Override
+            public long position() {
+                return 0;
+            }
+
+            @Override
+            public SeekableByteChannel position(long newPosition) {
+                return this;
+            }
+
+            @Override
+            public long size() {
+                return 0;
+            }
+
+            @Override
+            public SeekableByteChannel truncate(long size) {
+                return this;
+            }
+
+            @Override
+            public boolean isOpen() {
+                return closeCount.get() == 0;
+            }
+
+            @Override
+            public void close() {
+                closeCount.incrementAndGet();
+            }
+        };
+
+        MemorySegment key = MemorySegment.ofArray(new byte[]{ 0x01 });
+        SSTableMetadata metadata = new SSTableMetadata(1L, tempDir.resolve("race.sst"),
+                new Level(0), key, key, new SequenceNumber(1L), new SequenceNumber(1L), 0L, 0L);
+
+        Constructor<TrieSSTableReader> ctor = TrieSSTableReader.class.getDeclaredConstructor(
+                SSTableMetadata.class, jlsm.sstable.internal.KeyIndex.class,
+                jlsm.core.bloom.BloomFilter.class, long.class, byte[].class,
+                SeekableByteChannel.class, jlsm.core.cache.BlockCache.class,
+                jlsm.sstable.internal.CompressionMap.class, Map.class);
+        ctor.setAccessible(true);
+
+        // Run many iterations to maximize chance of hitting the race window
+        int iterations = 10_000;
+        int raceDetected = 0;
+
+        for (int i = 0; i < iterations; i++) {
+            closeCount.set(0);
+
+            TrieSSTableReader reader = ctor.newInstance(metadata, null, null, 0L, null, spyChannel,
+                    null, null, null);
+
+            // Reset closed field to false for re-use
+            Field closedField = TrieSSTableReader.class.getDeclaredField("closed");
+            closedField.setAccessible(true);
+            closedField.setBoolean(reader, false);
+
+            var barrier = new CyclicBarrier(2);
+            var t1 = Thread.ofVirtual().start(() -> {
+                try {
+                    barrier.await();
+                    reader.close();
+                } catch (Exception e) {
+                    /* ignore */ }
+            });
+            var t2 = Thread.ofVirtual().start(() -> {
+                try {
+                    barrier.await();
+                    reader.close();
+                } catch (Exception e) {
+                    /* ignore */ }
+            });
+
+            t1.join(1000);
+            t2.join(1000);
+
+            if (closeCount.get() > 1) {
+                raceDetected++;
+            }
+        }
+
+        assertEquals(0, raceDetected, "close() race detected in " + raceDetected + " of "
+                + iterations + " iterations — lazyChannel.close() called more than once");
+    }
+
+    // Finding: F-R1.shared_state.1.3
+    // Bug: CompressedBlockIterator.hasNext() does not check closed flag — returns true
+    // for a pre-fetched entry even after the reader is closed, unlike IndexRangeIterator
+    // which checks !closed in hasNext()
+    // Correct behavior: hasNext() should return false (or throw ISE) when the reader is
+    // closed, consistent with IndexRangeIterator's behavior
+    // Fix location: CompressedBlockIterator.hasNext() (~line 967 in TrieSSTableReader.java)
+    // Regression watch: Ensure hasNext() still returns true for valid pre-fetched entries
+    // when the reader is open
+    @Test
+    void test_CompressedBlockIterator_hasNext_returnsTrueAfterClose_shouldReturnFalse()
+            throws Exception {
+        // Write a v2 SSTable with multiple entries so the iterator has pre-fetched data
+        Path sstPath = tempDir.resolve("closed-hasnext.sst");
+        MemorySegment key1 = MemorySegment.ofArray("aaa".getBytes());
+        MemorySegment key2 = MemorySegment.ofArray("bbb".getBytes());
+        MemorySegment value = MemorySegment.ofArray("val".getBytes());
+        try (var writer = new TrieSSTableWriter(1L, new Level(0), sstPath,
+                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.none())) {
+            writer.append(new Entry.Put(key1, value, new SequenceNumber(1L)));
+            writer.append(new Entry.Put(key2, value, new SequenceNumber(2L)));
+            writer.finish();
+        }
+
+        TrieSSTableReader reader = TrieSSTableReader.open(sstPath,
+                BlockedBloomFilter.deserializer(), null, CompressionCodec.none());
+
+        // Get the full-scan iterator (CompressedBlockIterator for v2 reader)
+        Iterator<Entry> iter = reader.scan();
+
+        // Verify the iterator has a pre-fetched entry
+        assertTrue(iter.hasNext(), "iterator should have entries before close");
+
+        // Close the reader — sets closed = true
+        reader.close();
+
+        // Bug: hasNext() returns true because it only checks `next != null` and ignores
+        // the closed flag. IndexRangeIterator correctly returns `!closed && next != null`.
+        // After fix: hasNext() should return false for a closed reader.
+        assertFalse(iter.hasNext(),
+                "CompressedBlockIterator.hasNext() returned true after reader was closed "
+                        + "— should return false, consistent with IndexRangeIterator");
     }
 
 }

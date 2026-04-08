@@ -63,10 +63,11 @@ public final class QueryExecutor<K> {
      *
      * @param schema the table's schema (for field type resolution)
      * @param indexRegistry the table's index registry
+     * @return a string-keyed query executor
      */
-    @SuppressWarnings("unchecked")
-    public QueryExecutor(JlsmSchema schema, IndexRegistry indexRegistry) {
-        this(schema, indexRegistry, pk -> (K) decodeStringKey(pk));
+    public static QueryExecutor<String> forStringKeys(JlsmSchema schema,
+            IndexRegistry indexRegistry) {
+        return new QueryExecutor<>(schema, indexRegistry, QueryExecutor::decodeStringKey);
     }
 
     /**
@@ -122,12 +123,11 @@ public final class QueryExecutor<K> {
     }
 
     private Set<PkKey> executeLeaf(Predicate predicate) throws IOException {
-        SecondaryIndex index = indexRegistry.findIndex(predicate);
-        if (index != null) {
+        List<MemorySegment> results = indexRegistry.findAndLookup(predicate);
+        if (results != null) {
             Set<PkKey> keys = new LinkedHashSet<>();
-            Iterator<MemorySegment> it = index.lookup(predicate);
-            while (it.hasNext()) {
-                keys.add(toPkKey(it.next()));
+            for (MemorySegment seg : results) {
+                keys.add(toPkKey(seg));
             }
             return keys;
         }
@@ -159,38 +159,77 @@ public final class QueryExecutor<K> {
             }
             case Predicate.Gt gt -> {
                 Object fieldValue = extractFieldValue(entry, gt.field());
-                yield fieldValue instanceof Comparable c
-                        && fieldValue.getClass() == gt.value().getClass()
-                        && c.compareTo(gt.value()) > 0;
+                yield fieldValue instanceof Comparable
+                        && compareCoerced(fieldValue, gt.value()) > 0;
             }
             case Predicate.Gte gte -> {
                 Object fieldValue = extractFieldValue(entry, gte.field());
-                yield fieldValue instanceof Comparable c
-                        && fieldValue.getClass() == gte.value().getClass()
-                        && c.compareTo(gte.value()) >= 0;
+                yield fieldValue instanceof Comparable
+                        && compareCoerced(fieldValue, gte.value()) >= 0;
             }
             case Predicate.Lt lt -> {
                 Object fieldValue = extractFieldValue(entry, lt.field());
-                yield fieldValue instanceof Comparable c
-                        && fieldValue.getClass() == lt.value().getClass()
-                        && c.compareTo(lt.value()) < 0;
+                yield fieldValue instanceof Comparable
+                        && compareCoerced(fieldValue, lt.value()) < 0;
             }
             case Predicate.Lte lte -> {
                 Object fieldValue = extractFieldValue(entry, lte.field());
-                yield fieldValue instanceof Comparable c
-                        && fieldValue.getClass() == lte.value().getClass()
-                        && c.compareTo(lte.value()) <= 0;
+                yield fieldValue instanceof Comparable
+                        && compareCoerced(fieldValue, lte.value()) <= 0;
             }
             case Predicate.Between between -> {
                 Object fieldValue = extractFieldValue(entry, between.field());
-                yield fieldValue instanceof Comparable c
-                        && fieldValue.getClass() == between.low().getClass()
-                        && fieldValue.getClass() == between.high().getClass()
-                        && c.compareTo(between.low()) >= 0 && c.compareTo(between.high()) <= 0;
+                yield fieldValue instanceof Comparable
+                        && compareCoerced(fieldValue, between.low()) >= 0
+                        && compareCoerced(fieldValue, between.high()) <= 0;
             }
-            case Predicate.FullTextMatch _, Predicate.VectorNearest _ -> false;
-            case Predicate.And _, Predicate.Or _ -> false;
+            case Predicate.FullTextMatch ftm -> throw new UnsupportedOperationException(
+                    "FullTextMatch predicate on field '" + ftm.field()
+                            + "' requires a FULL_TEXT index; scan-and-filter cannot evaluate it");
+            case Predicate.VectorNearest vn -> throw new UnsupportedOperationException(
+                    "VectorNearest predicate on field '" + vn.field()
+                            + "' requires a VECTOR index; scan-and-filter cannot evaluate it");
+            case Predicate.And and -> {
+                for (Predicate child : and.children()) {
+                    if (!matchesPredicate(entry, child)) {
+                        yield false;
+                    }
+                }
+                yield true;
+            }
+            case Predicate.Or or -> {
+                for (Predicate child : or.children()) {
+                    if (matchesPredicate(entry, child)) {
+                        yield true;
+                    }
+                }
+                yield false;
+            }
         };
+    }
+
+    /**
+     * Compares two values, coercing numeric types to a common type when necessary. If both values
+     * are {@link Number} instances, they are widened to the broadest common numeric type before
+     * comparison. For non-numeric types, falls back to same-class {@code compareTo} (returns
+     * {@link Integer#MIN_VALUE} if types differ).
+     */
+    @SuppressWarnings("unchecked")
+    private static int compareCoerced(Object fieldValue, Object predicateValue) {
+        if (fieldValue.getClass() == predicateValue.getClass()) {
+            return ((Comparable<Object>) fieldValue).compareTo(predicateValue);
+        }
+        if (fieldValue instanceof Number fn && predicateValue instanceof Number pn) {
+            // Widen to the broadest type: if either is floating-point, use double;
+            // otherwise use long for integer types.
+            if (fn instanceof Double || fn instanceof Float || pn instanceof Double
+                    || pn instanceof Float) {
+                return Double.compare(fn.doubleValue(), pn.doubleValue());
+            }
+            return Long.compare(fn.longValue(), pn.longValue());
+        }
+        // Non-numeric type mismatch — cannot compare
+        return Integer.MIN_VALUE;
     }
 
     private Object extractFieldValue(IndexRegistry.StoredEntry entry, String fieldName) {
@@ -199,7 +238,10 @@ public final class QueryExecutor<K> {
             return null;
         }
         int idx = schema.fieldIndex(fieldName);
-        assert idx >= 0 : "Field must exist in schema";
+        if (idx < 0) {
+            throw new IllegalArgumentException(
+                    "Field '" + fieldName + "' does not exist in schema '" + schema.name() + "'");
+        }
         var fieldDef = schema.fields().get(idx);
         var fieldType = fieldDef.type();
 
@@ -219,7 +261,9 @@ public final class QueryExecutor<K> {
         } else if (fieldType instanceof jlsm.table.FieldType.BoundedString) {
             return document.getString(fieldName);
         }
-        return null;
+        throw new UnsupportedOperationException("Scan-and-filter cannot extract field '" + fieldName
+                + "' of type " + fieldType.getClass().getSimpleName()
+                + "; an appropriate index is required for this field type");
     }
 
     // ── Key encoding helpers ────────────────────────────────────────────

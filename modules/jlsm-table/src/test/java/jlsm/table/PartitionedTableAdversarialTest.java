@@ -202,29 +202,29 @@ class PartitionedTableAdversarialTest {
         }
 
         @Override
-        public void create(String key, JlsmDocument doc) {
+        public void doCreate(String key, JlsmDocument doc) {
         }
 
         @Override
-        public Optional<JlsmDocument> get(String key) {
+        public Optional<JlsmDocument> doGet(String key) {
             return Optional.empty();
         }
 
         @Override
-        public void update(String key, JlsmDocument doc, UpdateMode mode) {
+        public void doUpdate(String key, JlsmDocument doc, UpdateMode mode) {
         }
 
         @Override
-        public void delete(String key) {
+        public void doDelete(String key) {
         }
 
         @Override
-        public Iterator<TableEntry<String>> getRange(String fromKey, String toKey) {
+        public Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey) {
             return List.<TableEntry<String>>of().iterator();
         }
 
         @Override
-        public List<ScoredEntry<String>> query(Predicate predicate, int limit) {
+        public List<ScoredEntry<String>> doQuery(Predicate predicate, int limit) {
             return List.of();
         }
 

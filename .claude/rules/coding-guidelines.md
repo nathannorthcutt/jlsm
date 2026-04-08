@@ -21,7 +21,7 @@
 #### Graceful Error Handling
 - Components must not cause a JVM crash — all exceptions must be caught and propagated as checked `IOException` or surfaced to callers
 - Validate all inputs at public API boundaries eagerly (`Objects.requireNonNull`, explicit `IllegalArgumentException`) before any I/O begins
-- Use `assert` statements throughout (public and private) to document internal invariants; these are for development-time verification and do not replace runtime validation
+- Use `assert` statements to validate internal data flow and state transitions (returned values being consumed, intermediate computation results, invariants between cooperating private methods) — these are for development-time verification and must never be the sole mechanism for input guards or spec-mandated behavior, which require runtime checks (`Objects.requireNonNull`, explicit `if`/`throw`)
 - Restore the interrupt flag (`Thread.currentThread().interrupt()`) when catching `InterruptedException` before re-throwing as `IOException`
 - On `close()`, accumulate exceptions from multiple resources (deferred pattern) and throw after all resources are released; never suppress all exceptions silently in multi-close scenarios
 - Detect and skip corrupt records during WAL replay (CRC mismatch); do not abort recovery on partial writes from prior crashes

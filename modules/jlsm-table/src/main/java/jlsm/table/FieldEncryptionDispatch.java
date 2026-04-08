@@ -1,9 +1,14 @@
 package jlsm.table;
 
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
@@ -60,8 +65,19 @@ public final class FieldEncryptionDispatch {
         this.encryptors = new FieldEncryptor[fieldCount];
         this.decryptors = new FieldDecryptor[fieldCount];
 
+        // DistancePreserving fields always need identity passthrough encryptors/decryptors
+        // so that the serializer uses length-prefixed blob format consistently — this ensures
+        // pre-encrypted round-trip works even without a keyHolder. Other encryption types
+        // require a keyHolder to derive actual encryption keys.
+        for (int i = 0; i < fieldCount; i++) {
+            if (fields.get(i).encryption() instanceof EncryptionSpec.DistancePreserving) {
+                encryptors[i] = plaintext -> plaintext;
+                decryptors[i] = ciphertext -> ciphertext;
+            }
+        }
+
         if (keyHolder == null) {
-            // No encryption — all entries remain null
+            // No key material — only DistancePreserving passthrough (set above) is active
             return;
         }
 
@@ -73,16 +89,24 @@ public final class FieldEncryptionDispatch {
                 case EncryptionSpec.None _ -> {
                     // No encryption for this field
                 }
+                case EncryptionSpec.DistancePreserving _ -> {
+                    // Already set above (identity passthrough)
+                }
                 case EncryptionSpec.Deterministic _ -> {
-                    // AES-SIV requires a 64-byte key. If the table key is 32 bytes,
-                    // derive a 64-byte key by repeating it.
+                    // AES-SIV requires a 64-byte key split into independent CMAC and CTR
+                    // sub-keys. If the table key is 32 bytes, derive two independent
+                    // 32-byte sub-keys via HMAC-SHA256 with domain-separated info strings.
                     final AesSivEncryptor siv;
                     if (keyHolder.keyLength() == 32) {
-                        final byte[] halfKey = keyHolder.getKeyBytes();
+                        final byte[] masterKey = keyHolder.getKeyBytes();
+                        final byte[] cmacHalf = hmacSha256(masterKey, "siv-cmac-key");
+                        final byte[] ctrHalf = hmacSha256(masterKey, "siv-ctr-key");
+                        Arrays.fill(masterKey, (byte) 0);
                         final byte[] sivKey = new byte[64];
-                        System.arraycopy(halfKey, 0, sivKey, 0, 32);
-                        System.arraycopy(halfKey, 0, sivKey, 32, 32);
-                        Arrays.fill(halfKey, (byte) 0);
+                        System.arraycopy(cmacHalf, 0, sivKey, 0, 32);
+                        System.arraycopy(ctrHalf, 0, sivKey, 32, 32);
+                        Arrays.fill(cmacHalf, (byte) 0);
+                        Arrays.fill(ctrHalf, (byte) 0);
                         final EncryptionKeyHolder sivKeyHolder = EncryptionKeyHolder.of(sivKey);
                         siv = new AesSivEncryptor(sivKeyHolder);
                         sivKeyHolder.close(); // encryptor copied key material at construction
@@ -104,17 +128,15 @@ public final class FieldEncryptionDispatch {
                     encryptors[i] = plaintext -> opeEncryptTyped(ope, plaintext, maxBytes);
                     decryptors[i] = ciphertext -> opeDecryptTyped(ope, ciphertext, maxBytes);
                 }
-                case EncryptionSpec.DistancePreserving _ -> {
-                    // DistancePreserving operates on float[] vectors, not byte[].
-                    // Handled separately in the serializer. Leave null for byte dispatch.
-                }
                 case EncryptionSpec.Opaque _ -> {
                     // AES-GCM requires a 32-byte key. If the table key is 64 bytes,
-                    // derive a 32-byte sub-key from the first half.
+                    // derive an independent 32-byte sub-key via HMAC-SHA256 with a
+                    // domain-separated info string. Plain truncation would make the
+                    // GCM key equal to the SIV CMAC sub-key, violating key independence.
                     final AesGcmEncryptor gcm;
                     if (keyHolder.keyLength() == 64) {
                         final byte[] fullKey = keyHolder.getKeyBytes();
-                        final byte[] gcmKey = Arrays.copyOfRange(fullKey, 0, 32);
+                        final byte[] gcmKey = hmacSha256(fullKey, "gcm-opaque-key");
                         Arrays.fill(fullKey, (byte) 0);
                         final EncryptionKeyHolder gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
                         gcm = new AesGcmEncryptor(gcmKeyHolder);
@@ -137,8 +159,9 @@ public final class FieldEncryptionDispatch {
      * @return the encryptor, or null
      */
     public FieldEncryptor encryptorFor(int fieldIndex) {
-        assert fieldIndex >= 0 && fieldIndex < encryptors.length
-                : "fieldIndex out of bounds: " + fieldIndex;
+        if (fieldIndex < 0 || fieldIndex >= encryptors.length) {
+            throw new IllegalArgumentException("fieldIndex out of bounds: " + fieldIndex);
+        }
         return encryptors[fieldIndex];
     }
 
@@ -150,8 +173,9 @@ public final class FieldEncryptionDispatch {
      * @return the decryptor, or null
      */
     public FieldDecryptor decryptorFor(int fieldIndex) {
-        assert fieldIndex >= 0 && fieldIndex < decryptors.length
-                : "fieldIndex out of bounds: " + fieldIndex;
+        if (fieldIndex < 0 || fieldIndex >= decryptors.length) {
+            throw new IllegalArgumentException("fieldIndex out of bounds: " + fieldIndex);
+        }
         return decryptors[fieldIndex];
     }
 
@@ -199,7 +223,13 @@ public final class FieldEncryptionDispatch {
      */
     private static byte[] opeEncryptTyped(BoldyrevaOpeEncryptor ope, byte[] plaintext,
             int maxBytes) {
-        assert plaintext != null : "plaintext must not be null";
+        if (plaintext == null) {
+            throw new IllegalArgumentException("OPE plaintext must not be null");
+        }
+        if (plaintext.length > 255) {
+            throw new IllegalArgumentException("OPE plaintext length " + plaintext.length
+                    + " exceeds maximum of 255 — length must fit in a single unsigned byte");
+        }
         final int useBytes = Math.min(plaintext.length, maxBytes);
         final long value = bytesToUnsignedBE(plaintext, useBytes) + 1; // +1: OPE domain starts at 1
         final long encrypted = ope.encrypt(value);
@@ -217,7 +247,10 @@ public final class FieldEncryptionDispatch {
      */
     private static byte[] opeDecryptTyped(BoldyrevaOpeEncryptor ope, byte[] ciphertext,
             int maxBytes) {
-        assert ciphertext != null && ciphertext.length == 9 : "OPE ciphertext must be 9 bytes";
+        if (ciphertext == null || ciphertext.length != 9) {
+            throw new IllegalArgumentException("OPE ciphertext must be exactly 9 bytes, got "
+                    + (ciphertext == null ? "null" : ciphertext.length));
+        }
         final int originalLen = ciphertext[0] & 0xFF;
         long encValue = 0;
         for (int i = 0; i < 8; i++) {
@@ -303,6 +336,7 @@ public final class FieldEncryptionDispatch {
      * @throws IllegalArgumentException if the field type is not compatible with OPE
      */
     static long[] deriveOpeBounds(FieldType type) {
+        Objects.requireNonNull(type, "type must not be null");
         assert type != null : "type must not be null";
 
         final int byteCount = opeMaxBytes(type);
@@ -323,5 +357,20 @@ public final class FieldEncryptionDispatch {
         assert range > domain : "range must be > domain";
 
         return new long[]{ domain, range };
+    }
+
+    /**
+     * Derives a 32-byte sub-key from the given master key using HMAC-SHA256 with a
+     * domain-separation info string. This ensures independent sub-keys even when derived from the
+     * same master key.
+     */
+    private static byte[] hmacSha256(byte[] key, String info) {
+        try {
+            final Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac.doFinal(info.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new IllegalStateException("HMAC-SHA256 key derivation failed", e);
+        }
     }
 }

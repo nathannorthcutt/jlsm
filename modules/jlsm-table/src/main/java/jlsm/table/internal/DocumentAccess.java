@@ -59,7 +59,7 @@ public final class DocumentAccess {
      * @param a the accessor; must not be null
      * @throws IllegalStateException if called more than once
      */
-    public static void setAccessor(Accessor a) {
+    public static synchronized void setAccessor(Accessor a) {
         if (a == null) {
             throw new IllegalArgumentException("accessor must not be null");
         }

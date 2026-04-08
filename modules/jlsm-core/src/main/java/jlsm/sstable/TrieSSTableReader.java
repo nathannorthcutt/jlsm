@@ -16,6 +16,8 @@ import jlsm.sstable.internal.SSTableFormat;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.foreign.Arena;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
@@ -73,6 +75,17 @@ public final class TrieSSTableReader implements SSTableReader {
     private final Map<Byte, CompressionCodec> codecMap;
 
     private volatile boolean closed = false;
+
+    private static final VarHandle CLOSED;
+
+    static {
+        try {
+            CLOSED = MethodHandles.lookup().findVarHandle(TrieSSTableReader.class, "closed",
+                    boolean.class);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
 
     private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
             long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
@@ -293,17 +306,26 @@ public final class TrieSSTableReader implements SSTableReader {
 
         long offset = offsetOpt.get();
 
+        final Entry decoded;
         if (compressionMap != null) {
             // v2: offset is packed (blockIndex << 32 | intraBlockOffset)
             int blockIndex = (int) (offset >>> 32);
             int intraBlockOffset = (int) offset;
             byte[] decompressedBlock = readAndDecompressBlock(blockIndex);
-            return Optional.of(EntryCodec.decode(decompressedBlock, intraBlockOffset));
+            decoded = EntryCodec.decode(decompressedBlock, intraBlockOffset);
         } else {
             // v1: offset is absolute file position
             byte[] entryBytes = readDataAtV1(offset, SSTableFormat.DEFAULT_BLOCK_SIZE);
-            return Optional.of(EntryCodec.decode(entryBytes, 0));
+            decoded = EntryCodec.decode(entryBytes, 0);
         }
+
+        // Re-check closed after I/O to narrow the TOCTOU window between the
+        // pre-read checkNotClosed() and the return. Without this, a concurrent
+        // close() between the initial check and here would let get() return
+        // data from a logically-closed reader.
+        checkNotClosed();
+
+        return Optional.of(decoded);
     }
 
     @Override
@@ -329,9 +351,8 @@ public final class TrieSSTableReader implements SSTableReader {
 
     @Override
     public void close() throws IOException {
-        if (closed)
+        if (!CLOSED.compareAndSet(this, false, true))
             return;
-        closed = true;
         if (lazyChannel != null) {
             lazyChannel.close();
         }
@@ -364,6 +385,12 @@ public final class TrieSSTableReader implements SSTableReader {
                 throw new IOException("block %d offset %d exceeds int range".formatted(blockIndex,
                         mapEntry.blockOffset()), e);
             }
+            if (intOffset + mapEntry.compressedSize() > eagerData.length
+                    || intOffset + mapEntry.compressedSize() < 0) {
+                throw new IOException("block %d bounds [%d, %d) exceed eager data length %d"
+                        .formatted(blockIndex, intOffset,
+                                (long) intOffset + mapEntry.compressedSize(), eagerData.length));
+            }
             compressed = new byte[mapEntry.compressedSize()];
             System.arraycopy(eagerData, intOffset, compressed, 0, mapEntry.compressedSize());
         } else {
@@ -377,8 +404,12 @@ public final class TrieSSTableReader implements SSTableReader {
         }
         byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
                 mapEntry.uncompressedSize());
+        if (decompressed.length != mapEntry.uncompressedSize()) {
+            throw new IOException("block %d decompression size mismatch: got %d bytes, expected %d"
+                    .formatted(blockIndex, decompressed.length, mapEntry.uncompressedSize()));
+        }
 
-        if (blockCache != null) {
+        if (blockCache != null && !closed) {
             blockCache.put(metadata.id(), blockIndex, MemorySegment.ofArray(decompressed));
         }
 
@@ -404,6 +435,12 @@ public final class TrieSSTableReader implements SSTableReader {
                 throw new IOException("block %d offset %d exceeds int range".formatted(blockIndex,
                         mapEntry.blockOffset()), e);
             }
+            if (intOffset + mapEntry.compressedSize() > eagerData.length
+                    || intOffset + mapEntry.compressedSize() < 0) {
+                throw new IOException("block %d bounds [%d, %d) exceed eager data length %d"
+                        .formatted(blockIndex, intOffset,
+                                (long) intOffset + mapEntry.compressedSize(), eagerData.length));
+            }
             compressed = new byte[mapEntry.compressedSize()];
             System.arraycopy(eagerData, intOffset, compressed, 0, mapEntry.compressedSize());
         } else {
@@ -415,7 +452,13 @@ public final class TrieSSTableReader implements SSTableReader {
             throw new IOException("codec not found for ID 0x%02x in block %d"
                     .formatted(mapEntry.codecId(), blockIndex));
         }
-        return codec.decompress(compressed, 0, compressed.length, mapEntry.uncompressedSize());
+        byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
+                mapEntry.uncompressedSize());
+        if (decompressed.length != mapEntry.uncompressedSize()) {
+            throw new IOException("block %d decompression size mismatch: got %d bytes, expected %d"
+                    .formatted(blockIndex, decompressed.length, mapEntry.uncompressedSize()));
+        }
+        return decompressed;
     }
 
     private static Map<Byte, CompressionCodec> buildCodecMap(CompressionCodec... codecs) {
@@ -916,11 +959,14 @@ public final class TrieSSTableReader implements SSTableReader {
 
         @Override
         public boolean hasNext() {
-            return next != null;
+            return !closed && next != null;
         }
 
         @Override
         public Entry next() {
+            if (closed) {
+                throw new IllegalStateException("reader is closed");
+            }
             if (next == null) {
                 throw new NoSuchElementException();
             }

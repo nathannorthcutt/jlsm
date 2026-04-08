@@ -34,7 +34,8 @@ public final class LruBlockCache implements BlockCache {
 
     private LruBlockCache(Builder builder) {
         if (builder.capacity <= 0) {
-            throw new IllegalArgumentException("capacity must be positive, got: " + builder.capacity);
+            throw new IllegalArgumentException(
+                    "capacity must be positive, got: " + builder.capacity);
         }
         this.capacity = builder.capacity;
         this.lock = new ReentrantLock();

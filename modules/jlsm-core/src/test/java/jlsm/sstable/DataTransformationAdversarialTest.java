@@ -267,6 +267,125 @@ class DataTransformationAdversarialTest {
                 | ((long) (buf[off + 6] & 0xFF) << 8) | (long) (buf[off + 7] & 0xFF);
     }
 
+    // Finding: F-R2.dt.1.1
+    // Bug: Eager path System.arraycopy does not validate offset+size against eagerData bounds
+    // — throws ArrayIndexOutOfBoundsException instead of IOException
+    // Correct behavior: reader should catch or pre-check arraycopy bounds and throw IOException
+    // Fix location: TrieSSTableReader.readAndDecompressBlock, lines 367-368
+    // Regression watch: ensure normal eager reads with valid compression maps still work
+    @Test
+    void eagerReader_compressedSizeExceedsEagerData_throwsIOException_F_R2_dt_1_1(@TempDir Path dir)
+            throws IOException {
+        // Step 1: write a valid small v2 SSTable with compression
+        List<Entry> entries = basicEntries();
+        Path path = dir.resolve("arraycopy-bounds.sst");
+        try (TrieSSTableWriter w = new TrieSSTableWriter(1L, Level.L0, path,
+                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.deflate())) {
+            for (Entry e : entries) {
+                w.append(e);
+            }
+            w.finish();
+        }
+
+        // Step 2: Read the file and patch the compression map's first entry's compressedSize
+        // to a value that makes intOffset + compressedSize > eagerData.length.
+        // This simulates a corrupt on-disk compression map.
+        byte[] fileBytes = Files.readAllBytes(path);
+
+        // Read v2 footer to find mapOffset
+        int footerStart = fileBytes.length - SSTableFormat.FOOTER_SIZE_V2;
+        long mapOffset = readLong(fileBytes, footerStart);
+
+        // Compression map entry layout: [8-byte blockOffset][4-byte compressedSize][4-byte
+        // uncompressedSize][1-byte codecId]
+        // Patch compressedSize (at mapOffset + 4 + 8 = mapOffset + 12) to fileBytes.length + 100
+        int compressedSizeOffset = (int) mapOffset + 4 + 8; // skip blockCount(4) + blockOffset(8)
+        int poisonedSize = fileBytes.length + 100; // guaranteed to exceed eagerData bounds
+        writeInt(fileBytes, compressedSizeOffset, poisonedSize);
+
+        // Also patch uncompressedSize to match (at compressedSizeOffset + 4) so
+        // CompressionMap.Entry
+        // constructor doesn't reject the compressedSize=0/uncompressedSize>0 combination
+        writeInt(fileBytes, compressedSizeOffset + 4, poisonedSize);
+
+        Files.write(path, fileBytes);
+
+        // Step 3: Open eagerly — the reader loads all bytes into eagerData.
+        // When get() triggers readAndDecompressBlock, the System.arraycopy at line 368
+        // will attempt to copy poisonedSize bytes from eagerData starting at a valid offset.
+        // Bug: this throws ArrayIndexOutOfBoundsException (unchecked) instead of IOException.
+        // Per R41, corrupted compressed blocks must produce IOException.
+        try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                null, CompressionCodec.deflate())) {
+            IOException ex = assertThrows(IOException.class, () -> r.get(seg("apple")),
+                    "corrupted compressedSize should produce IOException, not ArrayIndexOutOfBoundsException");
+            assertNotNull(ex.getMessage(),
+                    "IOException should have a descriptive message about the bounds violation");
+        }
+    }
+
+    // Finding: F-R2.dt.1.2
+    // Bug: Decompression output size not validated against declared uncompressedSize —
+    // a custom codec may return fewer bytes than declared, silently propagating truncated data
+    // Correct behavior: readAndDecompressBlock should validate decompressed.length ==
+    // mapEntry.uncompressedSize() and throw IOException on mismatch
+    // Fix location: TrieSSTableReader.readAndDecompressBlock, after line 386 (post-decompress)
+    // Regression watch: ensure normal decompression with matching sizes still works
+    @Test
+    void eagerReader_decompressionSizeMismatch_throwsIOException_F_R2_dt_1_2(@TempDir Path dir)
+            throws IOException {
+        // A custom codec that wraps deflate but returns a truncated result from decompress().
+        // The CompressionCodec interface is open (non-sealed), so consumers can provide
+        // arbitrary implementations. This codec simulates one that does not honour the
+        // uncompressedLength contract — it returns fewer bytes than declared.
+        CompressionCodec truncatingCodec = new CompressionCodec() {
+            private final CompressionCodec delegate = CompressionCodec.deflate();
+
+            @Override
+            public byte codecId() {
+                return delegate.codecId(); // 0x02 — same as deflate
+            }
+
+            @Override
+            public byte[] compress(byte[] input, int offset, int length) {
+                return delegate.compress(input, offset, length);
+            }
+
+            @Override
+            public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
+                byte[] full = delegate.decompress(input, offset, length, uncompressedLength);
+                // Return a truncated copy — fewer bytes than declared uncompressedLength
+                int truncatedLen = Math.max(1, full.length / 2);
+                return java.util.Arrays.copyOf(full, truncatedLen);
+            }
+        };
+
+        // Step 1: write a valid small v2 SSTable using the real deflate codec
+        List<Entry> entries = basicEntries();
+        Path path = dir.resolve("decompress-size-mismatch.sst");
+        try (TrieSSTableWriter w = new TrieSSTableWriter(1L, Level.L0, path,
+                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.deflate())) {
+            for (Entry e : entries) {
+                w.append(e);
+            }
+            w.finish();
+        }
+
+        // Step 2: Open eagerly with the truncating codec. The SSTable on disk was written with
+        // real deflate, and the truncating codec has the same codecId (0x02). When the reader
+        // calls codec.decompress(), it gets back fewer bytes than mapEntry.uncompressedSize().
+        // Without the fix, the reader silently returns the short buffer, poisoning the cache
+        // and corrupting downstream EntryCodec.decode calls.
+        // Per R41, corrupted compressed blocks must produce IOException.
+        try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                null, truncatingCodec)) {
+            IOException ex = assertThrows(IOException.class, () -> r.get(seg("apple")),
+                    "decompression size mismatch should produce IOException, not silent truncation");
+            assertNotNull(ex.getMessage(),
+                    "IOException should have a descriptive message about the size mismatch");
+        }
+    }
+
     private static void writeLong(byte[] buf, int off, long v) {
         buf[off] = (byte) (v >>> 56);
         buf[off + 1] = (byte) (v >>> 48);
@@ -276,5 +395,12 @@ class DataTransformationAdversarialTest {
         buf[off + 5] = (byte) (v >>> 16);
         buf[off + 6] = (byte) (v >>> 8);
         buf[off + 7] = (byte) v;
+    }
+
+    private static void writeInt(byte[] buf, int off, int v) {
+        buf[off] = (byte) (v >>> 24);
+        buf[off + 1] = (byte) (v >>> 16);
+        buf[off + 2] = (byte) (v >>> 8);
+        buf[off + 3] = (byte) v;
     }
 }

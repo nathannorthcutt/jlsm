@@ -95,14 +95,15 @@ class InJvmTransportTest {
     }
 
     @Test
-    void sendWithNoHandlerForTypeDoesNotThrow() throws IOException {
+    // Updated by audit F-R1.shared_state.3.5: silent drop was a bug, now correctly throws
+    // IOException
+    void sendWithNoHandlerForTypeThrowsIOException() {
         var transportA = new InJvmTransport(ADDR_A);
         var transportB = new InJvmTransport(ADDR_B);
         // No handler registered on B for PING
 
         var msg = new Message(MessageType.PING, ADDR_A, 0, new byte[0]);
-        // Should not throw — fire-and-forget with no handler is a no-op
-        transportA.send(ADDR_B, msg);
+        assertThrows(IOException.class, () -> transportA.send(ADDR_B, msg));
     }
 
     @Test

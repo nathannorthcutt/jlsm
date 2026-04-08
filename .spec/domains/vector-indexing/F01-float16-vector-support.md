@@ -1,7 +1,7 @@
 ---
 {
   "id": "F01",
-  "version": 2,
+  "version": 3,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["vector-indexing", "serialization"],
@@ -34,6 +34,10 @@ R3. Precision must be an explicit builder choice. The default must be FLOAT32. N
 
 R4. A vector index must operate at a single precision chosen at build time. No mixed-precision storage within a single index instance. The configured precision must not change after construction.
 
+R32. The vector index builder must implement AutoCloseable. If build() is never called, closing the builder must release the underlying storage tree. If build() has been called, closing the builder must be a no-op. <!-- source: audit F-R2.resource_lifecycle.1.4 -->
+
+R33. Calling close() on a vector index multiple times must be idempotent. The second and subsequent calls must have no effect and must not propagate to the underlying storage tree. <!-- source: audit F-R2.resource_lifecycle.2.1 -->
+
 ### Encoding and byte format
 
 R5. Float16 encoding must convert each float32 component to IEEE 754 binary16 using the JDK standard conversion (not a custom implementation). The output must be big-endian bytes with length exactly dimensions * 2.
@@ -64,6 +68,10 @@ R12. Subnormal float32 values that flush to zero in float16 representation must 
 
 R13. NaN and Infinity values in input vectors must be handled consistently with the non-finite vector element policy. If the document layer rejects non-finite values at construction time, the index layer must not encounter them. If the document layer permits them, the index layer must either reject them explicitly or document the behavior (NaN produces NaN scores; Infinity produces Infinity distances that corrupt ranking).
 
+R34. The maximum permitted dimensions must vary by precision. The builder must reject dimensions that would cause integer overflow when multiplied by the precision's bytes-per-component. If precision is changed after dimensions is set, the builder must re-validate dimensions against the new precision's limit before construction. <!-- source: audit F-R2.shared_state.3.2 -->
+
+R35. All internal binary decoding routines that reconstruct structured values from byte arrays must validate the input length with a runtime check before accessing bytes. Truncated or oversized inputs must be rejected with a descriptive exception, not silently decoded or guarded only by assertions. <!-- source: audit F-R6.dt.1.1, F-R6.dt.1.4 -->
+
 ### Partitioned index (IVF-style) integration
 
 R14. In a partitioned index, posting-list vectors must be stored at the configured precision. Centroid vectors must always be stored at float32 regardless of the index precision.
@@ -85,6 +93,8 @@ R20. Graph construction (neighbor selection and edge trimming) must use the quan
 R21. Graph node deserialization must validate that the remaining bytes (after parsing neighbor links) are exactly divisible by the precision's bytes-per-component. If not divisible, deserialization must fail with a runtime error (not an assertion), so corrupted data is detected regardless of runtime configuration.
 
 R22. Float16 graph storage must reduce per-node size by exactly dimensions * 2 bytes (the delta between float32 and float16 vector portions). Neighbor link overhead must remain unchanged.
+
+R36. Graph node deserialization must read each neighbor identifier with an explicit per-neighbor length prefix rather than assuming all neighbor identifiers share a single fixed width. The encoding must tolerate variable-length document identifier serializers. <!-- source: audit F-R6.data_transformation.2.5 -->
 
 ### Graph index mutation semantics
 
@@ -113,6 +123,12 @@ R28. Vector encoding and decoding operations must be stateless with no shared mu
 ### Distance computation
 
 R29. Distance computation must always use float32 arithmetic regardless of storage precision. Float16 vectors must be decoded to float32 before any similarity computation. When native float16 SIMD becomes available in the JVM, the inner distance loop may be changed to native float16 SIMD without changing the storage format or the external API contract.
+
+### Audit-hardened requirements
+
+R30. All document parsing paths (JSON and YAML) must validate vector elements for finiteness before constructing a document, regardless of whether the construction path uses `JlsmDocument.of()` or the internal `DocumentAccess.create()` bypass.
+
+R31. YAML vector parsing must reject excess vector elements beyond the declared dimensions, throwing `IllegalArgumentException` when the input sequence contains more elements than expected.
 
 ---
 
