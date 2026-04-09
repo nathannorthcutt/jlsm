@@ -93,9 +93,14 @@ If "Proceed to refactor": invoke /feature-refactor "<slug>"<  --unit WU-<n>> as 
 If "Stop": display `Next: /feature-refactor "<slug>"` and stop.
 
 **If Implementation is `in-progress`:**
-- Say: "Implementation was in progress for cycle <n> — checking current test state."
-- Run the test suite immediately to see what is passing and what is failing
-- Report: "<n> passing, <n> failing — resuming from first failing test"
+- Say: "Implementation was in progress for cycle <n> — checking status."
+- Read status.md's substage field. It records `"implemented: <construct name>"`
+  after each successful construct. Use this to determine which constructs are
+  already done vs remaining — this is cheaper than running the full test suite.
+- Run tests ONLY for constructs not yet marked `implemented` in status.md.
+  If only 1-2 constructs remain, run their tests individually instead of the
+  full suite.
+- Report: "<n> constructs complete, <n> remaining — resuming from <next construct>"
 - Jump to Step 2 (implement in order, skipping constructs whose tests already pass)
 
 **If Implementation is `not-started`:**
@@ -191,7 +196,10 @@ Read:
 1. `.feature/project-config.md` — always
 2. `.feature/<slug>/work-plan.md` — **if work units defined:** read only the
    active unit's section and Contract Definitions. Do NOT load other units.
-3. Test files for the active unit only
+3. `.feature/<slug>/test-plan.md` — the test summary (test names, files,
+   constructs, acceptance criteria, expected failures). Use this to understand
+   what each test expects. Do NOT read individual test files for context —
+   test-plan.md has everything needed to understand intent.
 4. Stub files for the active unit only
 5. **Dependency interfaces only** (not implementations): for each completed
    dependency unit, read only the public interface (signatures + contracts from
@@ -216,7 +224,9 @@ Skip any construct whose tests are already passing (idempotent re-entry).
 
 For each construct:
 1. Read its contract (docstring/comment in the stub)
-2. Read the relevant test(s) to understand what is expected
+2. Check test-plan.md for this construct's acceptance criteria (already loaded
+   in Step 1). Only read the actual test file if a test fails unexpectedly and
+   you need to understand the assertion details for debugging.
 3. Before any Edit, re-read the target file at the lines being changed — prior
    constructs may have modified it. Do not rely on earlier reads.
 4. Implement only what the contract specifies
@@ -361,6 +371,28 @@ Update status.md:
   section ~2K + test files ~3K + stub files ~1K + dependency interfaces)
 
 Append `implemented` entry to cycle-log.md.
+
+Write `.feature/<slug>/implement-summary.md` (or append cycle section):
+
+```markdown
+## Cycle <n> — <YYYY-MM-DD>
+
+### Files Modified
+| File | Constructs | Action |
+|------|-----------|--------|
+| <path> | <construct1, construct2> | created / modified |
+
+### Implementation Status
+| Construct | Tests | Status |
+|-----------|-------|--------|
+| <name> | <n>/<n> passing | complete |
+
+### Notes
+- <any escalations, workarounds, or design choices made during implementation>
+```
+
+This summary is consumed by `/feature-refactor` — it avoids reloading all
+implementation and test files from scratch.
 
 If work units are defined:
 - Mark the active unit as `complete` in the Work Units table in status.md

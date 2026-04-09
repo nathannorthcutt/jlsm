@@ -143,22 +143,24 @@ Decisions older than the 5 most recent accepted: [history.md](history.md)
 # Project Capabilities
 
 > Managed by vallorcine agents. Use /capabilities to query.
-> Each entry describes what the project can do — linking to specs,
-> decisions, KB research, and feature history.
+> Pull model. Navigate: domain → capability file.
+> Do not scan this directory recursively.
+> Structure: .capabilities/<domain>/<capability>.md
 
-## Capability Map
+## Domain Map
 
-| Capability | Status | Tags | Features | Specs |
-|-----------|--------|------|----------|-------|
+| Domain | Path | Capabilities | Last Updated |
+|--------|------|-------------|--------------|
 
 ## Recently Updated (last 5)
 
-| Date | Capability | Change |
-|------|-----------|--------|
+| Date | Domain | Capability | Change |
+|------|--------|-----------|--------|
 ```
 
 If the project already has features, specs, or decisions, suggest running
 `/capabilities backfill` to bootstrap the index from existing artifacts.
+The backfill will propose domain groupings and capability types.
 
 ---
 

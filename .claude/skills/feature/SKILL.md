@@ -334,6 +334,7 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 | Spec Authoring | not-started | — | — | — | if .spec/ exists |
 | Planning | not-started | — | — | — | |
 | Testing | not-started | — | — | — | cycle 0 |
+| Hardening | not-started | — | — | — | cycle 0 |
 | Implementation | not-started | — | — | — | cycle 0 |
 | Refactor | not-started | — | — | — | cycle 0 |
 

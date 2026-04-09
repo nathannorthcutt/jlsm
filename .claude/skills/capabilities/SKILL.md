@@ -6,15 +6,28 @@ argument-hint: "[subcommand] [arguments]"
 # /capabilities [subcommand] [arguments]
 
 Single entry point for the project capability index. Capabilities describe
-what the project can do — they are a routing layer that connects natural
-language questions to specs, ADRs, KB research, and feature history.
+what the project can do — organized by domain, with types that distinguish
+core capabilities from emergent compositions and refinements.
+
+**Hierarchy:** domain → capability. Domains group capabilities by area of
+system function (e.g., `data-management`, `security`, `query`). Each domain
+has its own index. Capabilities are the leaf entries.
+
+**Three capability types:**
+- **core** — primary user-visible capability
+- **emergent** — arises from composition of other capabilities (no single
+  feature created it)
+- **refinement** — quality/performance improvement to an existing domain area
+
+**Feature mapping:** many-to-many with roles (`core`, `extends`, `quality`,
+`enables`). A feature can contribute to multiple capabilities.
 
 ## Subcommands
 
 | Invocation | What it does |
 |------------|-------------|
 | `/capabilities "<question>"` | Search capabilities by natural language |
-| `/capabilities list` | Browse all capabilities |
+| `/capabilities list` | Browse all capabilities by domain |
 | `/capabilities add "<name>"` | Create a new capability entry |
 | `/capabilities update "<slug>"` | Update an existing capability entry |
 | `/capabilities backfill` | Bootstrap from existing features, specs, and ADRs |
@@ -47,15 +60,17 @@ and get a structured answer.
 
 ### Step 1 — Read the index
 
-Read `.capabilities/CLAUDE.md`. Extract the capability map table.
+Read `.capabilities/CLAUDE.md`. Extract the domain map.
 
-### Step 2 — Match
+### Step 2 — Match against domain indexes
 
-For each capability in the map, check for matches against the query:
-1. Title match (strongest signal)
-2. Tag match (query keywords against tags)
-3. Feature description match (query keywords against feature descriptions
-   in the entry files — read entries whose title or tags partially match)
+For each domain, read its `CLAUDE.md` index. Match the query against:
+1. Capability title (strongest signal)
+2. Tags (query keywords against tags)
+3. Domain description (broader match)
+
+Only read full capability entry files for entries whose title or tags
+partially match. This keeps the search cheap.
 
 ### Step 3 — Present results
 
@@ -65,7 +80,7 @@ Display:
 ```
 Found <n> matching capabilities:
 
-  <title> (<status>)
+  <title> (<type>, <status>) — <domain>
   <first 2-3 sentences of "What it does">
 
   Specs: <spec_refs>
@@ -73,7 +88,12 @@ Found <n> matching capabilities:
   KB: <kb_refs>
   Features: <feature count> (<feature descriptions, abbreviated>)
 
-  Full entry: .capabilities/<slug>.md
+  Full entry: .capabilities/<domain>/<slug>.md
+```
+
+For emergent capabilities, also show:
+```
+  Composes: <list of composed capabilities>
 ```
 
 **Multiple matches (4+):** Display a summary table and let the user pick:
@@ -97,27 +117,34 @@ Use AskUserQuestion:
 
 ---
 
-## capabilities list — browse all
+## capabilities list — browse all by domain
 
-Display the capability map from `.capabilities/CLAUDE.md`:
+Read `.capabilities/CLAUDE.md` for the domain map. For each domain, read
+its `CLAUDE.md` index. Display:
 
 ```
 ───────────────────────────────────────────────
-Project Capabilities (<n> total)
+Project Capabilities (<n> total, <d> domains)
 ───────────────────────────────────────────────
 
-  <title> — <tags>
+<domain name> — <domain description>
+
+  <title> (<type>) — <tags>
     <first sentence of "What it does">
     Features: <count> | Specs: <spec_refs> | Status: <status>
 
-  <title> — <tags>
+  <title> (<type>) — <tags>
     ...
+
+<domain name> — <domain description>
+  ...
 
 ───────────────────────────────────────────────
 ```
 
-If the user wants details on a specific capability, they can run
-`/capabilities "<title>"` or read the entry file directly.
+Refinement-type capabilities are displayed after core capabilities within
+their domain, visually indented or annotated. Emergent capabilities show
+their `composes` field.
 
 ---
 
@@ -125,22 +152,42 @@ If the user wants details on a specific capability, they can run
 
 Interactive creation of a capability entry.
 
-### Step 1 — Gather information
+### Step 1 — Domain placement
 
-Use AskUserQuestion for each field that needs user input:
+Read `.capabilities/CLAUDE.md` for existing domains. Use AskUserQuestion:
+- One option per existing domain
+- "New domain" — create a new domain (prompt for name and description)
+
+### Step 2 — Capability type
+
+Use AskUserQuestion:
+- "Core" — primary user-visible capability
+- "Emergent" — arises from composition of other capabilities
+- "Refinement" — quality/performance improvement in this domain
+
+### Step 3 — Gather information
 
 **Description:** "Describe this capability in 1-2 sentences. What can the
 user do?"
 
 **Tags:** "What tags describe this capability? (comma-separated)"
-Suggest tags based on the name and description.
+Suggest tags based on the name, description, and domain.
 
 **Status:** Use AskUserQuestion:
 - "Active" — capability is implemented and available
 - "Planned" — capability is designed but not yet built
 - "Deprecated" — capability is being phased out
 
-### Step 2 — Cross-reference discovery
+### Step 4 — Type-specific fields
+
+**For emergent capabilities:** Read all domain indexes. Ask: "Which
+capabilities does this compose?" Use AskUserQuestion with multiSelect,
+listing capabilities from all domains. Require at least 2.
+
+**For refinement capabilities:** Ask: "Which domain area does this refine?"
+(The answer is implicit from the domain placement, but confirm.)
+
+### Step 5 — Cross-reference discovery
 
 Search existing artifacts for links:
 
@@ -157,40 +204,47 @@ Present discovered cross-references and let the user confirm:
 
 Use AskUserQuestion with multiSelect for each artifact type.
 
-### Step 3 — Feature descriptions
+### Step 6 — Feature descriptions and roles
 
-If features were linked, ask for a one-line description of each feature's
-contribution to this capability. These descriptions persist in the
-capability entry even when `.feature/` is gone.
+If features were linked, for each feature ask:
+1. One-line description of the feature's contribution
+2. Role: Use AskUserQuestion:
+   - "Core" — primary implementation of this capability
+   - "Extends" — adds a new dimension
+   - "Quality" — performance/cleanup improvement
+   - "Enables" — prerequisite, but the capability is its own concern
 
-For features that are quality improvements (performance fixes, bug fixes)
-rather than new capability: mark them with `type: quality`.
-
-### Step 4 — Dependencies
+### Step 7 — Dependencies
 
 Ask: "Does this capability depend on any other capabilities?"
 
-Read `.capabilities/CLAUDE.md` and present existing capabilities as options.
+Read domain indexes and present existing capabilities as options (using
+`<domain>/<slug>` format for cross-domain references).
 
 Ask: "Does this capability enable any planned capabilities?"
 
-### Step 5 — Key behaviors
+### Step 8 — Key behaviors
 
 Ask: "What are the 3-8 key behaviors a user should know about? Link to
 spec requirements where possible (e.g., F03.R1)."
 
-### Step 6 — Write the entry
+### Step 9 — Write the entry
 
-Write `.capabilities/<slug>.md` with the gathered information following the
-entry template (see plan for full format).
+Write `.capabilities/<domain>/<slug>.md` with the gathered information
+following the entry template.
 
-Update `.capabilities/CLAUDE.md` — add a row to the Capability Map table
-and a row to Recently Updated.
+Update `.capabilities/<domain>/CLAUDE.md` — add a row to the Capabilities
+table.
+
+Update `.capabilities/CLAUDE.md` — update domain capability count and add
+a row to Recently Updated.
 
 Display:
 ```
 Created capability: <title>
-  Entry: .capabilities/<slug>.md
+  Domain: <domain>
+  Type: <type>
+  Entry: .capabilities/<domain>/<slug>.md
   Tags: <tags>
   Links: <n> specs, <n> decisions, <n> KB topics, <n> features
 ```
@@ -199,25 +253,27 @@ Created capability: <title>
 
 ## capabilities update "<slug>" — update an existing entry
 
-Read the existing entry. Present what's there and ask what to change.
+Find the entry by searching domain indexes for the slug. Read the existing
+entry. Present what's there and ask what to change.
 
 Use AskUserQuestion:
-- "Add features" — link new features to this capability
+- "Add features" — link new features to this capability (with role)
 - "Update description" — revise the description or key behaviors
 - "Update cross-references" — add/remove spec, ADR, KB, or dependency links
 - "Change status" — active/planned/deprecated
+- "Move domain" — move to a different domain
 
 After changes, append an `## Updates <YYYY-MM-DD>` section to the entry
 (following the KB pattern of never overwriting). Update the Recently Updated
-table in CLAUDE.md.
+table in the root CLAUDE.md and the domain CLAUDE.md.
 
 ---
 
 ## capabilities backfill — bootstrap from existing project artifacts
 
 Scans existing features, specs, and ADRs to propose an initial set of
-capabilities. Use this when adopting the capability index on a project
-that already has work done.
+domain-organized capabilities. Use this when adopting the capability index
+on a project that already has work done.
 
 ### Step 1 — Gather existing artifacts
 
@@ -231,32 +287,67 @@ Read these sources (skip any that don't exist):
    slugs and their recommendation summaries
 4. **KB topics:** `.kb/CLAUDE.md` — extract topic map for cross-reference
 
-### Step 2 — Propose capability groupings
+### Step 2 — Detect existing flat capabilities
 
-Analyze the features and specs to identify logical capabilities:
+If `.capabilities/CLAUDE.md` exists and contains a flat Capability Map
+table (no Domain Map), this is a migration. Read existing entries and
+incorporate them into the domain proposal.
 
-1. Group features that contribute to the same user-visible capability
-   (e.g., encrypt-memory-data + extract-core-encryption + fix-encryption-
-   performance → "field-level-encryption")
-2. Identify pre-existing capabilities implied by specs or ADRs that have
-   no feature backing (e.g., schema/document model, WAL, compaction)
-3. Distinguish capability features from quality improvements (performance
-   fixes, bug fixes → mark as `type: quality` on the parent capability)
+### Step 3 — Propose domain groupings
 
-### Step 3 — Present proposals
+Analyze the features, specs, and ADRs to identify logical domains:
 
-Display the proposed capabilities as a numbered list:
+1. Use the spec registry's domain taxonomy as the primary signal for
+   domain boundaries (e.g., `encryption`, `query`, `engine` spec domains
+   suggest capability domains)
+2. Group features by the user-visible concern they serve — not by
+   implementation coupling
+3. Identify cross-cutting capabilities that compose multiple domains
+   (candidates for emergent type)
+
+Present proposed domains:
 
 ```
-Backfill analysis found <n> potential capabilities from <n> features,
-<n> specs, and <n> ADRs:
+Backfill analysis suggests <n> capability domains:
 
-  1. <capability name> — <description>
-     Features: <slugs>
-     Specs: <refs>
-     ADRs: <refs>
+  <domain name> — <description>
+    Capabilities: <list>
 
-  2. ...
+  <domain name> — <description>
+    ...
+```
+
+Use AskUserQuestion:
+- "Accept domains" — proceed with these domains
+- "Adjust" — modify domain names, merge, or split (describe changes)
+
+### Step 4 — Propose capabilities within domains
+
+For each accepted domain, propose capabilities:
+
+1. Group features that contribute to the same user-visible capability
+2. Assign feature roles: `core` for primary implementation, `extends` for
+   new dimensions, `quality` for performance/cleanup
+3. Identify pre-existing capabilities implied by specs or ADRs that have
+   no feature backing
+4. Identify refinement candidates — capabilities where all features have
+   `quality` role
+5. Identify emergent candidates — capabilities that compose 2+ other
+   capabilities from different domains
+
+Present all proposals grouped by domain:
+
+```
+<domain name>:
+
+  1. <capability name> (core) — <description>
+     Features: <slug> (core), <slug> (quality)
+     Specs: <refs>  ADRs: <refs>
+
+  2. <capability name> (emergent) — <description>
+     Composes: <capability A> + <capability B>
+
+  ...
 ```
 
 Use AskUserQuestion:
@@ -264,21 +355,23 @@ Use AskUserQuestion:
 - "Select" — choose which ones to create
 - "Review" — show full details before deciding
 
-### Step 4 — Create entries
+### Step 5 — Create entries
 
-For each accepted capability, run the same write flow as `/capabilities add`
-(Step 6) but with the gathered data pre-filled. The user can adjust
-descriptions, tags, and cross-references before writing.
+For each accepted capability:
+1. Create the domain directory and domain CLAUDE.md if it doesn't exist
+2. Write the capability entry file with gathered data pre-filled
+3. The user can adjust descriptions, tags, and cross-references before
+   writing
 
-### Step 5 — Summary
+### Step 6 — Summary
 
 ```
 Backfill complete:
-  Created: <n> capabilities
+  Domains: <n>
+  Capabilities: <n> (<n> core, <n> emergent, <n> refinement)
   Features linked: <n>
   Specs linked: <n>
   ADRs linked: <n>
-  Pre-existing (no feature): <n>
 
 Run /capabilities list to see the full index.
 ```
@@ -293,40 +386,69 @@ When creating `.capabilities/CLAUDE.md` for the first time:
 # Project Capabilities
 
 > Managed by vallorcine agents. Use /capabilities to query.
-> Each entry describes what the project can do — linking to specs,
-> decisions, KB research, and feature history.
+> Pull model. Navigate: domain → capability file.
+> Do not scan this directory recursively.
+> Structure: .capabilities/<domain>/<capability>.md
 
-## Capability Map
+## Domain Map
 
-| Capability | Status | Tags | Features | Specs |
-|-----------|--------|------|----------|-------|
+| Domain | Path | Capabilities | Last Updated |
+|--------|------|-------------|--------------|
 
 ## Recently Updated (last 5)
 
-| Date | Capability | Change |
-|------|-----------|--------|
+| Date | Domain | Capability | Change |
+|------|--------|-----------|--------|
+```
+
+---
+
+## Domain index template
+
+When creating `.capabilities/<domain>/CLAUDE.md`:
+
+```markdown
+# <Domain Name> — Capability Domain
+
+> Pull model. Read capability files for details.
+
+<1-2 sentence description of what this domain covers>
+
+## Capabilities
+
+| Capability | Type | Status | Tags | Features |
+|-----------|------|--------|------|----------|
+
+## Cross-references
+
+- **KB topics:** <related KB topic paths>
+- **Spec domains:** <related spec domain names>
 ```
 
 ---
 
 ## Capability entry template
 
-When writing a new `.capabilities/<slug>.md`:
+When writing a new `.capabilities/<domain>/<slug>.md`:
 
 ```markdown
 ---
 title: "<name>"
 slug: "<slug>"
+domain: <domain-slug>
 status: <active | planned | deprecated>
+type: <core | emergent | refinement>
 tags: [<tags>]
 features:
   - slug: <feature-slug>
+    role: <core | extends | quality | enables>
     description: "<one-line contribution>"
+composes: [<domain/capability slugs>]  # Only for type: emergent
 spec_refs: [<spec IDs>]
 decision_refs: [<ADR slugs>]
 kb_refs: [<KB topic/category paths>]
-depends_on: [<capability slugs>]
-enables: [<capability slugs>]
+depends_on: [<domain/capability slugs>]
+enables: [<domain/capability slugs>]
 ---
 
 # <title>
@@ -339,7 +461,7 @@ enables: [<capability slugs>]
 
 ## Features
 
-<rendered from frontmatter features array>
+<rendered from frontmatter features array, grouped by role>
 
 ## Key behaviors
 
@@ -354,4 +476,6 @@ enables: [<capability slugs>]
 - **KB:** <list>
 - **Depends on:** <list>
 - **Enables:** <list>
+- **Composes:** <list, only for emergent>
+- **Deferred work:** <list of related deferred ADRs>
 ```

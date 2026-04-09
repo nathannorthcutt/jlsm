@@ -19,6 +19,8 @@ domain: "<security | memory-safety | performance | concurrency | data-integrity>
 severity: "<tendency | confirmed | critical>"
 applies_to:
   - "<file path pattern or module name>"
+related: []
+decision_refs: []
 research_status: active
 last_researched: "<YYYY-MM-DD>"
 ---
@@ -33,6 +35,9 @@ last_researched: "<YYYY-MM-DD>"
   - `confirmed` — verified bug class, reproduced across features
   - `critical` — security or data-integrity bug requiring immediate attention
 - `applies_to` — file patterns where this finding is relevant (e.g., `modules/jlsm-table/src/main/**`)
+- `related` — paths to other KB entries covering related concepts (e.g., a concurrency finding
+  might relate to a data-structures entry about the concurrent collection involved)
+- `decision_refs` — ADR slugs from `.decisions/` that this finding is relevant to
 
 ## Required sections
 

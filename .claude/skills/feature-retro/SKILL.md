@@ -248,25 +248,32 @@ capability index, skip silently.
 Check whether this feature contributes to an existing capability or
 introduces a new one.
 
-Read `.capabilities/CLAUDE.md` to get the current capability map.
-Read the feature brief to understand what was built.
+Read `.capabilities/CLAUDE.md` to get the domain map. Read the domain
+indexes to find existing capabilities. Read the feature brief to understand
+what was built.
 
 Use AskUserQuestion:
 - "Update existing capability" — this feature adds to or improves an
-  existing capability (select which one)
+  existing capability (select which one from any domain)
 - "Create new capability" — this feature introduces a genuinely new
   project capability
-- "Quality improvement" — this feature is a performance fix, bug fix,
-  or internal improvement that doesn't change what the project can do
-  (add as `type: quality` feature entry on the parent capability)
 - "Skip" — don't update the capability index
 
-If "Update existing" or "Quality improvement": read the selected capability
-entry. Add this feature to the `features:` array with a one-line
-description. Update the Recently Updated table in CLAUDE.md.
+If "Update existing": read the selected capability entry. Ask for the
+feature's role:
+
+Use AskUserQuestion:
+- "Core" — primary implementation of this capability
+- "Extends" — adds a new dimension to the capability
+- "Quality" — performance fix, bug fix, or internal improvement
+- "Enables" — prerequisite, but the capability is its own concern
+
+Add this feature to the `features:` array with the role and a one-line
+description. Update the Recently Updated table in the root CLAUDE.md and
+the domain CLAUDE.md.
 
 If "Create new": run `/capabilities add "<name>"` with the feature brief
-as context.
+as context. The add flow will handle domain placement and type selection.
 
 ---
 

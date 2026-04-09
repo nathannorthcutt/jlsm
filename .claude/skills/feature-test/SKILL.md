@@ -752,6 +752,27 @@ Update `.feature/CLAUDE.md`.
 
 Read `automation_mode` from status.md.
 
+### Determine next stage: hardening or implement
+
+Check the work-plan contracts for domain lens signals to decide whether
+hardening is needed. Count constructs with any of these contract properties:
+- Closeable/AutoCloseable, close/cleanup mentions → resource_lifecycle
+- Cross-module dependencies → contract_boundaries
+- Thread-safety mentions, `shares_state` edges → concurrency
+- Encode/decode, serialize/deserialize → data_transformation
+- Mutable state shared by 2+ constructs → shared_state
+
+**If zero lens signals OR only 1 construct in the work plan:**
+- Skip hardening — chain directly to `/feature-implement`.
+
+**If 1-2 lens signals AND 2-5 constructs:**
+- Chain to `/feature-harden "<slug>" --lite<  --unit WU-<n>>`.
+
+**If 3+ lens signals OR 6+ constructs:**
+- Chain to `/feature-harden "<slug>"<  --unit WU-<n>>`.
+
+### Chain execution
+
 **If `automation_mode: autonomous`:**
 
 Display the summary then chain immediately without prompting:
@@ -762,12 +783,11 @@ Display the summary then chain immediately without prompting:
 ───────────────────────────────────────────────
 Tests written and verified failing. Cycle <n><  · WU-<n>>.
 
-Starting implementation  ·  type stop to pause
+Starting <hardening | implementation>  ·  type stop to pause
 ───────────────────────────────────────────────
 ```
 
-Then invoke `/feature-implement "<slug>"<  --unit WU-<n>>` as a sub-agent
-immediately. Do not wait for user input.
+Then invoke the next stage as a sub-agent immediately.
 
 **If `automation_mode: manual` (or not set):**
 
@@ -785,9 +805,9 @@ Use AskUserQuestion with two options:
 - "Continue"
 - "Stop"
 
-If "Continue": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "Continue": invoke the next stage as a sub-agent immediately.
 If "Stop":
 ```
 When you're ready:
-  /feature-implement "<slug>"<  --unit WU-<n>>
+  /feature-harden "<slug>"<  --unit WU-<n>>   (or /feature-implement if skipping)
 ```

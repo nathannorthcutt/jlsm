@@ -17,14 +17,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat > /dev/null; bash .claude/scripts/dashboard-stop-hook.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "bash .claude/scripts/token-hook-wrapper.sh"
           }
         ]

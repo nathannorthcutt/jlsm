@@ -217,7 +217,10 @@ Based on the current stage and substage:
 | planning / in-progress | `/feature-plan "<slug>"` — will check stub progress and re-launch subagent for missing work |
 | planning / complete | `/feature-test "<slug>"` |
 | testing / in-progress | `/feature-test "<slug>"` — will resume writing tests |
-| testing / complete (cycle N) | `/feature-implement "<slug>"` |
+| testing / complete (cycle N) | `/feature-harden "<slug>"` — adversarial test hardening |
+| hardening / in-progress | `/feature-harden "<slug>"` — will resume from current lens |
+| hardening / complete | `/feature-implement "<slug>"` |
+| hardening / skipped-no-signals | `/feature-implement "<slug>"` |
 | implementation / in-progress | `/feature-implement "<slug>"` — will resume from failing tests |
 | implementation / escalated | `/feature-test "<slug>"` — contract conflict needs Test Writer |
 | implementation / complete (cycle N) | `/feature-refactor "<slug>"` |

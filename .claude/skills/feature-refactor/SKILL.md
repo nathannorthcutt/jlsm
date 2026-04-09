@@ -151,8 +151,18 @@ Read:
 1. `.feature/project-config.md` — standards, security requirements, run commands
 2. `CONTRIBUTING.md` (or `docs/coding-standards.md` if it exists) — full standards
 3. `.feature/<slug>/work-plan.md` — contracts (intent vs. implementation check)
-4. All implementation files changed during this feature
-5. All test files for this feature
+4. `.feature/<slug>/implement-summary.md` — files modified, construct status, and
+   notes from the implement phase. Use this to know WHICH files to read instead
+   of loading all implementation and test files blindly.
+5. Read only the files listed in implement-summary.md's "Files Modified" table.
+   Skip files that were not modified during implementation — they are unchanged
+   from the planning/testing phase and don't need refactor review.
+6. `.feature/<slug>/test-plan.md` — test intent summary. Do NOT read individual
+   test files unless a specific refactor change requires understanding test
+   assertions (e.g., checking if a renamed method breaks a test).
+
+If `implement-summary.md` does not exist (older feature or crash before write),
+fall back to reading all implementation and test files for this feature.
 
 Run the full test suite to confirm current baseline (all passing).
 If tests are failing: stop and say "Tests are failing before refactor began.
