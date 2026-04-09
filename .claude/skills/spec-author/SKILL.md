@@ -38,6 +38,35 @@ job, not this skill's.
 3. Read any relevant KB entries and ADRs referenced in the domain analysis
    or context bundle.
 
+4. **Revival detection:** Check for INVALIDATED specs in matching domains:
+   ```bash
+   INCLUDE_INVALIDATED=true \
+     bash .claude/scripts/spec-resolve.sh "<feature description>" 8000
+   ```
+   If the bundle contains a `## INVALIDATED Specs (historical reference)`
+   section, check whether any INVALIDATED spec's requirements overlap with
+   the feature brief's intent (shared subject tokens, related domain).
+
+   If overlap is found, present the INVALIDATED spec(s):
+   ```
+   ── Revival candidate ──────────────────────────
+     <spec_id> — "<spec title>"
+     Displaced by: <displacing spec id>
+     Reason: <displacement_reason>
+     Requirements: <count> (R1-R<N>)
+   ```
+
+   Use AskUserQuestion:
+   - **"Use as reference"** — load the INVALIDATED spec as additional context
+     for Pass 1. The spec is a *reference*, not a template — author the new
+     spec fresh through the normal two-pass flow. After registration (via
+     spec-write), set `revives: ["<old_spec_id>"]` in the new spec's
+     frontmatter and update the old spec's `revived_by` field.
+   - **"Author from scratch"** — proceed normally without the INVALIDATED
+     spec as context.
+
+   If no INVALIDATED specs overlap or the section is absent, skip silently.
+
 ---
 
 ## Pass 1 — Structured authoring

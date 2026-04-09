@@ -84,6 +84,59 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
     fi
   done < <(fm "$FILE" '.invalidates // [] | .[]')
 
+  # ── Check 7b: displaced_by[] IDs resolve via registry (optional field)
+  while IFS= read -r dby; do
+    [[ -z "$dby" ]] && continue
+    if ! echo "$dby" | grep -qE '^F[0-9]+$'; then
+      ERRORS+=("Invalid displaced_by format: '$dby' (expected FXX e.g. F05)")
+    elif [[ -f "$MANIFEST" ]]; then
+      dby_file=$(spec_file_for_id "$MANIFEST" "$dby")
+      if [[ -z "$dby_file" || ! -f "$dby_file" ]]; then
+        ERRORS+=("Unresolvable displaced_by ID: $dby (not in registry)")
+      fi
+    fi
+  done < <(fm "$FILE" '.displaced_by // [] | .[]')
+
+  # ── Check 7c: revives[] IDs must be INVALIDATED specs
+  while IFS= read -r rev; do
+    [[ -z "$rev" ]] && continue
+    if ! echo "$rev" | grep -qE '^F[0-9]+$'; then
+      ERRORS+=("Invalid revives format: '$rev' (expected FXX e.g. F05)")
+    elif [[ -f "$MANIFEST" ]]; then
+      rev_file=$(spec_file_for_id "$MANIFEST" "$rev")
+      if [[ -z "$rev_file" || ! -f "$rev_file" ]]; then
+        ERRORS+=("Unresolvable revives ID: $rev (not in registry)")
+      else
+        rev_state=$(fm "$rev_file" '.state // ""')
+        if [[ "$rev_state" != "INVALIDATED" ]]; then
+          ERRORS+=("revives '$rev' has state '$rev_state' — must be INVALIDATED")
+        fi
+      fi
+    fi
+  done < <(fm "$FILE" '.revives // [] | .[]')
+
+  # ── Check 7d: revived_by[] IDs resolve via registry (optional field)
+  while IFS= read -r rby; do
+    [[ -z "$rby" ]] && continue
+    if ! echo "$rby" | grep -qE '^F[0-9]+$'; then
+      ERRORS+=("Invalid revived_by format: '$rby' (expected FXX e.g. F05)")
+    elif [[ -f "$MANIFEST" ]]; then
+      rby_file=$(spec_file_for_id "$MANIFEST" "$rby")
+      if [[ -z "$rby_file" || ! -f "$rby_file" ]]; then
+        ERRORS+=("Unresolvable revived_by ID: $rby (not in registry)")
+      fi
+    fi
+  done < <(fm "$FILE" '.revived_by // [] | .[]')
+
+  # ── Check 7e: displacement_reason present when displaced_by is non-empty (warning)
+  DISPLACED_BY_COUNT=$(fm "$FILE" '.displaced_by // [] | length')
+  if [[ "$DISPLACED_BY_COUNT" != "0" && "$DISPLACED_BY_COUNT" != "null" ]]; then
+    DISP_REASON=$(fm "$FILE" '.displacement_reason // ""')
+    if [[ -z "$DISP_REASON" ]]; then
+      echo "  WARN: displaced_by is non-empty but displacement_reason is missing" >&2
+    fi
+  fi
+
   # ── Check 8: decision_refs resolve (warning, not error)
   while IFS= read -r ref; do
     [[ -z "$ref" ]] && continue

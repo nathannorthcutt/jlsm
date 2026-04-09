@@ -210,7 +210,14 @@ function main() {
       const transcript = findTranscript();
       if (!transcript) return;
       let currentLine = 1;
-      try { currentLine = fs.readFileSync(transcript, 'utf8').split('\n').length - 1; } catch {}
+      try {
+        const buf = fs.readFileSync(transcript);
+        let count = 0;
+        for (let i = 0; i < buf.length; i++) {
+          if (buf[i] === 0x0a) count++;
+        }
+        currentLine = count;
+      } catch {}
 
       writeState(stateFile, {
         feature_dir: `.feature/${slug}`,
@@ -224,4 +231,4 @@ function main() {
   } catch {}
 }
 
-main();
+try { main(); } catch {}

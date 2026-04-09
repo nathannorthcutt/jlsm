@@ -145,7 +145,7 @@ def update_status_md_actual_tokens(status_path: str, stage_cap: str, actual_str:
                         line = "|".join(parts)
             updated.append(line)
         target = Path(status_path)
-        tmp = target.with_suffix(".tmp")
+        tmp = target.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text("\n".join(updated) + "\n")
         tmp.rename(target)
     except OSError:
@@ -153,8 +153,9 @@ def update_status_md_actual_tokens(status_path: str, stage_cap: str, actual_str:
 
 
 def main():
-    # Consume stdin (required by Stop hooks)
-    sys.stdin.read()
+    # Drain stdin without buffering entire content (required by Stop hooks)
+    while sys.stdin.read(8192):
+        pass
 
     state_file_path = Path(".claude/.token-state")
 

@@ -210,6 +210,17 @@ From "Spec Coverage Gaps" in the scan summary (if present):
    explicit promote/preserve/defer choice
 3. Higher count = more implicit assumptions without backing decisions
 
+**Orphaned specs (no matching source code):**
+1. APPROVED specs whose subject tokens were not found in any source file
+2. These may describe behavior that was removed without updating the spec
+3. For each orphaned spec, use AskUserQuestion with options:
+   - **"Verify with /spec-verify"** — run spec-verify to check if the
+     behavior still exists (subject token search may have missed it)
+   - **"Mark as INVALIDATED"** — the behavior was removed; mark the spec
+     as INVALIDATED with `displacement_reason: "behavior removed — detected
+     by curate scan"`
+   - **"Skip for now"** — defer to a later curation pass
+
 ### 2i — Cross-reference repair candidates
 
 **Guard:** Only run this step if "Cross-Reference Candidates" section exists in

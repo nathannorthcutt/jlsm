@@ -93,6 +93,55 @@ From cycle-log.md:
 - How many missing tests were found during refactor?
 - Were any contracts revised?
 
+### 2f — Displacement finalization
+
+**Skip this step if work-plan.md does not contain a `## Removal Work` section.**
+
+For each accepted displacement in the Removal Work table where removal tests
+pass (check cycle-log.md for test results):
+
+1. **Update the displaced spec:**
+   - Read the displaced spec file (resolve via registry)
+   - Set `state` → `INVALIDATED`
+   - Set `status` → `DEPRECATED`
+   - Set `displaced_by` → `["<new_spec_id>"]`
+   - Set `displacement_reason` → the reason from the displacement resolution
+     (captured in the resolved bundle's `## Displacement Resolution` section)
+   - Write the updated spec file
+
+2. **Update the manifest:**
+   ```bash
+   tmp=$(mktemp)
+   jq --arg id "<displaced_spec_id>" '.features[$id].state = "INVALIDATED"' \
+     .spec/registry/manifest.json > "$tmp" && mv "$tmp" .spec/registry/manifest.json
+   ```
+
+3. **Update the new spec's `invalidates` array** to include all accepted
+   displacement requirement refs (if not already present from spec-resolve).
+
+4. **Flag related artifacts for review:**
+   - If the displaced spec has `decision_refs`, present each to the user:
+     ```
+     ADR <slug> was referenced by now-invalidated spec <id>.
+     ```
+     Use AskUserQuestion: "Revisit via /decisions" / "Keep as-is"
+   - If the displaced spec has `kb_refs`, note them:
+     ```
+     KB entry <path> was referenced by invalidated spec <id>.
+     Flag for review during next /curate run.
+     ```
+
+5. **Log to cycle-log.md:**
+   ```markdown
+   ## <YYYY-MM-DD> — displacement-finalized
+   **Agent:** 🔍 Retro
+   **Displaced specs:** <list of spec IDs marked INVALIDATED>
+   **ADRs flagged:** <list or "none">
+   **KB entries flagged:** <list or "none">
+   **Reason:** <displacement reason>
+   ---
+   ```
+
 ---
 
 ## Step 3 — Display the retrospective
@@ -136,6 +185,12 @@ TDD EFFICIENCY
   Missing tests found: <n>
   Contract revisions: <n>
   Verdict: <clean | minor friction | significant rework>
+
+<If displacement finalization occurred:>
+DISPLACEMENT
+  Specs invalidated: <n>
+  ADRs flagged for review: <n>
+  KB entries flagged: <n>
 
 ───────────────────────────────────────────────
 ```
@@ -291,6 +346,7 @@ Append `retro-complete` to cycle-log.md:
 **Actions taken:**
 - <ADR reviewed: <slug>> | <ADR created: <slug>> | <KB updated: <topic>>
 - Feature footprint: .kb/architecture/feature-footprints/<slug>.md
+- <If displacement finalized:> Displacement: <n> specs INVALIDATED, <n> ADRs flagged
 - <If adversarial findings graduated:> Adversarial findings: <n> patterns → .kb/
 - ...
 ---

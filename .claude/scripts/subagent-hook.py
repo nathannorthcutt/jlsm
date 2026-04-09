@@ -14,13 +14,18 @@ from pathlib import Path
 
 
 def main() -> None:
+    state_file = Path(".claude/.subagent-state")
     try:
         data = json.loads(sys.stdin.read())
     except (json.JSONDecodeError, ValueError):
+        # If we can't parse input, clean up stale state as a safe default
+        try:
+            state_file.unlink(missing_ok=True)
+        except OSError:
+            pass
         return
 
     event = data.get("hook_event_name", "")
-    state_file = Path(".claude/.subagent-state")
 
     if event == "SubagentStart":
         state = {

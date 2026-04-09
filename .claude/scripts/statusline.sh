@@ -289,11 +289,11 @@ if [[ -n "$context_pct" ]]; then
     ctx_int=${context_pct%.*}
     [[ "$ctx_int" =~ ^[0-9]+$ ]] || ctx_int=0
     if [[ "$ctx_int" -ge 80 ]]; then
-        parts+=("\033[31mctx ${context_pct}%\033[0m")
+        parts+=("\033[31mctx ${ctx_int}%\033[0m")
     elif [[ "$ctx_int" -ge 50 ]]; then
-        parts+=("\033[33mctx ${context_pct}%\033[0m")
+        parts+=("\033[33mctx ${ctx_int}%\033[0m")
     else
-        parts+=("\033[32mctx ${context_pct}%\033[0m")
+        parts+=("\033[32mctx ${ctx_int}%\033[0m")
     fi
 fi
 

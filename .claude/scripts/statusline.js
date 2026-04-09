@@ -111,7 +111,7 @@ function main() {
   let stageTokens = '';
   const baselineFile = '.claude/.statusline-baseline';
 
-  const tokenState = fs.existsSync('.claude/.token-state') ? readJsonOrShell('.claude/.token-state') : {};
+  const tokenState = readJsonOrShell('.claude/.token-state');
   const featureDir = tokenState.feature_dir || '';
   const cachedStage = tokenState.cached_stage || '';
 
@@ -125,17 +125,19 @@ function main() {
       stageDisplay = buildStageDisplay(slug, currentStage, substage);
 
       if (currentCtxTokens != null) {
-        const baseline = fs.existsSync(baselineFile) ? readJsonOrShell(baselineFile) : {};
+        const baseline = readJsonOrShell(baselineFile);
         const baselineStage = baseline.baseline_stage || '';
         let baselineCtx = parseInt(baseline.baseline_ctx_tokens) || 0;
 
         if (baselineStage !== currentStage || baselineCtx === 0) {
-          const newBaseline = { baseline_stage: currentStage, baseline_ctx_tokens: currentCtxTokens, baseline_timestamp: nowUtc() };
-          fs.mkdirSync(path.dirname(baselineFile), { recursive: true });
-          const tmpFile = baselineFile + '.tmp';
-          fs.writeFileSync(tmpFile, JSON.stringify(newBaseline) + '\n');
-          fs.renameSync(tmpFile, baselineFile);
-          baselineCtx = currentCtxTokens;
+          try {
+            const newBaseline = { baseline_stage: currentStage, baseline_ctx_tokens: currentCtxTokens, baseline_timestamp: nowUtc() };
+            fs.mkdirSync(path.dirname(baselineFile), { recursive: true });
+            const tmpFile = baselineFile + '.tmp';
+            fs.writeFileSync(tmpFile, JSON.stringify(newBaseline) + '\n');
+            fs.renameSync(tmpFile, baselineFile);
+            baselineCtx = currentCtxTokens;
+          } catch {}
         }
 
         const stageUsed = Math.max(0, currentCtxTokens - baselineCtx);
@@ -151,12 +153,10 @@ function main() {
   // Read subagent state
   let subagentDisplay = '';
   const subagentFile = '.claude/.subagent-state';
-  if (fs.existsSync(subagentFile)) {
-    try {
-      const subagent = JSON.parse(fs.readFileSync(subagentFile, 'utf8'));
-      if (subagent.description) subagentDisplay = `agent: ${subagent.description}`;
-    } catch {}
-  }
+  try {
+    const subagent = JSON.parse(fs.readFileSync(subagentFile, 'utf8'));
+    if (subagent.description) subagentDisplay = `agent: ${subagent.description}`;
+  } catch {}
 
   // Build output
   const parts = [];
@@ -166,10 +166,10 @@ function main() {
   if (contextPct != null) {
     const ctxInt = Math.floor(contextPct);
     const color = ctxInt >= 80 ? '31' : ctxInt >= 50 ? '33' : '32';
-    parts.push(`\\033[${color}mctx ${contextPct}%\\033[0m`);
+    parts.push(`\\033[${color}mctx ${ctxInt}%\\033[0m`);
   }
 
   if (parts.length) console.log(parts.join(' · '));
 }
 
-main();
+try { main(); } catch {}

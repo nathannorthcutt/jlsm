@@ -429,12 +429,31 @@ For each finding, note:
   - `SPEC-BOUNDARY` — spec-adjacent edge case (Lens B, spec mode)
   - `SPEC-BLIND-SPOT` — no spec coverage at all (Lens B, spec mode)
   - `IMPL-RISK` — standard implementation risk (Lens B)
+  - `DISPLACEMENT` — behavior that must be verified as removed (from displacement resolution)
 - A specific defensive test case to add to the test plan
 - If from a spec requirement: the requirement ID (e.g., `R3`)
+- If from displacement: the displaced spec and requirement ID (e.g., `displaced: F05.R3`)
 
 These findings feed directly into the test plan as a "Defensive (from spec analysis)"
 section. Do NOT write a separate spec-analysis.md file — the findings are integrated
 into the test plan in the next step.
+
+### Displacement verification
+
+If the work-plan contains a `## Removal Work` section, derive negative tests
+for each removal work unit. These verify that displaced behavior is gone:
+
+For each removal entry (RW-1, RW-2, ...):
+1. Read the displaced spec requirement text to understand what behavior existed
+2. Derive a test that **asserts the behavior no longer exists**:
+   - API removed → calling it throws/returns an error
+   - Format no longer supported → input in old format is rejected with a clear error
+   - Configuration removed → using the old config produces a validation error
+   - Behavioral change → old behavior demonstrably not happening
+3. Tag as `covers: <existing_id>.<req_id> (displaced)` and finding type `DISPLACEMENT`
+
+These tests go in the "Displacement verification" section of the test plan
+(between "Spec requirements" and "Defensive").
 
 ---
 
@@ -485,6 +504,9 @@ Structural (from interface analysis)
   ...
 Spec requirements (from hardened specs)          ← only when specs loaded
   N. test_<name> — <scenario> — covers: R<N>
+  ...
+Displacement verification (removal tests)       ← only when removal work exists
+  N. test_<name> — <scenario> — covers: <FXX>.<RN> (displaced)
   ...
 Defensive (from spec analysis)
   N. test_<name> — <scenario> — finding: <CONTRACT-GAP | SPEC-BOUNDARY | SPEC-BLIND-SPOT | IMPL-RISK>: <description>

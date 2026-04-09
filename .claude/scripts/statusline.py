@@ -266,7 +266,7 @@ def main():
             color = "33"  # yellow
         else:
             color = "32"  # green
-        parts.append(f"\\033[{color}mctx {context_pct}%\\033[0m")
+        parts.append(f"\\033[{color}mctx {ctx_int}%\\033[0m")
 
     if parts:
         print(" · ".join(parts))

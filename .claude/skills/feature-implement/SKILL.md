@@ -192,6 +192,18 @@ Update the checklist after each construct's tests pass — mark the construct
 
 ## Step 1 — Load context and baseline
 
+**Displacement awareness:** If `work-plan.md` contains a `## Removal Work`
+section, this feature includes code removal alongside new implementation.
+Display in the opening header:
+```
+⚠️  This feature includes removal work (<N> constructs to remove).
+    Removal tests must pass alongside addition tests.
+```
+Removal work units (RW-1, RW-2, ...) are sequenced in the Implementation
+Order after the addition work that replaces them. When implementing a removal
+work unit, delete the code that implements the displaced behavior and verify
+the removal tests pass.
+
 Read:
 1. `.feature/project-config.md` — always
 2. `.feature/<slug>/work-plan.md` — **if work units defined:** read only the
