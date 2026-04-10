@@ -13,8 +13,9 @@ read-path caching.
 | [schema-and-documents](schema-and-documents.md) | core | active | schema, documents, types, serialization | 3 |
 | [compressed-blocks](compressed-blocks.md) | core | active | compression, storage, sstable, blocks | 2 |
 | [block-cache](block-cache.md) | refinement | active | cache, lru, striped, concurrency | 1 |
+| [json-processing](json-processing.md) | core | active | json, jsonl, parsing, simd, streaming, serialization | 1 |
 
 ## Cross-references
 
-- **KB topics:** algorithms/compression, data-structures/caching, algorithms/vector-encoding
-- **Spec domains:** serialization, storage
+- **KB topics:** algorithms/compression, data-structures/caching, algorithms/vector-encoding, algorithms/serialization
+- **Spec domains:** serialization, storage, engine
