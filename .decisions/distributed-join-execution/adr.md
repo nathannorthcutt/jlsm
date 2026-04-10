@@ -3,6 +3,7 @@ problem: "distributed-join-execution"
 date: "2026-03-20"
 version: 1
 status: "deferred"
+depends_on: ["aggregation-query-merge", "limit-offset-pushdown"]
 ---
 
 # Distributed Join Execution — Deferred

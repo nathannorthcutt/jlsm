@@ -19,19 +19,15 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
-| index-definition-api-simplification | index-definition-api-simplification | 2026-03-17 | Derive from Schema |
-| cross-stripe-eviction | cross-stripe-eviction | 2026-03-17 | Sequential loop |
-| sstable-block-compression-format | sstable-block-compression-format | 2026-03-17 | Compression Offset Map |
-| field-encryption-api-design | field-encryption-api-design | 2026-03-18 | Schema Annotation (FieldDefinition carries EncryptionSpec) |
-| Transport Abstraction Design | transport-abstraction-design | 2026-03-20 | Message-Oriented Transport — send + request with type dispatch, virtual/platform thread split |
-| Discovery SPI Design | discovery-spi-design | 2026-03-20 | Minimal Seed Provider with Optional Registration — discoverSeeds + default register/deregister |
-| Scatter-Gather Query Execution | scatter-gather-query-execution | 2026-03-20 | Partition-Aware Proxy Table — transparent Table interface, k-way merge, partition pruning |
-| Rebalancing & Grace Period Strategy | rebalancing-grace-period-strategy | 2026-03-20 | Eager Reassignment with Deferred Cleanup — immediate HRW recompute, grace controls cleanup |
-| Partition-to-Node Ownership | partition-to-node-ownership | 2026-03-20 | Rendezvous Hashing (HRW) — stateless pure function, O(K/N) minimal movement |
+| Codec Thread Safety | codec-thread-safety | 2026-04-10 | Stateless and thread-safe contract on CompressionCodec interface |
+| Max Compressed Length | max-compressed-length | 2026-04-10 | Add maxCompressedLength(int) default method to CompressionCodec |
+| Per-Block Checksums | per-block-checksums | 2026-04-10 | CRC32C per-block checksum in CompressionMap.Entry |
+| Backend-Optimal Block Size | backend-optimal-block-size | 2026-04-10 | Parameterize block size on writer builder with named constants |
+| Power-of-Two Stripe Optimization | power-of-two-stripe-optimization | 2026-04-10 | Enforce power-of-2 stripe counts, use bitmask instead of modulo |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
-<!-- 68 items. Grouped by parent ADR for readability. -->
+<!-- 62 items. Grouped by parent ADR for readability. -->
 
 | Problem | Slug | Deferred | Parent ADR |
 |---------|------|----------|------------|
@@ -43,8 +39,6 @@
 | Slow Node Detection | slow-node-detection | 2026-03-30 | cluster-membership-protocol |
 | Dynamic Membership Threshold | dynamic-membership-threshold | 2026-03-30 | cluster-membership-protocol |
 | Piggybacked State Exchange | piggybacked-state-exchange | 2026-03-30 | cluster-membership-protocol |
-| Codec Thread Safety | codec-thread-safety | 2026-03-30 | compression-codec-api-design |
-| Max Compressed Length | max-compressed-length | 2026-03-30 | compression-codec-api-design |
 | Codec Negotiation | codec-negotiation | 2026-03-30 | compression-codec-api-design |
 | Codec Dictionary Support | codec-dictionary-support | 2026-03-30 | compression-codec-api-design |
 | Atomic Cross-Stripe Eviction | atomic-cross-stripe-eviction | 2026-03-30 | cross-stripe-eviction |
@@ -82,12 +76,8 @@
 | Aggregation Query Merge | aggregation-query-merge | 2026-03-30 | scatter-gather-query-execution |
 | LIMIT/OFFSET Partition Pushdown | limit-offset-pushdown | 2026-03-30 | scatter-gather-query-execution |
 | Cross-Partition Atomic Writes | cross-partition-atomic-writes | 2026-03-30 | scatter-gather-query-execution |
-| Per-Block Checksums | per-block-checksums | 2026-03-30 | sstable-block-compression-format |
-| Backend-Optimal Block Size | backend-optimal-block-size | 2026-03-30 | sstable-block-compression-format |
 | WAL Compression | wal-compression | 2026-03-30 | sstable-block-compression-format |
 | Compaction-Time Re-Compression | compaction-recompression | 2026-03-30 | sstable-block-compression-format |
-| Hash Distribution Uniformity | hash-distribution-uniformity | 2026-03-30 | stripe-hash-function |
-| Power-of-Two Stripe Optimization | power-of-two-stripe-optimization | 2026-03-30 | stripe-hash-function |
 | Atomic Multi-Table DDL | atomic-multi-table-ddl | 2026-03-30 | table-catalog-persistence |
 | Cross-Table Transaction Coordination | cross-table-transaction-coordination | 2026-03-30 | table-catalog-persistence |
 | Catalog Replication | catalog-replication | 2026-03-30 | table-catalog-persistence |
@@ -109,6 +99,7 @@
 
 | Problem | Slug | Closed | Reason |
 |---------|------|--------|--------|
+| Hash Distribution Uniformity | hash-distribution-uniformity | 2026-04-10 | Non-issue — splitmix64 near-perfect uniformity, modulo bias negligible |
 
 ## Archived
 Decisions older than the 5 most recent: [history.md](history.md)
@@ -125,3 +116,12 @@ Decisions older than the 5 most recent: [history.md](history.md)
 | Pre-Encrypted Document Signaling | pre-encrypted-document-signaling | 2026-03-19 | Factory method with boolean field — `JlsmDocument.preEncrypted(schema, ...)` |
 | Encrypted Index Strategy | encrypted-index-strategy | 2026-03-18 | Static Capability Matrix with 3-tier full-text search (keyword, phrase, SSE) |
 | Table Partitioning | table-partitioning | 2026-03-16 | Range partitioning with per-partition co-located indices |
+| Index Definition API Simplification | index-definition-api-simplification | 2026-03-17 | Derive from Schema |
+| Cross-Stripe Eviction | cross-stripe-eviction | 2026-03-17 | Sequential loop |
+| SSTable Block Compression Format | sstable-block-compression-format | 2026-03-17 | Compression Offset Map |
+| Field Encryption API Design | field-encryption-api-design | 2026-03-18 | Schema Annotation (FieldDefinition carries EncryptionSpec) |
+| Transport Abstraction Design | transport-abstraction-design | 2026-03-20 | Message-Oriented Transport |
+| Discovery SPI Design | discovery-spi-design | 2026-03-20 | Minimal Seed Provider with Optional Registration |
+| Scatter-Gather Query Execution | scatter-gather-query-execution | 2026-03-20 | Partition-Aware Proxy Table |
+| Rebalancing & Grace Period Strategy | rebalancing-grace-period-strategy | 2026-03-20 | Eager Reassignment with Deferred Cleanup |
+| Partition-to-Node Ownership | partition-to-node-ownership | 2026-03-20 | Rendezvous Hashing (HRW) |

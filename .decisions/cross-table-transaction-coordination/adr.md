@@ -3,6 +3,7 @@ problem: "cross-table-transaction-coordination"
 date: "2026-03-30"
 version: 1
 status: "deferred"
+depends_on: ["cross-table-transactions"]
 ---
 
 # Cross-Table Transaction Coordination — Deferred

@@ -3,6 +3,7 @@ problem: "encrypted-prefix-wildcard-queries"
 date: "2026-03-30"
 version: 1
 status: "deferred"
+depends_on: ["encryption-key-rotation"]
 ---
 
 # Encrypted Prefix/Wildcard Queries — Deferred
