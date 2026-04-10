@@ -14,6 +14,7 @@ and the Vector API with graceful scalar degradation.
 | [simd-on-demand-serialization.md](simd-on-demand-serialization.md) | SIMD On-Demand Serialization | active | 2-4 GiB/s parse throughput | Understanding the two-stage SIMD parsing architecture |
 | [panama-ffm-inline-machine-code.md](panama-ffm-inline-machine-code.md) | Panama FFM Inline Machine Code | active | ~10-15 cycles/64B block | PCLMULQDQ/PMULL via embedded byte arrays, zero native build |
 | [simd-serialization-java-fallbacks.md](simd-serialization-java-fallbacks.md) | SIMD Serialization Java Fallbacks | active | 3-tier: 1x / 2-4x / 15-30x | Graceful degradation strategy for Java 25 |
+| [json-only-simd-jsonl.md](json-only-simd-jsonl.md) | json-only-simd-jsonl (feature footprint) | stable | feature audit record | JSON value types + SIMD parser + JSONL streaming overview |
 
 ## Comparison Summary
 

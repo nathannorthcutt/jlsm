@@ -18,4 +18,5 @@
 
 | Date | Domain | Capability | Change |
 |------|--------|-----------|--------|
+| 2026-04-10 | data-management | json-processing | New: JSON value types, SIMD parser, JSONL streaming |
 | 2026-04-07 | (all) | (all) | Restructured: flat → domain hierarchy |
