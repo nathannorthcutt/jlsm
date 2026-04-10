@@ -1,5 +1,9 @@
 plugins { id 'java-library' }
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['--add-modules', 'jdk.incubator.vector']
+}
+
 test {
     // Tests run as unnamed module at Gradle runtime; expose internal packages
     jvmArgs '--add-exports', 'jlsm.core/jlsm.bloom.hash=ALL-UNNAMED'
@@ -8,6 +12,8 @@ test {
     jvmArgs '--add-exports', 'jlsm.core/jlsm.sstable.internal=ALL-UNNAMED'
     jvmArgs '--add-exports', 'jlsm.core/jlsm.compaction.internal=ALL-UNNAMED'
     jvmArgs '--add-exports', 'jlsm.core/jlsm.tree.internal=ALL-UNNAMED'
+    jvmArgs '--add-modules', 'jdk.incubator.vector'
+    jvmArgs '--add-exports', 'jlsm.core/jlsm.core.json.internal=ALL-UNNAMED'
     jvmArgs '-ea'
 }
 // No eclipse block: JDT compiles test source as jlsm.core, which can access

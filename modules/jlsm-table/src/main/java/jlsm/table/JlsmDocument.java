@@ -367,21 +367,23 @@ public final class JlsmDocument {
     }
 
     // -------------------------------------------------------------------------
-    // JSON / YAML stubs — filled in by later tasks
+    // JSON serialization / deserialization
     // -------------------------------------------------------------------------
 
     /** Serializes this document to a compact JSON string. */
     public String toJson() {
-        return new jlsm.table.internal.JsonWriter().write(this, 0);
+        return jlsm.core.json.JsonWriter
+                .write(jlsm.table.internal.JsonValueAdapter.toJsonValue(this));
     }
 
     /**
      * Serializes this document to a JSON string.
      *
-     * @param pretty {@code true} for pretty-printed output
+     * @param pretty {@code true} for pretty-printed output (2-space indent)
      */
     public String toJson(boolean pretty) {
-        return new jlsm.table.internal.JsonWriter().write(this, pretty ? 2 : 0);
+        return jlsm.core.json.JsonWriter
+                .write(jlsm.table.internal.JsonValueAdapter.toJsonValue(this), pretty ? 2 : 0);
     }
 
     /**
@@ -390,25 +392,17 @@ public final class JlsmDocument {
      * @param json the JSON string; must not be null
      * @param schema the target schema; must not be null
      * @return a new JlsmDocument
+     * @throws IllegalArgumentException if the JSON is malformed or a field type does not match
      */
     public static JlsmDocument fromJson(String json, JlsmSchema schema) {
-        return new jlsm.table.internal.JsonParser().parse(json, schema);
-    }
-
-    /** Serializes this document to a YAML block-style string. */
-    public String toYaml() {
-        return new jlsm.table.internal.YamlWriter().write(this);
-    }
-
-    /**
-     * Deserializes a YAML string into a {@link JlsmDocument} conforming to the given schema.
-     *
-     * @param yaml the YAML string; must not be null
-     * @param schema the target schema; must not be null
-     * @return a new JlsmDocument
-     */
-    public static JlsmDocument fromYaml(String yaml, JlsmSchema schema) {
-        return new jlsm.table.internal.YamlParser().parse(yaml, schema);
+        Objects.requireNonNull(json, "json must not be null");
+        Objects.requireNonNull(schema, "schema must not be null");
+        try {
+            final jlsm.core.json.JsonValue parsed = jlsm.core.json.JsonParser.parse(json);
+            return jlsm.table.internal.JsonValueAdapter.fromJsonValue(parsed, schema);
+        } catch (jlsm.core.json.JsonParseException e) {
+            throw new IllegalArgumentException(e.getMessage(), e);
+        }
     }
 
     // -------------------------------------------------------------------------

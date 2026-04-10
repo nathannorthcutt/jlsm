@@ -20,11 +20,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import jlsm.table.internal.FieldIndex;
 import jlsm.table.internal.IndexRegistry;
-import jlsm.table.internal.JsonWriter;
 import jlsm.table.internal.QueryExecutor;
 import jlsm.table.internal.RangeMap;
 import jlsm.table.internal.VectorFieldIndex;
-import jlsm.table.internal.YamlWriter;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -251,117 +249,6 @@ class DispatchRoutingAdversarialTest {
                 () -> validateType.invoke(null, "vec", badVectorType, data));
         assertInstanceOf(AssertionError.class, ex.getCause(),
                 "validateType should throw AssertionError for unsupported VectorType elementType");
-    }
-
-    // Finding: F-R1.dispatch_routing.1.2
-    // Bug: writeVector else-branch assumes FLOAT16 without explicit check — if a VectorType
-    // with an unsupported elementType reaches writeVector, it silently casts to short[]
-    // instead of failing with a descriptive error
-    // Correct behavior: else-branch should assert elementType == FLOAT16; unknown types
-    // should throw AssertionError with a descriptive message
-    // Fix location: JsonWriter.java:159 — else branch in writeVector
-    // Regression watch: Ensure FLOAT16 and FLOAT32 vectors still serialize correctly
-    @Test
-    void test_JsonWriter_writeVector_unsupportedElementType_throwsInsteadOfAssumingFloat16()
-            throws Exception {
-        // Bypass VectorType's compact constructor to create a VectorType with INT32 elementType.
-        var unsafeClass = Class.forName("jdk.internal.misc.Unsafe");
-        var getUnsafe = unsafeClass.getMethod("getUnsafe");
-        var unsafe = getUnsafe.invoke(null);
-
-        var allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
-        var badVectorType = (FieldType.VectorType) allocateInstance.invoke(unsafe,
-                FieldType.VectorType.class);
-
-        var objectFieldOffset = unsafeClass.getMethod("objectFieldOffset", Class.class,
-                String.class);
-        var putReference = unsafeClass.getMethod("putReference", Object.class, long.class,
-                Object.class);
-        var putInt = unsafeClass.getMethod("putInt", Object.class, long.class, int.class);
-
-        long etOffset = (long) objectFieldOffset.invoke(unsafe, FieldType.VectorType.class,
-                "elementType");
-        putReference.invoke(unsafe, badVectorType, etOffset, FieldType.Primitive.INT32);
-
-        long dimOffset = (long) objectFieldOffset.invoke(unsafe, FieldType.VectorType.class,
-                "dimensions");
-        putInt.invoke(unsafe, badVectorType, dimOffset, 2);
-
-        assert badVectorType.elementType() == FieldType.Primitive.INT32
-                : "Expected INT32 but got " + badVectorType.elementType();
-
-        // Invoke the private writeVector method directly with a short[] value.
-        // With the bug, the else-branch silently accepts this as FLOAT16.
-        // After the fix, the else-branch should assert elementType == FLOAT16 and throw.
-        var writer = new JsonWriter();
-        var writeVector = JsonWriter.class.getDeclaredMethod("writeVector",
-                FieldType.VectorType.class, Object.class, StringBuilder.class, int.class,
-                int.class);
-        writeVector.setAccessible(true);
-
-        var sb = new StringBuilder();
-        short[] data = new short[]{ 0x3C00, 0x4000 };
-
-        var ex = assertThrows(java.lang.reflect.InvocationTargetException.class,
-                () -> writeVector.invoke(writer, badVectorType, data, sb, 0, 0));
-        assertInstanceOf(AssertionError.class, ex.getCause(),
-                "writeVector should throw AssertionError for unsupported VectorType elementType, "
-                        + "not silently treat as FLOAT16");
-    }
-
-    // Finding: F-R1.dispatch_routing.1.3
-    // Bug: writeVector (YamlWriter) else-branch assumes FLOAT16 without explicit check —
-    // if a VectorType with an unsupported elementType reaches writeVector, it silently
-    // casts to short[] instead of failing with a descriptive error
-    // Correct behavior: else-branch should assert elementType == FLOAT16; unknown types
-    // should throw AssertionError with a descriptive message
-    // Fix location: YamlWriter.java:138 — else branch in writeVector
-    // Regression watch: Ensure FLOAT16 and FLOAT32 vectors still serialize correctly
-    @Test
-    void test_YamlWriter_writeVector_unsupportedElementType_throwsInsteadOfAssumingFloat16()
-            throws Exception {
-        // Bypass VectorType's compact constructor to create a VectorType with INT32 elementType.
-        var unsafeClass = Class.forName("jdk.internal.misc.Unsafe");
-        var getUnsafe = unsafeClass.getMethod("getUnsafe");
-        var unsafe = getUnsafe.invoke(null);
-
-        var allocateInstance = unsafeClass.getMethod("allocateInstance", Class.class);
-        var badVectorType = (FieldType.VectorType) allocateInstance.invoke(unsafe,
-                FieldType.VectorType.class);
-
-        var objectFieldOffset = unsafeClass.getMethod("objectFieldOffset", Class.class,
-                String.class);
-        var putReference = unsafeClass.getMethod("putReference", Object.class, long.class,
-                Object.class);
-        var putInt = unsafeClass.getMethod("putInt", Object.class, long.class, int.class);
-
-        long etOffset = (long) objectFieldOffset.invoke(unsafe, FieldType.VectorType.class,
-                "elementType");
-        putReference.invoke(unsafe, badVectorType, etOffset, FieldType.Primitive.INT32);
-
-        long dimOffset = (long) objectFieldOffset.invoke(unsafe, FieldType.VectorType.class,
-                "dimensions");
-        putInt.invoke(unsafe, badVectorType, dimOffset, 2);
-
-        assert badVectorType.elementType() == FieldType.Primitive.INT32
-                : "Expected INT32 but got " + badVectorType.elementType();
-
-        // Invoke the private writeVector method directly with a short[] value.
-        // With the bug, the else-branch silently accepts this as FLOAT16.
-        // After the fix, the else-branch should assert elementType == FLOAT16 and throw.
-        var writer = new YamlWriter();
-        var writeVector = YamlWriter.class.getDeclaredMethod("writeVector",
-                FieldType.VectorType.class, Object.class, StringBuilder.class, int.class);
-        writeVector.setAccessible(true);
-
-        var sb = new StringBuilder();
-        short[] data = new short[]{ 0x3C00, 0x4000 };
-
-        var ex = assertThrows(java.lang.reflect.InvocationTargetException.class,
-                () -> writeVector.invoke(writer, badVectorType, data, sb, 0));
-        assertInstanceOf(AssertionError.class, ex.getCause(),
-                "writeVector should throw AssertionError for unsupported VectorType elementType, "
-                        + "not silently treat as FLOAT16");
     }
 
     // Finding: F-R1.dispatch_routing.1.4

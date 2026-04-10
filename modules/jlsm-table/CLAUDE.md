@@ -17,8 +17,8 @@ documents, CRUD operations, secondary indices, and a fluent query API.
 Not exported in `module-info.java` and must not be made public:
 
 - `jlsm.table.internal` — `StringKeyedTable`, `LongKeyedTable`, `DocumentSerializer`,
-  `FieldValueCodec`, `JsonParser`/`JsonWriter`, `YamlParser`/`YamlWriter`,
-  `IndexRegistry`, `FieldIndex`, `VectorFieldIndex`, `QueryExecutor`
+  `FieldValueCodec`, `JsonValueAdapter`, `IndexRegistry`, `FieldIndex`,
+  `VectorFieldIndex`, `QueryExecutor`
 
 ## Key Constraint
 

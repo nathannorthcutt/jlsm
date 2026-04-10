@@ -7,3 +7,4 @@
 
 | ID | Title | Status | Amends | Decision Refs |
 |----|-------|--------|--------|---------------|
+| F15 | JSON-Only SIMD On-Demand Parser with JSONL Streaming | ACTIVE | invalidates F14.R48, F14.R49 | — |

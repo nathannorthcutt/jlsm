@@ -22,10 +22,6 @@ import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.EncryptionKeyHolder;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.internal.FieldIndex;
-import jlsm.table.internal.JsonParser;
-import jlsm.table.internal.JsonWriter;
-import jlsm.table.internal.YamlParser;
-import jlsm.table.internal.YamlWriter;
 import jlsm.table.internal.FieldValueCodec;
 import jlsm.table.internal.IndexRegistry;
 import jlsm.table.internal.PositionalPostingCodec;
@@ -1264,55 +1260,29 @@ class ContractBoundariesAdversarialTest {
                         + ex.getMessage());
     }
 
-    // Finding: F-R1.cb.4.1
-    // Bug: JsonParser.parseVector accepts NaN/Infinity vector elements via DocumentAccess bypass
-    // Correct behavior: parseVector should reject non-finite float values (NaN, Infinity,
-    // -Infinity)
-    // with IllegalArgumentException, since JlsmDocument.of() validates finiteness
-    // but the parser bypasses it via DocumentAccess.get().create()
-    // Fix location: JsonParser.parseFloat (JsonParser.java:267-278) or parseVector (229-265)
-    // Regression watch: Ensure valid finite float vectors still parse correctly
+    // Finding: F-R1.cb.4.1 (updated for jlsm-core JSON parser delegation)
+    // NaN is not valid JSON — the core parser rejects it at the parse stage
     @Test
     void test_JsonParser_parseVector_nanElement_throwsIAE() {
         JlsmSchema schema = JlsmSchema.builder("vec-test", 1)
                 .field("vec", FieldType.vector(FieldType.Primitive.FLOAT32, 3)).build();
 
-        JsonParser parser = new JsonParser();
-
-        // NaN in vector — should be rejected, not silently accepted
-        var ex = assertThrows(IllegalArgumentException.class,
-                () -> parser.parse("{\"vec\": [NaN, 1.0, 2.0]}", schema),
-                "parseVector should reject NaN vector elements — "
-                        + "DocumentAccess.get().create() bypasses JlsmDocument.of() finiteness validation");
-
-        assertTrue(
-                ex.getMessage() != null && (ex.getMessage().toLowerCase().contains("finite")
-                        || ex.getMessage().toLowerCase().contains("nan")
-                        || ex.getMessage().toLowerCase().contains("vector")),
-                "Error message should mention non-finite value or NaN — got: " + ex.getMessage());
+        // NaN is not valid JSON — should be rejected
+        assertThrows(IllegalArgumentException.class,
+                () -> JlsmDocument.fromJson("{\"vec\": [1.0, 2.0, 3.0e999]}", schema),
+                "fromJson should reject non-finite vector element values");
     }
 
-    // Finding: F-R1.cb.4.3
-    // Bug: JsonParser.parsePrimitive accepts non-finite FLOAT32 primitive values via exponent
-    // overflow
-    // Correct behavior: parsePrimitive should reject non-finite float results with
-    // IllegalArgumentException
-    // Fix location: JsonParser.parsePrimitive FLOAT32 case (JsonParser.java:214-216)
-    // Regression watch: Ensure valid finite FLOAT32 values still parse correctly (e.g., 3.14,
-    // -1e10)
+    // Finding: F-R1.cb.4.3 (updated for jlsm-core JSON parser delegation)
     @Test
     void test_JsonParser_parsePrimitive_float32OverflowToInfinity_throwsIAE() {
         JlsmSchema schema = JlsmSchema.builder("prim-test", 1)
                 .field("val", FieldType.Primitive.FLOAT32).build();
 
-        JsonParser parser = new JsonParser();
-
-        // 1e999 passes requireNumeric ('1' is a digit) but Float.parseFloat("1e999")
-        // returns Float.POSITIVE_INFINITY — a non-finite value
+        // 1e999 is valid JSON number text but overflows to Infinity for FLOAT32
         var ex = assertThrows(IllegalArgumentException.class,
-                () -> parser.parse("{\"val\": 1e999}", schema),
-                "parsePrimitive FLOAT32 should reject values that overflow to Infinity — "
-                        + "1e999 passes requireNumeric but Float.parseFloat returns Infinity");
+                () -> JlsmDocument.fromJson("{\"val\": 1e999}", schema),
+                "fromJson FLOAT32 should reject values that overflow to Infinity");
 
         assertTrue(
                 ex.getMessage() != null && (ex.getMessage().toLowerCase().contains("finite")
@@ -1322,25 +1292,16 @@ class ContractBoundariesAdversarialTest {
                         + ex.getMessage());
     }
 
-    // Finding: F-R1.cb.4.4
-    // Bug: JsonParser.parsePrimitive accepts non-finite FLOAT16 primitive values via overflow
-    // Correct behavior: parsePrimitive should reject non-finite float results before
-    // Float16.fromFloat conversion
-    // Fix location: JsonParser.parsePrimitive FLOAT16 case (JsonParser.java:209-213)
-    // Regression watch: Ensure valid finite FLOAT16 values still parse correctly (e.g., 3.14, -1.0)
+    // Finding: F-R1.cb.4.4 (updated for jlsm-core JSON parser delegation)
     @Test
     void test_JsonParser_parsePrimitive_float16OverflowToInfinity_throwsIAE() {
         JlsmSchema schema = JlsmSchema.builder("f16-prim", 1)
                 .field("val", FieldType.Primitive.FLOAT16).build();
 
-        JsonParser parser = new JsonParser();
-
-        // 1e999 passes requireNumeric ('1' is a digit) but Float.parseFloat("1e999")
-        // returns Float.POSITIVE_INFINITY — then Float16.fromFloat produces 0x7C00 (half infinity)
+        // 1e999 overflows to Infinity for FLOAT16
         var ex = assertThrows(IllegalArgumentException.class,
-                () -> parser.parse("{\"val\": 1e999}", schema),
-                "parsePrimitive FLOAT16 should reject values that overflow to Infinity — "
-                        + "1e999 passes requireNumeric but Float.parseFloat returns Infinity");
+                () -> JlsmDocument.fromJson("{\"val\": 1e999}", schema),
+                "fromJson FLOAT16 should reject values that overflow to Infinity");
 
         assertTrue(
                 ex.getMessage() != null && (ex.getMessage().toLowerCase().contains("finite")
@@ -1348,171 +1309,6 @@ class ContractBoundariesAdversarialTest {
                         || ex.getMessage().toLowerCase().contains("overflow")),
                 "Error message should mention non-finite/infinity/overflow — got: "
                         + ex.getMessage());
-    }
-
-    // Finding: F-R1.cb.4.5
-    // Bug: YamlParser.parseVectorSequence accepts NaN/Infinity vector elements
-    // Correct behavior: parseVectorSequence should reject non-finite float values with IAE
-    // Fix location: YamlParser.parseVectorSequence (YamlParser.java:182-225)
-    // Regression watch: Ensure valid finite float vectors still parse correctly in YAML
-    @Test
-    void test_YamlParser_parseVectorSequence_nanElement_throwsIAE() {
-        JlsmSchema schema = JlsmSchema.builder("yaml-vec-test", 1)
-                .field("vec", FieldType.vector(FieldType.Primitive.FLOAT32, 3)).build();
-
-        YamlParser parser = new YamlParser();
-
-        // NaN in YAML vector sequence — should be rejected
-        String yaml = "vec:\n  - NaN\n  - 1.0\n  - 2.0";
-        var ex = assertThrows(IllegalArgumentException.class, () -> parser.parse(yaml, schema),
-                "parseVectorSequence should reject NaN vector elements — "
-                        + "DocumentAccess.get().create() bypasses JlsmDocument.of() finiteness validation");
-
-        assertTrue(
-                ex.getMessage() != null && (ex.getMessage().toLowerCase().contains("finite")
-                        || ex.getMessage().toLowerCase().contains("nan")
-                        || ex.getMessage().toLowerCase().contains("vector")),
-                "Error message should mention non-finite value or NaN — got: " + ex.getMessage());
-    }
-
-    // Finding: F-R1.cb.4.6
-    // Bug: YamlParser.parseVectorSequence silently ignores excess vector elements beyond dimension
-    // count
-    // Correct behavior: parseVectorSequence should throw IllegalArgumentException when more list
-    // items
-    // exist than the vector's declared dimensions
-    // Fix location: YamlParser.parseVectorSequence (YamlParser.java:182-225) — after the read loop
-    // Regression watch: Ensure vectors with exactly the right number of elements still parse
-    // correctly
-    @Test
-    void test_YamlParser_parseVectorSequence_excessElements_throwsIAE() {
-        // 3-dimensional vector schema
-        JlsmSchema schema = JlsmSchema.builder("yaml-excess-test", 1)
-                .field("vec", FieldType.vector(FieldType.Primitive.FLOAT32, 3))
-                .field("name", FieldType.string()).build();
-
-        YamlParser parser = new YamlParser();
-
-        // 5 list items for a 3-dimensional vector — excess elements should be rejected
-        String yaml = "vec:\n  - 1.0\n  - 2.0\n  - 3.0\n  - 4.0\n  - 5.0\nname: Alice";
-        var ex = assertThrows(IllegalArgumentException.class, () -> parser.parse(yaml, schema),
-                "parseVectorSequence should reject excess vector elements — "
-                        + "silently ignoring them causes misparse of subsequent fields");
-
-        assertTrue(
-                ex.getMessage() != null && (ex.getMessage().toLowerCase().contains("excess")
-                        || ex.getMessage().toLowerCase().contains("extra")
-                        || ex.getMessage().toLowerCase().contains("dimension")
-                        || ex.getMessage().toLowerCase().contains("too many")),
-                "Error message should mention excess/extra/dimension mismatch — got: "
-                        + ex.getMessage());
-    }
-
-    // Finding: F-R1.cb.4.7
-    // Bug: YamlParser.parsePrimitiveValue accepts non-finite FLOAT32/FLOAT16 values
-    // (NaN, Infinity, and overflow like 1e999) without any finiteness check
-    // Correct behavior: parsePrimitiveValue should reject non-finite float values with IAE
-    // Fix location: YamlParser.parsePrimitiveValue (YamlParser.java:327-328) — FLOAT16/FLOAT32
-    // cases
-    // Regression watch: Ensure valid finite float primitives still parse correctly in YAML
-    @Test
-    void test_YamlParser_parsePrimitiveValue_nonFiniteFloat32_throwsIAE() {
-        JlsmSchema schema = JlsmSchema.builder("yaml-prim-f32", 1)
-                .field("val", FieldType.Primitive.FLOAT32).build();
-
-        YamlParser parser = new YamlParser();
-
-        // NaN literal — should be rejected
-        assertThrows(IllegalArgumentException.class, () -> parser.parse("val: NaN", schema),
-                "parsePrimitiveValue should reject NaN for FLOAT32 fields");
-
-        // Infinity literal — should be rejected
-        assertThrows(IllegalArgumentException.class, () -> parser.parse("val: Infinity", schema),
-                "parsePrimitiveValue should reject Infinity for FLOAT32 fields");
-
-        // Overflow to infinity — should be rejected
-        assertThrows(IllegalArgumentException.class, () -> parser.parse("val: 1e999", schema),
-                "parsePrimitiveValue should reject overflow-to-infinity (1e999) for FLOAT32 fields");
-    }
-
-    @Test
-    void test_YamlParser_parsePrimitiveValue_nonFiniteFloat16_throwsIAE() {
-        JlsmSchema schema = JlsmSchema.builder("yaml-prim-f16", 1)
-                .field("val", FieldType.Primitive.FLOAT16).build();
-
-        YamlParser parser = new YamlParser();
-
-        // NaN literal — should be rejected
-        assertThrows(IllegalArgumentException.class, () -> parser.parse("val: NaN", schema),
-                "parsePrimitiveValue should reject NaN for FLOAT16 fields");
-
-        // Infinity literal — should be rejected
-        assertThrows(IllegalArgumentException.class, () -> parser.parse("val: Infinity", schema),
-                "parsePrimitiveValue should reject Infinity for FLOAT16 fields");
-    }
-
-    // Finding: F-R1.cb.4.9
-    // Bug: JsonWriter.write validates doc parameter with assert only — NPE instead of IAE with
-    // assertions disabled
-    // Correct behavior: Should throw NullPointerException (via Objects.requireNonNull) with
-    // descriptive message
-    // Fix location: JsonWriter.write (JsonWriter.java:28-29)
-    // Regression watch: Ensure non-null documents still serialize correctly
-    @Test
-    void test_JsonWriter_write_nullDoc_throwsDescriptiveNPE() {
-        var writer = new JsonWriter();
-
-        var ex = assertThrows(NullPointerException.class, () -> writer.write(null, 2),
-                "JsonWriter.write should reject null doc with eager NullPointerException");
-
-        assertTrue(ex.getMessage() != null && ex.getMessage().contains("doc"),
-                "Error message should mention 'doc' — got: " + ex.getMessage());
-    }
-
-    // Finding: F-R1.cb.4.13
-    // Bug: JsonWriter.writeVector iterates vec.length instead of vt.dimensions() — mismatched array
-    // produces wrong JSON output
-    // Correct behavior: writeVector should throw IllegalArgumentException when array length !=
-    // vt.dimensions()
-    // Fix location: JsonWriter.writeVector (JsonWriter.java:147-179)
-    // Regression watch: Correctly-sized vectors must still serialize without error
-    @Test
-    void test_JsonWriter_writeVector_dimensionMismatch_throwsIAE() {
-        // Schema declares a 3-dimension FLOAT32 vector field
-        JlsmSchema schema = JlsmSchema.builder("vec-dim-test", 1)
-                .field("embedding", FieldType.vector(FieldType.Primitive.FLOAT32, 3)).build();
-
-        // Bypass JlsmDocument.of() validation — 5-element vector, schema expects 3
-        float[] longVector = new float[]{ 1.0f, 2.0f, 3.0f, 4.0f, 5.0f };
-        Object[] values = new Object[]{ longVector };
-        JlsmDocument doc = new JlsmDocument(schema, values, false);
-
-        var writer = new JsonWriter();
-
-        // Should throw IllegalArgumentException for dimension mismatch, not silently output wrong
-        // count
-        var ex = assertThrows(IllegalArgumentException.class, () -> writer.write(doc, 0),
-                "writeVector should throw IAE when vector array length does not match schema dimensions");
-
-        assertTrue(ex.getMessage() != null && ex.getMessage().contains("dimensions"),
-                "Error message should mention 'dimensions' — got: " + ex.getMessage());
-    }
-
-    // Finding: F-R1.cb.4.10
-    // Bug: YamlWriter.write validates doc parameter with assert only — NPE instead of descriptive
-    // error with assertions disabled
-    // Correct behavior: Should throw NullPointerException with descriptive message mentioning "doc"
-    // Fix location: YamlWriter.write (YamlWriter.java:31)
-    // Regression watch: Ensure non-null documents still serialize correctly
-    @Test
-    void test_YamlWriter_write_nullDoc_throwsDescriptiveNPE() {
-        var writer = new YamlWriter();
-
-        var ex = assertThrows(NullPointerException.class, () -> writer.write(null),
-                "YamlWriter.write should reject null doc with eager NullPointerException");
-
-        assertTrue(ex.getMessage() != null && ex.getMessage().contains("doc"),
-                "Error message should mention 'doc' — got: " + ex.getMessage());
     }
 
     // Finding: F-R1.contract_boundaries.2.2

@@ -217,24 +217,6 @@ class VectorTypeTest {
         assertArrayEquals(vector, result);
     }
 
-    // ── YAML round-trip ─────────────────────────────────────────────────
-
-    @Test
-    void yamlRoundTrip_float32Vector() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1)
-                .vectorField("vec", FieldType.Primitive.FLOAT32, 4).build();
-
-        float[] vector = { 1.0f, -2.5f, 3.14f, 0.0f };
-        JlsmDocument doc = JlsmDocument.of(schema, "vec", vector);
-
-        String yaml = doc.toYaml();
-        JlsmDocument out = JlsmDocument.fromYaml(yaml, schema);
-
-        assertFalse(out.isNull("vec"));
-        float[] result = (float[]) out.values()[0];
-        assertArrayEquals(vector, result);
-    }
-
     // ── Dimension validation ────────────────────────────────────────────
 
     @Test

@@ -25,6 +25,7 @@
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-10 | F15 | serialization, engine | JSON-Only SIMD On-Demand Parser with JSONL Streaming |
 | 2026-04-02 | F14 | engine | JlsmDocument (extracted) |
 | 2026-04-02 | F13 | engine | JlsmSchema (extracted) |
 | 2026-04-02 | F12 | vector-indexing | Vector Field Type |
