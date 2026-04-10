@@ -79,6 +79,9 @@
 .claude/scripts/merge-driver-index.sh
 .claude/scripts/ensure-merge-driver.sh
 .claude/scripts/kb-freshness-check.sh
+.claude/scripts/kb-search.sh
+.claude/scripts/kb-search.py
+.claude/scripts/kb-search.js
 .claude/scripts/adr-validate.sh
 .claude/scripts/token-stop-hook.sh
 .claude/scripts/curate-scan.sh

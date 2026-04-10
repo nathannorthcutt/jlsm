@@ -407,7 +407,7 @@ Print a summary of what was found, created, and skipped. Then show:
 Available commands:
   /feature "<description>"            start a new feature (full pipeline)
   /feature-quick "<description>"      small task (single session)
-  /research <topic> <cat> "<subj>"    add research to the KB
+  /research "<subject>"               add research to the KB
   /architect "<problem>"              architecture decision session
   /curate                             codebase quality review
   /vallorcine-help                    entry point — routes to the right command

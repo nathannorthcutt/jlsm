@@ -431,7 +431,7 @@ encoding strategies), research is strongly recommended.
 ```
 
 If **research**: identify the highest-value research subject for this decision,
-invoke `/research <topic> <category> "<subject>"` as a sub-agent. After research
+invoke `/research "<subject>" context: "architect decision: <problem slug>"` as a sub-agent. After research
 completes, re-run the KB survey (Step 2) to pick up the new entry.
 
 If **continue**: proceed to Step 3, noting the gap in the evaluation. The
@@ -456,7 +456,7 @@ Subjects missing from KB:
 
 Research brief written to: .decisions/<slug>/research-brief.md
 
-Run: /research algorithms vector-indexing "DiskANN"
+Run: /research "DiskANN" context: "architect decision: <problem slug>"
 Then re-run: /architect "<problem>"
 
 To proceed without DiskANN, confirm and I will evaluate available candidates only.
@@ -656,7 +656,7 @@ Use AskUserQuestion with these options:
 
 If **Commission research**:
 - Write `research-brief.md` (append to existing if one was written at Step 3)
-- Invoke `/research` as a sub-agent for each subject
+- Invoke `/research "<subject>" context: "architect decision: <problem slug>"` as a sub-agent for each subject
 - After research completes, re-run Step 4b (score the new candidates)
 - Re-run Step 4c (check coverage again — allows multiple iterations)
 - Cap at 3 research iterations total (Steps 3 + 4c combined) to prevent
@@ -1080,7 +1080,7 @@ Binding constraints for this evaluation:
   - `## practical-usage` — needed to score Complexity and Fit
 
 ## Commands to run
-/research <topic> <category> "<subject>"
+/research "<subject>" context: "architect decision: <problem slug>"
 ```
 
 ---

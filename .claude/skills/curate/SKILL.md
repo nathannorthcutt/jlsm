@@ -469,16 +469,15 @@ decisions. Current test coverage: <assessment>."
 Provide context: "This was originally decided on <date> because <reason>. The
 codebase has shifted — want me to run a full re-evaluation?"
 
-**Stale KB:** Invoke `/research <topic> <category> "<subject>"`.
-Provide context: "This was researched on <date>. Since then, <what changed>.
-Want me to refresh this with current information?"
+**Stale KB:** Invoke `/research "<subject>" context: "curate: stale KB entry at <topic>/<category>, originally researched <date>. Since then, <what changed>."`.
+Provide context about what changed since the original research.
 
 **Implicit dependencies:** Investigate directly within the curation session.
 Read the shared files, review the feature briefs that touched them, and assess
 whether there's a real gap. Present findings and suggest next steps (which
 might be "this is fine" or "worth adding tests for X interaction").
 
-**Orphaned areas:** Offer `/research` to build understanding, or `/architect`
+**Orphaned areas:** Offer `/research "<subject>" context: "curate: orphaned area needing coverage"` to build understanding, or `/architect`
 if the area seems to need a decision.
 
 **Test-source drift:** Investigate the specific files — read the source changes

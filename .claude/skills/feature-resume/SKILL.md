@@ -291,7 +291,7 @@ NEXT STEP
 For pending domain commissions, list each:
 ```
 PENDING DOMAINS — complete these before re-running /feature-domains:
-  1. <domain> — Run: /research <topic> <category> "<subject>"
+  1. <domain> — Run: /research "<subject>"
   2. <domain> — Run: /architect "<problem statement>"
 ```
 

@@ -991,7 +991,7 @@ Then use AskUserQuestion to get the user's choice:
 Do not proceed until the user has responded.
 
 If **create**: for each pattern, invoke
-`/research <topic> <category> "<subject>"` as a sub-agent with the pattern's
+`/research "<subject>" context: "audit adversarial pattern from <target>. Suggested: <topic>/adversarial-findings"` as a sub-agent with the pattern's
 description and affected constructs as context. After all creates complete,
 rename: `mv kb-suggestions.md kb-suggestions.applied.md`
 

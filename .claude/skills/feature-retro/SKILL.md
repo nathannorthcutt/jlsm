@@ -235,7 +235,7 @@ was discovered):
 
   Type **yes** to research and document · or: skip
 ```
-If "yes": invoke `/research <topic> <category> "<subject>"` as a sub-agent.
+If "yes": invoke `/research "<subject>" context: "feature-retro for <slug>, domain: <topic>/<category>"` as a sub-agent.
 
 ### Feature footprint
 
@@ -249,7 +249,7 @@ completed feature should leave a trace in the knowledge base.
   Key constructs: <new/modified types>
 ```
 
-Invoke `/research architecture feature-footprints "<slug>"` as a sub-agent,
+Invoke `/research "<slug> feature footprint" context: "feature-retro footprint for <slug>. Suggested: architecture/feature-footprints"` as a sub-agent,
 providing it with:
 - The domains from domains.md
 - The key constructs from work-plan.md (new + modified)
@@ -273,7 +273,7 @@ entries (from aTDD rounds or audit passes):
 ```
 
 If "yes": for each significant pattern (not one-off fixes), invoke
-`/research <domain> adversarial-findings "<pattern-name>"` as a sub-agent.
+`/research "<pattern-name>" context: "feature-retro adversarial finding from <slug>. Suggested: <domain>/adversarial-findings"` as a sub-agent.
 The research agent writes entries following the template at
 `.kb/_refs/adversarial-finding-template.md`.
 
