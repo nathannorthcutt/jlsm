@@ -45,9 +45,9 @@ class StripedBlockCacheTest {
 
     @Test
     void powerOfTwoStripeCountsAccepted() {
-        for (int count : new int[]{1, 2, 4, 8, 16, 32, 64}) {
-            try (var cache = StripedBlockCache.builder().stripeCount(count)
-                    .capacity(count * 10L).build()) {
+        for (int count : new int[]{ 1, 2, 4, 8, 16, 32, 64 }) {
+            try (var cache = StripedBlockCache.builder().stripeCount(count).capacity(count * 10L)
+                    .build()) {
                 assertNotNull(cache);
             }
         }

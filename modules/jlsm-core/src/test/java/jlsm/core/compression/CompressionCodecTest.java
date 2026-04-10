@@ -178,7 +178,7 @@ class CompressionCodecTest {
     @Test
     void testDeflateMaxCompressedLengthAtLeastInput() {
         CompressionCodec codec = CompressionCodec.deflate();
-        for (int size : new int[]{0, 1, 100, 4096, 65536, 128 * 1024}) {
+        for (int size : new int[]{ 0, 1, 100, 4096, 65536, 128 * 1024 }) {
             int bound = codec.maxCompressedLength(size);
             assertTrue(bound >= size,
                     "maxCompressedLength(%d) = %d must be >= input size".formatted(size, bound));
@@ -190,7 +190,7 @@ class CompressionCodecTest {
         // Verify the bound is never exceeded by actual compression
         CompressionCodec codec = CompressionCodec.deflate();
         Random rng = new Random(42);
-        for (int size : new int[]{0, 1, 10, 100, 4096, 65536}) {
+        for (int size : new int[]{ 0, 1, 10, 100, 4096, 65536 }) {
             byte[] input = new byte[size];
             rng.nextBytes(input);
             int bound = codec.maxCompressedLength(size);
@@ -213,9 +213,20 @@ class CompressionCodecTest {
     void testDefaultMaxCompressedLengthConservative() {
         // A custom codec using the default implementation should return a conservative bound
         CompressionCodec custom = new CompressionCodec() {
-            @Override public byte codecId() { return (byte) 0xFF; }
-            @Override public byte[] compress(byte[] input, int offset, int length) { return new byte[0]; }
-            @Override public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) { return new byte[0]; }
+            @Override
+            public byte codecId() {
+                return (byte) 0xFF;
+            }
+
+            @Override
+            public byte[] compress(byte[] input, int offset, int length) {
+                return new byte[0];
+            }
+
+            @Override
+            public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
+                return new byte[0];
+            }
         };
         int bound = custom.maxCompressedLength(100);
         assertTrue(bound >= 100, "default bound must be >= input");

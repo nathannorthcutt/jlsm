@@ -41,9 +41,9 @@ public final class StripedBlockCache implements BlockCache {
         }
 
         // Round up to the nearest power of 2 for bitmask optimization
-        final int effectiveStripeCount = Integer.highestOneBit(builder.stripeCount) == builder.stripeCount
-                ? builder.stripeCount
-                : Integer.highestOneBit(builder.stripeCount) << 1;
+        final int effectiveStripeCount = Integer
+                .highestOneBit(builder.stripeCount) == builder.stripeCount ? builder.stripeCount
+                        : Integer.highestOneBit(builder.stripeCount) << 1;
 
         if (builder.capacity < effectiveStripeCount) {
             throw new IllegalArgumentException("capacity must be >= effective stripeCount ("
