@@ -35,24 +35,24 @@ class StripedBlockCacheAdversarialTest {
 
     @Test
     void capacityTruncationDoesNotCausePrematureEviction() {
-        // capacity=10, stripeCount=3 → per-stripe=3, effective=9
-        // If we insert 9 entries distributed across 3 stripes (3 per stripe),
+        // capacity=10, stripeCount=4 → per-stripe=2, effective=8
+        // If we insert 8 entries distributed across 4 stripes (2 per stripe),
         // none should be evicted. But if capacity tracking is wrong, eviction
         // might trigger early.
-        try (var cache = StripedBlockCache.builder().stripeCount(3).capacity(10).build()) {
+        try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(10).build()) {
             int inserted = 0;
-            // Find 3 entries per stripe by probing keys
-            int[] perStripeCount = new int[3];
-            for (long offset = 0; inserted < 9; offset++) {
-                int stripe = StripedBlockCache.stripeIndex(1L, offset, 3);
-                if (perStripeCount[stripe] < 3) {
+            // Find 2 entries per stripe by probing keys
+            int[] perStripeCount = new int[4];
+            for (long offset = 0; inserted < 8; offset++) {
+                int stripe = StripedBlockCache.stripeIndex(1L, offset, 4);
+                if (perStripeCount[stripe] < 2) {
                     cache.put(1L, offset, MemorySegment.ofArray(new byte[]{ (byte) offset }));
                     perStripeCount[stripe]++;
                     inserted++;
                 }
             }
-            assertEquals(9, cache.size(),
-                    "9 entries (3 per stripe with per-stripe capacity 3) should all fit "
+            assertEquals(8, cache.size(),
+                    "8 entries (2 per stripe with per-stripe capacity 2) should all fit "
                             + "without eviction");
         }
     }

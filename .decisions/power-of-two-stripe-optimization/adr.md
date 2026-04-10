@@ -14,43 +14,38 @@ counts. For power-of-2 counts, `h & (stripeCount - 1)` is a single bitwise AND
 — no integer division. The current valid range (2-16) is already all powers of 2.
 
 ## Decision
-**Enforce power-of-2 stripe counts and use bitmask exclusively.**
+**Use power-of-2 stripe counts with bitmask exclusively. Non-power-of-2
+inputs are rounded up to the next power of 2.**
 
 ### Changes
-1. Validate in `StripedBlockCache` builder that stripe count is a power of 2:
-   `Integer.bitCount(stripeCount) == 1`
-2. Replace `% stripeCount` with `& (stripeCount - 1)` in `stripeIndex()`
-3. Store `stripeCount - 1` as a `stripeMask` field to avoid recomputing
-
-### Validation
-```java
-if (stripeCount <= 0 || Integer.bitCount(stripeCount) != 1) {
-    throw new IllegalArgumentException(
-        "stripeCount must be a positive power of 2, got: " + stripeCount);
-}
-```
+1. In `StripedBlockCache` constructor, round non-power-of-2 stripe counts up
+   to the next power of 2 via `Integer.highestOneBit()` shift
+2. Replace `% stripeCount` with `& stripeMask` using a pre-computed
+   `stripeMask = stripeCount - 1` field
+3. Add `stripeFor()` fast-path instance method that skips validation
+4. Static `stripeIndex()` retains power-of-2 validation for direct callers
 
 ## Rationale
-- The current valid range (2-16) is entirely powers of 2 — this constraint
-  matches existing usage with zero user impact.
+- Rounding up is friendlier than rejecting — callers don't need to know about
+  the optimization to benefit from it.
 - Bitmask is strictly faster than division and has zero risk of modulo bias.
-- Eliminates a conditional branch that would be needed for "branch on power-of-2
-  check" alternative.
+- Pre-computed `stripeMask` field eliminates the power-of-2 check on every
+  hot-path call.
 - Powers of 2 are the natural stripe count choice in all real-world cache designs.
 
 ## Key Assumptions
-- No use case requires non-power-of-2 stripe counts (e.g., 3, 5, 6).
+- Rounding up a small number of extra stripes is acceptable (e.g., 5 → 8 adds 3
+  unused stripes with minimal memory overhead).
 
 ## Conditions for Revision
-- If a use case requires non-power-of-2 stripe counts, fall back to the branch
-  approach (check at construction, store a boolean flag).
+- None anticipated — round-up is strictly better than rejection or modulo.
 
 ## Implementation Guidance
-1. Add power-of-2 validation to `StripedBlockCache` builder
+1. Round up non-power-of-2 stripe counts in `StripedBlockCache` constructor
 2. Store `int stripeMask = stripeCount - 1` as a field
-3. Replace `% stripeCount` with `& stripeMask` in `stripeIndex()`
-4. Also apply to `RendezvousOwnership` if it uses the same pattern
-5. Update tests to verify rejection of non-power-of-2 counts
+3. Add `stripeFor()` fast-path using `& stripeMask`
+4. Update `stripeIndex()` static method to use bitmask with validation
+5. Update tests to verify round-up behavior
 
 ## What This Decision Does NOT Solve
 - Hash quality or uniformity — addressed (and closed) by `hash-distribution-uniformity`

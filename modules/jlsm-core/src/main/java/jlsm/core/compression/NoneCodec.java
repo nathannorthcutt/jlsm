@@ -38,6 +38,15 @@ final class NoneCodec implements CompressionCodec {
     }
 
     @Override
+    public int maxCompressedLength(int inputLength) {
+        if (inputLength < 0) {
+            throw new IllegalArgumentException(
+                    "inputLength must be non-negative, got: " + inputLength);
+        }
+        return inputLength;
+    }
+
+    @Override
     public byte[] compress(byte[] input, int offset, int length) {
         Objects.requireNonNull(input, "input must not be null");
         if (offset < 0 || length < 0 || offset > input.length - length) {

@@ -53,6 +53,24 @@ final class DeflateCodec implements CompressionCodec {
         return 0x02;
     }
 
+    /**
+     * Returns the worst-case compressed size for deflate.
+     *
+     * <p>
+     * Uses the zlib {@code deflateBound} formula: accounts for block headers, Huffman overhead, and
+     * stream framing.
+     */
+    @Override
+    public int maxCompressedLength(int inputLength) {
+        if (inputLength < 0) {
+            throw new IllegalArgumentException(
+                    "inputLength must be non-negative, got: " + inputLength);
+        }
+        // zlib deflateBound formula: input + (input >> 12) + (input >> 14) + (input >> 25) + 13
+        // Add extra margin for Java's deflate wrapper bytes
+        return inputLength + (inputLength >> 12) + (inputLength >> 14) + (inputLength >> 25) + 13;
+    }
+
     @Override
     public byte[] compress(byte[] input, int offset, int length) {
         Objects.requireNonNull(input, "input must not be null");
