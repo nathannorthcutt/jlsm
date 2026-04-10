@@ -617,8 +617,10 @@ if [[ -d ".spec" && -d ".spec/domains" ]]; then
             | grep 'open_obligations' | head -1 || true)"
 
         # Count [UNRESOLVED] and [CONFLICT] markers in body
-        unresolved_count="$(grep -c '\[UNRESOLVED\]' "$spec_file" 2>/dev/null || echo 0)"
-        conflict_count="$(grep -c '\[CONFLICT\]' "$spec_file" 2>/dev/null || echo 0)"
+        unresolved_count="$( (grep -c '\[UNRESOLVED\]' "$spec_file" || true) 2>/dev/null)"
+        conflict_count="$( (grep -c '\[CONFLICT\]' "$spec_file" || true) 2>/dev/null)"
+        [[ -z "$unresolved_count" ]] && unresolved_count=0
+        [[ -z "$conflict_count" ]] && conflict_count=0
         obligation_count=$((unresolved_count + conflict_count))
 
         # Extract obligation text for display
@@ -947,6 +949,58 @@ if [[ -d ".decisions" ]]; then
     fi
 fi
 
+# ── Analysis 14: Orphaned specs (APPROVED specs with no matching code) ──────
+# For each APPROVED spec, extract subject tokens from requirements and search
+# for them in source files. Specs with zero source matches are potentially
+# orphaned — the behavior they describe may no longer exist.
+
+> "$TMPDIR_SCAN/spec-orphaned.txt"
+
+if [[ -d ".spec" && -f ".spec/registry/manifest.json" ]]; then
+    MANIFEST=".spec/registry/manifest.json"
+
+    while IFS= read -r fid; do
+        [[ -z "$fid" ]] && continue
+        spec_state=$(jq -r --arg id "$fid" '.features[$id].state // ""' "$MANIFEST")
+        [[ "$spec_state" != "APPROVED" ]] && continue
+
+        spec_rel=$(jq -r --arg id "$fid" '.features[$id].latest_file // ""' "$MANIFEST")
+        [[ -z "$spec_rel" ]] && continue
+        spec_file=".spec/$spec_rel"
+        [[ ! -f "$spec_file" ]] && continue
+
+        # Extract subject tokens from requirements (CamelCase + snake_case, 4+ chars)
+        subject_tokens=$(awk '/^---$/{n++; next} n==2{print} n>=3{exit}' "$spec_file" \
+            | grep -oE '[A-Z][a-zA-Z0-9]+|[a-z_][a-z_0-9]+' 2>/dev/null \
+            | awk 'length >= 4' \
+            | sort -u \
+            | grep -vE '^(must|should|shall|will|when|then|that|this|with|from|into|each|have|does|been|also|only|return|value|type|data|error|null|true|false|void|test|spec)$' \
+            || true)
+        [[ -z "$subject_tokens" ]] && continue
+
+        # Search for any of these tokens in source files (exclude .spec/, .kb/, .decisions/)
+        found=false
+        for token in $subject_tokens; do
+            if grep -rlq --max-count=1 "$token" \
+                --include='*.java' --include='*.ts' --include='*.py' \
+                --include='*.go' --include='*.rs' --include='*.js' --include='*.kt' \
+                --exclude-dir='.spec' --exclude-dir='.kb' --exclude-dir='.decisions' \
+                --exclude-dir='.feature' --exclude-dir='.claude' --exclude-dir='.curate' \
+                --exclude-dir='node_modules' --exclude-dir='.git' \
+                . 2>/dev/null; then
+                found=true
+                break
+            fi
+        done
+
+        if [[ "$found" == "false" ]]; then
+            spec_domains=$(jq -r --arg id "$fid" '.features[$id].domains // [] | join(",")' "$MANIFEST")
+            token_list=$(echo "$subject_tokens" | tr '\n' ',' | sed 's/,$//')
+            echo "ORPHANED|$fid|$spec_domains|$token_list" >> "$TMPDIR_SCAN/spec-orphaned.txt"
+        fi
+    done < <(jq -r '.features | keys[]' "$MANIFEST" 2>/dev/null)
+fi
+
 # ── Write summary file ──────────────────────────────────────────────────────
 
 SCAN_DATE="$(date +%Y-%m-%d)"
@@ -1224,6 +1278,18 @@ if [[ -s "$TMPDIR_SCAN/spec-absent.txt" ]]; then
     echo "" >> "$SUMMARY_FILE"
 fi
 
+# Orphaned specs (APPROVED but no matching source code)
+if [[ -s "$TMPDIR_SCAN/spec-orphaned.txt" ]]; then
+    echo "### Orphaned specs (no matching source code)" >> "$SUMMARY_FILE"
+    echo "APPROVED specs whose subject tokens were not found in any source file." >> "$SUMMARY_FILE"
+    echo "These may describe behavior that was removed without updating the spec." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ spec_id domains tokens; do
+        echo "- $spec_id — domains: $domains — tokens: $tokens" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/spec-orphaned.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
 # Deferred audit feedback
 if [[ -s "$TMPDIR_SCAN/audit-feedback.txt" ]]; then
     echo "## Deferred Audit Feedback" >> "$SUMMARY_FILE"
@@ -1273,6 +1339,7 @@ echo "  Specs with [ABSENT] reqs: $(wc -l < "$TMPDIR_SCAN/spec-absent.txt" 2>/de
 xref_total=$(( $(wc -l < "$TMPDIR_SCAN/xref-kb-tags.txt" 2>/dev/null || echo 0) + $(wc -l < "$TMPDIR_SCAN/xref-kb-applies.txt" 2>/dev/null || echo 0) + $(wc -l < "$TMPDIR_SCAN/xref-adr-kb.txt" 2>/dev/null || echo 0) ))
 echo "  Deferred audit feedback: $(wc -l < "$TMPDIR_SCAN/audit-feedback.txt" 2>/dev/null || echo 0)"
 echo "  Cross-ref candidates: $xref_total"
+echo "  Orphaned specs: $(wc -l < "$TMPDIR_SCAN/spec-orphaned.txt" 2>/dev/null || echo 0)"
 echo "  Roadmap needed: $(wc -l < "$TMPDIR_SCAN/roadmap-needed.txt" 2>/dev/null || echo 0)"
 
 # ── Update curation state ─────────────────────────────────────────────────

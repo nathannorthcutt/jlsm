@@ -19,6 +19,9 @@ domains: ["<domain1>", "<domain2>"]
 constructs: ["<ClassName>", "<InterfaceName>"]
 applies_to:
   - "<file path pattern>"
+related: []
+decision_refs: []
+spec_refs: []
 research_status: stable
 last_researched: "<YYYY-MM-DD>"
 ---
@@ -30,6 +33,9 @@ last_researched: "<YYYY-MM-DD>"
 - `domains` — the domains this feature touched (from domain analysis)
 - `constructs` — key types added or modified (public API surface)
 - `applies_to` — file patterns this feature owns
+- `related` — paths to other KB entries covering related concepts
+- `decision_refs` — ADR slugs from `.decisions/` that governed this feature
+- `spec_refs` — spec IDs from `.spec/` that this feature implements
 - `research_status: stable` — footprints don't go stale in the same way;
   they're historical records. Use `stable` (12-month staleness review)
 

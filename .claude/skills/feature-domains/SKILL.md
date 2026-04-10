@@ -129,8 +129,8 @@ Options:
 ```
 
 If **research**: read `brief.md`, identify the single highest-value research
-topic for this feature (the domain most likely to affect multiple design
-choices), and invoke `/research <topic> <category> "<subject>"` as a sub-agent.
+subject for this feature (the domain most likely to affect multiple design
+choices), and invoke `/research "<subject>" context: "feature-domains for <feature>, domain: <domain>"` as a sub-agent.
 After research completes, continue to Step 1.
 
 If **continue**: proceed to Step 1 normally. Per-domain research offers in
@@ -296,7 +296,7 @@ Display:
 Append `domains-research-commissioned` to cycle-log.md. Wait for user response.
 
 If "yes" (or any response other than "skip"):
-- Invoke `/research <topic> <category> "<subject>"` as a sub-agent immediately
+- Invoke `/research "<subject>" context: "feature-domains for <feature>, domain: <domain>"` as a sub-agent immediately
 - After research completes, verify the KB entry now exists
 - If yes → mark domain `resolved` in status.md, display `✓ <domain> — resolved`
 - If research failed or was incomplete → mark `gap-noted`, continue

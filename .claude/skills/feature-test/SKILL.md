@@ -429,12 +429,31 @@ For each finding, note:
   - `SPEC-BOUNDARY` — spec-adjacent edge case (Lens B, spec mode)
   - `SPEC-BLIND-SPOT` — no spec coverage at all (Lens B, spec mode)
   - `IMPL-RISK` — standard implementation risk (Lens B)
+  - `DISPLACEMENT` — behavior that must be verified as removed (from displacement resolution)
 - A specific defensive test case to add to the test plan
 - If from a spec requirement: the requirement ID (e.g., `R3`)
+- If from displacement: the displaced spec and requirement ID (e.g., `displaced: F05.R3`)
 
 These findings feed directly into the test plan as a "Defensive (from spec analysis)"
 section. Do NOT write a separate spec-analysis.md file — the findings are integrated
 into the test plan in the next step.
+
+### Displacement verification
+
+If the work-plan contains a `## Removal Work` section, derive negative tests
+for each removal work unit. These verify that displaced behavior is gone:
+
+For each removal entry (RW-1, RW-2, ...):
+1. Read the displaced spec requirement text to understand what behavior existed
+2. Derive a test that **asserts the behavior no longer exists**:
+   - API removed → calling it throws/returns an error
+   - Format no longer supported → input in old format is rejected with a clear error
+   - Configuration removed → using the old config produces a validation error
+   - Behavioral change → old behavior demonstrably not happening
+3. Tag as `covers: <existing_id>.<req_id> (displaced)` and finding type `DISPLACEMENT`
+
+These tests go in the "Displacement verification" section of the test plan
+(between "Spec requirements" and "Defensive").
 
 ---
 
@@ -485,6 +504,9 @@ Structural (from interface analysis)
   ...
 Spec requirements (from hardened specs)          ← only when specs loaded
   N. test_<name> — <scenario> — covers: R<N>
+  ...
+Displacement verification (removal tests)       ← only when removal work exists
+  N. test_<name> — <scenario> — covers: <FXX>.<RN> (displaced)
   ...
 Defensive (from spec analysis)
   N. test_<name> — <scenario> — finding: <CONTRACT-GAP | SPEC-BOUNDARY | SPEC-BLIND-SPOT | IMPL-RISK>: <description>
@@ -752,6 +774,27 @@ Update `.feature/CLAUDE.md`.
 
 Read `automation_mode` from status.md.
 
+### Determine next stage: hardening or implement
+
+Check the work-plan contracts for domain lens signals to decide whether
+hardening is needed. Count constructs with any of these contract properties:
+- Closeable/AutoCloseable, close/cleanup mentions → resource_lifecycle
+- Cross-module dependencies → contract_boundaries
+- Thread-safety mentions, `shares_state` edges → concurrency
+- Encode/decode, serialize/deserialize → data_transformation
+- Mutable state shared by 2+ constructs → shared_state
+
+**If zero lens signals OR only 1 construct in the work plan:**
+- Skip hardening — chain directly to `/feature-implement`.
+
+**If 1-2 lens signals AND 2-5 constructs:**
+- Chain to `/feature-harden "<slug>" --lite<  --unit WU-<n>>`.
+
+**If 3+ lens signals OR 6+ constructs:**
+- Chain to `/feature-harden "<slug>"<  --unit WU-<n>>`.
+
+### Chain execution
+
 **If `automation_mode: autonomous`:**
 
 Display the summary then chain immediately without prompting:
@@ -762,12 +805,11 @@ Display the summary then chain immediately without prompting:
 ───────────────────────────────────────────────
 Tests written and verified failing. Cycle <n><  · WU-<n>>.
 
-Starting implementation  ·  type stop to pause
+Starting <hardening | implementation>  ·  type stop to pause
 ───────────────────────────────────────────────
 ```
 
-Then invoke `/feature-implement "<slug>"<  --unit WU-<n>>` as a sub-agent
-immediately. Do not wait for user input.
+Then invoke the next stage as a sub-agent immediately.
 
 **If `automation_mode: manual` (or not set):**
 
@@ -785,9 +827,9 @@ Use AskUserQuestion with two options:
 - "Continue"
 - "Stop"
 
-If "Continue": invoke /feature-implement "<slug>"<  --unit WU-<n>> as a sub-agent immediately.
+If "Continue": invoke the next stage as a sub-agent immediately.
 If "Stop":
 ```
 When you're ready:
-  /feature-implement "<slug>"<  --unit WU-<n>>
+  /feature-harden "<slug>"<  --unit WU-<n>>   (or /feature-implement if skipping)
 ```

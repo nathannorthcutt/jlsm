@@ -76,16 +76,22 @@ descriptions. This is usually enough to answer the question.
 
 #### 1b — Cross-topic keyword scan (discovery path)
 
-Extract 3–5 keywords from the question. Search across ALL category-level
-`CLAUDE.md` files for entries whose descriptions match these keywords. This
-catches entries in unexpected topics/categories that are relevant to the query.
+Run: `bash .claude/scripts/kb-search.sh "<question>" --kb-root .kb --top 15`
 
-Read only the matching category `CLAUDE.md` files (not subject files). Merge
-any new candidates not already found in 1a. Mark keyword-matched candidates
-with the matching term so the user can see why they were surfaced.
+Parse the scored output. Treat results with score above 0.3 as keyword
+candidates. The LLM uses this ranked list to determine which categories to
+inspect — it does not need to scan raw index files. Mark each candidate with
+its score so the relevance gate (Step 1c) has a signal to work with.
 
-**Cost control:** category indexes are ~10-30 lines each. Even on a large KB
-(50 categories), the scan costs ~1-2K tokens — less than a single subject file.
+If `kb-search.sh` is not available (output is empty or script missing): fall
+back to the previous approach — extract 3–5 keywords from the question, search
+across ALL category-level `CLAUDE.md` files for entries whose descriptions
+match these keywords. Read only the matching category `CLAUDE.md` files (not
+subject files). Merge any new candidates not already found in 1a.
+
+**Cost control:** kb-search.sh reads only category CLAUDE.md files (Phase 1)
+plus subject frontmatter for top candidates (Phase 2). The LLM receives a
+ranked list — typically 10–20 lines — instead of raw index content.
 
 #### 1c — Relevance gate (prune before deep reads)
 
@@ -233,8 +239,7 @@ I can research the gaps now and update the KB.
 
 **If the user chooses to research:**
 
-For each gap or stale entry, invoke `/research <topic> <category> "<subject>"`
-as a sub-agent. Wait for it to complete.
+For each gap or stale entry, invoke `/research "<subject>" context: "kb query gap: <question>"` as a sub-agent. Wait for it to complete.
 
 After all research completes, re-answer the original question using the
 freshly written KB entries. Display:
@@ -306,7 +311,7 @@ Read `.kb/CLAUDE.md`. If the topic already exists:
 ```
 Topic '<name>' already exists.
 Path: .kb/<name>/
-Use /research <name> <category> "<subject>" to add research.
+Use /research "<subject>" to add research.
 Use /kb lookup <name> <category> <subject> to retrieve entries.
 ```
 Stop.
@@ -335,7 +340,7 @@ Display:
 Created : .kb/<name>/CLAUDE.md
 Updated : .kb/CLAUDE.md Topic Map
 
-Next: /research <name> <category> "<subject>"
+Next: /research "<subject>"
 ───────────────────────────────────────────────
 ```
 
@@ -345,7 +350,7 @@ Next: /research <name> <category> "<subject>"
 # <Topic Display Name> — Topic Index
 
 > **Managed by vallorcine agents. Use slash commands to modify this file.**
-> To add research: `/research <topic-name> <category> "<subject>"`
+> To add research: `/research "<subject>"`
 
 <description>
 

@@ -93,6 +93,55 @@ From cycle-log.md:
 - How many missing tests were found during refactor?
 - Were any contracts revised?
 
+### 2f — Displacement finalization
+
+**Skip this step if work-plan.md does not contain a `## Removal Work` section.**
+
+For each accepted displacement in the Removal Work table where removal tests
+pass (check cycle-log.md for test results):
+
+1. **Update the displaced spec:**
+   - Read the displaced spec file (resolve via registry)
+   - Set `state` → `INVALIDATED`
+   - Set `status` → `DEPRECATED`
+   - Set `displaced_by` → `["<new_spec_id>"]`
+   - Set `displacement_reason` → the reason from the displacement resolution
+     (captured in the resolved bundle's `## Displacement Resolution` section)
+   - Write the updated spec file
+
+2. **Update the manifest:**
+   ```bash
+   tmp=$(mktemp)
+   jq --arg id "<displaced_spec_id>" '.features[$id].state = "INVALIDATED"' \
+     .spec/registry/manifest.json > "$tmp" && mv "$tmp" .spec/registry/manifest.json
+   ```
+
+3. **Update the new spec's `invalidates` array** to include all accepted
+   displacement requirement refs (if not already present from spec-resolve).
+
+4. **Flag related artifacts for review:**
+   - If the displaced spec has `decision_refs`, present each to the user:
+     ```
+     ADR <slug> was referenced by now-invalidated spec <id>.
+     ```
+     Use AskUserQuestion: "Revisit via /decisions" / "Keep as-is"
+   - If the displaced spec has `kb_refs`, note them:
+     ```
+     KB entry <path> was referenced by invalidated spec <id>.
+     Flag for review during next /curate run.
+     ```
+
+5. **Log to cycle-log.md:**
+   ```markdown
+   ## <YYYY-MM-DD> — displacement-finalized
+   **Agent:** 🔍 Retro
+   **Displaced specs:** <list of spec IDs marked INVALIDATED>
+   **ADRs flagged:** <list or "none">
+   **KB entries flagged:** <list or "none">
+   **Reason:** <displacement reason>
+   ---
+   ```
+
 ---
 
 ## Step 3 — Display the retrospective
@@ -137,6 +186,12 @@ TDD EFFICIENCY
   Contract revisions: <n>
   Verdict: <clean | minor friction | significant rework>
 
+<If displacement finalization occurred:>
+DISPLACEMENT
+  Specs invalidated: <n>
+  ADRs flagged for review: <n>
+  KB entries flagged: <n>
+
 ───────────────────────────────────────────────
 ```
 
@@ -180,7 +235,7 @@ was discovered):
 
   Type **yes** to research and document · or: skip
 ```
-If "yes": invoke `/research <topic> <category> "<subject>"` as a sub-agent.
+If "yes": invoke `/research "<subject>" context: "feature-retro for <slug>, domain: <topic>/<category>"` as a sub-agent.
 
 ### Feature footprint
 
@@ -194,7 +249,7 @@ completed feature should leave a trace in the knowledge base.
   Key constructs: <new/modified types>
 ```
 
-Invoke `/research architecture feature-footprints "<slug>"` as a sub-agent,
+Invoke `/research "<slug> feature footprint" context: "feature-retro footprint for <slug>. Suggested: architecture/feature-footprints"` as a sub-agent,
 providing it with:
 - The domains from domains.md
 - The key constructs from work-plan.md (new + modified)
@@ -218,7 +273,7 @@ entries (from aTDD rounds or audit passes):
 ```
 
 If "yes": for each significant pattern (not one-off fixes), invoke
-`/research <domain> adversarial-findings "<pattern-name>"` as a sub-agent.
+`/research "<pattern-name>" context: "feature-retro adversarial finding from <slug>. Suggested: <domain>/adversarial-findings"` as a sub-agent.
 The research agent writes entries following the template at
 `.kb/_refs/adversarial-finding-template.md`.
 
@@ -248,25 +303,32 @@ capability index, skip silently.
 Check whether this feature contributes to an existing capability or
 introduces a new one.
 
-Read `.capabilities/CLAUDE.md` to get the current capability map.
-Read the feature brief to understand what was built.
+Read `.capabilities/CLAUDE.md` to get the domain map. Read the domain
+indexes to find existing capabilities. Read the feature brief to understand
+what was built.
 
 Use AskUserQuestion:
 - "Update existing capability" — this feature adds to or improves an
-  existing capability (select which one)
+  existing capability (select which one from any domain)
 - "Create new capability" — this feature introduces a genuinely new
   project capability
-- "Quality improvement" — this feature is a performance fix, bug fix,
-  or internal improvement that doesn't change what the project can do
-  (add as `type: quality` feature entry on the parent capability)
 - "Skip" — don't update the capability index
 
-If "Update existing" or "Quality improvement": read the selected capability
-entry. Add this feature to the `features:` array with a one-line
-description. Update the Recently Updated table in CLAUDE.md.
+If "Update existing": read the selected capability entry. Ask for the
+feature's role:
+
+Use AskUserQuestion:
+- "Core" — primary implementation of this capability
+- "Extends" — adds a new dimension to the capability
+- "Quality" — performance fix, bug fix, or internal improvement
+- "Enables" — prerequisite, but the capability is its own concern
+
+Add this feature to the `features:` array with the role and a one-line
+description. Update the Recently Updated table in the root CLAUDE.md and
+the domain CLAUDE.md.
 
 If "Create new": run `/capabilities add "<name>"` with the feature brief
-as context.
+as context. The add flow will handle domain placement and type selection.
 
 ---
 
@@ -284,6 +346,7 @@ Append `retro-complete` to cycle-log.md:
 **Actions taken:**
 - <ADR reviewed: <slug>> | <ADR created: <slug>> | <KB updated: <topic>>
 - Feature footprint: .kb/architecture/feature-footprints/<slug>.md
+- <If displacement finalized:> Displacement: <n> specs INVALIDATED, <n> ADRs flagged
 - <If adversarial findings graduated:> Adversarial findings: <n> patterns → .kb/
 - ...
 ---

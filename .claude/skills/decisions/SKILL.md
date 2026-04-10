@@ -212,7 +212,7 @@ Wait for the user's response. Use their answer to:
      yes  — I'll run /research and then come back to re-evaluate
      no   — proceed with what we have
    ```
-   If "yes": invoke `/research` as a sub-agent, then continue to Step 3 with
+   If "yes": invoke `/research "<subject>" context: "decisions revisit: <slug>"` as a sub-agent, then continue to Step 3 with
    the new KB entry available.
 
 3. **Determine if the user already knows the answer** — if they say "I want

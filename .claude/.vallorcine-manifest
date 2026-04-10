@@ -21,6 +21,7 @@
 .claude/skills/feature-resume/SKILL.md
 .claude/skills/feature-retro/SKILL.md
 .claude/skills/feature-test/SKILL.md
+.claude/skills/feature-harden/SKILL.md
 .claude/skills/kb/SKILL.md
 .claude/skills/project-context/SKILL.md
 .claude/skills/research/SKILL.md
@@ -50,6 +51,13 @@
 .claude/prompts/audit/reconcile-findings.md
 .claude/prompts/audit/prove-fix.md
 .claude/prompts/audit/prove-fix-orchestrator.md
+.claude/prompts/audit/report.md
+.claude/prompts/audit/aggregate-results.py
+.claude/prompts/audit/dedup-findings.py
+.claude/prompts/audit/check-test-coverage.py
+.claude/prompts/audit/reconcile-cards.py
+.claude/prompts/audit/extract-views.py
+.claude/prompts/audit/audit-state.py
 .claude/scripts/audit-budget.sh
 .claude/scripts/extract-findings.sh
 .claude/agents/architect-agent.md
@@ -71,6 +79,9 @@
 .claude/scripts/merge-driver-index.sh
 .claude/scripts/ensure-merge-driver.sh
 .claude/scripts/kb-freshness-check.sh
+.claude/scripts/kb-search.sh
+.claude/scripts/kb-search.py
+.claude/scripts/kb-search.js
 .claude/scripts/adr-validate.sh
 .claude/scripts/token-stop-hook.sh
 .claude/scripts/curate-scan.sh

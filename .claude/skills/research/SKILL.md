@@ -1,11 +1,17 @@
 ---
 description: "Research a technical topic and persist findings to the knowledge base"
-argument-hint: "<topic> <category> \"<subject>\""
+argument-hint: "\"<subject>\" [context: \"<hint>\"]"
 ---
 
-# /research <topic> <category> "<subject>"
+# /research "<subject>"
 
-Researches a technical topic and persists findings to .kb/<topic>/<category>/.
+Researches a subject and persists findings to `.kb/<topic>/<category>/`. The
+agent determines placement by scanning existing KB content and reasoning about
+domain fit — the caller does not pre-decide topic or category.
+
+For cross-cutting subjects that span multiple domains, the agent identifies
+independent **facets** and writes a focused article for each at the appropriate
+location. The user confirms the facet plan before anything is written.
 
 ---
 
@@ -17,118 +23,47 @@ If it does not exist, stop and say:
 
 ---
 
-## Step 0 — Clarification gate (ALWAYS FIRST)
+## Step 0 — Parse subject and context
 
-Display opening header first:
+Display opening header:
 ```
 ───────────────────────────────────────────────
 🔬 RESEARCH AGENT
 ───────────────────────────────────────────────
 ```
 
-Parse the invocation for topic and category.
+Parse the invocation:
 
-- If BOTH are provided (e.g. `/research algorithms vector-indexing "HNSW"`): proceed to Step 1
-- If EITHER is missing: display the clarification template below and wait for the user
+- **Required:** `<subject>` — the research question or topic to investigate.
+  This is a free-text description, not a path. Examples:
+  - `"HNSW graph construction"`
+  - `"join queries across partitioned tables with multiple index types"`
+  - `"Panama FFM inline machine code"`
 
-Clarification template:
-```
-── Clarification needed ────────────────────────
-Before I start researching, I need to confirm where to place the findings.
+- **Optional:** `context: "<hint>"` — free-text domain context passed by
+  callers (features, architects, retros). Used as an input signal during facet
+  identification, but never treated as a placement instruction. Examples:
+  - `context: "feature-domains for json-serialization, domain: storage"`
+  - `context: "architect decision: query-optimizer"`
+  - `context: "feature-retro footprint for F08. Suggested: architecture/feature-footprints"`
 
-Topic    : <value if provided, or "not specified">
-Category : <value if provided, or "not specified">
+If subject is missing: ask for it.
 
-Topics are broad domains (e.g. algorithms, ml, systems, research, hardware).
-Categories are focused clusters within a topic (e.g. vector-indexing, transformers, caching).
-
-Path will be: .kb/<topic>/<category>/<subject>.md
-
-Please confirm or provide the missing values.
-If unsure, suggest a topic and category and I will validate against existing entries.
-```
-
-After the user responds: echo confirmed values, then proceed.
-
-### Topic resolution (ALWAYS read .kb/CLAUDE.md first)
-
-1. Read `.kb/CLAUDE.md` — the Topic Map table is the authoritative list of
-   approved topics. Any topic that already has a row there is valid.
-
-2. If the user's topic matches an existing row: proceed.
-
-3. If the topic does not exist in .kb/CLAUDE.md:
-   - If `.kb/CLAUDE.md` Topic Map is empty (new project): suggest from the
-     default list below and offer to create it
-   - If the Topic Map has entries but this topic isn't there: tell the user
-     the topic doesn't exist yet and offer to create it:
-
-```
-── New topic needed ─────────────────────────────
-"<topic>" is not in the knowledge base yet.
-
-Existing topics: <list from .kb/CLAUDE.md Topic Map>
-
-To add it: /kb topic "<topic>" "<one-line description>"
-```
-
-   Use AskUserQuestion with these options:
-   - `Create topic` (description: "Create the topic now and continue with research")
-   - `Manual` (description: "Stop here — you will create the topic yourself")
-
-   If "Create topic": invoke `/kb topic "<topic>" "<description>"` as a sub-agent,
-   wait for it to complete, then proceed with the research session.
-   If "Manual": stop and let the user run it manually.
-
-4. Never add a topic row to .kb/CLAUDE.md directly from /research —
-   that is /kb topic's job.
-
-### Default topic suggestions (for empty knowledge bases only)
-
-| Topic | Covers |
-|-------|--------|
-| `algorithms` | Algorithm designs, complexity analysis, pseudocode |
-| `ml` | Machine learning methods, architectures, training techniques |
-| `systems` | Infrastructure, databases, distributed systems, caching |
-| `research` | Academic papers, survey summaries, open problems |
-| `hardware` | GPU/CPU architecture, memory systems, accelerators |
-
-Users may define any topic name — these are starting suggestions, not an
-exhaustive list.
+Display confirmed subject and any provided context, then proceed.
 
 ---
 
-## Step 1 — Pre-flight index check
+## Step 1 — Preliminary web research
 
-1. Read `.kb/CLAUDE.md` — check if topic exists in the domain map
-2. Read `.kb/<topic>/CLAUDE.md` — check if category exists (if topic file exists)
-3. Read `.kb/<topic>/<category>/CLAUDE.md` — check what subjects already exist (if category exists)
+Display: `── Preliminary research ─────────────────────`
 
-Display:
-```
-── Pre-flight check ─────────────────────────────
-```
-Report to user:
-- What already exists in this topic/category
-- What research gaps are noted in the category index
-- What you plan to research
+**Goal:** Understand what this subject actually is and what domains it touches.
+This happens BEFORE any KB scan or placement decisions.
 
-If category already has content, use AskUserQuestion with these options:
-- `Proceed` (description: "Continue with research despite existing content")
-- `Stop` (description: "Cancel — this category already has coverage")
-
----
-
-## Step 2 — Web research
-
-Display: `── Researching ──────────────────────────────`
-
-For each subject:
-1. Search: `<subject> algorithm site:arxiv.org OR site:github.com OR site:wikipedia.org`
-2. Search: `<subject> implementation pseudocode complexity analysis`
-3. Search: `<subject> benchmark <current_year - 1> OR <current_year>`
-4. Fetch full content from top 3–5 authoritative sources
-5. Record every URL with title and access date — these go in the sources frontmatter
+Perform 2–3 targeted searches:
+1. `<subject> overview site:arxiv.org OR site:github.com OR site:wikipedia.org`
+2. `<subject> use cases tradeoffs implementation`
+3. If context hint provided: `<subject> <domain keyword from context>`
 
 ### Fetch discipline
 
@@ -144,39 +79,206 @@ Fetches can hang indefinitely on slow or unresponsive sources. Rules:
   as `(not fetched — timeout/error)` so future research knows to try again or
   use a different source. Do not retry in the same session.
 
+From the research, extract working notes (not the final article):
+- What domains/concerns does this subject touch?
+- What distinct audiences would benefit from this research?
+- What are the main trade-off dimensions?
+- What sources were found, with URLs and access dates?
+
 ---
 
-## Step 3 — Write subject files
+## Step 2 — KB scan
+
+Display: `── Scanning existing KB ─────────────────────`
+
+Run:
+```bash
+bash .claude/scripts/kb-search.sh "<subject>" --kb-root .kb --top 15
+```
+
+Parse the scored output. For each result with a non-trivial score:
+- Read the subject file's frontmatter (title, aliases, tags, related)
+- Note which categories have existing related content
+
+Display:
+```
+── KB scan results ───────────────────────────────
+  <score>  <topic>/<category>/<subject>  — <title>
+  <score>  <topic>/<category>/<subject>  — <title>
+  ...
+  (<n> results)
+```
+
+If `kb-search.sh` is not available (script missing, no runtime): fall back to
+reading `.kb/CLAUDE.md` root index and scanning category CLAUDE.md files
+manually for keyword overlap with the subject.
+
+---
+
+## Step 3 — Facet identification
+
+Display: `── Identifying facets ──────────────────────`
+
+Combine three inputs:
+- What the preliminary web research found (Step 1 working notes)
+- What KB scan shows already exists (Step 2 results)
+- The caller's context hint, if provided
+
+### Default assumption: 1 facet
+
+Assume the subject is a single facet unless there is a clear reason to split.
+A facet is justified ONLY when ALL of these conditions are met:
+
+1. The facet addresses a **distinct concern** (not just a different section of the same article)
+2. The facet serves a **different audience** (someone navigating to topic A would not look in topic B)
+3. The facet has **unique actionable content** — different algorithm steps, different tradeoffs, different implementation notes. Shared summary is fine; shared everything-else means it's not a real split.
+4. The content **cannot live in the same article** without confusing the reader or diluting the focus.
+
+**Invalid splits** (do NOT create separate facets for these):
+- "HNSW construction" and "HNSW querying" → same algorithm, same audience, one article with two sections
+- The same content reframed for a slightly different angle → one article covers both angles
+
+**Valid splits:**
+- "BM25 ranking" → `algorithms/information-retrieval` (the scoring function) AND `systems/search-infrastructure` (operational search service concerns)
+- "Lock-free queues" → `algorithms/concurrency` (the algorithm design) AND `systems/messaging` (deployment in message-passing systems)
+
+### Justification required for each additional facet
+
+For facet 2 and beyond, state:
+- What concern this facet addresses
+- What audience it serves
+- Why this content cannot live in the same article as the prior facets
+- What unique actionable sections it will contain
+
+### Existing coverage check
+
+If a KB entry already fully covers a proposed facet (discovered in Step 2),
+skip that facet. Note it in the display so the user knows it's already covered.
+
+### Placement determination
+
+For each facet, suggest:
+- **Topic** — broad domain (e.g. `algorithms`, `systems`, `ml`). Check
+  `.kb/CLAUDE.md` Topic Map for existing topics. Prefer existing topics.
+- **Category** — focused cluster within the topic (e.g. `vector-indexing`,
+  `partitioning`). Check `.kb/<topic>/CLAUDE.md` for existing categories.
+  Prefer existing categories when the fit is good.
+- **Filename** — kebab-case of the facet's core concept
+
+If a topic or category doesn't exist yet, note that it will be created. New
+topics need a one-line description.
+
+### Cap
+
+Maximum 10 facets per research session. If analysis suggests more than 10,
+consolidate related concerns or flag that the subject is too broad and ask
+the user to narrow it.
+
+---
+
+## Step 4 — User confirmation of facet plan
+
+Display the facet plan:
+```
+── Facet plan ──────────────────────────────────
+Subject: "<subject>"
+
+Proposed facets (<N>):
+
+  [1] <Facet title>
+      Path: .kb/<topic>/<category>/<filename>.md
+      Audience: <who benefits from this article>
+      Distinct because: <one-line justification>
+
+  [2] <Facet title>
+      Path: .kb/<topic>/<category>/<filename>.md
+      Audience: <who benefits>
+      Distinct because: <justification>
+
+  [Already covered — no new article]
+      <topic>/<category>/<subject> already covers <concern>.
+
+Related KB entries that will be cross-linked:
+  <topic>/<category>/<subject> — <title>
+  ...
+───────────────────────────────────────────────
+```
+
+Use AskUserQuestion with these options:
+- `Confirm` (description: "Proceed with this facet plan")
+- `Modify` (description: "I want to change placements, add, or remove facets")
+- `Stop` (description: "Cancel research session")
+
+If "Modify": ask the user what to change, update the plan, and re-display.
+Continue until the user confirms or stops.
+
+If "Stop": end the session.
+
+---
+
+## Step 5 — Targeted research pass (per facet, if needed)
+
+For each confirmed facet, assess whether the preliminary research from Step 1
+provides enough depth to write a full, useful article.
+
+If a facet needs more depth:
+- Perform one additional targeted web search: `<subject> <facet-specific angle>`
+- Fetch 1–2 additional authoritative sources specific to this facet
+- Same fetch discipline as Step 1
+
+**This is the second and final research pass.** No further web research loops.
+Write the article with what you have — note gaps in the Research Gaps section
+of the category index for future research sessions.
+
+---
+
+## Step 6 — Write subject files
 
 Display: `── Writing KB entries ───────────────────────`
 
-- Path: `.kb/<topic>/<category>/<subject>.md`
-- Filename: kebab-case of the subject name (e.g. `hnsw.md`, `ivf-flat.md`)
-- Keep under 200 lines; if longer, extract to `<subject>-detail.md` and add `@./<subject>-detail.md` at the bottom
-- If file already exists: append `## Updates YYYY-MM-DD` section — NEVER overwrite
-- Populate `applies_to:` frontmatter with source file paths this research is
-  relevant to (if known from the research context, commissioning ADR, or feature
-  work). Leave empty if no specific files are known — `/curate` will help
-  populate this over time as correlations are discovered.
-- Populate `related:` with paths to other KB entries this research connects to
-  (e.g. `["algorithms/concurrency/lock-free-queues", "systems/storage/wal-segments"]`).
-  These are entries in different topics/categories that cover related concepts.
-  Only add links you can verify exist. Leave empty if no cross-topic links are known.
-- Populate `decision_refs:` with ADR slugs from `.decisions/` that commissioned
-  or depend on this research (e.g. `["vector-encoding", "cache-strategy"]`).
-  Only add slugs where `.decisions/<slug>/adr.md` exists.
+Write one full article per confirmed facet.
 
-Use the Subject File Template below.
+- Path: `.kb/<topic>/<category>/<filename>.md`
+- Use the Subject File Template below
+- Keep under 200 lines; extract overflow to `<subject>-detail.md` with
+  `@./<subject>-detail.md` at the bottom
+- If file already exists: append `## Updates YYYY-MM-DD` section — NEVER overwrite
+- Populate `applies_to:` from the context hint if it implies specific files
+- Populate `decision_refs:` from the context hint if it references an ADR
+- Populate `related:` — see cross-linking rules below
+
+### Cross-linking rules
+
+1. **All new articles link to each other.** Every article written in this
+   session must include the other new articles in its `related:` list.
+
+2. **Update existing entries.** For each existing KB entry identified as
+   related in Step 2 (KB scan results that the user confirmed in the facet
+   plan), read that entry and append the new article's path to its `related:`
+   list. Use the update rule — never overwrite, only append.
+
+3. **Only add links you can verify exist.** Check that the target file is
+   present before adding a related link.
+
+### Topic and category creation
+
+If a facet requires a new topic or category:
+- **New topic:** Create `.kb/<topic>/CLAUDE.md` using the Topic Index Template
+  (defined below). Add a row to `.kb/CLAUDE.md` Topic Map.
+- **New category:** Create `.kb/<topic>/<category>/CLAUDE.md` using the
+  Category CLAUDE.md Template (defined below). Add a row to the topic's
+  CLAUDE.md.
 
 ---
 
-## Step 4 — Update CLAUDE.md indexes (bottom-up, always in this order)
+## Step 7 — Update CLAUDE.md indexes (bottom-up, always in this order)
 
 **1. Category CLAUDE.md** — `.kb/<topic>/<category>/CLAUDE.md`
 - Add new subjects to the Contents table
 - Update comparison summary if 2+ subjects now exist in this category
 - Update research gaps list
 - Update last_updated and file count
+- Update `Tags:` line if new keywords are relevant
 
 **2. Topic CLAUDE.md** — `.kb/<topic>/CLAUDE.md`
 - Add category row if new, or update file count and last_updated for existing
@@ -189,6 +291,26 @@ Use the Subject File Template below.
 - Cap enforcement: if Recently Added exceeds 10 rows, move oldest rows to
   `.kb/_archive.md` (create if needed) with pointer: `Older entries: [_archive.md](_archive.md)`
 - Hard cap: `.kb/CLAUDE.md` must stay under 80 lines at all times
+
+---
+
+## Step 8 — Closing report
+
+Display after all indexes are updated:
+```
+───────────────────────────────────────────────
+🔬 RESEARCH AGENT complete
+───────────────────────────────────────────────
+Facets written: <n>
+  .kb/<topic1>/<cat1>/<subject1>.md
+  .kb/<topic2>/<cat2>/<subject2>.md
+  ...
+Cross-links: <n> existing entries updated
+Updated: <n> CLAUDE.md indexes
+───────────────────────────────────────────────
+```
+
+To query what's in the KB later: `/kb "<question>"`
 
 ---
 
@@ -309,10 +431,10 @@ claim) or down (a cited benchmark turns out to be synthetic).
 ## Category CLAUDE.md Template
 
 Created when the first subject in a category is written. The `Tags:` line
-lists keywords that the cross-topic keyword scan uses for discovery. Include
-synonyms, abbreviations, and domain-specific terms that someone searching
-for this category's content might use. Example: a compression category might
-have `Tags: lz4, zstd, snappy, entropy, codec, deflate, block-compression`.
+lists keywords that kb-search.sh uses for discovery. Include synonyms,
+abbreviations, and domain-specific terms that someone searching for this
+category's content might use. Example: a compression category might have
+`Tags: lz4, zstd, snappy, entropy, codec, deflate, block-compression`.
 
 ```markdown
 # <Category> — Category Index
@@ -339,6 +461,34 @@ have `Tags: lz4, zstd, snappy, entropy, codec, deflate, block-compression`.
 
 ## Shared References Used
 @../../_refs/complexity-notation.md
+```
+
+---
+
+## Topic Index Template
+
+Created when a new topic is needed for a facet. Used by Step 6 when creating
+topics that don't exist yet.
+
+```markdown
+# <Topic Display Name> — Topic Index
+
+> **Managed by vallorcine agents. Use slash commands to modify this file.**
+> To add research: `/research "<subject>"`
+
+<one-line description of what this topic covers>
+
+## Categories
+
+| Category | Path | Files | Last Updated | Description |
+|----------|------|-------|--------------|-------------|
+
+## Navigation
+Read the category CLAUDE.md to see individual subjects and comparisons.
+Use /kb lookup <topic-name> <category> <subject> to load a specific entry.
+
+## Research Gaps
+<!-- Added by the Research Agent as categories are populated -->
 ```
 
 ---
@@ -373,34 +523,22 @@ Any prior errors found and corrected, with explanation.
 
 ---
 
-## Closing report
-
-Display after all indexes are updated:
-```
-───────────────────────────────────────────────
-🔬 RESEARCH AGENT complete
-⏱  Token estimate: ~<N>K
-   Loaded: KB indexes ~3K, <n> source pages fetched
-   Wrote:  <n> subject files, <n> CLAUDE.md indexes updated
-───────────────────────────────────────────────
-Wrote: .kb/<topic>/<category>/<subject>.md
-Updated: category index, topic index, KB root index
-```
-
-To query what's in the KB later: `/kb "<question>"`
-
----
-
 ## Quality checklist (self-verify before ending session)
 
-- [ ] Clarification gate fired and resolved — both topic and category confirmed
+- [ ] Preliminary web research completed before KB scan
+- [ ] KB scan ran (or fallback used) to find existing related content
+- [ ] Facet plan confirmed by user before any files were written
+- [ ] Each additional facet beyond the first has explicit justification
 - [ ] All subject files are at .kb/<topic>/<category>/<subject>.md
 - [ ] Every subject file has topic and category in frontmatter
 - [ ] Every subject file has sources frontmatter with URLs and accessed dates
 - [ ] Every ## section heading is lowercase and hyphenated
 - [ ] code-skeleton section contains runnable pseudocode
 - [ ] No subject file exceeds 200 lines
-- [ ] Category CLAUDE.md contents table updated
+- [ ] All new articles cross-linked to each other via related:
+- [ ] Existing related entries updated with new article paths
+- [ ] context: hint reflected in applies_to: and decision_refs: where applicable
+- [ ] Category CLAUDE.md contents table updated (Tags line reviewed)
 - [ ] Topic CLAUDE.md category row updated
 - [ ] .kb/CLAUDE.md Recently Added table updated, line count under 80
 - [ ] No existing file was overwritten

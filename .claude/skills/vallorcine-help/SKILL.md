@@ -61,7 +61,7 @@ command to run, then explain what it does and what the user can expect.
 
 **Knowledge and decisions:**
 - `/kb "<question>"` — query the knowledge base in plain language
-- `/research <topic> <category> "<subject>"` — run a research session, writes to `.kb/`
+- `/research "<subject>"` — run a research session, agent determines placement, writes to `.kb/`
 - `/architect "<problem>"` — run an architecture decision session with full deliberation and falsification
 - `/decisions "<question>"` — query existing decisions in plain language
 - `/decisions backfill [<path>]` — surface implicit decisions from past work (prefer `/curate` for broader review)

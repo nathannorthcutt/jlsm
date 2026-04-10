@@ -173,6 +173,29 @@ Read in order:
      ```
      These are carried forward as open risks in the work plan.
 
+   **Displacement gate:** After the conflict gate, check if the bundle contains
+   a `## Displacement Resolution` section. If it does:
+
+   Parse the resolution table. For each row with Decision = "Accept":
+
+   Display:
+   ```
+   📋 Displacement accepted — removal work required:
+     <existing_spec_id>.<req_id> will be invalidated by this feature.
+     <Show the existing requirement text>
+   ```
+
+   These accepted displacements become **removal work units** in the work plan.
+   For each one, identify the construct(s) in the existing codebase that
+   implement the displaced behavior — these are the constructs to remove.
+
+   Add a `## Removal Work` section to the work plan (see Step 2).
+
+   For rows with Decision = "Defer": record in `## Open Risks`:
+   ```markdown
+   - Deferred displacement: <new_id> vs <existing_id>.<req_id> — unresolved
+   ```
+
 8. Read project coding conventions: `CONTRIBUTING.md`, `.claude/rules/`,
    and any language-specific style guides. These constrain the design space
    for construct shapes.
@@ -194,6 +217,22 @@ to at least one construct. If a requirement can't be mapped, add a construct
 or extend an existing one — do not present a gap to the user.
 
 **If no specs exist:** derive contracts from the brief and ADRs as before.
+
+**If displacement was accepted in Step 1:** for each accepted displacement,
+derive a **removal contract**. Read the existing codebase to identify which
+construct(s) implement the displaced behavior. For each:
+- Add a removal entry to the `## Removal Work` section of the work plan:
+  ```markdown
+  ## Removal Work
+  | ID | Displaced Spec | Requirement | Construct | Action |
+  |------|----------------|-------------|-----------|--------|
+  | RW-1 | <existing_id> | <req_id> | <construct name> | Remove |
+  ```
+- The removal contract is: "Remove behavior described by <existing_id>.<req_id>.
+  Assert the behavior no longer exists."
+- Removal work units appear in the Implementation Order alongside addition
+  work units. They are sequenced *after* the addition work that replaces
+  the displaced behavior (remove old after new is proven working).
 
 ### Self-check (before presenting to the user)
 

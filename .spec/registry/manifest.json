@@ -10,7 +10,7 @@
     "serialization": {
       "shard_path": "domains/serialization/INDEX.md",
       "description": "encoding decoding sstable document serializer binary format footer",
-      "feature_count": 3
+      "feature_count": 4
     },
     "storage": {
       "shard_path": "domains/storage/INDEX.md",
@@ -30,7 +30,7 @@
     "engine": {
       "shard_path": "domains/engine/INDEX.md",
       "description": "database engine table catalog schema partition",
-      "feature_count": 5
+      "feature_count": 6
     }
   },
   "features": {
@@ -133,6 +133,14 @@
       "latest_file": "domains/engine/F14-jlsm-document.md",
       "state": "DRAFT",
       "domains": [
+        "engine"
+      ]
+    },
+    "F15": {
+      "latest_file": "domains/serialization/F15-json-only-simd-jsonl.md",
+      "state": "DRAFT",
+      "domains": [
+        "serialization",
         "engine"
       ]
     }

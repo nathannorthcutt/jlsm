@@ -358,23 +358,6 @@ class BoundedStringOpeTest {
     }
 
     // =========================================================================
-    // YAML round-trip with BoundedString
-    // =========================================================================
-
-    @Test
-    void yaml_boundedStringField_roundTrip() {
-        JlsmSchema schema = JlsmSchema.builder("test", 1).field("code", FieldType.string(10))
-                .field("name", FieldType.string()).build();
-
-        JlsmDocument doc = JlsmDocument.of(schema, "code", "XY", "name", "hello");
-        String yaml = doc.toYaml();
-
-        JlsmDocument parsed = JlsmDocument.fromYaml(yaml, schema);
-        assertEquals("XY", parsed.getString("code"));
-        assertEquals("hello", parsed.getString("name"));
-    }
-
-    // =========================================================================
     // Helpers
     // =========================================================================
 

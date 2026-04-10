@@ -111,6 +111,21 @@ Check that `.decisions/<slug>/adr.md` exists.
 **kb_refs:** KB paths from `.kb/` that informed this feature.
 Check that `.kb/<path>.md` exists.
 
+**displaced_by:** Set by the pipeline during displacement finalization — do
+not populate manually. Array of spec IDs (FXX format) that caused this spec
+to be INVALIDATED.
+
+**revived_by:** Set by the pipeline when a new spec revives this one — do
+not populate manually. Array of spec IDs.
+
+**revives:** Set when authoring a spec informed by an INVALIDATED predecessor.
+Array of spec IDs whose behavioral intent this spec restores (in whole or
+part). Each target must have `state: "INVALIDATED"`.
+
+**displacement_reason:** Set during displacement finalization. Free text
+explaining why this spec was displaced — captures the what/why for future
+inspection.
+
 ---
 
 ## Step 5 — Determine version and file path
@@ -152,6 +167,10 @@ Use this exact structure:
   "amended_by": [],
   "requires": [<feature ids or empty>],
   "invalidates": [<FXX.RN refs or empty>],
+  "displaced_by": [],
+  "revives": [<FXX ids of INVALIDATED specs this revives, or empty>],
+  "revived_by": [],
+  "displacement_reason": "",
   "decision_refs": [<ADR slugs or empty>],
   "kb_refs": [<KB paths or empty>],
   "open_obligations": [<obligation strings or empty>]

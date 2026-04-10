@@ -75,6 +75,67 @@ modifies their interfaces, load them individually:
 
 ---
 
+## Step 3.5 — Displacement resolution
+
+If the bundle contains a `## Displacement` section, the resolver detected
+that new spec requirements contradict existing APPROVED specs. Each
+displacement must be resolved before the bundle is complete.
+
+**Skip this step entirely if no `## Displacement` section exists.**
+
+### Parse and group
+
+Parse each `DISPLACED:` line from the section. Group by existing spec ID
+so the user sees all displacements per spec together.
+
+### Resolve each displacement
+
+For each displaced existing spec, display:
+```
+── Displacement detected ─────────────────────
+  New: <new_id>.<req_id> — "<requirement text>"
+  Existing: <existing_id>.<req_id> — "<requirement text>"
+  Signal: <signal from DISPLACED line>
+```
+
+Read the full requirement text from both spec files to give the user context.
+
+Use AskUserQuestion with options:
+- **"Accept"** (description: invalidate the existing requirement — adds
+  `<existing_id>.<existing_req_id>` to the new spec's `invalidates` array)
+- **"Narrow new spec"** (description: revise the new spec to avoid the
+  conflict — stop and re-run after editing)
+- **"Narrow old spec"** (description: revise the existing spec to coexist
+  — stop and re-run after editing)
+- **"Defer"** (description: record as unresolved obligation and continue)
+
+### Process decisions
+
+- **Accept:** Record `<existing_id>.<existing_req_id>` for the new spec's
+  `invalidates` array. The spec-write step will include it when registering.
+- **Narrow new / Narrow old:** Stop the resolve. Display which spec needs
+  editing and suggest `/spec-author` to make the revision. The bundle is
+  incomplete — the user must re-run `/spec-resolve` after editing.
+- **Defer:** Append `[UNRESOLVED: displacement — <new_id> vs <existing_id>]`
+  to the new spec's `open_obligations`. The spec will remain DRAFT and be
+  excluded from downstream stages until resolved.
+
+### Append resolution summary
+
+After all displacements are resolved (or deferred), append to the bundle:
+```markdown
+## Displacement Resolution
+| Existing Spec | Requirement | Decision | Action |
+|---------------|-------------|----------|--------|
+| <id> | <req_id> | Accept | → invalidates in new spec |
+| <id> | <req_id> | Defer | → open_obligations in new spec |
+```
+
+If any decision was "Narrow new" or "Narrow old", the bundle output stops
+here — do not proceed to Step 4.
+
+---
+
 ## Step 4 — Output the bundle
 
 Emit the complete bundle. Do not summarize, rewrite, or interpret it.

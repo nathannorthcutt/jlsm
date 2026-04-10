@@ -128,7 +128,7 @@ class VectorFieldTypeAdversarialTest {
                 "Non-VECTOR index should reject non-null similarityFunction");
     }
 
-    // ── VFT-11 / VFT-12: JSON/YAML round-trip with non-finite floats ───
+    // ── VFT-11 / VFT-12: JSON round-trip with non-finite floats ─────────
 
     /**
      * VFT-11: JsonWriter writes NaN as "null" but JsonParser cannot parse "null" back into a float.

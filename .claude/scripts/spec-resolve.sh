@@ -2,6 +2,8 @@
 # spec-resolve.sh — deterministic context bundle builder
 # Usage: spec-resolve.sh "<feature description>" [token-budget]
 # Optional env: OVERRIDE_DOMAINS="storage,compaction"
+# Optional env: NEW_SPEC_FILES="path1:path2" — draft specs to check for displacement
+# Optional env: INCLUDE_INVALIDATED=true — include INVALIDATED specs in separate section
 # Output: markdown bundle on stdout | diagnostics on stderr
 
 set -euo pipefail
@@ -113,6 +115,29 @@ for fid in "${ALL_FEATURE_IDS[@]}"; do
     fi
   fi
 done
+
+# Collect INVALIDATED specs separately when requested (for revival detection)
+INVALIDATED_FILES=()
+if [[ "${INCLUDE_INVALIDATED:-}" == "true" ]]; then
+  for fid in "${ALL_FEATURE_IDS[@]}"; do
+    feature_domains=$(jq -r --arg id "$fid" '.features[$id].domains // [] | .[]' "$MANIFEST")
+    matched=false
+    for fd in $feature_domains; do
+      for md in "${MATCHED_DOMAINS[@]}"; do
+        [[ "$fd" == "$md" ]] && matched=true && break 2
+      done
+    done
+    [[ "$matched" != "true" ]] && continue
+    spec_file=$(spec_file_for_id "$MANIFEST" "$fid")
+    [[ -z "$spec_file" || ! -f "$spec_file" ]] && continue
+    spec_check_crlf "$spec_file" 2>/dev/null || continue
+    state=$(fm "$spec_file" '.state // "UNKNOWN"')
+    if [[ "$state" == "INVALIDATED" ]]; then
+      INVALIDATED_FILES+=("$spec_file")
+    fi
+  done
+  echo "[resolve] INVALIDATED specs found: ${#INVALIDATED_FILES[@]}" >&2
+fi
 
 echo "[resolve] Candidates: ${#CANDIDATE_FILES[@]} files" >&2
 
@@ -278,6 +303,109 @@ for f in "${ALL_FILES[@]+"${ALL_FILES[@]}"}"; do
   done < <(machine_section "$f" | grep -E '^R[0-9]+\.')
 done
 
+# ── Step 7c: Displacement detection ─────────────────────────────────────────
+# When NEW_SPEC_FILES is set, check if new specs' requirements contradict
+# existing APPROVED specs. Detection is mechanical: subject-token overlap
+# combined with antonym pairs or displacement signal keywords.
+
+DISPLACEMENTS=""
+
+if [[ -n "${NEW_SPEC_FILES:-}" ]]; then
+  IFS=':' read -ra NEW_FILES <<< "$NEW_SPEC_FILES"
+
+  # Displacement signal keywords (lowercased, checked in new spec requirements)
+  DISPLACEMENT_KEYWORDS=(
+    "only support" "replace" "remove" "eliminate" "drop support"
+    "no longer" "prohibit" "must not support" "exclusive"
+  )
+
+  for new_file in "${NEW_FILES[@]}"; do
+    [[ ! -f "$new_file" ]] && {
+      echo "[resolve] Warning: NEW_SPEC_FILES entry not found: $new_file" >&2
+      continue
+    }
+    new_id=$(fm "$new_file" '.id')
+    [[ -z "$new_id" ]] && continue
+
+    # Extract requirements from the new spec
+    while IFS= read -r new_req_line; do
+      [[ -z "$new_req_line" ]] && continue
+      new_req_id=$(echo "$new_req_line" | grep -oE '^R[0-9]+' || true)
+      [[ -z "$new_req_id" ]] && continue
+      new_lower=$(echo "$new_req_line" | tr '[:upper:]' '[:lower:]')
+
+      # Extract subject tokens from new requirement
+      new_tokens=$(echo "$new_req_line" | grep -oE '[A-Z][a-zA-Z0-9]+|[a-z_][a-z_0-9]+' | sort -u)
+
+      for existing_file in "${ALL_FILES[@]+"${ALL_FILES[@]}"}"; do
+        existing_id=$(fm "$existing_file" '.id')
+        [[ "$existing_id" == "$new_id" ]] && continue  # skip self
+
+        while IFS= read -r existing_req_line; do
+          [[ -z "$existing_req_line" ]] && continue
+          existing_req_id=$(echo "$existing_req_line" | grep -oE '^R[0-9]+' || true)
+          [[ -z "$existing_req_id" ]] && continue
+          existing_lower=$(echo "$existing_req_line" | tr '[:upper:]' '[:lower:]')
+
+          # Check for subject token overlap
+          existing_tokens=$(echo "$existing_req_line" | grep -oE '[A-Z][a-zA-Z0-9]+|[a-z_][a-z_0-9]+' | sort -u)
+          shared_token=""
+          for nt in $new_tokens; do
+            [[ ${#nt} -lt 4 ]] && continue
+            case "$nt" in
+              must|should|shall|will|when|then|that|this|with|from|into|each|have|does|been|also|only) continue ;;
+            esac
+            for et in $existing_tokens; do
+              if [[ "$nt" == "$et" ]]; then
+                shared_token="$nt"
+                break 2
+              fi
+            done
+          done
+          [[ -z "$shared_token" ]] && continue
+
+          # Check 1: antonym-pair contradictions (same 12 pairs as Step 7b)
+          signal=""
+          for pair in "must reject:must accept" "must accept:must reject" \
+                      "must be null:must not be null" "must not be null:must be null" \
+                      "must throw:must not throw" "must not throw:must throw" \
+                      "must fail:must succeed" "must succeed:must fail" \
+                      "must ignore:must require" "must require:must ignore" \
+                      "is immutable:is mutable" "is mutable:is immutable" \
+                      "must return null:must not return null" "must not return null:must return null" \
+                      "must be empty:must not be empty" "must not be empty:must be empty"; do
+            pat_a="${pair%%:*}"
+            pat_b="${pair#*:}"
+            if echo "$new_lower" | grep -q "$pat_a" && echo "$existing_lower" | grep -q "$pat_b"; then
+              signal="antonym: $pat_a vs $pat_b"
+              break
+            fi
+          done
+
+          # Check 2: displacement signal keywords in new spec
+          if [[ -z "$signal" ]]; then
+            for kw in "${DISPLACEMENT_KEYWORDS[@]}"; do
+              if echo "$new_lower" | grep -q "$kw"; then
+                signal="keyword: $kw"
+                break
+              fi
+            done
+          fi
+
+          if [[ -n "$signal" ]]; then
+            DISPLACEMENTS+="DISPLACED: ${new_id}.${new_req_id} → ${existing_id}.${existing_req_id} | subject: ${shared_token} | signal: ${signal}"$'\n'
+          fi
+        done < <(machine_section "$existing_file" | grep -E '^R[0-9]+\.')
+      done
+    done < <(machine_section "$new_file" | grep -E '^R[0-9]+\.')
+  done
+
+  if [[ -n "$DISPLACEMENTS" ]]; then
+    disp_count=$(echo -n "$DISPLACEMENTS" | grep -c '.')
+    echo "[resolve] WARNING: $disp_count displacement(s) detected" >&2
+  fi
+fi
+
 # ── Step 8: Emit bundle ─────────────────────────────────────────────────────
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 if [[ ${#OMITTED[@]} -gt 0 ]]; then
@@ -318,6 +446,29 @@ if [[ -n "$CONFLICTS" ]]; then
   echo -n "$CONFLICTS"
   conflict_count=$(echo -n "$CONFLICTS" | grep -c '.')
   echo "[resolve] WARNING: $conflict_count conflict(s) detected in bundle" >&2
+fi
+
+# Emit displacement section if detected
+if [[ -n "$DISPLACEMENTS" ]]; then
+  echo ""
+  echo "## Displacement"
+  echo ""
+  echo -n "$DISPLACEMENTS"
+  disp_count=$(echo -n "$DISPLACEMENTS" | grep -c '.')
+  echo "[resolve] WARNING: $disp_count displacement(s) in bundle output" >&2
+fi
+
+# Emit INVALIDATED specs section if requested and found
+if [[ "${INCLUDE_INVALIDATED:-}" == "true" && ${#INVALIDATED_FILES[@]} -gt 0 ]]; then
+  echo ""
+  echo "## INVALIDATED Specs (historical reference)"
+  echo ""
+  for f in "${INVALIDATED_FILES[@]}"; do
+    inv_id=$(fm "$f" '.id')
+    inv_reason=$(fm "$f" '.displacement_reason // "no reason recorded"')
+    inv_displaced_by=$(fm "$f" '.displaced_by // [] | join(", ")')
+    echo "- $inv_id — displaced by: ${inv_displaced_by:-unknown} — reason: $inv_reason"
+  done
 fi
 
 echo "[resolve] Done. ~$RUNNING_TOKENS tokens across ${#BUNDLE_PARTS[@]} specs." >&2
