@@ -12,8 +12,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -21,6 +23,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import jlsm.core.compression.CompressionCodec;
 import jlsm.core.model.Entry;
 import jlsm.core.model.SequenceNumber;
 import jlsm.core.wal.WriteAheadLog;
@@ -42,10 +45,16 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
     private static final int DEFAULT_POOL_SIZE = 4;
     private static final long DEFAULT_BUFFER_SIZE = 1024 * 1024L; // 1 MiB
     private static final long DEFAULT_ACQUIRE_TIMEOUT_MILLIS = 5_000L;
+    private static final int DEFAULT_COMPRESSION_MIN_SIZE = 64;
+    private static final int DEFAULT_MAX_CONSECUTIVE_SKIPS = 10;
 
     private final Path directory;
     private final long segmentSize;
     private final ArenaBufferPool bufferPool;
+    private final CompressionCodec codec;
+    private final int compressionMinSize;
+    private final int maxConsecutiveSkips;
+    private final Map<Byte, CompressionCodec> codecMap;
 
     // Write path — serialized by writeLock
     private final ReentrantLock writeLock = new ReentrantLock();
@@ -59,15 +68,23 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
     private final NavigableMap<Long, Long> segmentIndex = new ConcurrentSkipListMap<>();
     private final ReentrantReadWriteLock indexLock = new ReentrantReadWriteLock();
 
-    private LocalWriteAheadLog(Path directory, long segmentSize, ArenaBufferPool bufferPool)
-            throws IOException {
+    private LocalWriteAheadLog(Path directory, long segmentSize, ArenaBufferPool bufferPool,
+            CompressionCodec codec, int compressionMinSize, int maxConsecutiveSkips,
+            Map<Byte, CompressionCodec> codecMap) throws IOException {
         assert directory != null : "directory must not be null";
         assert segmentSize > 0 : "segmentSize must be positive";
         assert bufferPool != null : "bufferPool must not be null";
+        assert codec != null : "codec must not be null";
+        assert compressionMinSize >= 0 : "compressionMinSize must be non-negative";
+        assert maxConsecutiveSkips > 0 : "maxConsecutiveSkips must be positive";
 
         this.directory = directory;
         this.segmentSize = segmentSize;
         this.bufferPool = bufferPool;
+        this.codec = codec;
+        this.compressionMinSize = compressionMinSize;
+        this.maxConsecutiveSkips = maxConsecutiveSkips;
+        this.codecMap = codecMap;
 
         recover();
     }
@@ -133,6 +150,7 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
         long firstSeq = -1L;
         long lastSeq = -1L;
         int validBytes = 0;
+        int consecutiveSkips = 0;
 
         try (FileChannel fc = FileChannel.open(segPath, StandardOpenOption.READ)) {
             MappedByteBuffer mbb = fc.map(FileChannel.MapMode.READ_ONLY, 0, mapSize);
@@ -141,13 +159,30 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
             while (pos < mapSize) {
                 Entry entry;
                 try {
-                    entry = WalRecord.decode(seg, pos, mapSize - pos);
-                } catch (IOException e) {
-                    // CRC mismatch on partially-written record — stop here
-                    break;
+                    entry = WalRecord.decode(seg, pos, mapSize - pos, codecMap);
+                } catch (IOException | UncheckedIOException e) {
+                    // CRC mismatch or decompression failure — skip record (R33)
+                    int frameContentLen = readFrameContentLen(seg, pos);
+                    if (frameContentLen < 2) {
+                        break; // Can't advance meaningfully
+                    }
+                    long advance = 4L + frameContentLen;
+                    if (pos + advance > mapSize) {
+                        break; // Partial record
+                    }
+                    pos += advance;
+                    consecutiveSkips++;
+                    if (consecutiveSkips > maxConsecutiveSkips) {
+                        throw new IOException(
+                                "systematic codec failure: %d consecutive records skipped in %s"
+                                        .formatted(consecutiveSkips, segPath));
+                    }
+                    continue;
                 }
                 if (entry == null)
                     break;
+
+                consecutiveSkips = 0; // Reset on successful decode
 
                 long seqVal = entry.sequenceNumber().value();
                 if (firstSeq < 0)
@@ -209,7 +244,7 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
 
             MemorySegment buf = bufferPool.acquire();
             try {
-                int n = WalRecord.encode(stamped, buf);
+                int n = encodeWithCompression(stamped, buf);
 
                 if (n > segmentSize - writePosition) {
                     rollSegment(seq);
@@ -226,6 +261,32 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
             return new SequenceNumber(seq);
         } finally {
             writeLock.unlock();
+        }
+    }
+
+    /** Dummy segment used as compression buffer when pool is exhausted (R36). Never written to. */
+    private static final MemorySegment DUMMY_COMPRESSION_BUF = MemorySegment.ofArray(new byte[0]);
+
+    /**
+     * Encodes an entry with compression using the new record format (flags byte). Falls back to
+     * uncompressed new-format encoding on buffer acquisition failure (R36). The new format is
+     * always used so that recovery with a codec map can read all records consistently.
+     */
+    private int encodeWithCompression(Entry stamped, MemorySegment buf) throws IOException {
+        // Try to acquire a compression buffer; fall back to uncompressed on failure (R36)
+        MemorySegment compressionBuf;
+        try {
+            compressionBuf = bufferPool.acquire();
+        } catch (IOException e) {
+            // Buffer exhausted — write uncompressed in new format (R36)
+            // Use Integer.MAX_VALUE as minSize so compression is never attempted and the
+            // compression buffer is never accessed.
+            return WalRecord.encode(stamped, buf, codec, Integer.MAX_VALUE, DUMMY_COMPRESSION_BUF);
+        }
+        try {
+            return WalRecord.encode(stamped, buf, codec, compressionMinSize, compressionBuf);
+        } finally {
+            bufferPool.release(compressionBuf);
         }
     }
 
@@ -270,7 +331,7 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
         // Find the first segment to include: last segment whose firstSeq <= from,
         // or the very first segment if all firstSeqs > from.
         List<Path> toScan = segmentsForReplay(allSegments, from);
-        return new ReplayIterator(toScan, from, segmentSize);
+        return new ReplayIterator(toScan, from, segmentSize, codecMap, maxConsecutiveSkips);
     }
 
     private List<Path> segmentsForReplay(List<Path> allSegments, SequenceNumber from) {
@@ -383,17 +444,23 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
         private final List<Path> segments;
         private final SequenceNumber from;
         private final long segmentSize;
+        private final Map<Byte, CompressionCodec> codecMap;
+        private final int maxConsecutiveSkips;
         private int segIdx = 0;
         private Entry next;
         // Per-segment state
         private MemorySegment currentSeg;
         private long segAvailable;
         private long segPos;
+        private int consecutiveSkips;
 
-        ReplayIterator(List<Path> segments, SequenceNumber from, long segmentSize) {
+        ReplayIterator(List<Path> segments, SequenceNumber from, long segmentSize,
+                Map<Byte, CompressionCodec> codecMap, int maxConsecutiveSkips) {
             this.segments = segments;
             this.from = from;
             this.segmentSize = segmentSize;
+            this.codecMap = codecMap;
+            this.maxConsecutiveSkips = maxConsecutiveSkips;
             advance();
         }
 
@@ -440,13 +507,30 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
             while (segPos < segAvailable) {
                 Entry entry;
                 try {
-                    entry = WalRecord.decode(currentSeg, segPos, segAvailable - segPos);
-                } catch (IOException e) {
-                    // CRC mismatch — treat as end of valid data in this segment
-                    return null;
+                    entry = WalRecord.decode(currentSeg, segPos, segAvailable - segPos, codecMap);
+                } catch (IOException | UncheckedIOException e) {
+                    // CRC mismatch or decompression failure — skip record (R33)
+                    int frameContentLen = currentSeg.get(INT_BE_UNALIGNED, segPos);
+                    if (frameContentLen < 2) {
+                        return null; // Can't advance
+                    }
+                    long advance = 4L + frameContentLen;
+                    if (segPos + advance > segAvailable) {
+                        return null; // Partial record
+                    }
+                    segPos += advance;
+                    consecutiveSkips++;
+                    if (consecutiveSkips > maxConsecutiveSkips) {
+                        throw new UncheckedIOException(new IOException(
+                                "systematic codec failure: %d consecutive records skipped"
+                                        .formatted(consecutiveSkips)));
+                    }
+                    continue;
                 }
                 if (entry == null)
                     return null;
+
+                consecutiveSkips = 0; // Reset on success
 
                 int frameContentLen = currentSeg.get(INT_BE_UNALIGNED, segPos);
                 segPos += 4L + frameContentLen;
@@ -484,6 +568,10 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
         private int poolSize = DEFAULT_POOL_SIZE;
         private long bufferSize = DEFAULT_BUFFER_SIZE;
         private long acquireTimeoutMillis = DEFAULT_ACQUIRE_TIMEOUT_MILLIS;
+        private CompressionCodec codec = CompressionCodec.deflate(); // R27: default Deflate level 6
+        private int compressionMinSize = DEFAULT_COMPRESSION_MIN_SIZE; // R28: default 64
+        private int maxConsecutiveSkips = DEFAULT_MAX_CONSECUTIVE_SKIPS; // R35: default 10
+        private CompressionCodec[] recoveryCodecs;
 
         public Builder directory(Path directory) {
             Objects.requireNonNull(directory, "directory must not be null");
@@ -521,11 +609,77 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
             return this;
         }
 
+        /** Sets the compression codec. Default is Deflate level 6 (R27). */
+        public Builder compression(CompressionCodec codec) {
+            Objects.requireNonNull(codec, "codec must not be null");
+            this.codec = codec;
+            return this;
+        }
+
+        /** Sets the minimum payload size for compression. Default is 64 bytes (R28). */
+        public Builder compressionMinSize(int minBytes) {
+            if (minBytes < 0) {
+                throw new IllegalArgumentException(
+                        "compressionMinSize must be non-negative, got: " + minBytes);
+            }
+            this.compressionMinSize = minBytes;
+            return this;
+        }
+
+        /** Sets the max consecutive corrupt records before aborting recovery (R35). */
+        public Builder maxConsecutiveSkips(int max) {
+            if (max < 1) {
+                throw new IllegalArgumentException("maxConsecutiveSkips must be >= 1, got: " + max);
+            }
+            this.maxConsecutiveSkips = max;
+            return this;
+        }
+
+        /** Sets additional codecs for recovery. The write codec is always included (R30). */
+        public Builder recoveryCodecs(CompressionCodec... codecs) {
+            Objects.requireNonNull(codecs, "codecs must not be null");
+            this.recoveryCodecs = codecs;
+            return this;
+        }
+
         public LocalWriteAheadLog build() throws IOException {
             Objects.requireNonNull(directory, "directory must not be null");
             ArenaBufferPool pool = ArenaBufferPool.builder().poolSize(poolSize)
                     .bufferSize(bufferSize).acquireTimeoutMillis(acquireTimeoutMillis).build();
-            return new LocalWriteAheadLog(directory, segmentSize, pool);
+
+            // Build codec map for recovery (R30)
+            Map<Byte, CompressionCodec> cm = buildCodecMap();
+
+            return new LocalWriteAheadLog(directory, segmentSize, pool, codec, compressionMinSize,
+                    maxConsecutiveSkips, cm);
+        }
+
+        private Map<Byte, CompressionCodec> buildCodecMap() {
+            Map<Byte, CompressionCodec> map = new HashMap<>();
+            // Always include the write codec
+            map.put(codec.codecId(), codec);
+            // Always include NoneCodec for uncompressed records decoded via new-format path
+            map.put(CompressionCodec.none().codecId(), CompressionCodec.none());
+
+            if (recoveryCodecs != null) {
+                for (CompressionCodec rc : recoveryCodecs) {
+                    Objects.requireNonNull(rc, "recovery codec must not be null");
+                    // Allow overwriting the built-in entry — last-writer-wins for the same codec
+                    // ID.
+                    // R30 rejects only duplicate IDs within the user-provided set.
+                    map.put(rc.codecId(), rc);
+                }
+                // Verify no duplicate IDs in the user-provided array itself
+                java.util.Set<Byte> seen = new java.util.HashSet<>();
+                for (CompressionCodec rc : recoveryCodecs) {
+                    if (!seen.add(rc.codecId())) {
+                        throw new IllegalArgumentException(
+                                "duplicate codec ID 0x%02x in recovery codecs"
+                                        .formatted(rc.codecId()));
+                    }
+                }
+            }
+            return Collections.unmodifiableMap(map);
         }
     }
 }
