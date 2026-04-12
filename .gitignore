@@ -16,6 +16,9 @@ bin/
 .DS_Store
 Thumbs.db
 
+# Python
+__pycache__/
+
 # Claude Code — local-only settings (user-specific permission grants)
 .claude/settings.local.json
 .claude/worktrees/

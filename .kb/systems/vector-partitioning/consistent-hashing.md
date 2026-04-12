@@ -31,6 +31,8 @@ sources:
     title: "Survey of Vector Database Management Systems"
     accessed: "2026-03-16"
     type: "paper"
+related:
+  - "distributed-systems/data-partitioning/partitioning-strategies.md"
 ---
 
 # Consistent Hashing & LSH-Based Vector Partitioning

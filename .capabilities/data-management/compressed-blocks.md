@@ -4,7 +4,7 @@ slug: compressed-blocks
 domain: data-management
 status: active
 type: core
-tags: ["compression", "storage", "sstable", "blocks", "codecs"]
+tags: ["compression", "storage", "sstable", "blocks", "codecs", "wal", "memorysegment", "zero-copy"]
 features:
   - slug: block-compression
     role: core
@@ -15,9 +15,12 @@ features:
   - slug: sstable-v3-format-upgrade
     role: extends
     description: "v3 format: per-block CRC32C integrity checksums and configurable block size for remote-backend optimization"
+  - slug: wal-compression-codec-api
+    role: extends
+    description: "MemorySegment-native codec API (zero-copy via direct ByteBuffer), per-record WAL compression on by default"
 composes: []
-spec_refs: ["F02", "F08", "F16"]
-decision_refs: ["sstable-block-compression-format", "compression-codec-api-design", "per-block-checksums", "backend-optimal-block-size"]
+spec_refs: ["F02", "F08", "F16", "F17"]
+decision_refs: ["sstable-block-compression-format", "compression-codec-api-design", "per-block-checksums", "backend-optimal-block-size", "wal-compression", "codec-thread-safety", "max-compressed-length"]
 kb_refs: ["algorithms/compression"]
 depends_on: ["data-management/schema-and-documents"]
 enables: []
@@ -47,6 +50,7 @@ on open.
 
 **Extends:**
 - **sstable-v3-format-upgrade** — per-block CRC32C integrity checksums, configurable block size (Builder API), v3 footer with blockSize field
+- **wal-compression-codec-api** — MemorySegment-native codec API (byte[] removed), zero-copy Deflate via direct ByteBuffer, per-record WAL compression on by default
 
 ## Key behaviors
 
@@ -63,4 +67,4 @@ on open.
 - **Decisions:** sstable-block-compression-format (offset map approach), compression-codec-api-design (pluggable codec interface)
 - **KB:** algorithms/compression (zstd, lz4, snappy research)
 - **Depends on:** data-management/schema-and-documents (serializer produces blocks)
-- **Deferred work:** codec-thread-safety, codec-negotiation, compaction-recompression, codec-dictionary-support, wal-compression, max-compressed-length
+- **Deferred work:** compaction-recompression, codec-dictionary-support, pure-java-lz4-codec, wal-group-commit, memorysegment-codec-api

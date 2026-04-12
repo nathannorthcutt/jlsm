@@ -13,12 +13,12 @@
 | Engine clustering | engine-clustering | 2026-03-20 | planning complete | work-plan.md written, 22 stubs created |
 | JSON-only SIMD on-demand + JSONL streaming | json-only-simd-jsonl | 2026-04-10 | planning complete | work-plan.md written, 16 stubs created |
 | SSTable v3 format upgrade | sstable-v3-format-upgrade | 2026-04-11 | planning complete | work-plan.md written, 1 stub created |
-| WAL compression + MemorySegment codec API | wal-compression-codec-api | 2026-04-12 | planning complete | work-plan.md written, 4 work units created |
 
 ## Completed / Archived
 
 | Feature | Slug | Completed | Archive |
 |---------|------|-----------|---------|
+| WAL compression + MemorySegment codec API | wal-compression-codec-api | 2026-04-12 | .feature/_archive/wal-compression-codec-api/ |
 | Field-level in-memory encryption | encrypt-memory-data | 2026-03-19 | .feature/_archive/encrypt-memory-data/ |
 | Extract core encryption primitives | extract-core-encryption | 2026-03-19 | .feature/_archive/extract-core-encryption/ |
 | Fix encryption performance | fix-encryption-performance | 2026-03-19 | .feature/_archive/fix-encryption-performance/ |

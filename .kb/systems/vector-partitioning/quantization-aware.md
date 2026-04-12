@@ -31,6 +31,9 @@ sources:
     title: "Ada-IVF: Incremental IVF Index Maintenance"
     accessed: "2026-03-16"
     type: "paper"
+related:
+  - "algorithms/vector-quantization/residual-quantization.md"
+  - "algorithms/vector-quantization/product-quantization.md"
 ---
 
 # Quantization-Aware Partitioning
