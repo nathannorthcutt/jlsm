@@ -25,6 +25,7 @@
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-11 | F16 | serialization, storage | SSTable v3 Format Upgrade |
 | 2026-04-10 | F15 | serialization, engine | JSON-Only SIMD On-Demand Parser with JSONL Streaming |
 | 2026-04-02 | F14 | engine | JlsmDocument (extracted) |
 | 2026-04-02 | F13 | engine | JlsmSchema (extracted) |
@@ -36,7 +37,6 @@
 | 2026-04-02 | F07 | query | SQL Query Support |
 | 2026-04-02 | F05 | engine | In-Process Database Engine |
 | 2026-04-02 | F04 | engine | Engine Clustering |
-| 2026-04-02 | F03 | encryption | Field-Level In-Memory Encryption |
 
 ## Spec File Format Reference
 

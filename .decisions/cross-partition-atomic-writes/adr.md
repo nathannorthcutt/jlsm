@@ -3,6 +3,7 @@ problem: "cross-partition-atomic-writes"
 date: "2026-03-30"
 version: 1
 status: "deferred"
+depends_on: ["cross-partition-transactions"]
 ---
 
 # Cross-Partition Atomic Writes — Deferred

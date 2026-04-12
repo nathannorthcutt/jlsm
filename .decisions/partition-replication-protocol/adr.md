@@ -3,6 +3,7 @@ problem: "partition-replication-protocol"
 date: "2026-03-30"
 version: 1
 status: "deferred"
+depends_on: ["connection-pooling", "message-serialization-format"]
 ---
 
 # Partition Replication Protocol — Deferred

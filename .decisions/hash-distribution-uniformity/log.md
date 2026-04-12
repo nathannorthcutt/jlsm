@@ -6,3 +6,12 @@
 **Summary:** Promoted from out-of-scope item in parent ADR to tracked deferred decision.
 
 ---
+
+## 2026-04-10 — closed
+
+**Agent:** Architect Agent (batch evaluation)
+**Event:** closed
+**Summary:** Non-issue. Splitmix64 provides near-perfect uniformity. Modulo
+bias negligible for practical stripe counts (≤64). Permanently closed.
+
+---

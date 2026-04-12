@@ -71,6 +71,30 @@ public interface CompressionCodec {
     byte[] decompress(byte[] input, int offset, int length, int uncompressedLength);
 
     /**
+     * Returns the maximum possible compressed size for the given input length.
+     *
+     * <p>
+     * Callers can use this to pre-allocate output buffers of the correct size. The returned value
+     * is a tight upper bound — actual compressed output will never exceed this length.
+     *
+     * <p>
+     * The default implementation returns a conservative bound of {@code inputLength * 2 + 64}.
+     * Built-in codecs override with tighter, algorithm-specific bounds.
+     *
+     * @param inputLength the length of the uncompressed input; must be non-negative
+     * @return the worst-case compressed size; always {@code >= inputLength}
+     * @throws IllegalArgumentException if {@code inputLength < 0}
+     * @see <a href="../../.decisions/max-compressed-length/adr.md">ADR: Max Compressed Length</a>
+     */
+    default int maxCompressedLength(int inputLength) {
+        if (inputLength < 0) {
+            throw new IllegalArgumentException(
+                    "inputLength must be non-negative, got: " + inputLength);
+        }
+        return inputLength + inputLength + 64;
+    }
+
+    /**
      * Returns the passthrough (no-op) codec. Codec ID 0x00.
      *
      * @return singleton {@code NoneCodec} instance

@@ -3,6 +3,7 @@ problem: "remote-serialization-protocol"
 date: "2026-03-30"
 version: 1
 status: "deferred"
+depends_on: ["message-serialization-format", "connection-pooling"]
 ---
 
 # Remote Serialization Protocol — Deferred

@@ -12,7 +12,7 @@
 
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
-| algorithms | [algorithms/](algorithms/CLAUDE.md) | 7 | 43 | 2026-04-09 |
+| algorithms | [algorithms/](algorithms/CLAUDE.md) | 7 | 44 | 2026-04-11 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 8 | 2026-03-26 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 9 | 2026-04-09 |
 | patterns | [patterns/](patterns/CLAUDE.md) | 5 | 20 | 2026-04-08 |
@@ -21,6 +21,7 @@
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-11 | algorithms | compression | sstable-v3-format-upgrade |
 | 2026-04-09 | distributed-systems | data-partitioning | cross-partition-query-planning |
 | 2026-04-09 | distributed-systems | data-partitioning | decoupled-index-partitioning |
 | 2026-04-09 | algorithms | serialization | simd-on-demand-serialization |
