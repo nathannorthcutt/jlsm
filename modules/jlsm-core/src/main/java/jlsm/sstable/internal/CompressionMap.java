@@ -6,14 +6,15 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Compression offset map for SSTable v2 format.
+ * Compression offset map for SSTable v2 and v3 formats.
  *
  * <p>
- * Maps each data block to its on-disk position, compressed size, uncompressed size, and the codec
- * ID used for compression. This metadata is stored as a contiguous section in the SSTable file
- * between the data blocks and the key index, and is loaded eagerly at reader open time.
+ * Maps each data block to its on-disk position, compressed size, uncompressed size, the codec ID
+ * used for compression, and (v3 only) a CRC32C checksum. This metadata is stored as a contiguous
+ * section in the SSTable file between the data blocks and the key index, and is loaded eagerly at
+ * reader open time.
  *
- * <h3>Binary format</h3>
+ * <h3>v2 binary format (17 bytes per entry)</h3>
  *
  * <pre>
  *   [blockCount — 4 bytes, big-endian int]
@@ -23,6 +24,19 @@ import java.util.Set;
  *     uncompressedSize — 4 bytes, big-endian int
  *     codecId          — 1 byte
  *   Total per entry: 17 bytes
+ * </pre>
+ *
+ * <h3>v3 binary format (21 bytes per entry)</h3>
+ *
+ * <pre>
+ *   [blockCount — 4 bytes, big-endian int]
+ *   [entries × blockCount]:
+ *     blockOffset      — 8 bytes, big-endian long
+ *     compressedSize   — 4 bytes, big-endian int
+ *     uncompressedSize — 4 bytes, big-endian int
+ *     codecId          — 1 byte
+ *     checksum         — 4 bytes, big-endian int (CRC32C)
+ *   Total per entry: 21 bytes
  * </pre>
  *
  * @see <a href="../../.decisions/sstable-block-compression-format/adr.md">ADR: SSTable Block
@@ -43,8 +57,10 @@ public final class CompressionMap {
      * @param compressedSize size of the block as stored on disk (compressed)
      * @param uncompressedSize original size of the block before compression
      * @param codecId identifier of the codec used (0x00 = none, 0x02 = deflate)
+     * @param checksum CRC32C checksum of the on-disk block bytes (v3 only; 0 for v2)
      */
-    public record Entry(long blockOffset, int compressedSize, int uncompressedSize, byte codecId) {
+    public record Entry(long blockOffset, int compressedSize, int uncompressedSize, byte codecId,
+            int checksum) {
         public Entry {
             if (blockOffset < 0) {
                 throw new IllegalArgumentException(
@@ -77,6 +93,13 @@ public final class CompressionMap {
                         "uncompressedSize=0 with compressedSize=%d and codecId=0x%02x is invalid"
                                 .formatted(compressedSize, codecId));
             }
+        }
+
+        /**
+         * Backward-compatible constructor for v2 entries (checksum defaults to 0).
+         */
+        public Entry(long blockOffset, int compressedSize, int uncompressedSize, byte codecId) {
+            this(blockOffset, compressedSize, uncompressedSize, codecId, 0);
         }
     }
 
@@ -149,7 +172,35 @@ public final class CompressionMap {
     }
 
     /**
-     * Deserializes a compression map from its binary representation.
+     * Serializes this compression map to v3 binary representation (21-byte entries with CRC32C
+     * checksum).
+     *
+     * @return byte array in v3 format
+     */
+    public byte[] serializeV3() {
+        long longSize = 4L + (long) entries.size() * SSTableFormat.COMPRESSION_MAP_ENTRY_SIZE_V3;
+        if (longSize > Integer.MAX_VALUE) {
+            throw new IllegalStateException(
+                    "compression map too large to serialize: %d entries require %d bytes"
+                            .formatted(entries.size(), longSize));
+        }
+        int size = (int) longSize;
+        byte[] buf = new byte[size];
+        int off = 0;
+        off = writeInt(buf, off, entries.size());
+        for (Entry e : entries) {
+            off = writeLong(buf, off, e.blockOffset());
+            off = writeInt(buf, off, e.compressedSize());
+            off = writeInt(buf, off, e.uncompressedSize());
+            buf[off++] = e.codecId();
+            off = writeInt(buf, off, e.checksum());
+        }
+        assert off == size : "serialized size mismatch: expected " + size + ", got " + off;
+        return buf;
+    }
+
+    /**
+     * Deserializes a compression map from its binary representation (v2 format, 17-byte entries).
      *
      * @param data byte array in the format described in the class javadoc
      * @return the deserialized compression map
@@ -195,6 +246,65 @@ public final class CompressionMap {
             off += 4;
             byte codecId = data[off++];
             entries.add(new Entry(blockOffset, compressedSize, uncompressedSize, codecId));
+        }
+        return new CompressionMap(entries);
+    }
+
+    /**
+     * Deserializes a compression map from its binary representation, version-aware.
+     *
+     * @param data byte array in the format for the given version
+     * @param version format version (2 = 17-byte entries, 3 = 21-byte entries with checksum)
+     * @return the deserialized compression map
+     * @throws IllegalArgumentException if the data is malformed or version is unsupported
+     * @throws NullPointerException if data is null
+     */
+    public static CompressionMap deserialize(byte[] data, int version) {
+        if (version == 2) {
+            return deserialize(data);
+        }
+        if (version != 3) {
+            throw new IllegalArgumentException("unsupported compression map version: " + version);
+        }
+        Objects.requireNonNull(data, "data must not be null");
+        if (data.length < 4) {
+            throw new IllegalArgumentException(
+                    "compression map data too short: %d bytes (minimum 4)".formatted(data.length));
+        }
+        int blockCount = readInt(data, 0);
+        if (blockCount < 0) {
+            throw new IllegalArgumentException("negative block count: " + blockCount);
+        }
+        long expectedLength = 4L + (long) blockCount * SSTableFormat.COMPRESSION_MAP_ENTRY_SIZE_V3;
+        if (expectedLength > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                    "block count %d requires %d bytes, exceeds maximum array size"
+                            .formatted(blockCount, expectedLength));
+        }
+        if (data.length < expectedLength) {
+            throw new IllegalArgumentException(
+                    "compression map data too short: %d bytes (expected %d for %d blocks)"
+                            .formatted(data.length, expectedLength, blockCount));
+        }
+        if (data.length > expectedLength) {
+            throw new IllegalArgumentException(
+                    "compression map data has trailing bytes: %d bytes (expected %d for %d blocks)"
+                            .formatted(data.length, expectedLength, blockCount));
+        }
+        List<Entry> entries = new ArrayList<>(blockCount);
+        int off = 4;
+        for (int i = 0; i < blockCount; i++) {
+            long blockOffset = readLong(data, off);
+            off += 8;
+            int compressedSize = readInt(data, off);
+            off += 4;
+            int uncompressedSize = readInt(data, off);
+            off += 4;
+            byte codecId = data[off++];
+            int checksum = readInt(data, off);
+            off += 4;
+            entries.add(
+                    new Entry(blockOffset, compressedSize, uncompressedSize, codecId, checksum));
         }
         return new CompressionMap(entries);
     }

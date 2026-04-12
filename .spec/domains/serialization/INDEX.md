@@ -9,3 +9,4 @@
 |----|-------|--------|--------|---------------|
 | F02 | Block-Level SSTable Compression | ACTIVE | — | sstable-block-compression-format, compression-codec-api-design |
 | F15 | JSON-Only SIMD On-Demand Parser with JSONL Streaming | ACTIVE | invalidates F14.R48, F14.R49 | — |
+| F16 | SSTable v3 Format Upgrade | ACTIVE | — | per-block-checksums, backend-optimal-block-size, sstable-block-compression-format |
