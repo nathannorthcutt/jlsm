@@ -23,3 +23,4 @@
 | Scatter-Gather Query Execution | scatter-gather-query-execution | 2026-03-20 | Partition-Aware Proxy Table — transparent Table interface, k-way merge, partition pruning |
 | Rebalancing & Grace Period Strategy | rebalancing-grace-period-strategy | 2026-03-20 | Eager Reassignment with Deferred Cleanup — immediate HRW recompute, grace controls cleanup |
 | Partition-to-Node Ownership | partition-to-node-ownership | 2026-03-20 | Rendezvous Hashing (HRW) — stateless pure function, O(K/N) minimal movement |
+| Power-of-Two Stripe Optimization | power-of-two-stripe-optimization | 2026-04-10 | Enforce power-of-2 stripe counts, use bitmask instead of modulo |
