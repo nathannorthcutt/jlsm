@@ -347,16 +347,17 @@ class DataTransformationAdversarialTest {
             }
 
             @Override
-            public byte[] compress(byte[] input, int offset, int length) {
-                return delegate.compress(input, offset, length);
+            public MemorySegment compress(MemorySegment src, MemorySegment dst) {
+                return delegate.compress(src, dst);
             }
 
             @Override
-            public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
-                byte[] full = delegate.decompress(input, offset, length, uncompressedLength);
-                // Return a truncated copy — fewer bytes than declared uncompressedLength
-                int truncatedLen = Math.max(1, full.length / 2);
-                return java.util.Arrays.copyOf(full, truncatedLen);
+            public MemorySegment decompress(MemorySegment src, MemorySegment dst,
+                    int uncompressedLength) {
+                MemorySegment full = delegate.decompress(src, dst, uncompressedLength);
+                // Return a truncated slice — fewer bytes than declared uncompressedLength
+                int truncatedLen = Math.max(1, (int) full.byteSize() / 2);
+                return full.asSlice(0, truncatedLen);
             }
         };
 

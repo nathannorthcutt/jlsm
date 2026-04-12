@@ -15,7 +15,7 @@
 | Domain | Path | Description | Specs |
 |--------|------|-------------|-------|
 | vector-indexing | domains/vector-indexing/ | vector search hnsw ivf-flat ann similarity float16 precision encoding | 2 |
-| serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer | 3 |
+| serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer | 4 |
 | storage | domains/storage/ | memtable wal flush compaction object-store block cache manifest | 1 |
 | encryption | domains/encryption/ | aes gcm kms tmk sek key-derivation cipher block-encryption | 1 |
 | query | domains/query/ | sql query plan statistics join index scan filter | 2 |
@@ -25,6 +25,7 @@
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-12 | F17 | serialization, storage | WAL Compression with MemorySegment Codec API |
 | 2026-04-11 | F16 | serialization, storage | SSTable v3 Format Upgrade |
 | 2026-04-10 | F15 | serialization, engine | JSON-Only SIMD On-Demand Parser with JSONL Streaming |
 | 2026-04-02 | F14 | engine | JlsmDocument (extracted) |
@@ -36,7 +37,6 @@
 | 2026-04-02 | F08 | serialization | Streaming Block Decompression |
 | 2026-04-02 | F07 | query | SQL Query Support |
 | 2026-04-02 | F05 | engine | In-Process Database Engine |
-| 2026-04-02 | F04 | engine | Engine Clustering |
 
 ## Spec File Format Reference
 

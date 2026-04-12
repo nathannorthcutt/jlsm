@@ -5,6 +5,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.UncheckedIOException;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -15,8 +17,25 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Tests are written against the public {@link CompressionCodec} interface and static factory
  * methods. Package-private implementations are tested through the interface.
+ *
+ * <p>
+ * Updated from byte[] API to MemorySegment API per F17.R1-R3.
  */
 class CompressionCodecTest {
+
+    // ---- Helper: allocate a MemorySegment from byte[] data ----
+
+    private static MemorySegment toSegment(Arena arena, byte[] data) {
+        MemorySegment seg = arena.allocate(data.length);
+        seg.copyFrom(MemorySegment.ofArray(data));
+        return seg;
+    }
+
+    private static byte[] toByteArray(MemorySegment seg) {
+        byte[] result = new byte[(int) seg.byteSize()];
+        MemorySegment.copy(seg, 0, MemorySegment.ofArray(result), 0, result.length);
+        return result;
+    }
 
     // ---- NoneCodec: identity and round-trip ----
 
@@ -29,32 +48,46 @@ class CompressionCodecTest {
     @Test
     void testNoneCodecRoundTrip() {
         CompressionCodec codec = CompressionCodec.none();
-        byte[] input = "Hello, world!".getBytes();
-        byte[] compressed = codec.compress(input, 0, input.length);
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, input.length);
-        assertArrayEquals(input, decompressed);
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] input = "Hello, world!".getBytes();
+            MemorySegment src = toSegment(arena, input);
+
+            MemorySegment dst = arena.allocate(codec.maxCompressedLength(input.length));
+            MemorySegment compressed = codec.compress(src, dst);
+
+            MemorySegment decompDst = arena.allocate(input.length);
+            MemorySegment decompressed = codec.decompress(compressed, decompDst, input.length);
+            assertArrayEquals(input, toByteArray(decompressed));
+        }
     }
 
     @Test
-    void testNoneCompressIsSliceCopy() {
+    void testNoneCompressIsContentCopy() {
         CompressionCodec codec = CompressionCodec.none();
-        byte[] input = { 1, 2, 3, 4, 5, 6, 7, 8 };
-        // Compress a slice from offset 2, length 4
-        byte[] compressed = codec.compress(input, 2, 4);
-        byte[] expected = { 3, 4, 5, 6 };
-        assertArrayEquals(expected, compressed);
-        // Must be a copy, not a view into the original array
-        assertNotSame(input, compressed);
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] input = { 1, 2, 3, 4, 5, 6, 7, 8 };
+            MemorySegment src = toSegment(arena, input);
+
+            MemorySegment dst = arena.allocate(input.length);
+            MemorySegment compressed = codec.compress(src, dst);
+            assertArrayEquals(input, toByteArray(compressed));
+        }
     }
 
     @Test
     void testNoneCodecDecompressSizeMismatch() {
         CompressionCodec codec = CompressionCodec.none();
-        byte[] input = { 1, 2, 3 };
-        byte[] compressed = codec.compress(input, 0, input.length);
-        // Request wrong uncompressed length
-        assertThrows(UncheckedIOException.class,
-                () -> codec.decompress(compressed, 0, compressed.length, 999));
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] input = { 1, 2, 3 };
+            MemorySegment src = toSegment(arena, input);
+
+            MemorySegment dst = arena.allocate(input.length);
+            MemorySegment compressed = codec.compress(src, dst);
+
+            MemorySegment decompDst = arena.allocate(999);
+            assertThrows(UncheckedIOException.class,
+                    () -> codec.decompress(compressed, decompDst, 999));
+        }
     }
 
     // ---- DeflateCodec: identity and round-trip ----
@@ -68,14 +101,22 @@ class CompressionCodecTest {
     @Test
     void testDeflateCodecRoundTrip() {
         CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = "The quick brown fox jumps over the lazy dog. ".repeat(10).getBytes();
-        byte[] compressed = codec.compress(input, 0, input.length);
-        // Deflate should actually compress repeated text
-        assertTrue(compressed.length < input.length,
-                "compressed size (%d) should be less than input size (%d)"
-                        .formatted(compressed.length, input.length));
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, input.length);
-        assertArrayEquals(input, decompressed);
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] input = "The quick brown fox jumps over the lazy dog. ".repeat(10).getBytes();
+            MemorySegment src = toSegment(arena, input);
+
+            int maxLen = codec.maxCompressedLength(input.length);
+            MemorySegment dst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, dst);
+
+            assertTrue(compressed.byteSize() < input.length,
+                    "compressed size (%d) should be less than input size (%d)"
+                            .formatted(compressed.byteSize(), input.length));
+
+            MemorySegment decompDst = arena.allocate(input.length);
+            MemorySegment decompressed = codec.decompress(compressed, decompDst, input.length);
+            assertArrayEquals(input, toByteArray(decompressed));
+        }
     }
 
     @ParameterizedTest
@@ -83,56 +124,70 @@ class CompressionCodecTest {
     void testDeflateCodecAllLevels(int level) {
         CompressionCodec codec = CompressionCodec.deflate(level);
         assertEquals((byte) 0x02, codec.codecId());
-        byte[] input = "Repeated content for compression. ".repeat(20).getBytes();
-        byte[] compressed = codec.compress(input, 0, input.length);
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, input.length);
-        assertArrayEquals(input, decompressed);
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] input = "Repeated content for compression. ".repeat(20).getBytes();
+            MemorySegment src = toSegment(arena, input);
+
+            int maxLen = codec.maxCompressedLength(input.length);
+            MemorySegment dst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, dst);
+
+            MemorySegment decompDst = arena.allocate(input.length);
+            MemorySegment decompressed = codec.decompress(compressed, decompDst, input.length);
+            assertArrayEquals(input, toByteArray(decompressed));
+        }
     }
 
     @Test
     void testDeflateCodecLargeInput() {
         CompressionCodec codec = CompressionCodec.deflate();
-        // 128 KiB of pseudo-random data with some repetition
-        byte[] input = new byte[128 * 1024];
-        Random rng = new Random(42);
-        rng.nextBytes(input);
-        // Add some repeated blocks to make it compressible
-        System.arraycopy(input, 0, input, 64 * 1024, 32 * 1024);
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] input = new byte[128 * 1024];
+            Random rng = new Random(42);
+            rng.nextBytes(input);
+            System.arraycopy(input, 0, input, 64 * 1024, 32 * 1024);
 
-        byte[] compressed = codec.compress(input, 0, input.length);
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, input.length);
-        assertArrayEquals(input, decompressed);
+            MemorySegment src = toSegment(arena, input);
+            int maxLen = codec.maxCompressedLength(input.length);
+            MemorySegment dst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, dst);
+
+            MemorySegment decompDst = arena.allocate(input.length);
+            MemorySegment decompressed = codec.decompress(compressed, decompDst, input.length);
+            assertArrayEquals(input, toByteArray(decompressed));
+        }
     }
 
     @Test
     void testDeflateCodecEmptyInput() {
         CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = new byte[0];
-        byte[] compressed = codec.compress(input, 0, 0);
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, 0);
-        assertArrayEquals(input, decompressed);
-    }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment src = arena.allocate(0);
+            MemorySegment dst = arena.allocate(64);
+            MemorySegment compressed = codec.compress(src, dst);
+            assertEquals(0, compressed.byteSize());
 
-    @Test
-    void testDeflateCodecWithOffset() {
-        CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = "XXXX".getBytes();
-        byte[] padded = new byte[20];
-        System.arraycopy(input, 0, padded, 8, input.length);
-        // Compress only the 4 bytes starting at offset 8
-        byte[] compressed = codec.compress(padded, 8, input.length);
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, input.length);
-        assertArrayEquals(input, decompressed);
+            MemorySegment decompDst = arena.allocate(64);
+            MemorySegment decompressed = codec.decompress(arena.allocate(0), decompDst, 0);
+            assertEquals(0, decompressed.byteSize());
+        }
     }
 
     @Test
     void testDecompressSizeMismatch() {
         CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = "test data".getBytes();
-        byte[] compressed = codec.compress(input, 0, input.length);
-        // Request wrong uncompressed length
-        assertThrows(UncheckedIOException.class,
-                () -> codec.decompress(compressed, 0, compressed.length, input.length + 100));
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] input = "test data".getBytes();
+            MemorySegment src = toSegment(arena, input);
+
+            int maxLen = codec.maxCompressedLength(input.length);
+            MemorySegment dst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, dst);
+
+            MemorySegment decompDst = arena.allocate(input.length + 100);
+            assertThrows(UncheckedIOException.class,
+                    () -> codec.decompress(compressed, decompDst, input.length + 100));
+        }
     }
 
     // ---- Static factory methods ----
@@ -149,20 +204,24 @@ class CompressionCodecTest {
     void testStaticFactoryDeflate() {
         CompressionCodec codec = CompressionCodec.deflate();
         assertEquals((byte) 0x02, codec.codecId());
-        // Should be a functional codec — can compress
-        byte[] input = "test".getBytes();
-        byte[] compressed = codec.compress(input, 0, input.length);
-        assertNotNull(compressed);
     }
 
     @Test
     void testStaticFactoryDeflateWithLevel() {
         CompressionCodec codec = CompressionCodec.deflate(3);
         assertEquals((byte) 0x02, codec.codecId());
-        byte[] input = "test data for level 3".getBytes();
-        byte[] compressed = codec.compress(input, 0, input.length);
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, input.length);
-        assertArrayEquals(input, decompressed);
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] input = "test data for level 3".getBytes();
+            MemorySegment src = toSegment(arena, input);
+
+            int maxLen = codec.maxCompressedLength(input.length);
+            MemorySegment dst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, dst);
+
+            MemorySegment decompDst = arena.allocate(input.length);
+            MemorySegment decompressed = codec.decompress(compressed, decompDst, input.length);
+            assertArrayEquals(input, toByteArray(decompressed));
+        }
     }
 
     // ---- maxCompressedLength ----
@@ -187,17 +246,21 @@ class CompressionCodecTest {
 
     @Test
     void testDeflateMaxCompressedLengthBoundHolds() {
-        // Verify the bound is never exceeded by actual compression
         CompressionCodec codec = CompressionCodec.deflate();
         Random rng = new Random(42);
-        for (int size : new int[]{ 0, 1, 10, 100, 4096, 65536 }) {
-            byte[] input = new byte[size];
-            rng.nextBytes(input);
-            int bound = codec.maxCompressedLength(size);
-            byte[] compressed = codec.compress(input, 0, input.length);
-            assertTrue(compressed.length <= bound,
-                    "compressed length (%d) exceeds maxCompressedLength(%d) = %d"
-                            .formatted(compressed.length, size, bound));
+        try (Arena arena = Arena.ofConfined()) {
+            for (int size : new int[]{ 0, 1, 10, 100, 4096, 65536 }) {
+                byte[] input = new byte[size];
+                rng.nextBytes(input);
+                int bound = codec.maxCompressedLength(size);
+
+                MemorySegment src = toSegment(arena, input);
+                MemorySegment dst = arena.allocate(bound);
+                MemorySegment compressed = codec.compress(src, dst);
+                assertTrue(compressed.byteSize() <= bound,
+                        "compressed length (%d) exceeds maxCompressedLength(%d) = %d"
+                                .formatted(compressed.byteSize(), size, bound));
+            }
         }
     }
 
@@ -211,7 +274,6 @@ class CompressionCodecTest {
 
     @Test
     void testDefaultMaxCompressedLengthConservative() {
-        // A custom codec using the default implementation should return a conservative bound
         CompressionCodec custom = new CompressionCodec() {
             @Override
             public byte codecId() {
@@ -219,13 +281,14 @@ class CompressionCodecTest {
             }
 
             @Override
-            public byte[] compress(byte[] input, int offset, int length) {
-                return new byte[0];
+            public MemorySegment compress(MemorySegment src, MemorySegment dst) {
+                return dst.asSlice(0, 0);
             }
 
             @Override
-            public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
-                return new byte[0];
+            public MemorySegment decompress(MemorySegment src, MemorySegment dst,
+                    int uncompressedLength) {
+                return dst.asSlice(0, 0);
             }
         };
         int bound = custom.maxCompressedLength(100);
@@ -245,28 +308,20 @@ class CompressionCodecTest {
     }
 
     @Test
-    void testCompressNullInput() {
+    void testCompressNullSrc() {
         CompressionCodec codec = CompressionCodec.deflate();
-        assertThrows(NullPointerException.class, () -> codec.compress(null, 0, 0));
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment dst = arena.allocate(64);
+            assertThrows(NullPointerException.class, () -> codec.compress(null, dst));
+        }
     }
 
     @Test
-    void testNoneCompressNullInput() {
+    void testNoneCompressNullSrc() {
         CompressionCodec codec = CompressionCodec.none();
-        assertThrows(NullPointerException.class, () -> codec.compress(null, 0, 0));
-    }
-
-    @Test
-    void testCompressNegativeOffset() {
-        CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = { 1, 2, 3 };
-        assertThrows(IllegalArgumentException.class, () -> codec.compress(input, -1, 1));
-    }
-
-    @Test
-    void testCompressOffsetPlusLengthExceedsInput() {
-        CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = { 1, 2, 3 };
-        assertThrows(IllegalArgumentException.class, () -> codec.compress(input, 2, 5));
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment dst = arena.allocate(64);
+            assertThrows(NullPointerException.class, () -> codec.compress(null, dst));
+        }
     }
 }

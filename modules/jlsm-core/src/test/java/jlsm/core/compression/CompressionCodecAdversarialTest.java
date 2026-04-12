@@ -3,6 +3,8 @@ package jlsm.core.compression;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -11,192 +13,163 @@ import static org.junit.jupiter.api.Assertions.*;
  * Adversarial tests for {@link CompressionCodec} implementations.
  *
  * <p>
- * Targets findings from block-compression audit spec-analysis.md.
+ * Updated from byte[] API to MemorySegment API per F17.R1-R3. Targets findings from
+ * block-compression audit spec-analysis.md. Some original C1-F1 overflow tests are no longer
+ * applicable since the MemorySegment API does not accept offset/length parameters — the segment
+ * itself defines bounds.
  */
 class CompressionCodecAdversarialTest {
 
-    // ---- C1-F1: Integer overflow in bounds check ----
-    // The subtraction-based guard `offset > input.length - length` underflows when
-    // length > input.length, allowing the check to pass incorrectly.
-
-    @Test
-    void deflateCompressOverflowBoundsCheckThrowsIAE() {
-        // C1-F1: offset=Integer.MAX_VALUE, length=1 overflows to Integer.MIN_VALUE
-        CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = new byte[10];
-        assertThrows(IllegalArgumentException.class,
-                () -> codec.compress(input, Integer.MAX_VALUE, 1));
-    }
-
-    @Test
-    void deflateDecompressOverflowBoundsCheckThrowsIAE() {
-        // C1-F1: same overflow on decompress
-        CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = new byte[10];
-        assertThrows(IllegalArgumentException.class,
-                () -> codec.decompress(input, Integer.MAX_VALUE, 1, 1));
-    }
-
-    @Test
-    void noneCompressOverflowBoundsCheckThrowsIAE() {
-        // C1-F1: NoneCodec has the same overflow pattern
-        CompressionCodec codec = CompressionCodec.none();
-        byte[] input = new byte[10];
-        assertThrows(IllegalArgumentException.class,
-                () -> codec.compress(input, Integer.MAX_VALUE, 1));
-    }
-
-    @Test
-    void noneDecompressOverflowBoundsCheckThrowsIAE() {
-        // C1-F1: NoneCodec decompress overflow
-        CompressionCodec codec = CompressionCodec.none();
-        byte[] input = new byte[10];
-        assertThrows(IllegalArgumentException.class,
-                () -> codec.decompress(input, Integer.MAX_VALUE, 1, 1));
-    }
-
-    // C1-F1: The KEY overflow vector — small offset, huge length.
-    // input.length=5, offset=0, length=Integer.MAX_VALUE:
-    // input.length - length = 5 - 2147483647 wraps to -2147483642
-    // 0 > -2147483642 is false → check passes incorrectly
-    @Test
-    void deflateCompressHugeLengthOverflow_C1F1() {
-        CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = new byte[5];
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> codec.compress(input, 0, Integer.MAX_VALUE),
-                "C1-F1: huge length must throw IAE, not AIOOBE or NegativeArraySizeException");
-        assertNotNull(ex.getMessage());
-    }
-
-    @Test
-    void noneCompressHugeLengthOverflow_C1F1() {
-        CompressionCodec codec = CompressionCodec.none();
-        byte[] input = new byte[5];
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> codec.compress(input, 0, Integer.MAX_VALUE),
-                "C1-F1: huge length must throw IAE");
-        assertNotNull(ex.getMessage());
-    }
-
-    @Test
-    void deflateDecompressHugeLengthOverflow_C1F1() {
-        CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = new byte[5];
-        assertThrows(IllegalArgumentException.class,
-                () -> codec.decompress(input, 0, Integer.MAX_VALUE, 5),
-                "C1-F1: huge length in decompress must throw IAE");
-    }
-
-    @Test
-    void noneDecompressHugeLengthOverflow_C1F1() {
-        CompressionCodec codec = CompressionCodec.none();
-        byte[] input = new byte[5];
-        assertThrows(IllegalArgumentException.class,
-                () -> codec.decompress(input, 0, Integer.MAX_VALUE, 5),
-                "C1-F1: huge length in decompress must throw IAE");
+    private static byte[] toByteArray(MemorySegment seg) {
+        byte[] result = new byte[(int) seg.byteSize()];
+        MemorySegment.copy(seg, 0, MemorySegment.ofArray(result), 0, result.length);
+        return result;
     }
 
     // ---- C1-F2/C1-F5: decompress allows uncompressedLength=0 ----
-    // Spec says uncompressedLength > 0 for decompress, but impl allows 0.
 
     @Test
     void deflateDecompressNegativeUncompressedLengthThrowsIAE() {
-        // Negative uncompressedLength should be IAE, not NegativeArraySizeException
         CompressionCodec codec = CompressionCodec.deflate();
-        byte[] compressed = codec.compress("test".getBytes(), 0, 4);
-        assertThrows(IllegalArgumentException.class,
-                () -> codec.decompress(compressed, 0, compressed.length, -1));
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment src = arena.allocate(10);
+            MemorySegment dst = arena.allocate(64);
+            assertThrows(IllegalArgumentException.class, () -> codec.decompress(src, dst, -1));
+        }
     }
 
     @Test
     void noneDecompressNegativeUncompressedLengthThrowsIAE() {
-        // NoneCodec should also validate uncompressedLength eagerly
         CompressionCodec codec = CompressionCodec.none();
-        byte[] input = new byte[5];
-        assertThrows(IllegalArgumentException.class, () -> codec.decompress(input, 0, 5, -1));
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment src = arena.allocate(5);
+            MemorySegment dst = arena.allocate(64);
+            assertThrows(IllegalArgumentException.class, () -> codec.decompress(src, dst, -1));
+        }
     }
 
     @Test
-    void deflateDecompressZeroUncompressedLengthAccepted() {
-        // Boundary: uncompressedLength=0 is valid (empty block) — should not throw
+    void deflateDecompressZeroUncompressedLengthEmptySrcAccepted() {
+        // R8: uncompressedLength=0 with empty src is valid — returns zero-length slice
         CompressionCodec codec = CompressionCodec.deflate();
-        byte[] compressed = codec.compress(new byte[0], 0, 0);
-        byte[] result = codec.decompress(compressed, 0, compressed.length, 0);
-        assertEquals(0, result.length);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment src = arena.allocate(0);
+            MemorySegment dst = arena.allocate(64);
+            MemorySegment result = codec.decompress(src, dst, 0);
+            assertEquals(0, result.byteSize());
+        }
     }
 
     // C1-F2: Decompress non-empty compressed data with uncompressedLength=0 —
-    // silently ignores the compressed content and returns empty array.
-    // This is a contract gap: caller says "expect 0 bytes" but data decompresses to more.
+    // now throws UncheckedIOException per R9 (cannot decompress something into nothing).
     @Test
     void deflateDecompressNonEmptyWithZeroUncompressedLength_C1F2() {
         CompressionCodec codec = CompressionCodec.deflate();
-        byte[] original = "non-empty data that compresses to real bytes".getBytes();
-        byte[] compressed = codec.compress(original, 0, original.length);
-        // This documents the gap: decompress succeeds returning empty when it should fail
-        // because the compressed stream actually contains data.
-        byte[] result = codec.decompress(compressed, 0, compressed.length, 0);
-        assertEquals(0, result.length,
-                "C1-F2: CONFIRMED — zero uncompressedLength silently returns empty on non-empty data");
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] original = "non-empty data that compresses to real bytes".getBytes();
+            MemorySegment src = arena.allocate(original.length);
+            src.copyFrom(MemorySegment.ofArray(original));
+
+            int maxLen = codec.maxCompressedLength(original.length);
+            MemorySegment compDst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, compDst);
+
+            // R9: non-empty src with uncompressedLength=0 must throw
+            MemorySegment decompDst = arena.allocate(64);
+            assertThrows(java.io.UncheckedIOException.class,
+                    () -> codec.decompress(compressed, decompDst, 0),
+                    "R9: non-empty src with zero uncompressedLength must throw UncheckedIOException");
+        }
     }
 
     @Test
-    void noneDecompressNullInputThrowsNPE() {
+    void noneDecompressNullSrcThrowsNPE() {
         CompressionCodec codec = CompressionCodec.none();
-        assertThrows(NullPointerException.class, () -> codec.decompress(null, 0, 0, 0));
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment dst = arena.allocate(64);
+            assertThrows(NullPointerException.class, () -> codec.decompress(null, dst, 0));
+        }
     }
 
     @Test
-    void deflateDecompressNullInputThrowsNPE() {
+    void deflateDecompressNullSrcThrowsNPE() {
         CompressionCodec codec = CompressionCodec.deflate();
-        assertThrows(NullPointerException.class, () -> codec.decompress(null, 0, 0, 0));
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment dst = arena.allocate(64);
+            assertThrows(NullPointerException.class, () -> codec.decompress(null, dst, 0));
+        }
     }
 
     // ---- C1-F3: DeflateCodec compress — potential infinite loop ----
-    // The compress loop has no iteration guard. If deflate() returns 0 without
-    // finished(), the loop spins. Test with timeout as a bounded-iteration guard.
     @Test
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void deflateCompressCompletesWithinTimeout_C1F3() {
         CompressionCodec codec = CompressionCodec.deflate();
-        // Highly incompressible data
-        byte[] input = new byte[65536];
-        for (int i = 0; i < input.length; i++) {
-            input[i] = (byte) (i * 31 + 17);
+        try (Arena arena = Arena.ofConfined()) {
+            // Highly incompressible data
+            byte[] data = new byte[65536];
+            for (int i = 0; i < data.length; i++) {
+                data[i] = (byte) (i * 31 + 17);
+            }
+            MemorySegment src = arena.allocate(data.length);
+            src.copyFrom(MemorySegment.ofArray(data));
+
+            int maxLen = codec.maxCompressedLength(data.length);
+            MemorySegment dst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, dst);
+            assertNotNull(compressed);
+
+            MemorySegment decompDst = arena.allocate(data.length);
+            MemorySegment decompressed = codec.decompress(compressed, decompDst, data.length);
+            assertArrayEquals(data, toByteArray(decompressed));
         }
-        byte[] compressed = codec.compress(input, 0, input.length);
-        assertNotNull(compressed);
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, input.length);
-        assertArrayEquals(input, decompressed);
     }
 
-    // C1-F3: Single-byte input — exercises the minimum buffer path
     @Test
     @Timeout(value = 5, unit = TimeUnit.SECONDS)
     void deflateCompressSingleByteCompletes_C1F3() {
         CompressionCodec codec = CompressionCodec.deflate();
-        byte[] input = { 42 };
-        byte[] compressed = codec.compress(input, 0, 1);
-        assertNotNull(compressed);
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length, 1);
-        assertArrayEquals(input, decompressed);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment src = arena.allocate(1);
+            src.set(java.lang.foreign.ValueLayout.JAVA_BYTE, 0, (byte) 42);
+
+            int maxLen = codec.maxCompressedLength(1);
+            MemorySegment dst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, dst);
+            assertNotNull(compressed);
+
+            MemorySegment decompDst = arena.allocate(1);
+            MemorySegment decompressed = codec.decompress(compressed, decompDst, 1);
+            assertEquals((byte) 42, decompressed.get(java.lang.foreign.ValueLayout.JAVA_BYTE, 0));
+        }
     }
 
     // ---- C1-F4: decompress trailing data ignored ----
     @Test
     void deflateDecompressTrailingDataIgnored_C1F4() {
         CompressionCodec codec = CompressionCodec.deflate();
-        byte[] original = "test data for trailing check".getBytes();
-        byte[] compressed = codec.compress(original, 0, original.length);
-        byte[] withTrailing = new byte[compressed.length + 100];
-        System.arraycopy(compressed, 0, withTrailing, 0, compressed.length);
-        for (int i = compressed.length; i < withTrailing.length; i++) {
-            withTrailing[i] = (byte) 0xDE;
+        try (Arena arena = Arena.ofConfined()) {
+            byte[] original = "test data for trailing check".getBytes();
+            MemorySegment src = arena.allocate(original.length);
+            src.copyFrom(MemorySegment.ofArray(original));
+
+            int maxLen = codec.maxCompressedLength(original.length);
+            MemorySegment compDst = arena.allocate(maxLen);
+            MemorySegment compressed = codec.compress(src, compDst);
+
+            // Create a larger segment with the compressed data + trailing garbage
+            int paddedSize = (int) compressed.byteSize() + 100;
+            MemorySegment withTrailing = arena.allocate(paddedSize);
+            MemorySegment.copy(compressed, 0, withTrailing, 0, compressed.byteSize());
+            for (long i = compressed.byteSize(); i < paddedSize; i++) {
+                withTrailing.set(java.lang.foreign.ValueLayout.JAVA_BYTE, i, (byte) 0xDE);
+            }
+
+            // C1-F4: Trailing data silently ignored — inflater reads only what it needs
+            MemorySegment decompDst = arena.allocate(original.length);
+            MemorySegment result = codec.decompress(withTrailing, decompDst, original.length);
+            assertArrayEquals(original, toByteArray(result),
+                    "C1-F4: trailing data silently ignored — returns correct data from prefix");
         }
-        // C1-F4: Trailing data is silently ignored — inflater reads only what it needs
-        byte[] result = codec.decompress(withTrailing, 0, withTrailing.length, original.length);
-        assertArrayEquals(original, result,
-                "C1-F4: trailing data silently ignored — returns correct data from prefix");
     }
 }

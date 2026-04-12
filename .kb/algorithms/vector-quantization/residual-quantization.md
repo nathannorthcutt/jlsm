@@ -27,6 +27,8 @@ sources:
     title: "LSQ++: Lower Running Time and Higher Recall (ECCV 2018)"
     accessed: "2026-03-16"
     type: "paper"
+related:
+  - "systems/vector-partitioning/quantization-aware.md"
 ---
 
 # Residual and Additive Quantization

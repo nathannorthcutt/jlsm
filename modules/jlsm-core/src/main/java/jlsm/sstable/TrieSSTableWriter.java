@@ -14,6 +14,7 @@ import jlsm.sstable.internal.EntryCodec;
 import jlsm.sstable.internal.SSTableFormat;
 
 import java.io.IOException;
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
@@ -238,27 +239,39 @@ public final class TrieSSTableWriter implements SSTableWriter {
         byte[] blockBytes = currentBlock.serialize();
 
         if (codec != null) {
-            // v2: compress the block
-            byte[] compressed = codec.compress(blockBytes, 0, blockBytes.length);
-            byte actualCodecId;
-            byte[] dataToWrite;
-            if (compressed.length >= blockBytes.length) {
-                // Incompressible — store raw with NONE codec ID
-                dataToWrite = blockBytes;
-                actualCodecId = CompressionCodec.none().codecId();
-            } else {
-                dataToWrite = compressed;
-                actualCodecId = codec.codecId();
+            // v2/v3: compress the block via native MemorySegment API (F17.R37)
+            // Arena-allocated segments enable zero-copy through native zlib
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment blockSeg = arena.allocate(blockBytes.length);
+                MemorySegment.copy(blockBytes, 0, blockSeg, ValueLayout.JAVA_BYTE, 0,
+                        blockBytes.length);
+
+                int maxLen = codec.maxCompressedLength(blockBytes.length);
+                MemorySegment compDst = arena.allocate(maxLen);
+                MemorySegment compSlice = codec.compress(blockSeg, compDst);
+                int compressedLen = (int) compSlice.byteSize();
+
+                byte actualCodecId;
+                byte[] dataToWrite;
+                if (compressedLen >= blockBytes.length) {
+                    // Incompressible — store raw with NONE codec ID
+                    dataToWrite = blockBytes;
+                    actualCodecId = CompressionCodec.none().codecId();
+                } else {
+                    dataToWrite = compSlice.toArray(ValueLayout.JAVA_BYTE);
+                    actualCodecId = codec.codecId();
+                }
+
+                int checksum = 0;
+                if (v3) {
+                    CRC32C crc = new CRC32C();
+                    crc.update(dataToWrite, 0, dataToWrite.length);
+                    checksum = (int) crc.getValue();
+                }
+                compressionMapEntries.add(new CompressionMap.Entry(writePosition,
+                        dataToWrite.length, blockBytes.length, actualCodecId, checksum));
+                writeBytes(dataToWrite);
             }
-            int checksum = 0;
-            if (v3) {
-                CRC32C crc = new CRC32C();
-                crc.update(dataToWrite, 0, dataToWrite.length);
-                checksum = (int) crc.getValue();
-            }
-            compressionMapEntries.add(new CompressionMap.Entry(writePosition, dataToWrite.length,
-                    blockBytes.length, actualCodecId, checksum));
-            writeBytes(dataToWrite);
         } else {
             // v1: write raw block
             writeBytes(blockBytes);

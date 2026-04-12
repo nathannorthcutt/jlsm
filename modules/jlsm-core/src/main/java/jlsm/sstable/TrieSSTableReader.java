@@ -428,11 +428,21 @@ public final class TrieSSTableReader implements SSTableReader {
             throw new IOException("codec not found for ID 0x%02x in block %d"
                     .formatted(mapEntry.codecId(), blockIndex));
         }
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
-                mapEntry.uncompressedSize());
-        if (decompressed.length != mapEntry.uncompressedSize()) {
-            throw new IOException("block %d decompression size mismatch: got %d bytes, expected %d"
-                    .formatted(blockIndex, decompressed.length, mapEntry.uncompressedSize()));
+        // F17.R38: native MemorySegment decompress — Arena-allocated for zero-copy
+        byte[] decompressed;
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment compSeg = arena.allocate(compressed.length);
+            MemorySegment.copy(compressed, 0, compSeg, ValueLayout.JAVA_BYTE, 0, compressed.length);
+
+            MemorySegment decompDst = arena.allocate(mapEntry.uncompressedSize());
+            MemorySegment decompSlice = codec.decompress(compSeg, decompDst,
+                    mapEntry.uncompressedSize());
+            if (decompSlice.byteSize() != mapEntry.uncompressedSize()) {
+                throw new IOException(
+                        "block %d decompression size mismatch: got %d bytes, expected %d".formatted(
+                                blockIndex, decompSlice.byteSize(), mapEntry.uncompressedSize()));
+            }
+            decompressed = decompSlice.toArray(ValueLayout.JAVA_BYTE);
         }
 
         if (blockCache != null && !closed) {
@@ -483,13 +493,21 @@ public final class TrieSSTableReader implements SSTableReader {
             throw new IOException("codec not found for ID 0x%02x in block %d"
                     .formatted(mapEntry.codecId(), blockIndex));
         }
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
-                mapEntry.uncompressedSize());
-        if (decompressed.length != mapEntry.uncompressedSize()) {
-            throw new IOException("block %d decompression size mismatch: got %d bytes, expected %d"
-                    .formatted(blockIndex, decompressed.length, mapEntry.uncompressedSize()));
+        // F17.R38: native MemorySegment decompress — Arena-allocated for zero-copy
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment compSeg = arena.allocate(compressed.length);
+            MemorySegment.copy(compressed, 0, compSeg, ValueLayout.JAVA_BYTE, 0, compressed.length);
+
+            MemorySegment decompDst = arena.allocate(mapEntry.uncompressedSize());
+            MemorySegment decompSlice = codec.decompress(compSeg, decompDst,
+                    mapEntry.uncompressedSize());
+            if (decompSlice.byteSize() != mapEntry.uncompressedSize()) {
+                throw new IOException(
+                        "block %d decompression size mismatch: got %d bytes, expected %d".formatted(
+                                blockIndex, decompSlice.byteSize(), mapEntry.uncompressedSize()));
+            }
+            return decompSlice.toArray(ValueLayout.JAVA_BYTE);
         }
-        return decompressed;
     }
 
     /**

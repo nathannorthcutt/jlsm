@@ -27,3 +27,14 @@ Field existence checks (`schema.fieldIndex(name) >= 0`) are the obvious first va
 
 ## Found in
 - sql-query-support (audit round 2, 2026-03-25): translateComparison, translateBetween, translateFunctionCall (MATCH), translateVectorDistance all accepted any literal type for any field
+
+## Updates 2026-04-05
+
+- **Integer range validation (sql-query-support audit run-001):** Even after
+  type compatibility was added, integer types accepted any Number without range
+  checking. INT8 field accepted 999999 (F-R1.cb.2.6). Fixed by splitting
+  combined INT8/INT16/INT32/INT64 case into individual range-checked cases.
+- **ArrayType as vector field (F-R1.cb.2.7):** ArrayType accepted as vector
+  field without element-type check. Fixed by requiring FLOAT16/FLOAT32 element type.
+- Field-type validation has layers: existence → compatibility → range. All must
+  be tested independently.

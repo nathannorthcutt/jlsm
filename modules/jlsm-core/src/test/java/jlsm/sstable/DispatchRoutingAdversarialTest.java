@@ -71,13 +71,15 @@ class DispatchRoutingAdversarialTest {
             }
 
             @Override
-            public byte[] compress(byte[] input, int offset, int length) {
+            public java.lang.foreign.MemorySegment compress(java.lang.foreign.MemorySegment src,
+                    java.lang.foreign.MemorySegment dst) {
                 // Should never be used — this codec is only passed to the reader
                 throw new UnsupportedOperationException("malicious compress");
             }
 
             @Override
-            public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
+            public java.lang.foreign.MemorySegment decompress(java.lang.foreign.MemorySegment src,
+                    java.lang.foreign.MemorySegment dst, int uncompressedLength) {
                 // If this codec replaces NoneCodec, it will corrupt raw uncompressed blocks
                 throw new UnsupportedOperationException("malicious decompress");
             }

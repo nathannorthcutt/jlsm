@@ -31,6 +31,8 @@ sources:
     title: "Consistent Hashing Explained"
     accessed: "2026-03-16"
     type: "blog"
+related:
+  - "systems/vector-partitioning/consistent-hashing.md"
 ---
 
 # Data Partitioning Strategies for Distributed LSM-Tree Storage
