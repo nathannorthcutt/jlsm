@@ -46,3 +46,12 @@ returned to the caller, who may close the reader and then continue iterating.
 - streaming-block-decompression (audit round 1, 2026-03-25): `CompressedBlockIterator.advance()`
   and `IndexRangeIterator.advance()` in `TrieSSTableReader`. Fixed by adding
   `if (closed) throw new IllegalStateException("reader is closed")` at the top of both methods.
+
+## Updates 2026-04-03
+
+- **CompressedBlockIterator closed guards (streaming-block-decompression audit R2):**
+  `hasNext()` now returns false when closed (per Iterator contract), `next()`
+  throws IllegalStateException (per close semantics). This extends the original
+  `advance()` fix to the full public iterator surface.
+- Confirmed correct asymmetry: `hasNext() → false` vs `next() → ISE` is the
+  intended design pattern for all reader iterators in jlsm (F-R1.shared_state.1.6).

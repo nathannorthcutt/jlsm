@@ -13,6 +13,7 @@ backed stores that need range scan support.
 | [partitioning-strategies.md](partitioning-strategies.md) | Range, Hash, Consistent Hashing comparison | active | O(log R) routing | Choosing a partitioning model |
 | [vector-search-partitioning.md](vector-search-partitioning.md) | Vector search + hybrid filtering in distributed systems | active | scatter-gather O(P*k) | Vector + filter + text search topology |
 | [table-partitioning.md](table-partitioning.md) | table-partitioning (feature footprint) | stable | feature audit record | Range partitioning implementation overview |
+| [multi-writer-wal.md](multi-writer-wal.md) | Multi-Writer WAL Design Patterns | active | Per-partition: zero coordination | Partitioned table WAL coordination |
 
 ## Comparison Summary
 

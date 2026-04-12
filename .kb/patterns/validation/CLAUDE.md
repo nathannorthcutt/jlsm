@@ -10,3 +10,5 @@
 | incomplete-serialization-round-trip | [incomplete-serialization-round-trip.md](incomplete-serialization-round-trip.md) | Persist/recover cycles that silently omit fields, producing valid but incomplete objects | 2026-04-07 |
 | mutable-state-escaping-builder | [mutable-state-escaping-builder.md](mutable-state-escaping-builder.md) | Builder passes mutable collections or silently discards configured values during construction | 2026-04-07 |
 | untrusted-storage-byte-length | [untrusted-storage-byte-length.md](untrusted-storage-byte-length.md) | Decode routines that trust persisted byte array lengths without runtime bounds checks | 2026-04-08 |
+| assert-only-guard-anti-pattern | [assert-only-guard-anti-pattern.md](assert-only-guard-anti-pattern.md) | assert used as sole guard in public API; disabled in production leaves path unprotected | 2026-04-11 |
+| silent-empty-result-dispatch | [silent-empty-result-dispatch.md](silent-empty-result-dispatch.md) | Dispatch returns empty result silently instead of signaling missing index or error | 2026-04-11 |

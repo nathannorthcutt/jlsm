@@ -33,6 +33,8 @@ optimization decisions.
 | [mutable-array-getter-return.md](mutable-array-getter-return.md) | Mutable array getter return (adversarial) | active | data-integrity bug class | Any public getter returning Object[]/float[]/short[] |
 | [inconsistent-null-getter-contract.md](inconsistent-null-getter-contract.md) | Inconsistent null getter contract (adversarial) | active | data-integrity bug class | Any document type with multiple typed getters |
 | [optimize-document-serializer.md](optimize-document-serializer.md) | optimize-document-serializer (feature footprint) | stable | feature audit record | Serializer deserialization optimization overview |
+| [close-atomicity-cas.md](close-atomicity-cas.md) | Close atomicity via VarHandle CAS (adversarial) | active | concurrency bug class | Any close() requiring atomic state transition |
+| [cache-mutation-after-close.md](cache-mutation-after-close.md) | Cache mutation after close (adversarial) | active | concurrency bug class | Any reader with cache interaction during close |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

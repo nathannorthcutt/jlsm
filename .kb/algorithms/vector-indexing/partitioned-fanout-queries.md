@@ -35,6 +35,8 @@ sources:
     accessed: "2026-03-27"
     type: blog
     note: "(not fetched — timeout)"
+related:
+  - "distributed-systems/data-partitioning/cross-partition-query-planning.md"
 ---
 
 # Partitioned Fanout Query Optimization for Vector Indices

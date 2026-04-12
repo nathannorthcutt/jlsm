@@ -34,3 +34,19 @@ for the entire encryptor lifetime.
 
 ## Found in
 - encrypt-memory-data (round 1, 2026-03-25): AesGcmEncryptor, BoldyrevaOpeEncryptor, DcpeSapEncryptor, SseEncryptedIndex all leave key bytes on heap
+
+## Updates 2026-04-03
+
+- **AutoCloseable + key zeroing implemented (encrypt-memory-data audit run-001):**
+  All four encryptors (AesGcmEncryptor, AesSivEncryptor, BoldyrevaOpeEncryptor,
+  DcpeSapEncryptor) and SseEncryptedIndex now implement AutoCloseable with key
+  material zeroing in close().
+- **DcpeSapEncryptor:** keyBytes zeroed at end of constructor after deriving
+  scaleFactor and seeding seedRng — not retained as a field.
+- **SseEncryptedIndex:** prfKey and encKey zeroed in close(); SecretKeySpec
+  instances cached and destroyed.
+- **Accepted risk:** JDK SecretKeySpec.destroy() is a no-op on most implementations.
+  SecretKeySpec clones the byte[] internally and the clone cannot be zeroed.
+- **Accepted risk:** ThreadLocal Cipher instances retain key state until thread
+  termination or close(). AutoCloseable pattern addresses well-behaved callers
+  but cannot force cleanup on abandoned threads.

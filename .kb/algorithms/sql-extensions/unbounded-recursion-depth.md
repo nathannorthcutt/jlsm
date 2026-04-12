@@ -26,3 +26,13 @@ Recursive descent is the natural and correct approach for expression grammars wi
 
 ## Found in
 - sql-query-support (audit round 2, 2026-03-25): SqlParser.parsePrimary → parseExpression via LPAREN had no depth limit; fixed with MAX_EXPRESSION_DEPTH=128
+
+## Updates 2026-04-05
+
+- **Three additional unbounded recursion paths (sql-query-support audit run-001):**
+  - `parseNot()` self-recursion on NOT chains (F-R1.shared_state.1.1)
+  - `parseOr()`/`parseAnd()` while-loop chains (F-R1.shared_state.1.2)
+  - `parseFunctionCall()` mutual recursion with `parsePrimary()` (F-R1.shared_state.1.6)
+  All three now enforce MAX_EXPRESSION_DEPTH=128 consistently.
+- The original fix was incomplete — only `parsePrimary()` LPAREN depth was
+  bounded. Three other entry points to the recursive descent were unbounded.
