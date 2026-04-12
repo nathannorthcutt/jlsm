@@ -3,6 +3,7 @@ problem: "table-migration-protocol"
 date: "2026-03-30"
 version: 1
 status: "deferred"
+depends_on: ["catalog-replication", "partition-replication-protocol"]
 ---
 
 # Table Migration Protocol — Deferred

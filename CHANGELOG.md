@@ -11,6 +11,20 @@ semver release cadence is established.
 ## [Unreleased]
 
 ### Added
+- SSTable v3 format: per-block CRC32C checksums for silent corruption detection and configurable block size for remote-backend optimization
+- `CorruptBlockException` — diagnostic `IOException` subclass with block index and checksum mismatch details
+- `TrieSSTableWriter.Builder` — new builder API for v3 format with `blockSize()` and `codec()` configuration
+- `SSTableFormat` — v3 constants: `MAGIC_V3`, `FOOTER_SIZE_V3`, `HUGE_PAGE_BLOCK_SIZE` (2 MiB), `REMOTE_BLOCK_SIZE` (8 MiB), `validateBlockSize()`
+- `CompressionMap` — v3 21-byte entries with CRC32C checksum, version-aware `deserialize(data, version)`
+- F16 spec: SSTable v3 format upgrade (24 requirements)
+- 32 new tests covering v3 write/read, backward compatibility, corruption detection, block size validation
+
+### Known Gaps
+- Old constructors still produce v2 files — v3 requires explicit opt-in via `TrieSSTableWriter.builder()`
+
+---
+
+### Added
 - Engine clustering: peer-to-peer cluster membership, table/partition ownership, and scatter-gather queries in `jlsm-engine`
 - `jlsm.engine.cluster` package: `ClusteredEngine`, `ClusteredTable`, `NodeAddress`, `ClusterConfig`, `Message`, `MembershipView`, `PartialResultMetadata`
 - SPI interfaces: `ClusterTransport`, `DiscoveryProvider`, `MembershipProtocol`, `MembershipListener`

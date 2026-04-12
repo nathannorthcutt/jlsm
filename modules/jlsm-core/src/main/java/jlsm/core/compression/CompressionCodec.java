@@ -1,7 +1,9 @@
 package jlsm.core.compression;
 
+import java.lang.foreign.MemorySegment;
+
 /**
- * Pluggable compression codec for SSTable data blocks.
+ * Pluggable compression codec for SSTable data blocks and WAL records.
  *
  * <p>
  * Each codec is identified by a unique {@link #codecId()} stored in the SSTable compression map so
@@ -39,36 +41,70 @@ public interface CompressionCodec {
     byte codecId();
 
     /**
-     * Compresses a region of the input byte array.
+     * Compresses the source segment into the destination segment.
      *
      * <p>
-     * If the compressed output would be equal to or larger than the input, the caller should store
-     * the block uncompressed and record {@code NoneCodec} in the compression map.
+     * The caller must provide a destination segment sized to at least
+     * {@link #maxCompressedLength(int)} bytes for the source size. The returned segment is a slice
+     * of {@code dst} containing the compressed output. The source segment is not mutated.
      *
-     * @param input source byte array; must not be null
-     * @param offset start offset within {@code input}; must be non-negative
-     * @param length number of bytes to compress; must be non-negative,
-     *            {@code offset + length <= input.length}
-     * @return a new byte array containing the compressed data
-     * @throws IllegalArgumentException if offset or length are out of bounds
+     * <p>
+     * If the source segment has zero byte size, a zero-length slice of {@code dst} is returned
+     * without checking the destination size.
+     *
+     * @param src source data segment; must not be null
+     * @param dst caller-provided destination segment; must not be null and sized
+     *            {@code >= maxCompressedLength(src.byteSize())} when {@code src.byteSize() > 0}
+     * @return a slice of {@code dst} containing the compressed output
+     * @throws NullPointerException if {@code src} or {@code dst} is null
+     * @throws IllegalStateException if {@code src.byteSize() > 0} and
+     *             {@code dst.byteSize() < maxCompressedLength(src.byteSize())}
      * @throws java.io.UncheckedIOException if compression fails
      */
-    byte[] compress(byte[] input, int offset, int length);
+    MemorySegment compress(MemorySegment src, MemorySegment dst);
 
     /**
-     * Decompresses a region of the input byte array.
+     * Decompresses the source segment into the destination segment.
      *
-     * @param input compressed byte array; must not be null
-     * @param offset start offset within {@code input}; must be non-negative
-     * @param length number of compressed bytes; must be non-negative,
-     *            {@code offset + length <= input.length}
-     * @param uncompressedLength expected size of the decompressed output
-     * @return a new byte array of exactly {@code uncompressedLength} bytes
-     * @throws IllegalArgumentException if offset or length are out of bounds
+     * <p>
+     * The returned segment is a slice of {@code dst} containing exactly {@code uncompressedLength}
+     * bytes. The source segment is not mutated.
+     *
+     * @param src compressed data segment; must not be null
+     * @param dst caller-provided destination segment; must not be null and sized
+     *            {@code >= uncompressedLength}
+     * @param uncompressedLength expected decompressed size; must be {@code >= 0}
+     * @return a slice of {@code dst} containing the decompressed output
+     * @throws NullPointerException if {@code src} or {@code dst} is null
+     * @throws IllegalArgumentException if {@code uncompressedLength < 0}
      * @throws java.io.UncheckedIOException if decompression fails or output size does not match
      *             {@code uncompressedLength}
      */
-    byte[] decompress(byte[] input, int offset, int length, int uncompressedLength);
+    MemorySegment decompress(MemorySegment src, MemorySegment dst, int uncompressedLength);
+
+    /**
+     * Returns the maximum possible compressed size for the given input length.
+     *
+     * <p>
+     * Callers can use this to pre-allocate output buffers of the correct size. The returned value
+     * is a tight upper bound — actual compressed output will never exceed this length.
+     *
+     * <p>
+     * The default implementation returns a conservative bound of {@code inputLength * 2 + 64}.
+     * Built-in codecs override with tighter, algorithm-specific bounds.
+     *
+     * @param inputLength the length of the uncompressed input; must be non-negative
+     * @return the worst-case compressed size; always {@code >= inputLength}
+     * @throws IllegalArgumentException if {@code inputLength < 0}
+     * @see <a href="../../.decisions/max-compressed-length/adr.md">ADR: Max Compressed Length</a>
+     */
+    default int maxCompressedLength(int inputLength) {
+        if (inputLength < 0) {
+            throw new IllegalArgumentException(
+                    "inputLength must be non-negative, got: " + inputLength);
+        }
+        return inputLength + inputLength + 64;
+    }
 
     /**
      * Returns the passthrough (no-op) codec. Codec ID 0x00.

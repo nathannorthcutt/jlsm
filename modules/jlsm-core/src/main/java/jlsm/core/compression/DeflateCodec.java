@@ -2,7 +2,8 @@ package jlsm.core.compression;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.Arrays;
+import java.lang.foreign.MemorySegment;
+import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
@@ -19,7 +20,12 @@ import java.util.zip.Inflater;
  * Each call to {@link #compress} and {@link #decompress} creates a fresh
  * {@code Deflater}/{@code Inflater} and calls {@code end()} in a {@code finally} block to release
  * native memory immediately. This avoids retaining native resources across calls and is safe for
- * concurrent use.
+ * concurrent use (F17.R5, F17.R16).
+ *
+ * <p>
+ * Both compress and decompress use the {@link MemorySegment#asByteBuffer()} zero-copy path:
+ * Arena-allocated segments produce direct ByteBuffers, so data flows through native zlib without
+ * heap intermediaries (F17.R14, F17.R15).
  *
  * <p>
  * Package-private — accessed via {@link CompressionCodec#deflate()} and
@@ -53,52 +59,107 @@ final class DeflateCodec implements CompressionCodec {
         return 0x02;
     }
 
+    /**
+     * Returns the worst-case compressed size for deflate.
+     *
+     * <p>
+     * Uses the zlib {@code deflateBound} formula: accounts for block headers, Huffman overhead, and
+     * stream framing.
+     */
     @Override
-    public byte[] compress(byte[] input, int offset, int length) {
-        Objects.requireNonNull(input, "input must not be null");
-        if (offset < 0 || length < 0 || offset > input.length - length) {
+    public int maxCompressedLength(int inputLength) {
+        if (inputLength < 0) {
             throw new IllegalArgumentException(
-                    "offset=%d, length=%d out of bounds for input.length=%d".formatted(offset,
-                            length, input.length));
+                    "inputLength must be non-negative, got: " + inputLength);
         }
+        // zlib deflateBound formula: input + (input >> 12) + (input >> 14) + (input >> 25) + 13
+        // Add extra margin for Java's deflate wrapper bytes
+        return inputLength + (inputLength >> 12) + (inputLength >> 14) + (inputLength >> 25) + 13;
+    }
+
+    @Override
+    public MemorySegment compress(MemorySegment src, MemorySegment dst) {
+        Objects.requireNonNull(src, "src must not be null");
+        Objects.requireNonNull(dst, "dst must not be null");
+
+        final long srcSize = src.byteSize();
+
+        // R7: empty source -> zero-length slice (before dst size check per R11)
+        if (srcSize == 0) {
+            return dst.asSlice(0, 0);
+        }
+
+        // R11: undersized dst check
+        final int maxLen = maxCompressedLength((int) srcSize);
+        if (dst.byteSize() < maxLen) {
+            throw new IllegalStateException("dst.byteSize()=%d < maxCompressedLength(%d)=%d"
+                    .formatted(dst.byteSize(), srcSize, maxLen));
+        }
+
+        // R14: zero-copy path via direct ByteBuffer
+        final ByteBuffer srcBuf = src.asByteBuffer();
+        final ByteBuffer dstBuf = dst.asByteBuffer();
+
         Deflater def = new Deflater(level);
         try {
-            def.setInput(input, offset, length);
+            def.setInput(srcBuf);
             def.finish();
-            byte[] buf = new byte[Math.max(length + 64, 64)];
+
             int totalWritten = 0;
             while (!def.finished()) {
-                int written = def.deflate(buf, totalWritten, buf.length - totalWritten);
+                dstBuf.position(totalWritten);
+                int written = def.deflate(dstBuf);
                 totalWritten += written;
-                if (totalWritten == buf.length && !def.finished()) {
-                    buf = Arrays.copyOf(buf, buf.length * 2);
+                if (written == 0 && !def.finished()) {
+                    throw new UncheckedIOException(new IOException(
+                            "Deflate compression stalled after %d bytes".formatted(totalWritten)));
                 }
             }
-            return Arrays.copyOf(buf, totalWritten);
+
+            assert totalWritten <= maxLen : "compressed output %d exceeds maxCompressedLength %d"
+                    .formatted(totalWritten, maxLen);
+
+            return dst.asSlice(0, totalWritten);
         } finally {
             def.end();
         }
     }
 
     @Override
-    public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
-        Objects.requireNonNull(input, "input must not be null");
-        if (offset < 0 || length < 0 || offset > input.length - length) {
-            throw new IllegalArgumentException(
-                    "offset=%d, length=%d out of bounds for input.length=%d".formatted(offset,
-                            length, input.length));
-        }
+    public MemorySegment decompress(MemorySegment src, MemorySegment dst, int uncompressedLength) {
+        Objects.requireNonNull(src, "src must not be null");
+        Objects.requireNonNull(dst, "dst must not be null");
+
+        // R10: negative uncompressedLength
         if (uncompressedLength < 0) {
             throw new IllegalArgumentException(
                     "uncompressedLength must be non-negative, got: " + uncompressedLength);
         }
+
+        // R8: empty src, zero length -> zero-length slice
+        if (uncompressedLength == 0 && src.byteSize() == 0) {
+            return dst.asSlice(0, 0);
+        }
+
+        // R9: non-empty src, zero length -> UncheckedIOException
+        if (uncompressedLength == 0 && src.byteSize() > 0) {
+            throw new UncheckedIOException(new IOException(
+                    "Cannot decompress %d bytes into 0 bytes".formatted(src.byteSize())));
+        }
+
+        // R15: zero-copy path via direct ByteBuffer
+        final ByteBuffer srcBuf = src.asByteBuffer();
+        final ByteBuffer dstBuf = dst.asByteBuffer();
+        dstBuf.limit(uncompressedLength);
+
         Inflater inf = new Inflater();
         try {
-            inf.setInput(input, offset, length);
-            byte[] output = new byte[uncompressedLength];
+            inf.setInput(srcBuf);
+
             int totalRead = 0;
             while (totalRead < uncompressedLength && !inf.finished()) {
-                int read = inf.inflate(output, totalRead, uncompressedLength - totalRead);
+                dstBuf.position(totalRead);
+                int read = inf.inflate(dstBuf);
                 if (read == 0 && !inf.finished()) {
                     throw new UncheckedIOException(
                             new IOException("Deflate decompression stalled: inflated %d of %d bytes"
@@ -106,12 +167,14 @@ final class DeflateCodec implements CompressionCodec {
                 }
                 totalRead += read;
             }
+
             if (totalRead != uncompressedLength) {
                 throw new UncheckedIOException(new IOException(
                         "Deflate decompression size mismatch: got %d bytes, expected %d"
                                 .formatted(totalRead, uncompressedLength)));
             }
-            return output;
+
+            return dst.asSlice(0, uncompressedLength);
         } catch (DataFormatException e) {
             throw new UncheckedIOException(new IOException("Deflate decompression failed", e));
         } finally {

@@ -14,6 +14,7 @@ import jlsm.sstable.internal.EntryCodec;
 import jlsm.sstable.internal.SSTableFormat;
 
 import java.io.IOException;
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
@@ -25,16 +26,19 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.zip.CRC32C;
 
 /**
  * Writes entries to a new SSTable file using a trie-based key index.
  *
  * <p>
- * Supports two file formats:
+ * Supports three file formats:
  * <ul>
  * <li><b>v1</b> — no compression (constructors without {@link CompressionCodec})</li>
  * <li><b>v2</b> — per-block compression with a compression offset map (constructor with
  * {@link CompressionCodec})</li>
+ * <li><b>v3</b> — per-block compression with CRC32C checksums and configurable block size
+ * ({@link Builder})</li>
  * </ul>
  *
  * <p>
@@ -65,10 +69,16 @@ public final class TrieSSTableWriter implements SSTableWriter {
     private BloomFilter bloomFilter;
     private final BloomFilter.Factory bloomFactory;
 
-    // Compression (v2 only — null for v1)
+    // Compression (v2/v3 — null for v1)
     private final CompressionCodec codec;
     private final List<CompressionMap.Entry> compressionMapEntries = new ArrayList<>();
     private int blockCount = 0;
+
+    // Block size (v3: configurable, v1/v2: DEFAULT_BLOCK_SIZE)
+    private final int blockSize;
+
+    // v3 format flag — true only when constructed via Builder
+    private final boolean v3;
 
     // Stats
     private long entryCount = 0L;
@@ -136,6 +146,32 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.outputPath = outputPath;
         this.bloomFactory = bloomFactory;
         this.codec = codec;
+        this.blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
+        this.v3 = false;
+        this.channel = Files.newByteChannel(outputPath, StandardOpenOption.CREATE_NEW,
+                StandardOpenOption.WRITE);
+    }
+
+    /**
+     * Internal constructor used by the Builder for v3 format with configurable block size.
+     */
+    private TrieSSTableWriter(long id, Level level, Path outputPath,
+            BloomFilter.Factory bloomFactory, CompressionCodec codec, int blockSize)
+            throws IOException {
+        Objects.requireNonNull(level, "level must not be null");
+        Objects.requireNonNull(outputPath, "outputPath must not be null");
+        Objects.requireNonNull(bloomFactory, "bloomFactory must not be null");
+        if (codec != null && codec.codecId() == 0x00 && codec != CompressionCodec.none()) {
+            throw new IllegalArgumentException(
+                    "custom codec must not use codecId 0x00 (reserved for NoneCodec)");
+        }
+        this.id = id;
+        this.level = level;
+        this.outputPath = outputPath;
+        this.bloomFactory = bloomFactory;
+        this.codec = codec;
+        this.blockSize = blockSize;
+        this.v3 = true;
         this.channel = Files.newByteChannel(outputPath, StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE);
     }
@@ -192,7 +228,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
         entryCount++;
 
         // Flush block if it exceeds the target size
-        if (currentBlock.byteSize() >= SSTableFormat.DEFAULT_BLOCK_SIZE) {
+        if (currentBlock.byteSize() >= blockSize) {
             flushCurrentBlock();
         }
     }
@@ -203,21 +239,39 @@ public final class TrieSSTableWriter implements SSTableWriter {
         byte[] blockBytes = currentBlock.serialize();
 
         if (codec != null) {
-            // v2: compress the block
-            byte[] compressed = codec.compress(blockBytes, 0, blockBytes.length);
-            byte actualCodecId;
-            byte[] dataToWrite;
-            if (compressed.length >= blockBytes.length) {
-                // Incompressible — store raw with NONE codec ID
-                dataToWrite = blockBytes;
-                actualCodecId = CompressionCodec.none().codecId();
-            } else {
-                dataToWrite = compressed;
-                actualCodecId = codec.codecId();
+            // v2/v3: compress the block via native MemorySegment API (F17.R37)
+            // Arena-allocated segments enable zero-copy through native zlib
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment blockSeg = arena.allocate(blockBytes.length);
+                MemorySegment.copy(blockBytes, 0, blockSeg, ValueLayout.JAVA_BYTE, 0,
+                        blockBytes.length);
+
+                int maxLen = codec.maxCompressedLength(blockBytes.length);
+                MemorySegment compDst = arena.allocate(maxLen);
+                MemorySegment compSlice = codec.compress(blockSeg, compDst);
+                int compressedLen = (int) compSlice.byteSize();
+
+                byte actualCodecId;
+                byte[] dataToWrite;
+                if (compressedLen >= blockBytes.length) {
+                    // Incompressible — store raw with NONE codec ID
+                    dataToWrite = blockBytes;
+                    actualCodecId = CompressionCodec.none().codecId();
+                } else {
+                    dataToWrite = compSlice.toArray(ValueLayout.JAVA_BYTE);
+                    actualCodecId = codec.codecId();
+                }
+
+                int checksum = 0;
+                if (v3) {
+                    CRC32C crc = new CRC32C();
+                    crc.update(dataToWrite, 0, dataToWrite.length);
+                    checksum = (int) crc.getValue();
+                }
+                compressionMapEntries.add(new CompressionMap.Entry(writePosition,
+                        dataToWrite.length, blockBytes.length, actualCodecId, checksum));
+                writeBytes(dataToWrite);
             }
-            compressionMapEntries.add(new CompressionMap.Entry(writePosition, dataToWrite.length,
-                    blockBytes.length, actualCodecId));
-            writeBytes(dataToWrite);
         } else {
             // v1: write raw block
             writeBytes(blockBytes);
@@ -268,7 +322,26 @@ public final class TrieSSTableWriter implements SSTableWriter {
                 bloomFilter.add(MemorySegment.ofArray(key));
             }
 
-            if (codec != null) {
+            if (codec != null && v3) {
+                // v3 layout: [data blocks][compression map v3][key index][bloom filter][footer 72]
+                long mapOffset = writePosition;
+                CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
+                writeBytes(compressionMap.serializeV3());
+                long mapLength = writePosition - mapOffset;
+
+                long indexOffset = writePosition;
+                writeKeyIndexV2();
+                long indexLength = writePosition - indexOffset;
+
+                long filterOffset = writePosition;
+                MemorySegment filterBytes = bloomFilter.serialize();
+                byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
+                writeBytes(filterArray);
+                long filterLength = writePosition - filterOffset;
+
+                writeFooterV3(mapOffset, mapLength, indexOffset, indexLength, filterOffset,
+                        filterLength);
+            } else if (codec != null) {
                 // v2 layout: [data blocks][compression map][key index][bloom filter][footer 64]
                 long mapOffset = writePosition;
                 CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
@@ -400,6 +473,22 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeBytes(buf);
     }
 
+    private void writeFooterV3(long mapOffset, long mapLength, long idxOffset, long idxLength,
+            long fltOffset, long fltLength) throws IOException {
+        byte[] buf = new byte[SSTableFormat.FOOTER_SIZE_V3];
+        int off = 0;
+        off = writeLong(buf, off, mapOffset);
+        off = writeLong(buf, off, mapLength);
+        off = writeLong(buf, off, idxOffset);
+        off = writeLong(buf, off, idxLength);
+        off = writeLong(buf, off, fltOffset);
+        off = writeLong(buf, off, fltLength);
+        off = writeLong(buf, off, entryCount);
+        off = writeLong(buf, off, blockSize);
+        writeLong(buf, off, SSTableFormat.MAGIC_V3);
+        writeBytes(buf);
+    }
+
     private static int writeInt(byte[] buf, int off, int v) {
         buf[off++] = (byte) (v >>> 24);
         buf[off++] = (byte) (v >>> 16);
@@ -418,6 +507,84 @@ public final class TrieSSTableWriter implements SSTableWriter {
         buf[off++] = (byte) (v >>> 8);
         buf[off++] = (byte) v;
         return off;
+    }
+
+    /**
+     * Returns a new builder for constructing a {@code TrieSSTableWriter} with configurable block
+     * size and compression.
+     *
+     * @return a new builder instance
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * Builder for {@code TrieSSTableWriter} supporting v3 format options.
+     */
+    public static final class Builder {
+
+        private long id;
+        private Level level;
+        private Path path;
+        private BloomFilter.Factory bloomFactory;
+        private CompressionCodec codec;
+        private int blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
+
+        private Builder() {
+        }
+
+        public Builder id(long id) {
+            this.id = id;
+            return this;
+        }
+
+        public Builder level(Level level) {
+            this.level = Objects.requireNonNull(level, "level must not be null");
+            return this;
+        }
+
+        public Builder path(Path path) {
+            this.path = Objects.requireNonNull(path, "path must not be null");
+            return this;
+        }
+
+        public Builder bloomFactory(BloomFilter.Factory bloomFactory) {
+            this.bloomFactory = Objects.requireNonNull(bloomFactory,
+                    "bloomFactory must not be null");
+            return this;
+        }
+
+        public Builder codec(CompressionCodec codec) {
+            this.codec = codec;
+            return this;
+        }
+
+        public Builder blockSize(int blockSize) {
+            SSTableFormat.validateBlockSize(blockSize);
+            this.blockSize = blockSize;
+            return this;
+        }
+
+        /**
+         * Builds and returns a new writer.
+         *
+         * @return a new writer
+         * @throws IOException if the output file cannot be opened
+         * @throws IllegalArgumentException if non-default blockSize is set without a codec
+         */
+        public TrieSSTableWriter build() throws IOException {
+            Objects.requireNonNull(level, "level must be set");
+            Objects.requireNonNull(path, "path must be set");
+            if (bloomFactory == null) {
+                bloomFactory = n -> new BlockedBloomFilter(n, 0.01);
+            }
+            if (blockSize != SSTableFormat.DEFAULT_BLOCK_SIZE && codec == null) {
+                throw new IllegalArgumentException(
+                        "non-default blockSize requires a compression codec");
+            }
+            return new TrieSSTableWriter(id, level, path, bloomFactory, codec, blockSize);
+        }
     }
 
     @Override

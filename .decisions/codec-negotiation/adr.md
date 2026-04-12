@@ -2,22 +2,37 @@
 problem: "codec-negotiation"
 date: "2026-03-30"
 version: 1
-status: "deferred"
+status: "closed"
 ---
 
-# Codec Negotiation — Deferred
+# Codec Negotiation — Closed (Won't Pursue)
 
 ## Problem
-Codec negotiation between writer and reader — reader must be configured with all codecs the writer might use.
+Codec negotiation between writer and reader — reader must be configured with
+all codecs the writer might use.
 
-## Why Deferred
-Scoped out during `compression-codec-api-design` decision. Reader must be configured with all codecs.
+## Decision
+**Will not pursue.** The existing design already solves this.
 
-## Resume When
-When `compression-codec-api-design` implementation is stable and this concern becomes blocking.
+## Reason
+The compression map stores `codecId` per-block. The reader takes
+`CompressionCodec... codecs` at open time, builds a `codecId → codec` lookup
+map, and validates at open time that every codec ID referenced by any block
+has a matching codec. Missing codecs fail immediately with a clear error:
+`"unknown compression codec ID 0x%02x in block %d; available codecs: %s"`.
 
-## What Is Known So Far
-See `.decisions/compression-codec-api-design/adr.md` for the architectural context that excluded this concern.
+This is the standard approach used by Parquet, ORC, and other columnar formats.
+The codec ID in the file metadata IS the negotiation protocol — no additional
+handshake or discovery mechanism is needed for a library (as opposed to a
+client-server system with live codec version negotiation).
 
-## Next Step
-Run `/architect "codec-negotiation"` when ready to evaluate.
+## Context
+Parent ADR: `compression-codec-api-design` (confirmed 2026-03-17)
+Deferred: 2026-03-30
+Closed: 2026-04-12 — already solved by existing design
+
+## Conditions for Reopening
+If jlsm adds a network protocol where writer and reader are in different
+processes and need to agree on codecs dynamically (rather than at file open
+time), this would need revisiting. That scenario is covered by
+`message-serialization-format` (deferred).

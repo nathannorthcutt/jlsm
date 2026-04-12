@@ -129,8 +129,8 @@ Known edge cases from KB `block-compression-algorithms.md#edge-cases-and-gotchas
 - `Deflater`/`Inflater` must be `end()`ed to free native memory
 
 ## What This Decision Does NOT Solve
-- Per-block checksums (map structure can be extended with a checksum field later)
-- Optimal block size selection for different backends (separate concern)
+- Per-block checksums (map structure can be extended with a checksum field later) — **Resolved:** see `per-block-checksums` (accepted 2026-04-10)
+- Optimal block size selection for different backends (separate concern) — **Resolved:** see `backend-optimal-block-size` (accepted 2026-04-10)
 - WAL compression (out of scope)
 - Compaction-time re-compression with a different codec
 

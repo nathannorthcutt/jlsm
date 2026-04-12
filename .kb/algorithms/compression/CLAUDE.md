@@ -16,6 +16,8 @@ Covers speed/ratio tradeoffs, per-block encoding formats, and pure-Java implemen
 | [integer-overflow-in-size-calc.md](integer-overflow-in-size-calc.md) | Integer overflow in header+count*entrySize (adversarial) | active | data-integrity bug class | Any serialize/deserialize with count*size calc |
 | [lazy-channel-concurrent-read.md](lazy-channel-concurrent-read.md) | Lazy channel position-then-read race (adversarial) | active | concurrency bug class | Any lazy reader sharing SeekableByteChannel |
 | [footer-field-validation.md](footer-field-validation.md) | Footer field validation missing (adversarial) | active | data-integrity bug class | Any binary footer/header parser reading from disk |
+| [sstable-v3-format-upgrade.md](sstable-v3-format-upgrade.md) | sstable-v3-format-upgrade (feature footprint) | stable | feature audit record | v3 format: CRC32C checksums, configurable block size |
+| [wal-compression-patterns.md](wal-compression-patterns.md) | WAL Compression Patterns in LSM Implementations | active | Per-record: 1-6 byte overhead | WAL record-level compression |
 
 ## Comparison Summary
 

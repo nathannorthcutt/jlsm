@@ -27,7 +27,7 @@ class ResourceLifecycleAdversarialTest {
     // correctly
     @Test
     void test_StripedBlockCache_close_errorInStripeSkipsRemainingStripes() throws Exception {
-        var cache = StripedBlockCache.builder().stripeCount(3).capacity(3).build();
+        var cache = StripedBlockCache.builder().stripeCount(4).capacity(4).build();
 
         // Access the stripes array via reflection
         Field stripesField = StripedBlockCache.class.getDeclaredField("stripes");
@@ -49,7 +49,7 @@ class ResourceLifecycleAdversarialTest {
         };
         mapField.set(stripes[0], throwingMap);
 
-        // Call close() — the Error from stripe 0 should NOT prevent stripes 1 and 2 from closing
+        // Call close() — the Error from stripe 0 should NOT prevent stripes 1-3 from closing
         assertThrows(AssertionError.class, cache::close,
                 "close() should propagate the Error after closing all stripes");
 
@@ -57,10 +57,10 @@ class ResourceLifecycleAdversarialTest {
         Field closedField = LruBlockCache.class.getDeclaredField("closed");
         closedField.setAccessible(true);
 
-        assertTrue((boolean) closedField.get(stripes[1]),
-                "stripe 1 should be closed even when stripe 0 throws an Error");
-        assertTrue((boolean) closedField.get(stripes[2]),
-                "stripe 2 should be closed even when stripe 0 throws an Error");
+        for (int i = 1; i < stripes.length; i++) {
+            assertTrue((boolean) closedField.get(stripes[i]),
+                    "stripe " + i + " should be closed even when stripe 0 throws an Error");
+        }
     }
 
     // Finding: F-R1.resource_lifecycle.1.3

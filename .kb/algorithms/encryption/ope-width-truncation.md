@@ -33,3 +33,13 @@ it would destroy field bytes beyond the cap.
 
 ## Found in
 - encrypt-memory-data (round 1, 2026-03-25): INT32/INT64/TIMESTAMP fields with OrderPreserving encryption silently lost lower bytes on round-trip
+
+## Updates 2026-04-03
+
+- **IndexRegistry BoundedString validation (encrypt-memory-data audit run-001):**
+  BoundedString fields with maxLength > 2 (MAX_OPE_BYTES) are now rejected when
+  OrderPreserving encryption is requested. Closes the gap between
+  FieldEncryptionDispatch (byte limit at encryption time) and IndexRegistry
+  (previously allowed BoundedString(maxLength=255) through validation).
+- Test guidance: verify IndexRegistry.validateOrderPreservingFieldType rejects
+  BoundedString(maxLength=3) and accepts BoundedString(maxLength=2).

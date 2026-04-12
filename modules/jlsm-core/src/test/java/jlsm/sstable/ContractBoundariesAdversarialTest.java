@@ -49,18 +49,17 @@ class ContractBoundariesAdversarialTest {
             }
 
             @Override
-            public byte[] compress(byte[] input, int offset, int length) {
-                // Return input unchanged — acts like NoneCodec but is a different impl
-                byte[] result = new byte[length];
-                System.arraycopy(input, offset, result, 0, length);
-                return result;
+            public java.lang.foreign.MemorySegment compress(java.lang.foreign.MemorySegment src,
+                    java.lang.foreign.MemorySegment dst) {
+                java.lang.foreign.MemorySegment.copy(src, 0, dst, 0, src.byteSize());
+                return dst.asSlice(0, src.byteSize());
             }
 
             @Override
-            public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
-                byte[] result = new byte[length];
-                System.arraycopy(input, offset, result, 0, length);
-                return result;
+            public java.lang.foreign.MemorySegment decompress(java.lang.foreign.MemorySegment src,
+                    java.lang.foreign.MemorySegment dst, int uncompressedLength) {
+                java.lang.foreign.MemorySegment.copy(src, 0, dst, 0, src.byteSize());
+                return dst.asSlice(0, src.byteSize());
             }
         };
 
@@ -95,18 +94,18 @@ class ContractBoundariesAdversarialTest {
             }
 
             @Override
-            public byte[] compress(byte[] input, int offset, int length) {
-                // Identity compression — just copy
-                byte[] result = new byte[length];
-                System.arraycopy(input, offset, result, 0, length);
-                return result;
+            public java.lang.foreign.MemorySegment compress(java.lang.foreign.MemorySegment src,
+                    java.lang.foreign.MemorySegment dst) {
+                java.lang.foreign.MemorySegment.copy(src, 0, dst, 0, src.byteSize());
+                return dst.asSlice(0, src.byteSize());
             }
 
             @Override
-            public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
-                byte[] result = new byte[uncompressedLength];
-                System.arraycopy(input, offset, result, 0, Math.min(length, uncompressedLength));
-                return result;
+            public java.lang.foreign.MemorySegment decompress(java.lang.foreign.MemorySegment src,
+                    java.lang.foreign.MemorySegment dst, int uncompressedLength) {
+                long len = Math.min(src.byteSize(), uncompressedLength);
+                java.lang.foreign.MemorySegment.copy(src, 0, dst, 0, len);
+                return dst.asSlice(0, uncompressedLength);
             }
 
             @Override
@@ -122,20 +121,20 @@ class ContractBoundariesAdversarialTest {
             }
 
             @Override
-            public byte[] compress(byte[] input, int offset, int length) {
-                // Different behavior from codecA
-                byte[] result = new byte[length + 1];
-                result[0] = (byte) 0xFF;
-                System.arraycopy(input, offset, result, 1, length);
-                return result;
+            public java.lang.foreign.MemorySegment compress(java.lang.foreign.MemorySegment src,
+                    java.lang.foreign.MemorySegment dst) {
+                // Different behavior from codecA — prepends 0xFF byte
+                dst.set(java.lang.foreign.ValueLayout.JAVA_BYTE, 0, (byte) 0xFF);
+                java.lang.foreign.MemorySegment.copy(src, 0, dst, 1, src.byteSize());
+                return dst.asSlice(0, src.byteSize() + 1);
             }
 
             @Override
-            public byte[] decompress(byte[] input, int offset, int length, int uncompressedLength) {
-                byte[] result = new byte[uncompressedLength];
-                System.arraycopy(input, offset + 1, result, 0,
-                        Math.min(length - 1, uncompressedLength));
-                return result;
+            public java.lang.foreign.MemorySegment decompress(java.lang.foreign.MemorySegment src,
+                    java.lang.foreign.MemorySegment dst, int uncompressedLength) {
+                long len = Math.min(src.byteSize() - 1, uncompressedLength);
+                java.lang.foreign.MemorySegment.copy(src, 1, dst, 0, len);
+                return dst.asSlice(0, uncompressedLength);
             }
 
             @Override

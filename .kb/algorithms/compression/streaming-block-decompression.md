@@ -40,3 +40,17 @@ pollution.
 - ADR: .decisions/sstable-block-compression-format/adr.md
 - ADR: .decisions/compression-codec-api-design/adr.md
 - Related features: block-compression (prerequisite)
+
+## Updates 2026-04-03
+
+**Adversarial findings (round 2):** 6 additional bugs found and fixed beyond
+the original audit scope:
+- F-R1.shared_state.1.1: `close()` atomicity via VarHandle CAS (non-atomic
+  volatile check-then-act allowed double-close races)
+- F-R1.shared_state.1.2: post-read `checkNotClosed()` in `get()` (TOCTOU gap)
+- F-R1.shared_state.1.3: `CompressedBlockIterator` hasNext/next closed guards
+- F-R1.shared_state.1.5: `BlockCache.put()` guarded by closed flag (prevents
+  cache mutation after component close)
+- F-R2.dt.1.1: eager-path `arraycopy` bounds validation
+- F-R2.dt.1.2: post-decompression size validation (mismatch between declared
+  and actual decompressed size)

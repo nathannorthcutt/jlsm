@@ -12,9 +12,12 @@ features:
   - slug: streaming-block-decompression
     role: quality
     description: "Lazy per-block decompression during scans — recovers read performance lost to eager decompression"
+  - slug: sstable-v3-format-upgrade
+    role: extends
+    description: "v3 format: per-block CRC32C integrity checksums and configurable block size for remote-backend optimization"
 composes: []
-spec_refs: ["F02", "F08"]
-decision_refs: ["sstable-block-compression-format", "compression-codec-api-design"]
+spec_refs: ["F02", "F08", "F16"]
+decision_refs: ["sstable-block-compression-format", "compression-codec-api-design", "per-block-checksums", "backend-optimal-block-size"]
 kb_refs: ["algorithms/compression"]
 depends_on: ["data-management/schema-and-documents"]
 enables: []
@@ -42,6 +45,9 @@ on open.
 **Quality:**
 - **streaming-block-decompression** — lazy per-block decompression during scans for read performance recovery
 
+**Extends:**
+- **sstable-v3-format-upgrade** — per-block CRC32C integrity checksums, configurable block size (Builder API), v3 footer with blockSize field
+
 ## Key behaviors
 
 - Compression is configured per-tree, not per-block — all blocks in an SSTable use the same codec
@@ -57,4 +63,4 @@ on open.
 - **Decisions:** sstable-block-compression-format (offset map approach), compression-codec-api-design (pluggable codec interface)
 - **KB:** algorithms/compression (zstd, lz4, snappy research)
 - **Depends on:** data-management/schema-and-documents (serializer produces blocks)
-- **Deferred work:** codec-thread-safety, codec-negotiation, compaction-recompression, backend-optimal-block-size, codec-dictionary-support, wal-compression, max-compressed-length, per-block-checksums
+- **Deferred work:** codec-thread-safety, codec-negotiation, compaction-recompression, codec-dictionary-support, wal-compression, max-compressed-length

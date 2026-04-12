@@ -16,6 +16,8 @@ standard SQL SELECT semantics.
 | [missing-field-type-validation.md](missing-field-type-validation.md) | Missing field-type validation (adversarial) | active | data-integrity confirmed | Type checking in SQL translators |
 | [unbounded-recursion-depth.md](unbounded-recursion-depth.md) | Unbounded recursion depth (adversarial) | active | security tendency | Recursive descent parsers |
 | [sql-query-support.md](sql-query-support.md) | sql-query-support (feature footprint) | stable | feature audit record | SQL parser/translator overview |
+| [locale-dependent-string-operations.md](locale-dependent-string-operations.md) | Locale-dependent string operations (adversarial) | active | data-integrity confirmed | String case conversion without Locale.ROOT |
+| [resource-exhaustion-list-bounds.md](resource-exhaustion-list-bounds.md) | Resource exhaustion via unbounded list accumulation (adversarial) | active | security confirmed | Parser accumulator lists without size bounds |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

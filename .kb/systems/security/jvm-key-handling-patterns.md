@@ -274,3 +274,17 @@ public class EncryptedTableBuilder {
 
 ---
 *Researched: 2026-03-18 | Next review: 2027-03-18*
+
+## Updates 2026-04-03
+
+- **TOCTOU in key holders (encrypt-memory-data audit run-001):** Atomic boolean
+  closed-check is insufficient when the read after the check is non-atomic
+  (e.g., MemorySegment.toArray on arena-backed memory). Read-write lock pattern
+  needed: readers acquire read lock, close acquires write lock. Documented in
+  EncryptionKeyHolder (F-R1.concurrency.2.1).
+- **Defensive copy for MemorySegment returns:** Methods returning MemorySegment
+  views of arena-backed key material create escaped references. Return heap-backed
+  copies when the segment may outlive the holder (F-R1.rl.1.3).
+- **Domain-separated key derivation:** Simple concatenation/truncation for key
+  size adaptation is cryptographically weak. Use HMAC-SHA256 with distinct labels
+  per algorithm (F-R1.data_transformation.1.1, 1.2).

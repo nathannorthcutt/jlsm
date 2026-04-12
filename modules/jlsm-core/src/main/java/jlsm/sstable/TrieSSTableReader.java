@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.zip.CRC32C;
 
 /**
  * Reads an SSTable file written by {@link TrieSSTableWriter}.
@@ -70,9 +71,12 @@ public final class TrieSSTableReader implements SSTableReader {
     // Optional block cache; null means no caching
     private final BlockCache blockCache;
 
-    // v2 compression support (null for v1)
+    // v2/v3 compression support (null for v1)
     private final CompressionMap compressionMap;
     private final Map<Byte, CompressionCodec> codecMap;
+
+    // v3: per-block CRC32C verification
+    private final boolean hasChecksums;
 
     private volatile boolean closed = false;
 
@@ -87,9 +91,21 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
+    /**
+     * Original 9-parameter constructor — preserved for backward compatibility with tests that use
+     * reflection to construct readers directly. Defaults hasChecksums to false.
+     */
     private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
             long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
             CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap) {
+        this(metadata, keyIndex, bloomFilter, dataEnd, eagerData, lazyChannel, blockCache,
+                compressionMap, codecMap, false);
+    }
+
+    private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
+            long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
+            CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap,
+            boolean hasChecksums) {
         this.metadata = metadata;
         this.keyIndex = keyIndex;
         this.bloomFilter = bloomFilter;
@@ -99,6 +115,7 @@ public final class TrieSSTableReader implements SSTableReader {
         this.blockCache = blockCache;
         this.compressionMap = compressionMap;
         this.codecMap = codecMap;
+        this.hasChecksums = hasChecksums;
     }
 
     // ---- v1 factory methods (no compression) ----
@@ -127,7 +144,7 @@ public final class TrieSSTableReader implements SSTableReader {
             ch.close();
 
             return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, data, null,
-                    blockCache, null, null);
+                    blockCache, null, null, false);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -156,7 +173,7 @@ public final class TrieSSTableReader implements SSTableReader {
             SSTableMetadata meta = buildMetadata(path, fileSize, footer, keyIndex);
 
             return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, null, ch,
-                    blockCache, null, null);
+                    blockCache, null, null, false);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -194,14 +211,16 @@ public final class TrieSSTableReader implements SSTableReader {
             Map<Byte, CompressionCodec> codecMap = null;
             long dataEnd;
             KeyIndex keyIndex;
+            boolean checksums = false;
 
-            if (footer.version == 2) {
+            if (footer.version >= 2) {
                 byte[] mapBytes = readBytes(ch, footer.mapOffset, (int) footer.mapLength);
-                compressionMap = CompressionMap.deserialize(mapBytes);
+                compressionMap = CompressionMap.deserialize(mapBytes, footer.version);
                 codecMap = buildCodecMap(codecs);
                 validateCodecMap(compressionMap, codecMap);
                 keyIndex = readKeyIndexV2(ch, footer);
                 dataEnd = footer.mapOffset;
+                checksums = footer.version >= 3;
             } else {
                 keyIndex = readKeyIndexV1(ch, footer);
                 dataEnd = footer.idxOffset;
@@ -215,7 +234,7 @@ public final class TrieSSTableReader implements SSTableReader {
             ch.close();
 
             return new TrieSSTableReader(meta, keyIndex, bloom, dataEnd, data, null, blockCache,
-                    compressionMap, codecMap);
+                    compressionMap, codecMap, checksums);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -229,7 +248,7 @@ public final class TrieSSTableReader implements SSTableReader {
     }
 
     /**
-     * Opens an SSTable file lazily, with support for both v1 and v2 (compressed) formats.
+     * Opens an SSTable file lazily, with support for v1, v2, and v3 (compressed) formats.
      *
      * @param path path to the SSTable file
      * @param bloomDeserializer deserializer for the bloom filter
@@ -253,14 +272,16 @@ public final class TrieSSTableReader implements SSTableReader {
             Map<Byte, CompressionCodec> codecMap = null;
             long dataEnd;
             KeyIndex keyIndex;
+            boolean checksums = false;
 
-            if (footer.version == 2) {
+            if (footer.version >= 2) {
                 byte[] mapBytes = readBytes(ch, footer.mapOffset, (int) footer.mapLength);
-                compressionMap = CompressionMap.deserialize(mapBytes);
+                compressionMap = CompressionMap.deserialize(mapBytes, footer.version);
                 codecMap = buildCodecMap(codecs);
                 validateCodecMap(compressionMap, codecMap);
                 keyIndex = readKeyIndexV2(ch, footer);
                 dataEnd = footer.mapOffset;
+                checksums = footer.version >= 3;
             } else {
                 keyIndex = readKeyIndexV1(ch, footer);
                 dataEnd = footer.idxOffset;
@@ -270,7 +291,7 @@ public final class TrieSSTableReader implements SSTableReader {
             SSTableMetadata meta = buildMetadata(path, fileSize, footer, keyIndex);
 
             return new TrieSSTableReader(meta, keyIndex, bloom, dataEnd, null, ch, blockCache,
-                    compressionMap, codecMap);
+                    compressionMap, codecMap, checksums);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -397,16 +418,31 @@ public final class TrieSSTableReader implements SSTableReader {
             compressed = readLazyChannel(mapEntry.blockOffset(), mapEntry.compressedSize());
         }
 
+        // v3: CRC32C verification before decompression — cache hits skip this
+        if (hasChecksums) {
+            verifyCrc32c(compressed, blockIndex, mapEntry.checksum());
+        }
+
         CompressionCodec codec = codecMap.get(mapEntry.codecId());
         if (codec == null) {
             throw new IOException("codec not found for ID 0x%02x in block %d"
                     .formatted(mapEntry.codecId(), blockIndex));
         }
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
-                mapEntry.uncompressedSize());
-        if (decompressed.length != mapEntry.uncompressedSize()) {
-            throw new IOException("block %d decompression size mismatch: got %d bytes, expected %d"
-                    .formatted(blockIndex, decompressed.length, mapEntry.uncompressedSize()));
+        // F17.R38: native MemorySegment decompress — Arena-allocated for zero-copy
+        byte[] decompressed;
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment compSeg = arena.allocate(compressed.length);
+            MemorySegment.copy(compressed, 0, compSeg, ValueLayout.JAVA_BYTE, 0, compressed.length);
+
+            MemorySegment decompDst = arena.allocate(mapEntry.uncompressedSize());
+            MemorySegment decompSlice = codec.decompress(compSeg, decompDst,
+                    mapEntry.uncompressedSize());
+            if (decompSlice.byteSize() != mapEntry.uncompressedSize()) {
+                throw new IOException(
+                        "block %d decompression size mismatch: got %d bytes, expected %d".formatted(
+                                blockIndex, decompSlice.byteSize(), mapEntry.uncompressedSize()));
+            }
+            decompressed = decompSlice.toArray(ValueLayout.JAVA_BYTE);
         }
 
         if (blockCache != null && !closed) {
@@ -447,18 +483,46 @@ public final class TrieSSTableReader implements SSTableReader {
             compressed = readLazyChannel(mapEntry.blockOffset(), mapEntry.compressedSize());
         }
 
+        // v3: CRC32C verification before decompression
+        if (hasChecksums) {
+            verifyCrc32c(compressed, blockIndex, mapEntry.checksum());
+        }
+
         CompressionCodec codec = codecMap.get(mapEntry.codecId());
         if (codec == null) {
             throw new IOException("codec not found for ID 0x%02x in block %d"
                     .formatted(mapEntry.codecId(), blockIndex));
         }
-        byte[] decompressed = codec.decompress(compressed, 0, compressed.length,
-                mapEntry.uncompressedSize());
-        if (decompressed.length != mapEntry.uncompressedSize()) {
-            throw new IOException("block %d decompression size mismatch: got %d bytes, expected %d"
-                    .formatted(blockIndex, decompressed.length, mapEntry.uncompressedSize()));
+        // F17.R38: native MemorySegment decompress — Arena-allocated for zero-copy
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment compSeg = arena.allocate(compressed.length);
+            MemorySegment.copy(compressed, 0, compSeg, ValueLayout.JAVA_BYTE, 0, compressed.length);
+
+            MemorySegment decompDst = arena.allocate(mapEntry.uncompressedSize());
+            MemorySegment decompSlice = codec.decompress(compSeg, decompDst,
+                    mapEntry.uncompressedSize());
+            if (decompSlice.byteSize() != mapEntry.uncompressedSize()) {
+                throw new IOException(
+                        "block %d decompression size mismatch: got %d bytes, expected %d".formatted(
+                                blockIndex, decompSlice.byteSize(), mapEntry.uncompressedSize()));
+            }
+            return decompSlice.toArray(ValueLayout.JAVA_BYTE);
         }
-        return decompressed;
+    }
+
+    /**
+     * Verifies the CRC32C checksum of compressed block bytes.
+     *
+     * @throws CorruptBlockException if the computed checksum does not match the expected value
+     */
+    private static void verifyCrc32c(byte[] data, int blockIndex, int expectedChecksum)
+            throws CorruptBlockException {
+        CRC32C crc = new CRC32C();
+        crc.update(data, 0, data.length);
+        int actual = (int) crc.getValue();
+        if (actual != expectedChecksum) {
+            throw new CorruptBlockException(blockIndex, expectedChecksum, actual);
+        }
     }
 
     private static Map<Byte, CompressionCodec> buildCodecMap(CompressionCodec... codecs) {
@@ -561,6 +625,16 @@ public final class TrieSSTableReader implements SSTableReader {
         return readLazyChannel(0L, (int) dataEnd);
     }
 
+    /**
+     * Rethrows a checked exception as unchecked without wrapping, using type-erasure semantics.
+     * Returns RuntimeException so callers can write {@code throw sneakyThrow(e)} to satisfy the
+     * compiler's control-flow analysis.
+     */
+    @SuppressWarnings("unchecked")
+    private static <E extends Throwable> RuntimeException sneakyThrow(Throwable e) throws E {
+        throw (E) e;
+    }
+
     // ---- Footer / index / filter loading ----
 
     private record Footer(int version, long mapOffset, long mapLength, long idxOffset,
@@ -586,7 +660,7 @@ public final class TrieSSTableReader implements SSTableReader {
                         "corrupt SSTable footer: negative fltOffset=%d or fltLength=%d"
                                 .formatted(fltOffset, fltLength));
             }
-            if (version == 2) {
+            if (version >= 2) {
                 if (mapOffset < 0 || mapLength < 0) {
                     throw new IOException(
                             "corrupt SSTable footer: negative mapOffset=%d or mapLength=%d"
@@ -631,7 +705,7 @@ public final class TrieSSTableReader implements SSTableReader {
                         "corrupt SSTable footer: flt section [%d, %d) exceeds file size %d"
                                 .formatted(fltOffset, fltOffset + fltLength, fileSize));
             }
-            if (version == 2 && mapOffset + mapLength > fileSize) {
+            if (version >= 2 && mapOffset + mapLength > fileSize) {
                 throw new IOException(
                         "corrupt SSTable footer: map section [%d, %d) exceeds file size %d"
                                 .formatted(mapOffset, mapOffset + mapLength, fileSize));
@@ -642,7 +716,7 @@ public final class TrieSSTableReader implements SSTableReader {
                         "corrupt SSTable footer: idx section [%d, %d) overlaps flt section at offset %d"
                                 .formatted(idxOffset, idxOffset + idxLength, fltOffset));
             }
-            if (version == 2 && idxLength > 0 && mapOffset + mapLength > idxOffset) {
+            if (version >= 2 && idxLength > 0 && mapOffset + mapLength > idxOffset) {
                 throw new IOException(
                         "corrupt SSTable footer: map section [%d, %d) overlaps idx section at offset %d"
                                 .formatted(mapOffset, mapOffset + mapLength, idxOffset));
@@ -674,7 +748,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return footer;
     }
 
-    /** Reads footer detecting v1 or v2 format from magic bytes. */
+    /** Reads footer detecting v1, v2, or v3 format from magic bytes. */
     private static Footer readFooter(SeekableByteChannel ch, long fileSize) throws IOException {
         if (fileSize < SSTableFormat.FOOTER_SIZE) {
             throw new IOException("not a valid SSTable file: too small");
@@ -683,7 +757,39 @@ public final class TrieSSTableReader implements SSTableReader {
         byte[] magicBuf = readBytes(ch, fileSize - 8, 8);
         long magic = readLong(magicBuf, 0);
 
-        if (magic == SSTableFormat.MAGIC_V2) {
+        if (magic == SSTableFormat.MAGIC_V3) {
+            if (fileSize < SSTableFormat.FOOTER_SIZE_V3) {
+                throw new IOException("not a valid v3 SSTable file: too small");
+            }
+            byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE_V3,
+                    SSTableFormat.FOOTER_SIZE_V3);
+            long mapOffset = readLong(buf, 0);
+            long mapLength = readLong(buf, 8);
+            long idxOffset = readLong(buf, 16);
+            long idxLength = readLong(buf, 24);
+            long fltOffset = readLong(buf, 32);
+            long fltLength = readLong(buf, 40);
+            long entryCount = readLong(buf, 48);
+            long rawBlockSize = readLong(buf, 56);
+            // Validate blockSize: must be in [MIN_BLOCK_SIZE, MAX_BLOCK_SIZE] and a power of 2
+            if (rawBlockSize < SSTableFormat.MIN_BLOCK_SIZE
+                    || rawBlockSize > SSTableFormat.MAX_BLOCK_SIZE
+                    || (rawBlockSize & (rawBlockSize - 1)) != 0) {
+                throw new IOException(
+                        "corrupt v3 SSTable footer: invalid blockSize %d".formatted(rawBlockSize));
+            }
+            // Validate section ordering with FOOTER_SIZE_V3
+            long footerStart = fileSize - SSTableFormat.FOOTER_SIZE_V3;
+            if (fltOffset + fltLength > footerStart) {
+                throw new IOException(
+                        "corrupt v3 SSTable footer: flt section [%d, %d) overlaps footer at %d"
+                                .formatted(fltOffset, fltOffset + fltLength, footerStart));
+            }
+            Footer footer = new Footer(3, mapOffset, mapLength, idxOffset, idxLength, fltOffset,
+                    fltLength, entryCount);
+            footer.validate(fileSize);
+            return footer;
+        } else if (magic == SSTableFormat.MAGIC_V2) {
             if (fileSize < SSTableFormat.FOOTER_SIZE_V2) {
                 throw new IOException("not a valid v2 SSTable file: too small");
             }
@@ -951,6 +1057,10 @@ public final class TrieSSTableReader implements SSTableReader {
                         off += EntryCodec.encodedSize(e);
                     }
                     entryIdx = 0;
+                } catch (CorruptBlockException e) {
+                    // Data corruption must propagate directly — it is not a transient I/O error
+                    // and callers must be able to catch the specific type for diagnostics.
+                    throw sneakyThrow(e);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }

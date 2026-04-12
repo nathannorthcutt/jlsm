@@ -129,8 +129,8 @@ Known edge cases from KB `block-compression-algorithms.md#edge-cases-and-gotchas
 - Duplicate codec IDs in reader's codec list: throw `IllegalArgumentException` at open time
 
 ## What This Decision Does NOT Solve
-- Thread safety of codec instances — left to each implementation
-- `maxCompressedLength(int)` for output buffer pre-allocation — can be added later
+- Thread safety of codec instances — left to each implementation — **Resolved:** see `codec-thread-safety` (accepted 2026-04-10)
+- `maxCompressedLength(int)` for output buffer pre-allocation — can be added later — **Resolved:** see `max-compressed-length` (accepted 2026-04-10)
 - Codec negotiation between writer and reader — reader must be configured with all codecs
   it might encounter
 - Codec-specific configuration beyond the constructor (e.g., dictionary support)

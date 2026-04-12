@@ -32,3 +32,12 @@ this order. The gap only surfaces when users write idiomatic reversed comparison
 
 ## Found in
 - sql-query-support (audit round 1, 2026-03-25): `translateComparison` assumed left=ColumnRef, right=value; reversed comparisons threw confusing error
+
+## Updates 2026-04-05
+
+- **Dispatch completeness gap (sql-query-support audit run-001):** Only 2 branches
+  existed (field-left/value-right and reversed) for 4 possible operand cases.
+  Both-values and both-fields cases fell through to the reversed-comparison
+  handler, producing misleading errors (F-R1.dispatch_routing.1.2). Fixed by
+  adding explicit dispatch for all 4 cases (field-field, field-value,
+  value-field, value-value).

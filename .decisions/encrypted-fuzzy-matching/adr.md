@@ -3,6 +3,7 @@ problem: "encrypted-fuzzy-matching"
 date: "2026-03-30"
 version: 1
 status: "deferred"
+depends_on: ["encryption-key-rotation"]
 ---
 
 # Encrypted Fuzzy Matching — Deferred

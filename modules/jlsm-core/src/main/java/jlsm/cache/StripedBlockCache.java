@@ -30,6 +30,7 @@ public final class StripedBlockCache implements BlockCache {
 
     private final LruBlockCache[] stripes;
     private final int stripeCount;
+    private final int stripeMask;
     private final long capacity;
     private volatile boolean closed;
 
@@ -38,12 +39,19 @@ public final class StripedBlockCache implements BlockCache {
             throw new IllegalArgumentException(
                     "stripeCount must be positive, got: " + builder.stripeCount);
         }
-        if (builder.capacity < builder.stripeCount) {
-            throw new IllegalArgumentException("capacity must be >= stripeCount, got capacity="
-                    + builder.capacity + ", stripeCount=" + builder.stripeCount);
+
+        // Round up to the nearest power of 2 for bitmask optimization
+        final int effectiveStripeCount = Integer
+                .highestOneBit(builder.stripeCount) == builder.stripeCount ? builder.stripeCount
+                        : Integer.highestOneBit(builder.stripeCount) << 1;
+
+        if (builder.capacity < effectiveStripeCount) {
+            throw new IllegalArgumentException("capacity must be >= effective stripeCount ("
+                    + effectiveStripeCount + "), got capacity=" + builder.capacity);
         }
 
-        this.stripeCount = builder.stripeCount;
+        this.stripeCount = effectiveStripeCount;
+        this.stripeMask = effectiveStripeCount - 1;
         this.stripes = new LruBlockCache[stripeCount];
 
         final long perStripeCapacity = builder.capacity / stripeCount;
@@ -67,9 +75,24 @@ public final class StripedBlockCache implements BlockCache {
      * @param stripeCount the number of stripes; must be positive
      * @return a stripe index in {@code [0, stripeCount)}
      */
+    /**
+     * Computes the stripe index for the given SSTable ID and block offset using the splitmix64
+     * finalizer (Stafford variant 13).
+     *
+     * <p>
+     * {@code stripeCount} must be a positive power of 2. The result is computed via bitmask
+     * ({@code hash & (stripeCount - 1)}) rather than modulo for zero-division-cost stripe
+     * selection. See {@code .decisions/power-of-two-stripe-optimization/adr.md}.
+     *
+     * @param sstableId the SSTable identifier
+     * @param blockOffset the byte offset within the SSTable
+     * @param stripeCount the number of stripes; must be a positive power of 2
+     * @return a stripe index in {@code [0, stripeCount)}
+     */
     static int stripeIndex(long sstableId, long blockOffset, int stripeCount) {
-        if (stripeCount <= 0) {
-            throw new IllegalArgumentException("stripeCount must be positive, got: " + stripeCount);
+        if (stripeCount <= 0 || Integer.bitCount(stripeCount) != 1) {
+            throw new IllegalArgumentException(
+                    "stripeCount must be a positive power of 2, got: " + stripeCount);
         }
 
         // Splitmix64 finalizer — constants from java.util.SplittableRandom
@@ -77,7 +100,19 @@ public final class StripedBlockCache implements BlockCache {
         h = (h ^ (h >>> 30)) * 0xBF58476D1CE4E5B9L;
         h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
         h = h ^ (h >>> 31);
-        return (int) ((h & 0x7FFFFFFFFFFFFFFFL) % stripeCount);
+        return (int) (h & (stripeCount - 1));
+    }
+
+    /**
+     * Fast-path stripe index computation using the pre-computed {@link #stripeMask}. Skips the
+     * power-of-2 validation since it was enforced at construction time.
+     */
+    private int stripeFor(long sstableId, long blockOffset) {
+        long h = sstableId * 0x9E3779B97F4A7C15L + blockOffset;
+        h = (h ^ (h >>> 30)) * 0xBF58476D1CE4E5B9L;
+        h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
+        h = h ^ (h >>> 31);
+        return (int) (h & stripeMask);
     }
 
     /**
@@ -98,7 +133,7 @@ public final class StripedBlockCache implements BlockCache {
             throw new IllegalArgumentException(
                     "blockOffset must be non-negative, got: " + blockOffset);
         }
-        int idx = stripeIndex(sstableId, blockOffset, stripeCount);
+        int idx = stripeFor(sstableId, blockOffset);
         assert idx >= 0 && idx < stripeCount
                 : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
         try {
@@ -131,7 +166,7 @@ public final class StripedBlockCache implements BlockCache {
                     "blockOffset must be non-negative, got: " + blockOffset);
         }
         Objects.requireNonNull(block, "block must not be null");
-        int idx = stripeIndex(sstableId, blockOffset, stripeCount);
+        int idx = stripeFor(sstableId, blockOffset);
         assert idx >= 0 && idx < stripeCount
                 : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
         try {
@@ -155,7 +190,7 @@ public final class StripedBlockCache implements BlockCache {
                     "blockOffset must be non-negative, got: " + blockOffset);
         }
         Objects.requireNonNull(loader, "loader must not be null");
-        int idx = stripeIndex(sstableId, blockOffset, stripeCount);
+        int idx = stripeFor(sstableId, blockOffset);
         assert idx >= 0 && idx < stripeCount
                 : "stripeIndex out of range: " + idx + " for stripeCount=" + stripeCount;
         try {
@@ -281,9 +316,14 @@ public final class StripedBlockCache implements BlockCache {
         /**
          * Sets the number of independent stripes (shards).
          *
+         * <p>
+         * If the value is not a power of 2, it is rounded up to the next power of 2 for bitmask
+         * optimization. See {@code .decisions/power-of-two-stripe-optimization/adr.md}.
+         *
          * @param stripeCount the number of stripes; must be positive
          * @return this builder
-         * @throws IllegalArgumentException if {@code stripeCount <= 0}
+         * @throws IllegalArgumentException if {@code stripeCount <= 0} or exceeds
+         *             {@link StripedBlockCache#MAX_STRIPE_COUNT}
          */
         public Builder stripeCount(int stripeCount) {
             if (stripeCount <= 0) {
