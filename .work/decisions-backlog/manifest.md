@@ -9,14 +9,14 @@
 
 | WD | Title | Status | Decisions | Effort |
 |----|-------|--------|-----------|--------|
-| WD-01 | Schema & Field Types | READY | 4 | 4 minor |
+| WD-01 | Schema & Field Types | COMPLETE | 4 | 4 minor |
 | WD-02 | Storage & Compression | READY | 10 | 2 gap-fill, 6 minor, 2 full |
 | WD-03 | Cache | READY | 2 | 2 minor |
 | WD-04 | Vector | READY | 2 | 2 minor |
 | WD-05 | Cluster Networking & Discovery | READY | 12 | 2 gap-fill, 9 minor, 1 full |
-| WD-06 | Engine API & Catalog | BLOCKED | 8 | 1 gap-fill, 3 minor, 4 full |
-| WD-07 | Partitioning & Rebalancing | BLOCKED | 13 | 1 gap-fill, 9 minor, 3 full |
-| WD-08 | Query Execution | BLOCKED | 3 | 2 minor, 1 full |
+| WD-06 | Engine API & Catalog | READY | 8 | 1 gap-fill, 3 minor, 4 full |
+| WD-07 | Partitioning & Rebalancing | READY | 13 | 1 gap-fill, 9 minor, 3 full |
+| WD-08 | Query Execution | READY | 3 | 2 minor, 1 full |
 | WD-09 | Encryption & Security | READY | 11 | 1 gap-fill, 4 minor, 6 full |
 
 **Total:** 65 decisions (11 gap-fill, 35 minor, 19 full)

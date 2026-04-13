@@ -19,22 +19,26 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
-| Backend-Optimal Block Size | backend-optimal-block-size | 2026-04-10 | Parameterize block size on writer builder with named constants |
-| WAL Compression | wal-compression | 2026-04-12 | Per-record compression with MemorySegment-native codec API evolution |
-| Codec Dictionary Support | codec-dictionary-support | 2026-04-12 | Writer-orchestrated dictionary lifecycle, tiered Panama FFM detection |
 | Compaction Re-Compression | compaction-recompression | 2026-04-12 | Writer-factory injection with per-level codec policy |
 | Connection Pooling | connection-pooling | 2026-04-13 | Single-Connection Multiplexing — Kafka-style framing, int32 stream IDs, ReentrantLock write serialization |
+| Binary Field Type | binary-field-type | 2026-04-13 | Binary sealed permit + opaque BlobRef + BlobStore SPI |
+| Parameterized Field Bounds | parameterized-field-bounds | 2026-04-13 | BoundedArray sealed permit; numeric bounds deferred |
+| Schema Migration Policy | string-to-bounded-string-migration | 2026-04-13 | Compaction-time migration + on-demand scan with quarantine |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
-<!-- 64 items. Grouped by parent ADR for readability. -->
+<!-- 67 items (was 64: +4 new from binary-field-type, -1 binary-field-type confirmed). Grouped by parent ADR for readability. -->
 
 | Problem | Slug | Deferred | Parent ADR |
 |---------|------|----------|------------|
 | Distributed Join Execution | distributed-join-execution | 2026-03-20 | scatter-gather-query-execution |
-| Binary Field Type | binary-field-type | 2026-03-30 | bounded-string-field-type |
-| Parameterized Field Bounds | parameterized-field-bounds | 2026-03-30 | bounded-string-field-type |
-| String to BoundedString Migration | string-to-bounded-string-migration | 2026-03-30 | bounded-string-field-type |
+| Default LSM-Backed BlobStore | default-lsm-blob-store | 2026-04-13 | binary-field-type |
+| Blob Storage Strategy for Object Storage | blob-object-storage-strategy | 2026-04-13 | binary-field-type |
+| Blob Streaming API Design | blob-streaming-api | 2026-04-13 | binary-field-type |
+| Inline Small Blob Optimization | inline-small-blob-optimization | 2026-04-13 | binary-field-type |
+| Numeric Field Range Bounds | numeric-field-range-bounds | 2026-04-13 | parameterized-field-bounds |
+| Quarantine Resolution Policy | quarantine-resolution-policy | 2026-04-13 | string-to-bounded-string-migration |
+| Cross-Table Schema Migration | cross-table-schema-migration | 2026-04-13 | string-to-bounded-string-migration |
 | Automatic Backend Detection | automatic-backend-detection | 2026-04-11 | backend-optimal-block-size |
 | Block Cache / Block Size Interaction | block-cache-block-size-interaction | 2026-04-11 | backend-optimal-block-size |
 | Membership View Stall Recovery | membership-view-stall-recovery | 2026-03-30 | cluster-membership-protocol |
@@ -61,7 +65,6 @@
 | WAL Entry Encryption | wal-entry-encryption | 2026-03-30 | field-encryption-api-design |
 | Unencrypted-to-Encrypted Migration | unencrypted-to-encrypted-migration | 2026-03-30 | field-encryption-api-design |
 | Per-Field Key Binding | per-field-key-binding | 2026-03-30 | field-encryption-api-design |
-| Non-Vector Index Type Review | non-vector-index-type-review | 2026-03-30 | index-definition-api-simplification |
 | Weighted Node Capacity | weighted-node-capacity | 2026-03-30 | partition-to-node-ownership |
 | Partition Affinity | partition-affinity | 2026-03-30 | partition-to-node-ownership |
 | Ownership Lookup Optimization | ownership-lookup-optimization | 2026-03-30 | partition-to-node-ownership |
@@ -106,6 +109,7 @@
 | Codec Negotiation | codec-negotiation | 2026-04-12 | Already solved — codecId in compression map IS the negotiation protocol |
 | Adaptive Compression Strategy | adaptive-compression-strategy | 2026-04-12 | Resolved by compaction-recompression — per-level policy inherent in factory design |
 | Message Serialization Format | message-serialization-format | 2026-04-13 | Subsumed by connection-pooling — framing protocol IS the message serialization format |
+| Non-Vector Index Type Review | non-vector-index-type-review | 2026-04-13 | Non-issue — EQUALITY/RANGE/UNIQUE/FULL_TEXT correctly implemented, compatibility matrix complete |
 
 ## Archived
 22 accepted decisions older than the 5 most recent: [history.md](history.md)

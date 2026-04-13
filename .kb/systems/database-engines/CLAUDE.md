@@ -18,6 +18,7 @@ engines. Covers catalog persistence, table lifecycle, and startup recovery.
 | [handle-lifecycle-patterns.md](handle-lifecycle-patterns.md) | Database Handle Lifecycle and Resource Budgeting | active | O(1) handle acquire | TTL, priority dispatch, cross-table budgets |
 | [schema-type-systems.md](schema-type-systems.md) | Schema Type Systems for Document Databases | active | O(1) per field validation | Binary types, bounded fields, schema migration |
 | [cross-table-transaction-patterns.md](cross-table-transaction-patterns.md) | Cross-Table Transaction Patterns (Single-Node) | active | Shared WAL or WriteBatch | Multi-table atomicity without distributed coordination |
+| [blob-store-patterns.md](blob-store-patterns.md) | Blob Store Patterns for LSM-Tree Storage | active | LSM-backed + content-addressed | Large object storage, chunking, GC, dual-write |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->
