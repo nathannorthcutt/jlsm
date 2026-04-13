@@ -4,6 +4,20 @@ Overflow entries from `.kb/CLAUDE.md` Recently Added table.
 
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-13 | systems | security | wal-encryption-approaches |
+| 2026-04-13 | systems | database-engines | wal-group-commit |
+| 2026-04-13 | systems | database-engines | corruption-detection-repair |
+| 2026-04-13 | distributed-systems | networking | multiplexed-transport-framing |
+| 2026-04-12 | patterns | validation | simd-cross-boundary-carry-state |
+| 2026-04-12 | patterns | validation | integer-overflow-silent-truncation |
+| 2026-04-12 | patterns | validation | one-shot-api-missing-guard |
+| 2026-04-12 | patterns | resource-management | multi-resource-close-ordering |
+| 2026-04-12 | algorithms | compression | zstd-dictionary-compression |
+| 2026-04-12 | algorithms | compression | wal-compression-patterns |
+| 2026-04-12 | distributed-systems | data-partitioning | multi-writer-wal |
+| 2026-04-11 | systems | lsm-index-patterns | close-atomicity-cas |
+| 2026-04-11 | systems | lsm-index-patterns | cache-mutation-after-close |
+| 2026-04-11 | algorithms | sql-extensions | locale-dependent-string-operations |
 | 2026-03-30 | algorithms | vector-indexing | sieve |
 | 2026-03-30 | algorithms | vector-indexing | compass |
 | 2026-03-27 | algorithms | vector-indexing | partitioned-fanout-queries |

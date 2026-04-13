@@ -11,6 +11,8 @@ complexity:
 research_status: "mature"
 last_researched: "2026-03-20"
 applies_to: []
+related:
+  - "distributed-systems/networking/multiplexed-transport-framing.md"
 sources:
   - url: "https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf"
     title: "SWIM: Scalable Weakly-consistent Infection-style Process Group Membership Protocol"
