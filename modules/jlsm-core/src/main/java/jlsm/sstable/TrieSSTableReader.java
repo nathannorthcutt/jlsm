@@ -214,9 +214,17 @@ public final class TrieSSTableReader implements SSTableReader {
             boolean checksums = false;
 
             if (footer.version >= 2) {
+                // v4 uses v3-style compression map (21-byte entries with CRC32C)
+                int mapVersion = footer.version >= 4 ? 3 : footer.version;
                 byte[] mapBytes = readBytes(ch, footer.mapOffset, (int) footer.mapLength);
-                compressionMap = CompressionMap.deserialize(mapBytes, footer.version);
+                compressionMap = CompressionMap.deserialize(mapBytes, mapVersion);
                 codecMap = buildCodecMap(codecs);
+
+                // R20a: v4 — load embedded dictionary and override caller's ZSTD codec
+                if (footer.version >= 4 && footer.dictLength > 0) {
+                    codecMap = overrideWithDictionaryCodec(ch, footer, codecMap);
+                }
+
                 validateCodecMap(compressionMap, codecMap);
                 keyIndex = readKeyIndexV2(ch, footer);
                 dataEnd = footer.mapOffset;
@@ -248,7 +256,7 @@ public final class TrieSSTableReader implements SSTableReader {
     }
 
     /**
-     * Opens an SSTable file lazily, with support for v1, v2, and v3 (compressed) formats.
+     * Opens an SSTable file lazily, with support for v1, v2, v3, and v4 (compressed) formats.
      *
      * @param path path to the SSTable file
      * @param bloomDeserializer deserializer for the bloom filter
@@ -275,9 +283,16 @@ public final class TrieSSTableReader implements SSTableReader {
             boolean checksums = false;
 
             if (footer.version >= 2) {
+                int mapVersion = footer.version >= 4 ? 3 : footer.version;
                 byte[] mapBytes = readBytes(ch, footer.mapOffset, (int) footer.mapLength);
-                compressionMap = CompressionMap.deserialize(mapBytes, footer.version);
+                compressionMap = CompressionMap.deserialize(mapBytes, mapVersion);
                 codecMap = buildCodecMap(codecs);
+
+                // R20a: v4 — load embedded dictionary and override caller's ZSTD codec
+                if (footer.version >= 4 && footer.dictLength > 0) {
+                    codecMap = overrideWithDictionaryCodec(ch, footer, codecMap);
+                }
+
                 validateCodecMap(compressionMap, codecMap);
                 keyIndex = readKeyIndexV2(ch, footer);
                 dataEnd = footer.mapOffset;
@@ -553,6 +568,23 @@ public final class TrieSSTableReader implements SSTableReader {
         return Collections.unmodifiableMap(map);
     }
 
+    /**
+     * Reads the dictionary meta-block from a v4 SSTable file and overrides the caller-provided ZSTD
+     * codec (ID 0x03) with a dictionary-bound codec. Returns a new mutable codec map with the
+     * override applied.
+     */
+    private static Map<Byte, CompressionCodec> overrideWithDictionaryCodec(SeekableByteChannel ch,
+            Footer footer, Map<Byte, CompressionCodec> originalMap) throws IOException {
+        byte[] dictBytes = readBytes(ch, footer.dictOffset, (int) footer.dictLength);
+        MemorySegment dictionary = MemorySegment.ofArray(dictBytes);
+        CompressionCodec dictCodec = CompressionCodec.zstd(3, dictionary);
+
+        // Create a mutable copy and override codec ID 0x03
+        Map<Byte, CompressionCodec> mutableMap = new HashMap<>(originalMap);
+        mutableMap.put((byte) 0x03, dictCodec);
+        return Collections.unmodifiableMap(mutableMap);
+    }
+
     private static void validateCodecMap(CompressionMap compressionMap,
             Map<Byte, CompressionCodec> codecMap) throws IOException {
         for (int i = 0; i < compressionMap.blockCount(); i++) {
@@ -637,8 +669,9 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Footer / index / filter loading ----
 
-    private record Footer(int version, long mapOffset, long mapLength, long idxOffset,
-            long idxLength, long fltOffset, long fltLength, long entryCount) {
+    private record Footer(int version, long mapOffset, long mapLength, long dictOffset,
+            long dictLength, long idxOffset, long idxLength, long fltOffset, long fltLength,
+            long entryCount) {
 
         /**
          * Validates footer field consistency against the file size. All offsets and lengths must be
@@ -721,6 +754,19 @@ public final class TrieSSTableReader implements SSTableReader {
                         "corrupt SSTable footer: map section [%d, %d) overlaps idx section at offset %d"
                                 .formatted(mapOffset, mapOffset + mapLength, idxOffset));
             }
+            // v4: validate dictionary section
+            if (version >= 4) {
+                if (dictOffset < 0 || dictLength < 0) {
+                    throw new IOException(
+                            "corrupt SSTable footer: negative dictOffset=%d or dictLength=%d"
+                                    .formatted(dictOffset, dictLength));
+                }
+                if (dictLength > 0 && dictOffset + dictLength > fileSize) {
+                    throw new IOException(
+                            "corrupt SSTable footer: dict section [%d, %d) exceeds file size %d"
+                                    .formatted(dictOffset, dictOffset + dictLength, fileSize));
+                }
+            }
         }
     }
 
@@ -743,7 +789,8 @@ public final class TrieSSTableReader implements SSTableReader {
         if (magic != SSTableFormat.MAGIC) {
             throw new IOException("not a valid SSTable file: bad magic " + Long.toHexString(magic));
         }
-        Footer footer = new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength, entryCount);
+        Footer footer = new Footer(1, 0, 0, 0, 0, idxOffset, idxLength, fltOffset, fltLength,
+                entryCount);
         footer.validate(fileSize);
         return footer;
     }
@@ -757,7 +804,51 @@ public final class TrieSSTableReader implements SSTableReader {
         byte[] magicBuf = readBytes(ch, fileSize - 8, 8);
         long magic = readLong(magicBuf, 0);
 
-        if (magic == SSTableFormat.MAGIC_V3) {
+        if (magic == SSTableFormat.MAGIC_V4) {
+            if (fileSize < SSTableFormat.FOOTER_SIZE_V4) {
+                throw new IOException("not a valid v4 SSTable file: too small");
+            }
+            byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE_V4,
+                    SSTableFormat.FOOTER_SIZE_V4);
+            long mapOffset = readLong(buf, 0);
+            long mapLength = readLong(buf, 8);
+            long dictOffset = readLong(buf, 16);
+            long dictLength = readLong(buf, 24);
+            long idxOffset = readLong(buf, 32);
+            long idxLength = readLong(buf, 40);
+            long fltOffset = readLong(buf, 48);
+            long fltLength = readLong(buf, 56);
+            long entryCount = readLong(buf, 64);
+            long rawBlockSize = readLong(buf, 72);
+            // Validate blockSize
+            if (rawBlockSize < SSTableFormat.MIN_BLOCK_SIZE
+                    || rawBlockSize > SSTableFormat.MAX_BLOCK_SIZE
+                    || (rawBlockSize & (rawBlockSize - 1)) != 0) {
+                throw new IOException(
+                        "corrupt v4 SSTable footer: invalid blockSize %d".formatted(rawBlockSize));
+            }
+            // R19b: Validate v4 section ordering
+            if (mapLength > 0 && dictLength > 0 && mapOffset + mapLength > dictOffset) {
+                throw new IOException(
+                        "corrupt v4 SSTable footer: map section [%d, %d) overlaps dict section at %d"
+                                .formatted(mapOffset, mapOffset + mapLength, dictOffset));
+            }
+            if (dictLength > 0 && dictOffset + dictLength > idxOffset) {
+                throw new IOException(
+                        "corrupt v4 SSTable footer: dict section [%d, %d) overlaps idx section at %d"
+                                .formatted(dictOffset, dictOffset + dictLength, idxOffset));
+            }
+            long footerStart = fileSize - SSTableFormat.FOOTER_SIZE_V4;
+            if (fltOffset + fltLength > footerStart) {
+                throw new IOException(
+                        "corrupt v4 SSTable footer: flt section [%d, %d) overlaps footer at %d"
+                                .formatted(fltOffset, fltOffset + fltLength, footerStart));
+            }
+            Footer footer = new Footer(4, mapOffset, mapLength, dictOffset, dictLength, idxOffset,
+                    idxLength, fltOffset, fltLength, entryCount);
+            footer.validate(fileSize);
+            return footer;
+        } else if (magic == SSTableFormat.MAGIC_V3) {
             if (fileSize < SSTableFormat.FOOTER_SIZE_V3) {
                 throw new IOException("not a valid v3 SSTable file: too small");
             }
@@ -785,8 +876,8 @@ public final class TrieSSTableReader implements SSTableReader {
                         "corrupt v3 SSTable footer: flt section [%d, %d) overlaps footer at %d"
                                 .formatted(fltOffset, fltOffset + fltLength, footerStart));
             }
-            Footer footer = new Footer(3, mapOffset, mapLength, idxOffset, idxLength, fltOffset,
-                    fltLength, entryCount);
+            Footer footer = new Footer(3, mapOffset, mapLength, 0, 0, idxOffset, idxLength,
+                    fltOffset, fltLength, entryCount);
             footer.validate(fileSize);
             return footer;
         } else if (magic == SSTableFormat.MAGIC_V2) {
@@ -802,8 +893,8 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltOffset = readLong(buf, 32);
             long fltLength = readLong(buf, 40);
             long entryCount = readLong(buf, 48);
-            Footer footer = new Footer(2, mapOffset, mapLength, idxOffset, idxLength, fltOffset,
-                    fltLength, entryCount);
+            Footer footer = new Footer(2, mapOffset, mapLength, 0, 0, idxOffset, idxLength,
+                    fltOffset, fltLength, entryCount);
             footer.validate(fileSize);
             return footer;
         } else if (magic == SSTableFormat.MAGIC) {
@@ -814,7 +905,7 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltOffset = readLong(buf, 16);
             long fltLength = readLong(buf, 24);
             long entryCount = readLong(buf, 32);
-            Footer footer = new Footer(1, 0, 0, idxOffset, idxLength, fltOffset, fltLength,
+            Footer footer = new Footer(1, 0, 0, 0, 0, idxOffset, idxLength, fltOffset, fltLength,
                     entryCount);
             footer.validate(fileSize);
             return footer;

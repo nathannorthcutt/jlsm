@@ -14,12 +14,15 @@ import jlsm.compaction.internal.KeyRangeUtil;
 import jlsm.compaction.internal.MergeIterator;
 import jlsm.core.compaction.CompactionTask;
 import jlsm.core.compaction.Compactor;
+import jlsm.core.compression.CompressionCodec;
 import jlsm.core.io.ArenaBufferPool;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.sstable.SSTableMetadata;
+import jlsm.core.sstable.SSTableWriter;
 import jlsm.sstable.TrieSSTableReader;
 import jlsm.sstable.TrieSSTableWriter;
+import jlsm.tree.SSTableWriterFactory;
 
 /**
  * SPOOKY compaction strategy (Dayan et al., VLDB 2022).
@@ -36,12 +39,16 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
     private final long targetBottomFileSizeBytes;
     private final ArenaBufferPool bufferPool;
     private final jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer;
+    private final SSTableWriterFactory writerFactory;
+    private final CompressionCodec[] readerCodecs;
 
     private SpookyCompactor(Builder builder) {
         this.idSupplier = builder.idSupplier;
         this.pathFn = builder.pathFn;
         this.targetBottomFileSizeBytes = builder.targetBottomFileSizeBytes;
         this.bloomDeserializer = builder.bloomDeserializer;
+        this.writerFactory = builder.writerFactory;
+        this.readerCodecs = builder.readerCodecs;
         this.bufferPool = ArenaBufferPool.builder().poolSize(builder.poolSize)
                 .bufferSize(builder.poolBufferSizeBytes)
                 .acquireTimeoutMillis(builder.acquireTimeoutMillis).build();
@@ -143,7 +150,12 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         List<TrieSSTableReader> readers = new ArrayList<>(sources.size());
         try {
             for (SSTableMetadata meta : sources) {
-                readers.add(TrieSSTableReader.openLazy(meta.path(), bloomDeserializer));
+                if (readerCodecs.length > 0) {
+                    readers.add(TrieSSTableReader.openLazy(meta.path(), bloomDeserializer, null,
+                            readerCodecs));
+                } else {
+                    readers.add(TrieSSTableReader.openLazy(meta.path(), bloomDeserializer));
+                }
             }
 
             // Build merge iterator
@@ -168,7 +180,7 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
     private List<SSTableMetadata> writeMergedOutput(MergeIterator merge, Level targetLevel,
             boolean isBottomLevel) throws IOException {
         List<SSTableMetadata> output = new ArrayList<>();
-        TrieSSTableWriter writer = null;
+        SSTableWriter writer = null;
         java.lang.foreign.MemorySegment scratchBuf = null;
 
         try {
@@ -194,7 +206,7 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
                 if (writer == null) {
                     long id = idSupplier.getAsLong();
                     Path outputPath = pathFn.apply(id, targetLevel);
-                    writer = new TrieSSTableWriter(id, targetLevel, outputPath);
+                    writer = writerFactory.create(id, targetLevel, outputPath);
                 }
 
                 writer.append(entry);
@@ -255,6 +267,8 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
         private long acquireTimeoutMillis = 30_000L;
         private jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer = BlockedBloomFilter
                 .deserializer();
+        private SSTableWriterFactory writerFactory;
+        private CompressionCodec[] readerCodecs = new CompressionCodec[0];
 
         public Builder idSupplier(LongSupplier idSupplier) {
             Objects.requireNonNull(idSupplier, "idSupplier must not be null");
@@ -307,11 +321,43 @@ public final class SpookyCompactor implements Compactor, AutoCloseable {
             return this;
         }
 
+        /**
+         * Sets the compression codecs used when reading source SSTables during compaction. When
+         * source SSTables use per-block compression, the reader needs these codecs to decompress
+         * data blocks. If not set, defaults to an empty array (v1 format only).
+         *
+         * @param codecs codecs to pass to the reader; must not be null
+         * @return this builder
+         */
+        public Builder readerCodecs(CompressionCodec... codecs) {
+            Objects.requireNonNull(codecs, "codecs must not be null");
+            this.readerCodecs = codecs.clone();
+            return this;
+        }
+
+        /**
+         * Overrides the factory used to create output SSTable writers during compaction. When set,
+         * the compactor delegates writer creation to this factory instead of using a hardcoded
+         * {@link TrieSSTableWriter} constructor. This enables per-level codec policies.
+         *
+         * <p>
+         * If not set, defaults to
+         * {@code (id, level, path) -> new TrieSSTableWriter(id, level, path)}.
+         */
+        public Builder writerFactory(SSTableWriterFactory writerFactory) {
+            this.writerFactory = Objects.requireNonNull(writerFactory,
+                    "writerFactory must not be null");
+            return this;
+        }
+
         public SpookyCompactor build() {
             if (idSupplier == null)
                 throw new IllegalStateException("idSupplier must be configured");
             if (pathFn == null)
                 throw new IllegalStateException("pathFn must be configured");
+            if (writerFactory == null) {
+                writerFactory = (id, level, path) -> new TrieSSTableWriter(id, level, path);
+            }
             return new SpookyCompactor(this);
         }
     }

@@ -6,6 +6,7 @@ category: "compression"
 tags: ["lz4", "snappy", "deflate", "zstd", "lz77", "sstable", "block-compression"]
 related:
   - "algorithms/compression/wal-compression-patterns.md"
+  - "algorithms/compression/zstd-dictionary-compression.md"
 complexity:
   time_build: "O(n) — single pass over input"
   time_query: "O(n) — single pass decompression"

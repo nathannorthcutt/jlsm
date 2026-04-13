@@ -15,7 +15,7 @@
 | Domain | Path | Description | Specs |
 |--------|------|-------------|-------|
 | vector-indexing | domains/vector-indexing/ | vector search hnsw ivf-flat ann similarity float16 precision encoding | 2 |
-| serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer | 4 |
+| serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer | 5 |
 | storage | domains/storage/ | memtable wal flush compaction object-store block cache manifest | 1 |
 | encryption | domains/encryption/ | aes gcm kms tmk sek key-derivation cipher block-encryption | 1 |
 | query | domains/query/ | sql query plan statistics join index scan filter | 2 |
@@ -25,6 +25,7 @@
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-12 | F18 | serialization, storage | ZSTD Dictionary Compression with Per-Level Codec Policy |
 | 2026-04-12 | F17 | serialization, storage | WAL Compression with MemorySegment Codec API |
 | 2026-04-11 | F16 | serialization, storage | SSTable v3 Format Upgrade |
 | 2026-04-10 | F15 | serialization, engine | JSON-Only SIMD On-Demand Parser with JSONL Streaming |

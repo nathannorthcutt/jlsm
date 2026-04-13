@@ -18,6 +18,7 @@ Covers speed/ratio tradeoffs, per-block encoding formats, and pure-Java implemen
 | [footer-field-validation.md](footer-field-validation.md) | Footer field validation missing (adversarial) | active | data-integrity bug class | Any binary footer/header parser reading from disk |
 | [sstable-v3-format-upgrade.md](sstable-v3-format-upgrade.md) | sstable-v3-format-upgrade (feature footprint) | stable | feature audit record | v3 format: CRC32C checksums, configurable block size |
 | [wal-compression-patterns.md](wal-compression-patterns.md) | WAL Compression Patterns in LSM Implementations | active | Per-record: 1-6 byte overhead | WAL record-level compression |
+| [zstd-dictionary-compression.md](zstd-dictionary-compression.md) | ZSTD Dictionary Compression in Storage Engines | active | 2-2.5x ratio improvement on small blocks | Per-SST dictionary training for cold/archival levels |
 
 ## Comparison Summary
 
@@ -32,3 +33,4 @@ dominated by LZ4. ZSTD is too complex for hand-rolling (~5000+ lines).
 ## Research Gaps
 - Pure-Java LZ4 implementation performance benchmarks (JMH on jlsm workloads)
 - Optimal block size for SSTable compression (4 KiB vs 8 KiB vs 16 KiB)
+- ZSTD dictionary training parameter tuning for jlsm block sizes

@@ -1,12 +1,12 @@
 # Decisions Roadmap
 
-**Generated:** 2026-04-12 (updated from 2026-04-10)
-**Deferred:** 65 decisions in 9 clusters
-**Completed since last roadmap:** Phase 1 (6 items — all confirmed or closed 2026-04-10)
+**Generated:** 2026-04-12 (revision 3)
+**Deferred:** 64 decisions in 9 clusters
+**Completed since first roadmap:** Phase 1 (6 items), plus wal-compression, codec-negotiation, similarity-function-placement
 
 ## Summary
 
-13 gap-fill | 34 minor feature | 18 full feature
+11 gap-fill | 35 minor feature | 18 full feature
 
 ## Progress
 
@@ -16,18 +16,23 @@ All 6 items resolved: `codec-thread-safety` (confirmed), `max-compressed-length`
 (confirmed), `power-of-two-stripe-optimization` (confirmed),
 `hash-distribution-uniformity` (closed — non-issue).
 
+**Phase 2 partial — wal-compression COMPLETE (2026-04-12):**
+`wal-compression` confirmed. `codec-negotiation` closed (already solved by
+codecId in compression map). `similarity-function-placement` closed (non-issue).
+Two new deferred decisions spawned: `pure-java-lz4-codec`, `wal-group-commit`.
+
 ## Clusters (priority order)
 
 ### 1. Storage & Compression (9 decisions)
 
 Foundational I/O layer — codec contracts, block integrity, and write-path
-compression. Phase 1 gap-fills are complete; remaining items extend the
-compression and integrity story.
+compression. Phase 1 gap-fills are complete; wal-compression confirmed.
+Remaining items extend the compression and integrity story.
 
-**Gap-fills:** codec-negotiation, automatic-backend-detection,
-block-cache-block-size-interaction
-**Minor features:** codec-dictionary-support, wal-compression,
-compaction-recompression, sstable-end-to-end-integrity, memorysegment-codec-api
+**Gap-fills:** automatic-backend-detection, block-cache-block-size-interaction
+**Minor features:** codec-dictionary-support, compaction-recompression,
+sstable-end-to-end-integrity, memorysegment-codec-api, pure-java-lz4-codec,
+wal-group-commit
 **Full features:** corruption-repair-recovery
 
 **Dependencies:** None — this cluster is a dependency for others. Corruption
@@ -42,12 +47,11 @@ Performance infrastructure — cache eviction refinements for the block cache.
 **Dependencies:** None — self-contained within jlsm-core. Low priority; current
 behavior is acceptable at current scale.
 
-### 3. Schema & Field Types (5 decisions)
+### 3. Schema & Field Types (4 decisions)
 
 Data model completeness — field types and index definitions are the contract
 surface for jlsm-table consumers.
 
-**Gap-fills:** similarity-function-placement
 **Minor features:** binary-field-type, parameterized-field-bounds,
 string-to-bounded-string-migration, non-vector-index-type-review
 
@@ -135,8 +139,6 @@ types) require research.
 
 ## Immediate Actions
 
-- ~~**Merge:** `cross-partition-transactions` + `cross-partition-atomic-writes`~~ — **DONE** (2026-04-12)
-- ~~**Merge:** `cross-table-transactions` + `cross-table-transaction-coordination`~~ — **DONE** (2026-04-12)
 - **Promote:** `un-walled-memtable-data-loss`, `in-flight-write-protection` —
   **data loss risks** during rebalancing; address as soon as rebalancing begins
 - **Research first:** `partition-replication-protocol` — Raft vs Paxos vs
@@ -148,24 +150,30 @@ types) require research.
   join execution strategies"`
 - **Research first:** `corruption-repair-recovery` — needs replication context;
   defer until partition-replication-protocol is resolved
+- **New:** `pure-java-lz4-codec` — performance-gated; evaluate when WAL
+  compression benchmarks show Deflate is a bottleneck
+- **New:** `wal-group-commit` — performance-gated; evaluate when WAL throughput
+  benchmarks show per-record fsync is the bottleneck
 
 ## Suggested Sequence
 
 **Phase 1 — COMPLETE** (2026-04-10)
 
-**Phase 2:** Cluster 3 (Schema & Field Types) + Cluster 1 minor features
-  similarity-function-placement, binary-field-type, parameterized-field-bounds,
+**Phase 2 — IN PROGRESS:** Cluster 3 (Schema & Field Types) + Cluster 1 minor features
+  binary-field-type, parameterized-field-bounds,
   string-to-bounded-string-migration, non-vector-index-type-review,
-  codec-negotiation, codec-dictionary-support, wal-compression,
-  compaction-recompression
+  codec-dictionary-support, compaction-recompression
+  ~~wal-compression~~ (DONE), ~~codec-negotiation~~ (CLOSED),
+  ~~similarity-function-placement~~ (CLOSED)
 
 **Phase 3:** Cluster 1 gap-fills + Cluster 2 + Cluster 4 — can run in parallel
   automatic-backend-detection, block-cache-block-size-interaction,
   atomic-cross-stripe-eviction, parallel-large-cache-eviction,
   vector-storage-cost-optimization, sparse-vector-support
 
-**Phase 4:** Cluster 1 integrity + API evolution
-  sstable-end-to-end-integrity, memorysegment-codec-api
+**Phase 4:** Cluster 1 integrity + API evolution + WAL performance
+  sstable-end-to-end-integrity, memorysegment-codec-api,
+  pure-java-lz4-codec (if benchmarks warrant), wal-group-commit (if benchmarks warrant)
 
 **Phase 5:** Cluster 5 (Networking & Discovery) — foundation for all
   distributed work. Start with gap-fills, then minor features, then
@@ -181,7 +189,7 @@ types) require research.
   stabilizes. Safety promotions first: un-walled-memtable-data-loss,
   in-flight-write-protection. Then gap-fills and minor features.
   Full features last: partition-replication-protocol (research first),
-  cross-partition-transactions (merged).
+  cross-partition-transactions.
 
 **Phase 8:** Cluster 6 (Engine) distributed items + Cluster 8 (Query Execution)
   remote-serialization-protocol, catalog-replication, table-migration-protocol,

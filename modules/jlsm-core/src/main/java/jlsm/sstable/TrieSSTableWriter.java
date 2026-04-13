@@ -13,6 +13,8 @@ import jlsm.sstable.internal.DataBlock;
 import jlsm.sstable.internal.EntryCodec;
 import jlsm.sstable.internal.SSTableFormat;
 
+import jlsm.core.compression.ZstdDictionaryTrainer;
+
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -79,6 +81,17 @@ public final class TrieSSTableWriter implements SSTableWriter {
 
     // v3 format flag — true only when constructed via Builder
     private final boolean v3;
+
+    // Dictionary training (v4)
+    private final boolean dictionaryTrainingEnabled;
+    private final int dictionaryBlockThreshold;
+    private final long dictionaryMaxBufferBytes;
+    private final int dictionaryMaxSize;
+    private final boolean dictEligible; // true only when dictionaryTraining + ZSTD + native
+    private List<byte[]> dictBufferedBlocks; // null when not buffering
+    private long dictBufferedBytes;
+    private boolean dictBufferAbandoned;
+    private DictionaryTrainingResult trainingResult;
 
     // Stats
     private long entryCount = 0L;
@@ -148,16 +161,23 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.codec = codec;
         this.blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
         this.v3 = false;
+        this.dictionaryTrainingEnabled = false;
+        this.dictionaryBlockThreshold = 64;
+        this.dictionaryMaxBufferBytes = 256L * 1024 * 1024;
+        this.dictionaryMaxSize = 32768;
+        this.dictEligible = false;
         this.channel = Files.newByteChannel(outputPath, StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE);
     }
 
     /**
-     * Internal constructor used by the Builder for v3 format with configurable block size.
+     * Internal constructor used by the Builder for v3/v4 format with configurable block size and
+     * optional dictionary training.
      */
     private TrieSSTableWriter(long id, Level level, Path outputPath,
-            BloomFilter.Factory bloomFactory, CompressionCodec codec, int blockSize)
-            throws IOException {
+            BloomFilter.Factory bloomFactory, CompressionCodec codec, int blockSize,
+            boolean dictionaryTraining, int dictBlockThreshold, long dictMaxBufferBytes,
+            int dictMaxSize) throws IOException {
         Objects.requireNonNull(level, "level must not be null");
         Objects.requireNonNull(outputPath, "outputPath must not be null");
         Objects.requireNonNull(bloomFactory, "bloomFactory must not be null");
@@ -172,6 +192,20 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.codec = codec;
         this.blockSize = blockSize;
         this.v3 = true;
+        this.dictionaryTrainingEnabled = dictionaryTraining;
+        this.dictionaryBlockThreshold = dictBlockThreshold;
+        this.dictionaryMaxBufferBytes = dictMaxBufferBytes;
+        this.dictionaryMaxSize = dictMaxSize;
+
+        // Dictionary training is eligible only when: enabled + ZSTD codec (ID 0x03) + native
+        // available
+        boolean eligible = dictionaryTraining && codec != null && codec.codecId() == 0x03
+                && ZstdDictionaryTrainer.isAvailable();
+        this.dictEligible = eligible;
+        if (eligible) {
+            this.dictBufferedBlocks = new ArrayList<>();
+        }
+
         this.channel = Files.newByteChannel(outputPath, StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE);
     }
@@ -238,40 +272,25 @@ public final class TrieSSTableWriter implements SSTableWriter {
             return;
         byte[] blockBytes = currentBlock.serialize();
 
-        if (codec != null) {
-            // v2/v3: compress the block via native MemorySegment API (F17.R37)
-            // Arena-allocated segments enable zero-copy through native zlib
-            try (Arena arena = Arena.ofConfined()) {
-                MemorySegment blockSeg = arena.allocate(blockBytes.length);
-                MemorySegment.copy(blockBytes, 0, blockSeg, ValueLayout.JAVA_BYTE, 0,
-                        blockBytes.length);
-
-                int maxLen = codec.maxCompressedLength(blockBytes.length);
-                MemorySegment compDst = arena.allocate(maxLen);
-                MemorySegment compSlice = codec.compress(blockSeg, compDst);
-                int compressedLen = (int) compSlice.byteSize();
-
-                byte actualCodecId;
-                byte[] dataToWrite;
-                if (compressedLen >= blockBytes.length) {
-                    // Incompressible — store raw with NONE codec ID
-                    dataToWrite = blockBytes;
-                    actualCodecId = CompressionCodec.none().codecId();
-                } else {
-                    dataToWrite = compSlice.toArray(ValueLayout.JAVA_BYTE);
-                    actualCodecId = codec.codecId();
+        if (dictEligible && !dictBufferAbandoned && dictBufferedBlocks != null) {
+            // Dictionary training mode: buffer the raw block for later compression
+            long newTotal = dictBufferedBytes + blockBytes.length;
+            if (newTotal > dictionaryMaxBufferBytes) {
+                // R14: buffer limit exceeded — abandon dictionary training
+                dictBufferAbandoned = true;
+                // Compress and write all previously buffered blocks with plain codec
+                for (byte[] buffered : dictBufferedBlocks) {
+                    compressAndWriteBlock(buffered);
                 }
-
-                int checksum = 0;
-                if (v3) {
-                    CRC32C crc = new CRC32C();
-                    crc.update(dataToWrite, 0, dataToWrite.length);
-                    checksum = (int) crc.getValue();
-                }
-                compressionMapEntries.add(new CompressionMap.Entry(writePosition,
-                        dataToWrite.length, blockBytes.length, actualCodecId, checksum));
-                writeBytes(dataToWrite);
+                dictBufferedBlocks = null;
+                // Also compress and write this block
+                compressAndWriteBlock(blockBytes);
+            } else {
+                dictBufferedBlocks.add(blockBytes);
+                dictBufferedBytes = newTotal;
             }
+        } else if (codec != null) {
+            compressAndWriteBlock(blockBytes);
         } else {
             // v1: write raw block
             writeBytes(blockBytes);
@@ -281,6 +300,53 @@ public final class TrieSSTableWriter implements SSTableWriter {
         }
         blockCount++;
         currentBlock = new DataBlock();
+    }
+
+    /**
+     * Compresses a single serialized block and writes it to the channel, recording a compression
+     * map entry.
+     */
+    private void compressAndWriteBlock(byte[] blockBytes) throws IOException {
+        compressAndWriteBlock(blockBytes, codec);
+    }
+
+    /**
+     * Compresses a single serialized block with the specified codec and writes it to the channel.
+     */
+    private void compressAndWriteBlock(byte[] blockBytes, CompressionCodec useCodec)
+            throws IOException {
+        // v2/v3/v4: compress the block via native MemorySegment API (F17.R37)
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment blockSeg = arena.allocate(blockBytes.length);
+            MemorySegment.copy(blockBytes, 0, blockSeg, ValueLayout.JAVA_BYTE, 0,
+                    blockBytes.length);
+
+            int maxLen = useCodec.maxCompressedLength(blockBytes.length);
+            MemorySegment compDst = arena.allocate(maxLen);
+            MemorySegment compSlice = useCodec.compress(blockSeg, compDst);
+            int compressedLen = (int) compSlice.byteSize();
+
+            byte actualCodecId;
+            byte[] dataToWrite;
+            if (compressedLen >= blockBytes.length) {
+                // Incompressible — store raw with NONE codec ID
+                dataToWrite = blockBytes;
+                actualCodecId = CompressionCodec.none().codecId();
+            } else {
+                dataToWrite = compSlice.toArray(ValueLayout.JAVA_BYTE);
+                actualCodecId = useCodec.codecId();
+            }
+
+            int checksum = 0;
+            if (v3) {
+                CRC32C crc = new CRC32C();
+                crc.update(dataToWrite, 0, dataToWrite.length);
+                checksum = (int) crc.getValue();
+            }
+            compressionMapEntries.add(new CompressionMap.Entry(writePosition, dataToWrite.length,
+                    blockBytes.length, actualCodecId, checksum));
+            writeBytes(dataToWrite);
+        }
     }
 
     private static final int MAX_ZERO_PROGRESS_WRITES = 1024;
@@ -322,25 +388,19 @@ public final class TrieSSTableWriter implements SSTableWriter {
                 bloomFilter.add(MemorySegment.ofArray(key));
             }
 
-            if (codec != null && v3) {
+            if (dictEligible && !dictBufferAbandoned && dictBufferedBlocks != null) {
+                // Dictionary training lifecycle
+                finishWithDictionaryTraining();
+            } else if (codec != null && v3) {
                 // v3 layout: [data blocks][compression map v3][key index][bloom filter][footer 72]
-                long mapOffset = writePosition;
-                CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
-                writeBytes(compressionMap.serializeV3());
-                long mapLength = writePosition - mapOffset;
-
-                long indexOffset = writePosition;
-                writeKeyIndexV2();
-                long indexLength = writePosition - indexOffset;
-
-                long filterOffset = writePosition;
-                MemorySegment filterBytes = bloomFilter.serialize();
-                byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
-                writeBytes(filterArray);
-                long filterLength = writePosition - filterOffset;
-
-                writeFooterV3(mapOffset, mapLength, indexOffset, indexLength, filterOffset,
-                        filterLength);
+                if (dictionaryTrainingEnabled && !dictEligible) {
+                    // Training was requested but not eligible (non-ZSTD or native unavailable)
+                    trainingResult = new DictionaryTrainingResult(false, false, null, 0);
+                } else if (dictBufferAbandoned) {
+                    trainingResult = new DictionaryTrainingResult(true, false,
+                            "buffer limit exceeded", 0);
+                }
+                finishV3Layout();
             } else if (codec != null) {
                 // v2 layout: [data blocks][compression map][key index][bloom filter][footer 64]
                 long mapOffset = writePosition;
@@ -489,6 +549,122 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeBytes(buf);
     }
 
+    private void writeFooterV4(long mapOffset, long mapLength, long dictOffset, long dictLength,
+            long idxOffset, long idxLength, long fltOffset, long fltLength) throws IOException {
+        byte[] buf = new byte[SSTableFormat.FOOTER_SIZE_V4];
+        int off = 0;
+        off = writeLong(buf, off, mapOffset);
+        off = writeLong(buf, off, mapLength);
+        off = writeLong(buf, off, dictOffset);
+        off = writeLong(buf, off, dictLength);
+        off = writeLong(buf, off, idxOffset);
+        off = writeLong(buf, off, idxLength);
+        off = writeLong(buf, off, fltOffset);
+        off = writeLong(buf, off, fltLength);
+        off = writeLong(buf, off, entryCount);
+        off = writeLong(buf, off, blockSize);
+        writeLong(buf, off, SSTableFormat.MAGIC_V4);
+        writeBytes(buf);
+    }
+
+    /** Writes the standard v3 layout (data blocks already written). */
+    private void finishV3Layout() throws IOException {
+        long mapOffset = writePosition;
+        CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
+        writeBytes(compressionMap.serializeV3());
+        long mapLength = writePosition - mapOffset;
+
+        long indexOffset = writePosition;
+        writeKeyIndexV2();
+        long indexLength = writePosition - indexOffset;
+
+        long filterOffset = writePosition;
+        MemorySegment filterBytes = bloomFilter.serialize();
+        byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
+        writeBytes(filterArray);
+        long filterLength = writePosition - filterOffset;
+
+        writeFooterV3(mapOffset, mapLength, indexOffset, indexLength, filterOffset, filterLength);
+    }
+
+    /**
+     * Finishes the SSTable with dictionary training. Buffered blocks are either compressed with a
+     * trained dictionary (v4 format) or with plain ZSTD (v3 format) depending on block count and
+     * training success.
+     */
+    private void finishWithDictionaryTraining() throws IOException {
+        assert dictBufferedBlocks != null : "buffered blocks must not be null";
+        List<byte[]> blocks = dictBufferedBlocks;
+        dictBufferedBlocks = null; // release reference
+
+        if (blocks.size() < dictionaryBlockThreshold) {
+            // R12: below threshold — compress with plain codec, v3 format
+            for (byte[] block : blocks) {
+                compressAndWriteBlock(block);
+            }
+            trainingResult = new DictionaryTrainingResult(true, false, "below block threshold", 0);
+            finishV3Layout();
+            return;
+        }
+
+        // Attempt dictionary training
+        MemorySegment dictionary;
+        try {
+            ZstdDictionaryTrainer trainer = new ZstdDictionaryTrainer();
+            for (byte[] block : blocks) {
+                trainer.addSample(MemorySegment.ofArray(block));
+            }
+            dictionary = trainer.train(dictionaryMaxSize);
+        } catch (Exception e) {
+            // R27: training failed — fall back to plain ZSTD, v3 format
+            for (byte[] block : blocks) {
+                compressAndWriteBlock(block);
+            }
+            trainingResult = new DictionaryTrainingResult(true, false,
+                    "training failed: " + e.getMessage(), 0);
+            finishV3Layout();
+            return;
+        }
+
+        // Training succeeded — create dictionary-bound codec and compress all blocks
+        int dictSize = (int) dictionary.byteSize();
+        try (var dictCodec = (AutoCloseable) CompressionCodec.zstd(3, dictionary)) {
+            CompressionCodec dictBoundCodec = (CompressionCodec) dictCodec;
+            for (byte[] block : blocks) {
+                compressAndWriteBlock(block, dictBoundCodec);
+            }
+        } catch (Exception e) {
+            throw new IOException("Failed to compress with dictionary codec", e);
+        }
+
+        // v4 layout: [data blocks][compression map v3][dictionary][key index][bloom filter][footer
+        // 88]
+        long mapOffset = writePosition;
+        CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
+        writeBytes(compressionMap.serializeV3());
+        long mapLength = writePosition - mapOffset;
+
+        long dictOffset = writePosition;
+        byte[] dictBytes = dictionary.toArray(ValueLayout.JAVA_BYTE);
+        writeBytes(dictBytes);
+        long dictLength = writePosition - dictOffset;
+
+        long indexOffset = writePosition;
+        writeKeyIndexV2();
+        long indexLength = writePosition - indexOffset;
+
+        long filterOffset = writePosition;
+        MemorySegment filterBytes = bloomFilter.serialize();
+        byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
+        writeBytes(filterArray);
+        long filterLength = writePosition - filterOffset;
+
+        writeFooterV4(mapOffset, mapLength, dictOffset, dictLength, indexOffset, indexLength,
+                filterOffset, filterLength);
+
+        trainingResult = new DictionaryTrainingResult(true, true, null, dictSize);
+    }
+
     private static int writeInt(byte[] buf, int off, int v) {
         buf[off++] = (byte) (v >>> 24);
         buf[off++] = (byte) (v >>> 16);
@@ -520,7 +696,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
     }
 
     /**
-     * Builder for {@code TrieSSTableWriter} supporting v3 format options.
+     * Builder for {@code TrieSSTableWriter} supporting v3/v4 format options including dictionary
+     * training.
      */
     public static final class Builder {
 
@@ -530,6 +707,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
         private BloomFilter.Factory bloomFactory;
         private CompressionCodec codec;
         private int blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
+        private boolean dictTraining;
+        private int dictBlockThreshold = 64;
+        private long dictMaxBufferBytes = 256L * 1024 * 1024;
+        private int dictMaxSize = 32768;
 
         private Builder() {
         }
@@ -567,6 +748,75 @@ public final class TrieSSTableWriter implements SSTableWriter {
         }
 
         /**
+         * Enables or disables dictionary training for ZSTD compression.
+         *
+         * <p>
+         * When enabled and the codec is ZSTD with native libzstd available, the writer buffers all
+         * uncompressed data blocks in memory, trains a dictionary in {@code finish()}, and produces
+         * a v4 format file with the dictionary embedded. When the codec is not ZSTD or native is
+         * unavailable, this setting is silently ignored.
+         *
+         * @param enable {@code true} to enable dictionary training; default is {@code false}
+         * @return this builder
+         */
+        public Builder dictionaryTraining(boolean enable) {
+            this.dictTraining = enable;
+            return this;
+        }
+
+        /**
+         * Sets the minimum number of blocks required before dictionary training is attempted.
+         *
+         * @param threshold minimum block count; default is 64
+         * @return this builder
+         * @throws IllegalArgumentException if threshold is less than 1
+         */
+        public Builder dictionaryBlockThreshold(int threshold) {
+            if (threshold < 1) {
+                throw new IllegalArgumentException(
+                        "dictionaryBlockThreshold must be >= 1, got: " + threshold);
+            }
+            this.dictBlockThreshold = threshold;
+            return this;
+        }
+
+        /**
+         * Sets the maximum total bytes of buffered uncompressed blocks for dictionary training.
+         *
+         * <p>
+         * If the total buffered bytes exceed this limit, dictionary training is abandoned and
+         * blocks are compressed without a dictionary.
+         *
+         * @param maxBytes maximum buffer size in bytes; default is 256 MiB
+         * @return this builder
+         * @throws IllegalArgumentException if maxBytes is less than 1
+         */
+        public Builder dictionaryMaxBufferBytes(long maxBytes) {
+            if (maxBytes < 1) {
+                throw new IllegalArgumentException(
+                        "dictionaryMaxBufferBytes must be >= 1, got: " + maxBytes);
+            }
+            this.dictMaxBufferBytes = maxBytes;
+            return this;
+        }
+
+        /**
+         * Sets the maximum size of the trained dictionary in bytes.
+         *
+         * @param maxDictBytes maximum dictionary size; default is 32768 (32 KB)
+         * @return this builder
+         * @throws IllegalArgumentException if maxDictBytes is outside ZstdDictionaryTrainer bounds
+         */
+        public Builder dictionaryMaxSize(int maxDictBytes) {
+            if (maxDictBytes < 256 || maxDictBytes > 1_048_576) {
+                throw new IllegalArgumentException(
+                        "dictionaryMaxSize must be between 256 and 1048576, got: " + maxDictBytes);
+            }
+            this.dictMaxSize = maxDictBytes;
+            return this;
+        }
+
+        /**
          * Builds and returns a new writer.
          *
          * @return a new writer
@@ -583,7 +833,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
                 throw new IllegalArgumentException(
                         "non-default blockSize requires a compression codec");
             }
-            return new TrieSSTableWriter(id, level, path, bloomFactory, codec, blockSize);
+            return new TrieSSTableWriter(id, level, path, bloomFactory, codec, blockSize,
+                    dictTraining, dictBlockThreshold, dictMaxBufferBytes, dictMaxSize);
         }
     }
 
@@ -623,6 +874,29 @@ public final class TrieSSTableWriter implements SSTableWriter {
         }
         if (channelEx != null)
             throw channelEx;
+    }
+
+    /**
+     * Returns the result of dictionary training, or {@code null} if dictionary training was not
+     * enabled or {@link #finish()} has not been called.
+     *
+     * @return the training result, or {@code null}
+     */
+    public DictionaryTrainingResult dictionaryTrainingResult() {
+        return trainingResult;
+    }
+
+    /**
+     * Describes the outcome of dictionary training during SSTable writing.
+     *
+     * @param attempted whether dictionary training was attempted (true even if skipped due to
+     *            threshold)
+     * @param succeeded whether training succeeded and a dictionary was embedded
+     * @param reason reason for failure or skip; {@code null} on success
+     * @param dictionarySize size of the trained dictionary in bytes; 0 if not trained
+     */
+    public record DictionaryTrainingResult(boolean attempted, boolean succeeded, String reason,
+            int dictionarySize) {
     }
 
     private static int compareUnsigned(byte[] a, byte[] b) {

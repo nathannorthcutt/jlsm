@@ -47,8 +47,8 @@ public final class CompressionMap {
     /** Size in bytes of a single compression map entry. */
     public static final int ENTRY_SIZE = 17;
 
-    /** Known valid codec IDs: 0x00 = NoneCodec, 0x02 = DeflateCodec. */
-    private static final Set<Byte> KNOWN_CODEC_IDS = Set.of((byte) 0x00, (byte) 0x02);
+    /** Known valid codec IDs: 0x00 = NoneCodec, 0x02 = DeflateCodec, 0x03 = ZstdCodec. */
+    private static final Set<Byte> KNOWN_CODEC_IDS = Set.of((byte) 0x00, (byte) 0x02, (byte) 0x03);
 
     /**
      * A single entry in the compression map describing one data block.
@@ -76,7 +76,7 @@ public final class CompressionMap {
             }
             if (!KNOWN_CODEC_IDS.contains(codecId)) {
                 throw new IllegalArgumentException(
-                        "unknown codecId: 0x%02x (known: 0x00=none, 0x02=deflate)"
+                        "unknown codecId: 0x%02x (known: 0x00=none, 0x02=deflate, 0x03=zstd)"
                                 .formatted(codecId));
             }
             // C1-F8: Reject physically impossible size combinations.

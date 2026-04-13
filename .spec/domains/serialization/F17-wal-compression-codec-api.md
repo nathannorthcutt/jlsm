@@ -15,7 +15,8 @@
     "wal-compression",
     "compression-codec-api-design",
     "codec-thread-safety",
-    "max-compressed-length"
+    "max-compressed-length",
+    "codec-dictionary-support"
   ],
   "kb_refs": [
     "algorithms/compression/wal-compression-patterns",
@@ -128,6 +129,12 @@ R38. TrieSSTableReader must use the MemorySegment decompress method for block de
 R39. The SSTable compression map format (v2 and v3) must remain unchanged. The codec migration affects only the in-memory API surface, not the on-disk format.
 
 R40. All existing SSTable tests that exercise compression must continue to pass after the codec API migration. The behavioral contract is unchanged — only the method signatures change.
+
+### Codec statelessness with dictionary configuration
+
+R41. A CompressionCodec instance configured with dictionary bytes at construction time must remain stateless and thread-safe per F02.R7 and R5 above. The dictionary is immutable shared state (read-only after construction), not mutable state. Multiple threads may call compress() and decompress() concurrently on the same dictionary-configured codec instance without synchronization. [New: codifies assumption from codec-dictionary-support ADR.]
+
+R42. Dictionary bytes passed at codec construction must not be modified by the codec after construction. The codec must either copy the dictionary bytes or document that the caller must not mutate the source segment after construction. [New: from codec-dictionary-support ADR.]
 
 ---
 
