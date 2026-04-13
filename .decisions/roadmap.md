@@ -1,12 +1,12 @@
 # Decisions Roadmap
 
-**Generated:** 2026-04-12 (revision 3)
-**Deferred:** 64 decisions in 9 clusters
-**Completed since first roadmap:** Phase 1 (6 items), plus wal-compression, codec-negotiation, similarity-function-placement
+**Generated:** 2026-04-13 (revision 4)
+**Deferred:** 65 decisions in 9 clusters
+**Completed since first roadmap:** Phase 1 (6 items), plus wal-compression, codec-negotiation, similarity-function-placement, codec-dictionary-support, compaction-recompression
 
 ## Summary
 
-11 gap-fill | 35 minor feature | 18 full feature
+11 gap-fill | 35 minor feature | 19 full feature
 
 ## Progress
 
@@ -16,27 +16,35 @@ All 6 items resolved: `codec-thread-safety` (confirmed), `max-compressed-length`
 (confirmed), `power-of-two-stripe-optimization` (confirmed),
 `hash-distribution-uniformity` (closed — non-issue).
 
-**Phase 2 partial — wal-compression COMPLETE (2026-04-12):**
-`wal-compression` confirmed. `codec-negotiation` closed (already solved by
-codecId in compression map). `similarity-function-placement` closed (non-issue).
-Two new deferred decisions spawned: `pure-java-lz4-codec`, `wal-group-commit`.
+**Phase 2 partial — compression decisions COMPLETE (2026-04-12):**
+`wal-compression` confirmed. `codec-dictionary-support` confirmed (writer-orchestrated
+dictionary lifecycle, tiered Panama FFM detection). `compaction-recompression`
+confirmed (writer-factory injection with per-level codec policy).
+`codec-negotiation` closed (already solved by codecId in compression map).
+`similarity-function-placement` closed (non-issue). `adaptive-compression-strategy`
+closed (resolved by compaction-recompression design).
+New deferred spawned: `pure-java-lz4-codec`, `wal-group-commit`,
+`cross-sst-dictionary-sharing`, `wal-dictionary-compression`, `pure-java-zstd-compressor`.
 
 ## Clusters (priority order)
 
-### 1. Storage & Compression (9 decisions)
+### 1. Storage & Compression (10 decisions)
 
 Foundational I/O layer — codec contracts, block integrity, and write-path
-compression. Phase 1 gap-fills are complete; wal-compression confirmed.
-Remaining items extend the compression and integrity story.
+compression. Phase 1 gap-fills are complete; wal-compression, codec-dictionary-support,
+and compaction-recompression confirmed. Remaining items extend the compression,
+dictionary, and integrity story.
 
 **Gap-fills:** automatic-backend-detection, block-cache-block-size-interaction
-**Minor features:** codec-dictionary-support, compaction-recompression,
-sstable-end-to-end-integrity, memorysegment-codec-api, pure-java-lz4-codec,
-wal-group-commit
-**Full features:** corruption-repair-recovery
+**Minor features:** sstable-end-to-end-integrity, memorysegment-codec-api,
+pure-java-lz4-codec, wal-group-commit, cross-sst-dictionary-sharing,
+wal-dictionary-compression
+**Full features:** corruption-repair-recovery, pure-java-zstd-compressor
 
 **Dependencies:** None — this cluster is a dependency for others. Corruption
 repair depends on replication (Cluster 7) for recovery sources.
+cross-sst-dictionary-sharing and wal-dictionary-compression depend on the now-confirmed
+codec-dictionary-support. pure-java-zstd-compressor also depends on codec-dictionary-support.
 
 ### 2. Cache (2 decisions)
 
@@ -150,30 +158,39 @@ types) require research.
   join execution strategies"`
 - **Research first:** `corruption-repair-recovery` — needs replication context;
   defer until partition-replication-protocol is resolved
-- **New:** `pure-java-lz4-codec` — performance-gated; evaluate when WAL
+- **New (2026-04-12):** `pure-java-lz4-codec` — performance-gated; evaluate when WAL
   compression benchmarks show Deflate is a bottleneck
-- **New:** `wal-group-commit` — performance-gated; evaluate when WAL throughput
+- **New (2026-04-12):** `wal-group-commit` — performance-gated; evaluate when WAL throughput
   benchmarks show per-record fsync is the bottleneck
+- **New (2026-04-12):** `cross-sst-dictionary-sharing` — evaluate when per-SST dictionaries
+  prove to have excessive overhead or poor cache behavior
+- **New (2026-04-12):** `wal-dictionary-compression` — evaluate when WAL compression ratios
+  with plain ZSTD/Deflate are insufficient
+- **New (2026-04-12):** `pure-java-zstd-compressor` — evaluate when native libzstd dependency
+  on write path is unacceptable for deployment
 
 ## Suggested Sequence
 
 **Phase 1 — COMPLETE** (2026-04-10)
 
-**Phase 2 — IN PROGRESS:** Cluster 3 (Schema & Field Types) + Cluster 1 minor features
+**Phase 2 — IN PROGRESS:** Cluster 3 (Schema & Field Types)
   binary-field-type, parameterized-field-bounds,
-  string-to-bounded-string-migration, non-vector-index-type-review,
-  codec-dictionary-support, compaction-recompression
+  string-to-bounded-string-migration, non-vector-index-type-review
   ~~wal-compression~~ (DONE), ~~codec-negotiation~~ (CLOSED),
-  ~~similarity-function-placement~~ (CLOSED)
+  ~~similarity-function-placement~~ (CLOSED),
+  ~~codec-dictionary-support~~ (DONE), ~~compaction-recompression~~ (DONE),
+  ~~adaptive-compression-strategy~~ (CLOSED)
 
 **Phase 3:** Cluster 1 gap-fills + Cluster 2 + Cluster 4 — can run in parallel
   automatic-backend-detection, block-cache-block-size-interaction,
   atomic-cross-stripe-eviction, parallel-large-cache-eviction,
   vector-storage-cost-optimization, sparse-vector-support
 
-**Phase 4:** Cluster 1 integrity + API evolution + WAL performance
+**Phase 4:** Cluster 1 integrity + API evolution + dictionary/WAL performance
   sstable-end-to-end-integrity, memorysegment-codec-api,
-  pure-java-lz4-codec (if benchmarks warrant), wal-group-commit (if benchmarks warrant)
+  cross-sst-dictionary-sharing, wal-dictionary-compression,
+  pure-java-lz4-codec (if benchmarks warrant), wal-group-commit (if benchmarks warrant),
+  pure-java-zstd-compressor (if native dependency becomes unacceptable)
 
 **Phase 5:** Cluster 5 (Networking & Discovery) — foundation for all
   distributed work. Start with gap-fills, then minor features, then

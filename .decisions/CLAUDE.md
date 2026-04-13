@@ -19,15 +19,15 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
-| Per-Block Checksums | per-block-checksums | 2026-04-10 | CRC32C per-block checksum in CompressionMap.Entry |
 | Backend-Optimal Block Size | backend-optimal-block-size | 2026-04-10 | Parameterize block size on writer builder with named constants |
 | WAL Compression | wal-compression | 2026-04-12 | Per-record compression with MemorySegment-native codec API evolution |
 | Codec Dictionary Support | codec-dictionary-support | 2026-04-12 | Writer-orchestrated dictionary lifecycle, tiered Panama FFM detection |
 | Compaction Re-Compression | compaction-recompression | 2026-04-12 | Writer-factory injection with per-level codec policy |
+| Connection Pooling | connection-pooling | 2026-04-13 | Single-Connection Multiplexing — Kafka-style framing, int32 stream IDs, ReentrantLock write serialization |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
-<!-- 65 items. Grouped by parent ADR for readability. -->
+<!-- 64 items. Grouped by parent ADR for readability. -->
 
 | Problem | Slug | Deferred | Parent ADR |
 |---------|------|----------|------------|
@@ -86,9 +86,8 @@
 | Sequential Insert Hotspot | sequential-insert-hotspot | 2026-03-30 | table-partitioning |
 | Partition-Aware Compaction | partition-aware-compaction | 2026-03-30 | table-partitioning |
 | Transport Traffic Priority | transport-traffic-priority | 2026-03-30 | transport-abstraction-design |
-| Message Serialization Format | message-serialization-format | 2026-03-30 | transport-abstraction-design |
-| Connection Pooling | connection-pooling | 2026-03-30 | transport-abstraction-design |
 | Scatter Backpressure | scatter-backpressure | 2026-03-30 | transport-abstraction-design |
+| Bulk Data Transfer Channel | bulk-data-transfer-channel | 2026-04-13 | connection-pooling |
 | Vector Storage Cost Optimization | vector-storage-cost-optimization | 2026-03-30 | vector-type-serialization-encoding |
 | Sparse Vector Support | sparse-vector-support | 2026-03-30 | vector-type-serialization-encoding |
 | Cross-SST Dictionary Sharing | cross-sst-dictionary-sharing | 2026-04-12 | codec-dictionary-support |
@@ -106,6 +105,7 @@
 | Similarity Function Placement | similarity-function-placement | 2026-04-12 | Non-issue — current IndexDefinition placement is correct, no awkwardness materialized |
 | Codec Negotiation | codec-negotiation | 2026-04-12 | Already solved — codecId in compression map IS the negotiation protocol |
 | Adaptive Compression Strategy | adaptive-compression-strategy | 2026-04-12 | Resolved by compaction-recompression — per-level policy inherent in factory design |
+| Message Serialization Format | message-serialization-format | 2026-04-13 | Subsumed by connection-pooling — framing protocol IS the message serialization format |
 
 ## Archived
-21 accepted decisions older than the 5 most recent: [history.md](history.md)
+22 accepted decisions older than the 5 most recent: [history.md](history.md)

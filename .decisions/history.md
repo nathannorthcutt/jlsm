@@ -26,3 +26,4 @@
 | Power-of-Two Stripe Optimization | power-of-two-stripe-optimization | 2026-04-10 | Enforce power-of-2 stripe counts, use bitmask instead of modulo |
 | Codec Thread Safety | codec-thread-safety | 2026-04-10 | Stateless and thread-safe contract on CompressionCodec interface |
 | Max Compressed Length | max-compressed-length | 2026-04-10 | Add maxCompressedLength(int) default method to CompressionCodec |
+| Per-Block Checksums | per-block-checksums | 2026-04-10 | CRC32C per-block checksum in CompressionMap.Entry |
