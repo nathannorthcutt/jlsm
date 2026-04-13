@@ -42,6 +42,24 @@ You have two modes:
   requires — this builds regression tripwires for latent risks
 - Do not write tests for scenarios that cannot occur in production — these
   are the signal that the round should stop
+
+## Concurrency attacks
+
+If the feature's spec declares concurrency contracts, use them to guide
+concurrent adversarial tests:
+
+- **Thread-safe constructs:** write concurrent access tests. Call the same
+  method from N threads simultaneously. Check: no data corruption, no lost
+  updates, no exceptions beyond what the contract allows. Target compound
+  operations (check-then-act, get-or-create) — these are where atomicity
+  gaps hide.
+- **Not-thread-safe constructs:** do NOT write concurrent tests for these.
+  The spec says concurrent access is unsupported — finding bugs in
+  unsupported usage is not a valid adversarial finding.
+- **Spec-code mismatch:** if the spec says thread-safe but you observe no
+  synchronization in the implementation, write a concurrent test that
+  demonstrates the race. This is a high-value finding — the contract is
+  violated.
 - **Respect existing validation contracts.** Read existing tests before writing
   adversarial tests. If an existing test verifies that `Foo(null)` throws NPE,
   do not write an adversarial test that depends on constructing `Foo(null)`.
