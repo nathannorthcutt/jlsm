@@ -3,6 +3,7 @@ package jlsm.tree;
 import jlsm.compaction.SpookyCompactor;
 import jlsm.core.compaction.CompactionTask;
 import jlsm.core.compaction.Compactor;
+import jlsm.core.compression.CompressionCodec;
 import jlsm.core.memtable.MemTable;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
@@ -26,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -350,6 +352,8 @@ public final class StandardLsmTree implements LsmTree {
         private List<SSTableReader> existingSSTables = List.of();
         private Compactor compactor;
         private jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer;
+        private CompressionCodec singleCodec;
+        private Function<Level, CompressionCodec> compressionPolicy;
 
         public Builder wal(WriteAheadLog wal) {
             this.wal = Objects.requireNonNull(wal, "wal must not be null");
@@ -421,19 +425,68 @@ public final class StandardLsmTree implements LsmTree {
             return this;
         }
 
+        /**
+         * Sets a single compression codec for all levels. Equivalent to
+         * {@code compressionPolicy(_ -> codec)}.
+         *
+         * <p>
+         * When both {@code compression} and {@code compressionPolicy} are set,
+         * {@link #compressionPolicy(Function)} takes precedence (R24).
+         *
+         * @param codec the codec to use for all levels; must not be null
+         * @return this builder
+         */
+        public Builder compression(CompressionCodec codec) {
+            this.singleCodec = Objects.requireNonNull(codec, "codec must not be null");
+            return this;
+        }
+
+        /**
+         * Sets a per-level codec selection function. Evaluated once per writer creation.
+         *
+         * <p>
+         * When both {@code compression} and {@code compressionPolicy} are set, this policy takes
+         * precedence (R24).
+         *
+         * @param policy function from level to codec; must not be null
+         * @return this builder
+         */
+        public Builder compressionPolicy(Function<Level, CompressionCodec> policy) {
+            this.compressionPolicy = Objects.requireNonNull(policy,
+                    "compressionPolicy must not be null");
+            return this;
+        }
+
         public StandardLsmTree build() throws IOException {
             Objects.requireNonNull(wal, "wal must not be null");
             Objects.requireNonNull(memTableFactory, "memTableFactory must not be null");
-            Objects.requireNonNull(writerFactory, "writerFactory must not be null");
-            Objects.requireNonNull(readerFactory, "readerFactory must not be null");
             Objects.requireNonNull(idSupplier, "idSupplier must not be null");
             Objects.requireNonNull(pathFn, "pathFn must not be null");
 
+            // Resolve the effective compression policy (R24: compressionPolicy > compression)
+            Function<Level, CompressionCodec> effectivePolicy = resolveCompressionPolicy();
+
+            // If a compression policy is active, create codec-aware writer and reader factories.
+            // These override any explicit factories since the tree must use codec-matched
+            // writer/reader pairs.
+            if (effectivePolicy != null) {
+                writerFactory = codecAwareWriterFactory(effectivePolicy);
+                readerFactory = codecAwareReaderFactory(effectivePolicy);
+            }
+
+            Objects.requireNonNull(writerFactory, "writerFactory must not be null — "
+                    + "set sstableWriterFactory or compression/compressionPolicy");
+            Objects.requireNonNull(readerFactory, "readerFactory must not be null — "
+                    + "set sstableReaderFactory or compression/compressionPolicy");
+
             if (compactor == null) {
                 SpookyCompactor.Builder compactorBuilder = SpookyCompactor.builder()
-                        .idSupplier(idSupplier).pathFn(pathFn);
+                        .idSupplier(idSupplier).pathFn(pathFn).writerFactory(writerFactory);
                 if (bloomDeserializer != null) {
                     compactorBuilder.bloomDeserializer(bloomDeserializer);
+                }
+                if (effectivePolicy != null) {
+                    compactorBuilder.readerCodecs(collectPolicyCodecs(effectivePolicy));
                 }
                 compactor = compactorBuilder.build();
             }
@@ -447,6 +500,70 @@ public final class StandardLsmTree implements LsmTree {
 
             return new StandardLsmTree(this, initialMemTable,
                     new CopyOnWriteArrayList<>(existingSSTables));
+        }
+
+        /**
+         * Resolves the effective compression policy. Returns null if neither compression nor
+         * compressionPolicy was set (backward compatible: use the explicit writerFactory).
+         *
+         * <p>
+         * R24: compressionPolicy takes precedence over compression, regardless of set order.
+         */
+        private Function<Level, CompressionCodec> resolveCompressionPolicy() {
+            if (compressionPolicy != null) {
+                return compressionPolicy;
+            }
+            if (singleCodec != null) {
+                return _ -> singleCodec;
+            }
+            return null;
+        }
+
+        /**
+         * Creates an SSTableWriterFactory that applies the given compression policy to each writer
+         * it creates. The factory creates a {@link jlsm.sstable.TrieSSTableWriter} via its builder,
+         * configuring the level-appropriate codec.
+         */
+        private static SSTableWriterFactory codecAwareWriterFactory(
+                Function<Level, CompressionCodec> policy) {
+            return (id, level, path) -> {
+                CompressionCodec codec = policy.apply(level);
+                var builder = jlsm.sstable.TrieSSTableWriter.builder().id(id).level(level)
+                        .path(path);
+                if (codec != null && codec.codecId() != 0x00) {
+                    builder.codec(codec);
+                }
+                return builder.build();
+            };
+        }
+
+        /**
+         * Collects unique codecs from the policy for a representative range of levels.
+         */
+        private static CompressionCodec[] collectPolicyCodecs(
+                Function<Level, CompressionCodec> policy) {
+            java.util.Set<Byte> seenIds = new java.util.HashSet<>();
+            List<CompressionCodec> codecs = new ArrayList<>();
+            for (int i = 0; i <= 7; i++) {
+                CompressionCodec codec = policy.apply(new Level(i));
+                if (codec != null && seenIds.add(codec.codecId())) {
+                    codecs.add(codec);
+                }
+            }
+            return codecs.toArray(CompressionCodec[]::new);
+        }
+
+        /**
+         * Creates an SSTableReaderFactory that can read SSTables written with any codec returned by
+         * the given policy. Collects the unique set of codecs from a representative set of levels
+         * and passes them to the multi-format reader.
+         */
+        private static SSTableReaderFactory codecAwareReaderFactory(
+                Function<Level, CompressionCodec> policy) {
+            CompressionCodec[] codecArray = collectPolicyCodecs(policy);
+            var bloomDeserializer = jlsm.bloom.blocked.BlockedBloomFilter.deserializer();
+            return path -> jlsm.sstable.TrieSSTableReader.open(path, bloomDeserializer, null,
+                    codecArray);
         }
     }
 }

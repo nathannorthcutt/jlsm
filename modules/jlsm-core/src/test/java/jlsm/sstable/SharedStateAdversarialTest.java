@@ -190,6 +190,8 @@ class SharedStateAdversarialTest {
         Constructor<?> footerCtor = footerClass.getDeclaredConstructor(int.class, // version
                 long.class, // mapOffset
                 long.class, // mapLength
+                long.class, // dictOffset
+                long.class, // dictLength
                 long.class, // idxOffset
                 long.class, // idxLength
                 long.class, // fltOffset
@@ -208,6 +210,8 @@ class SharedStateAdversarialTest {
         Object overlappingV1Footer = footerCtor.newInstance(1, // version (v1)
                 0L, // mapOffset (unused in v1)
                 0L, // mapLength (unused in v1)
+                0L, // dictOffset (unused in v1)
+                0L, // dictLength (unused in v1)
                 100L, // idxOffset
                 200L, // idxLength — idx spans [100, 300)
                 200L, // fltOffset — flt starts at 200, inside idx
@@ -238,6 +242,8 @@ class SharedStateAdversarialTest {
         Constructor<?> footerCtor = footerClass.getDeclaredConstructor(int.class, // version
                 long.class, // mapOffset
                 long.class, // mapLength
+                long.class, // dictOffset
+                long.class, // dictLength
                 long.class, // idxOffset
                 long.class, // idxLength
                 long.class, // fltOffset
@@ -257,6 +263,8 @@ class SharedStateAdversarialTest {
         Object footer = footerCtor.newInstance(2, // version (v2)
                 0L, // mapOffset
                 oversizedMapLength, // mapLength — exceeds int range
+                0L, // dictOffset (unused in v2)
+                0L, // dictLength (unused in v2)
                 oversizedMapLength, // idxOffset — after map section
                 100L, // idxLength
                 oversizedMapLength + 100L, // fltOffset — after idx section

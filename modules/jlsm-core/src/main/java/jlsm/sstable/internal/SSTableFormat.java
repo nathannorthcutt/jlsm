@@ -104,6 +104,31 @@ public final class SSTableFormat {
      */
     public static final int COMPRESSION_MAP_ENTRY_SIZE_V3 = 21;
 
+    /** Magic number v4: ASCII "JLSMSST\x04" — SSTable with dictionary meta-block. */
+    public static final long MAGIC_V4 = 0x4A4C534D53535404L;
+
+    /**
+     * Size of the v4 footer section in bytes (adds dictOffset + dictLength over v3's 72 bytes).
+     *
+     * <p>
+     * v4 footer layout (big-endian, 88 bytes):
+     *
+     * <pre>
+     *   [long mapOffset     ]  offset 0
+     *   [long mapLength     ]  offset 8
+     *   [long dictOffset    ]  offset 16
+     *   [long dictLength    ]  offset 24
+     *   [long idxOffset     ]  offset 32
+     *   [long idxLength     ]  offset 40
+     *   [long fltOffset     ]  offset 48
+     *   [long fltLength     ]  offset 56
+     *   [long entryCount    ]  offset 64
+     *   [long blockSize     ]  offset 72
+     *   [long magic         ]  offset 80 = MAGIC_V4
+     * </pre>
+     */
+    public static final int FOOTER_SIZE_V4 = 88;
+
     /** Block size optimised for huge-page TLB alignment (2 MiB). */
     public static final int HUGE_PAGE_BLOCK_SIZE = 2_097_152;
 

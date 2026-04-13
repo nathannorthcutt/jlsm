@@ -10,7 +10,7 @@
     "serialization": {
       "shard_path": "domains/serialization/INDEX.md",
       "description": "encoding decoding sstable document serializer binary format footer",
-      "feature_count": 6
+      "feature_count": 7
     },
     "storage": {
       "shard_path": "domains/storage/INDEX.md",
@@ -154,6 +154,14 @@
     },
     "F17": {
       "latest_file": "domains/serialization/F17-wal-compression-codec-api.md",
+      "state": "DRAFT",
+      "domains": [
+        "serialization",
+        "storage"
+      ]
+    },
+    "F18": {
+      "latest_file": "domains/serialization/F18-zstd-dictionary-compression.md",
       "state": "DRAFT",
       "domains": [
         "serialization",

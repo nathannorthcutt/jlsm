@@ -134,4 +134,51 @@ public interface CompressionCodec {
     static CompressionCodec deflate(int level) {
         return new DeflateCodec(level);
     }
+
+    /**
+     * Returns a ZSTD codec with the default compression level (3) and no dictionary. When native
+     * libzstd is available (Tier 1), the codec ID is {@code 0x03}; otherwise falls back to Deflate
+     * with codec ID {@code 0x02}.
+     *
+     * @return a new {@code ZstdCodec} instance
+     * @see ZstdCodec
+     */
+    static CompressionCodec zstd() {
+        return new ZstdCodec(3, null);
+    }
+
+    /**
+     * Returns a ZSTD codec with the specified compression level and no dictionary.
+     *
+     * @param level compression level (1–22)
+     * @return a new {@code ZstdCodec} instance
+     * @throws IllegalArgumentException if level is outside the range 1–22
+     */
+    static CompressionCodec zstd(int level) {
+        return new ZstdCodec(level, null);
+    }
+
+    /**
+     * Returns a ZSTD codec with the default compression level (3) and the specified dictionary.
+     *
+     * @param dictionary trained dictionary bytes; must not be null
+     * @return a new {@code ZstdCodec} instance
+     * @throws NullPointerException if {@code dictionary} is null
+     */
+    static CompressionCodec zstd(MemorySegment dictionary) {
+        return new ZstdCodec(3, dictionary);
+    }
+
+    /**
+     * Returns a ZSTD codec with the specified compression level and dictionary.
+     *
+     * @param level compression level (1–22)
+     * @param dictionary trained dictionary bytes; must not be null
+     * @return a new {@code ZstdCodec} instance
+     * @throws IllegalArgumentException if level is outside the range 1–22
+     * @throws NullPointerException if {@code dictionary} is null
+     */
+    static CompressionCodec zstd(int level, MemorySegment dictionary) {
+        return new ZstdCodec(level, dictionary);
+    }
 }

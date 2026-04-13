@@ -4,6 +4,8 @@ aliases: ["wal-compression", "write-ahead-log-compression"]
 topic: "algorithms"
 category: "compression"
 tags: ["wal", "compression", "write-amplification", "durability", "record-format"]
+related:
+  - "algorithms/compression/zstd-dictionary-compression.md"
 complexity:
   time_build: "O(1) per record (streaming) or O(n) per block"
   time_query: "O(1) per record decompression during replay"

@@ -1,6 +1,7 @@
 package jlsm.tree;
 
 import jlsm.core.compaction.Compactor;
+import jlsm.core.compression.CompressionCodec;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.memtable.MemTable;
 import jlsm.core.model.Entry;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -163,6 +165,18 @@ public final class TypedStandardLsmTree {
         @SuppressWarnings("unchecked")
         public B compactor(Compactor compactor) {
             delegateBuilder.compactor(compactor);
+            return (B) this;
+        }
+
+        @SuppressWarnings("unchecked")
+        public B compression(CompressionCodec codec) {
+            delegateBuilder.compression(codec);
+            return (B) this;
+        }
+
+        @SuppressWarnings("unchecked")
+        public B compressionPolicy(Function<Level, CompressionCodec> policy) {
+            delegateBuilder.compressionPolicy(policy);
             return (B) this;
         }
     }

@@ -11,7 +11,9 @@
   "amended_by": null,
   "decision_refs": [
     "sstable-block-compression-format",
-    "compression-codec-api-design"
+    "compression-codec-api-design",
+    "codec-dictionary-support",
+    "compaction-recompression"
   ],
   "kb_refs": [
     "algorithms/compression/block-compression-algorithms"
@@ -128,9 +130,29 @@ R37. The tree builder must accept a compression codec configuration, defaulting 
 
 ### Compaction integration
 
-R38. The compactor must use the same compression codec as the tree that owns the SSTables being compacted. Source SSTables must be opened with v2-capable reader methods (accepting codec parameters) and output SSTables must be written with the configured codec. Compaction must not silently downgrade compressed SSTables to uncompressed format.
+R38. The compactor must create output writers via an SSTableWriterFactory, not by direct constructor invocation. The factory receives the SSTable ID, target Level, and output Path, and returns a writer configured with the appropriate compression codec for that level. The compactor must not contain codec selection logic — it delegates writer creation entirely to the factory. [Amended by compaction-recompression ADR: was "must use the same compression codec as the tree".]
 
-R39. The compactor must accept the set of available codecs for reading and a single codec for writing, and propagate them to all reader and writer instantiations within a compaction run.
+R39. The tree builder must support a per-level compression policy via a Function<Level, CompressionCodec> (or equivalent). When set, the policy determines the codec for each level. When not set, all levels use the single configured codec (backward compatible). The builder must wire the policy into the SSTableWriterFactory used by both flush and compaction paths. [Amended by compaction-recompression ADR: was "single codec for writing".]
+
+R39a. The compactor must not carry implicit state between output writers. Each writer created by the factory must be independent — no shared buffers, no cross-file dictionary references, no assumptions about prior writers in the same compaction run. This enables the factory to return different codec configurations per output file without coordination. [New: codifies assumption verified during compaction-recompression deliberation.]
+
+### ZSTD codec and tiered detection
+
+R39b. The ZSTD codec (ID 0x03) must use a tiered runtime detection pattern: Tier 1 probes for native libzstd via Panama FFM Linker.nativeLinker() and SymbolLookup; Tier 2 provides a pure-Java ZSTD decompressor (decompression only, no compression); Tier 3 falls back to the DEFLATE codec for compression. Detection must occur once at class-load time and be cached. Detection must catch all exceptions and fall through gracefully to the next tier. [New: from codec-dictionary-support ADR.]
+
+R39c. The pure-Java ZSTD decompressor (Tier 2) must handle dictionary-compressed frames. It must parse the dictionary ID from the frame header, load pre-trained FSE and Huffman tables from dictionary bytes, pre-seed repeat offsets, and prepend dictionary content as match history. The frame-level decode loop must require zero changes — dictionary support is initialization-only. [New: from codec-dictionary-support ADR, verified by feasibility spike.]
+
+R39d. ZSTD CDict and DDict equivalents (native Tier 1) are read-only after creation and must be safely shareable across threads. The codec instance must hold the dictionary internally as constructor-time configuration. The compress() and decompress() methods must remain stateless per F02.R7/F17.R5. [New: from codec-dictionary-support ADR.]
+
+### Dictionary-aware writer lifecycle
+
+R39e. When a dictionary-enabled codec is configured, the SSTable writer must buffer all uncompressed data blocks in memory before compressing any of them. After all blocks are buffered, the writer must sample blocks uniformly for dictionary training, train the dictionary (native Tier 1 only), create a dictionary-bound codec, and compress all buffered blocks. The dictionary training lifecycle must be fully encapsulated inside the writer — callers pass codec configuration at construction, the writer handles buffering and training internally. [New: from codec-dictionary-support ADR.]
+
+R39f. The trained dictionary must be stored as a meta-block in the SSTable file alongside the index and bloom filter. The dictionary meta-block must be loadable from on-disk metadata alone — no external dictionary file or registry. Readers must detect the presence of a dictionary meta-block and load it before decompressing any block. [New: from codec-dictionary-support ADR.]
+
+R39g. The writer's block buffering for dictionary training must be bounded by a configurable maximum (set via the writer builder). If the buffered data exceeds the maximum, the writer must fail with an IOException rather than silently consuming unbounded memory. [New: from codec-dictionary-support ADR.]
+
+R39h. When native libzstd is unavailable (Tier 2 or 3), the writer must skip dictionary training and compress blocks as they arrive using the fallback codec. The writer must not fail at construction time due to missing native library — it must gracefully degrade. [New: from codec-dictionary-support ADR.]
 
 ### Error handling
 
@@ -174,7 +196,7 @@ A compression offset map (loaded eagerly at reader open time) was chosen over in
 - WAL compression (separate concern, different write pattern)
 - Key index / bloom filter compression (small metadata structures)
 - Custom fast codecs in this feature (may follow from research)
-- Compaction-time re-compression with a different codec
+- Compaction-time re-compression with a different codec — **Resolved:** see `compaction-recompression` (accepted 2026-04-12, R38-R39a amended)
 - Per-block checksums (compression map can be extended later)
 
 ### Audit provenance
