@@ -250,9 +250,11 @@ If the user leaves it blank or says "none": record `branch_naming: none`.
 
 Display:
 ```
-  Type **yes**  to save  ·  or: describe corrections
-```
-If "yes": save. If the user types corrections: apply them and confirm again.
+Use AskUserQuestion with options:
+  - "Save"
+  - "Describe corrections" (Other)
+
+If "Save": save. If "Describe corrections": apply them and confirm again.
 Do not re-ask about fields the user confirmed or did not mention.
 
 ### Write project-config.md

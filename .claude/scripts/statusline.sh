@@ -130,6 +130,12 @@ if [[ -f .claude/.token-state ]]; then
     if [[ -n "$feature_dir" && -f "$feature_dir/status.md" ]]; then
         slug=$(basename "$feature_dir")
 
+        # Truncate slug for display — long names push stage/tokens/context off screen
+        MAX_SLUG=24
+        if [[ ${#slug} -gt $MAX_SLUG ]]; then
+            slug="${slug:0:$((MAX_SLUG - 1))}…"
+        fi
+
         # Read ACTUAL stage from status.md (not cached_stage from .token-state)
         # This detects transitions during chained sub-agent execution
         actual_stage=$(grep -m1 '^\*\*Stage:\*\*' "$feature_dir/status.md" 2>/dev/null \
@@ -182,7 +188,7 @@ if [[ -f .claude/.token-state ]]; then
                     case "$substage" in
                         loading-context)    sub="loading context" ;;
                         implementing)       sub="implementing" ;;
-                        implemented:*)      sub="${substage#implemented: }" ;;
+                        implemented:*)      sub="${substage#implemented: }"; [[ ${#sub} -gt 20 ]] && sub="${sub:0:19}…" ;;
                         *all*tests*passing) sub="all passing" ;;
                         escalat*)           sub="escalation" ;;
                     esac

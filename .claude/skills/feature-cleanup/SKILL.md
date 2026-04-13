@@ -101,9 +101,11 @@ Display:
   ⚠ This will permanently delete .feature/<slug>/ and all its contents.
     Source code and tests in git are NOT affected — only the working state files.
 
-    Type **yes** to delete · or: keep
-```
-If confirmed: `rm -rf .feature/<slug>/`. Remove from `.feature/CLAUDE.md` Active
+Use AskUserQuestion with options:
+    - "Delete"
+    - "Keep"
+
+If "Delete": `rm -rf .feature/<slug>/`. Remove from `.feature/CLAUDE.md` Active
 Features table if present.
 Display:
 ```

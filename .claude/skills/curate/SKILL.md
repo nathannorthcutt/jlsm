@@ -286,6 +286,34 @@ From "Decisions Roadmap Needed" in the scan summary:
 3. When the user picks this item: suggest running `/decisions roadmap` in
    a separate session (roadmap is a planning skill, not a curate action)
 
+### 2l — Work group health
+
+**Guard:** Only run this step if any "Work Group:" section exists in the scan
+summary. If absent, skip entirely.
+
+**Displaced dependencies:**
+1. Work definitions that depend on specs now INVALIDATED
+2. These WDs are effectively BLOCKED by a spec that no longer exists
+3. For each, use AskUserQuestion with options:
+   - **"Author replacement spec"** → suggest `/spec-author` for the missing spec
+   - **"Update WD to remove dependency"** → the WD no longer needs this artifact
+   - **"Skip for now"** — defer
+
+**Stalled work groups:**
+1. Work groups with no WD activity in 14+ days
+2. Present the group name, total WDs, completed WDs, and days since last activity
+3. For each, use AskUserQuestion with options:
+   - **"Check status"** → run `/work-status "<group>"`
+   - **"Skip"** — acknowledged, no action needed
+
+**Artifact drift:**
+1. WDs whose artifact dependencies were modified after the WD was written
+2. The artifact still exists but its content changed — the WD's assumptions
+   may be stale
+3. For each, use AskUserQuestion with options:
+   - **"Review WD"** → read the WD and the changed artifact, assess impact
+   - **"Skip"** — the change was minor and doesn't affect the WD
+
 ---
 
 ## Step 3 — Present findings as a numbered pick list
@@ -446,12 +474,19 @@ entries. These are bookkeeping and don't need architectural judgment.
 **ADR pressure:** Read the ADR file, then compare the decision's stated approach
 against the changed constrained files. Present a summary: "This decision
 constrains <N> files and <M> have changed. Here's what shifted: <brief
-description>." Offer: "Want me to run a full re-evaluation via /architect?"
+description>."
+
+Use AskUserQuestion:
+  - "Re-evaluate via /architect"
+  - "Skip"
 
 **ADR gravity (low, <5 files):** Read the ADR and the unconstrained files.
 Assess whether the relationship is meaningful or coincidental. If meaningful:
-"These files appear to be implicitly part of this decision's scope. Want me
-to add them to the ADR's files: field?" If coincidental: note and move on.
+"These files appear to be implicitly part of this decision's scope."
+
+Use AskUserQuestion:
+  - "Add files to ADR scope"
+  - "Skip (coincidental)"
 
 **ADR gravity (high, 5+ files) — isolation concern:** This is a boundary
 problem, not just missing file tags. Invoke `/architect "<ADR-slug> boundary
@@ -465,9 +500,14 @@ decision's constrained area? Flag gaps. This is not an `/architect` issue —
 it's a test coverage concern. Present: "This file is shared across <N>
 decisions. Current test coverage: <assessment>."
 
-**ADR drift:** Invoke `/architect "<problem>"` as a review session.
-Provide context: "This was originally decided on <date> because <reason>. The
-codebase has shifted — want me to run a full re-evaluation?"
+**ADR drift:** Present: "This was originally decided on <date> because <reason>.
+The codebase has shifted."
+
+Use AskUserQuestion:
+  - "Re-evaluate via /architect"
+  - "Skip"
+
+If accepted, invoke `/architect "<problem>"` as a review session.
 
 **Stale KB:** Invoke `/research "<subject>" context: "curate: stale KB entry at <topic>/<category>, originally researched <date>. Since then, <what changed>."`.
 Provide context about what changed since the original research.
@@ -529,18 +569,31 @@ understand the implicit contract. Then invoke `/spec-author extraction-mode`
 with the type name — this extracts the type's behavioral contract from the
 referencing specs and the source code, producing a standalone spec. Present
 summary: "This type is referenced by <N> specs. Here's what each spec assumes
-about it: <brief list>. Want me to extract its spec?"
+about it: <brief list>."
+
+Use AskUserQuestion:
+  - "Extract spec"
+  - "Skip"
+
+If accepted, invoke `/spec-author extraction-mode` with the type name.
 
 **Specs with open obligations:** Read the spec file and display the specific
 `[UNRESOLVED]` and `[CONFLICT]` markers with their surrounding context (2-3
 lines each direction). Present: "This spec has <N> unresolved items. Here they
-are: <list>." Offer: "Want me to run `/spec-resolve` to work through these?"
+are: <list>."
+
+Use AskUserQuestion:
+  - "Resolve via /spec-resolve"
+  - "Skip"
 
 **Spec-code drift:** Present the commit count and affected domains: "This spec
-was written on <date> and <N> commits have touched its domain files since.
-Want me to run `/spec-verify` to check if the spec still matches the
-implementation?" When the user accepts, invoke `/spec-verify` with the spec
-file path.
+was written on <date> and <N> commits have touched its domain files since."
+
+Use AskUserQuestion:
+  - "Verify via /spec-verify"
+  - "Skip"
+
+When the user accepts, invoke `/spec-verify` with the spec file path.
 
 **Undecided absent behaviors:** Read the spec file. Find all requirements
 tagged with `[ABSENT]`. For each one, display the requirement ID, the full

@@ -23,20 +23,36 @@ Works for both `/feature` and `/feature-quick` slugs.
 If `--list` flag is set:
 
 1. List all directories under `.feature/` (excluding `_archive/` and `project-config.md`)
-2. For each directory, read `status.md` and extract: stage, substage, last updated timestamp
-3. Display:
+2. For each directory, read `status.md` and extract: stage, substage, last updated timestamp.
+   Also check for `work_group` field or double-dash convention (`<group>--<wd>`) to identify
+   work-group-sourced features.
+3. If `.work/` exists and any features are work-group-sourced, group them by work group.
+   Display:
 
 ```
 ───────────────────────────────────────────────
 📋 ACTIVE FEATURES
 ───────────────────────────────────────────────
+
+Work group: <group-slug> (N/M complete)
   <slug>            <stage> · <substage>            <last updated>
   <slug>            <stage> · <substage>            <last updated>
+
+Standalone:
   <slug>            <stage> · <substage>            <last updated>
 ───────────────────────────────────────────────
 ```
 
-Sort by last updated (most recent first).
+If no features are work-group-sourced, use the flat format (no grouping):
+```
+───────────────────────────────────────────────
+📋 ACTIVE FEATURES
+───────────────────────────────────────────────
+  <slug>            <stage> · <substage>            <last updated>
+───────────────────────────────────────────────
+```
+
+Sort by last updated (most recent first) within each group.
 If no features exist, display: `No active features. Start one with /feature "<description>" or /feature-quick "<description>"`
 
 Stop. Do not continue to other steps.
@@ -90,6 +106,21 @@ Stop.
 If `--share` flag: run --status mode, then condense output to share format (see Step 5b).
 If `--status` flag: skip to Step 5 — Session briefing.
 Otherwise: continue to Step 2 — Navigation mode.
+
+---
+
+## Step 1c — Work group context
+
+If this feature is work-group-sourced (status.md has `work_group` field, or
+slug matches `<group>--<wd>` pattern), show work group progress after the
+header in Step 2:
+
+```
+Work group: <group-slug> · <complete>/<total> work definitions complete
+```
+
+This is a single line of context — don't run the full resolver here, just
+count WD files and their statuses via `work_fm` on each WD file.
 
 ---
 
@@ -204,7 +235,9 @@ use the coordinator (parallel mode):
 
 ## Step 3 — Determine and display what to run next
 
-Based on the current stage and substage:
+Read the `Pipeline mode` field from status.md (default: `full`).
+
+### Full mode routing (pipeline_mode: full)
 
 | Stage + Substage | What to run next |
 |-----------------|-----------------|
@@ -229,6 +262,51 @@ Based on the current stage and substage:
 | refactor / complete | `/feature-pr "<slug>"` |
 | pr / created (no retro) | `/feature-retro "<slug>"` — retrospective while feature is fresh |
 | pr / created (retro done) | `/feature-complete "<slug>"` — when PR has merged |
+
+### Specification mode routing (pipeline_mode: specification)
+
+This mode stops after spec authoring. Used when a work definition produces
+specification artifacts rather than implementing behavior.
+
+| Stage + Substage | What to run next |
+|-----------------|-----------------|
+| scoping / interviewing | `/feature "<slug description>"` |
+| scoping / confirming-brief | `/feature "<slug description>"` |
+| scoping / complete | `/feature-domains "<slug>"` |
+| domains / complete | Spec authoring (automatic via `/feature-domains`) |
+| spec-authoring / complete | `/feature-retro "<slug>"` — specification complete |
+| pr / created (no retro) | `/feature-retro "<slug>"` |
+| pr / created (retro done) | `/feature-complete "<slug>"` |
+
+Note: Planning, Testing, Hardening, Implementation, and Refactor stages
+are skipped in specification mode. After spec authoring is done, proceed
+directly to retro.
+
+### Implementation mode routing (pipeline_mode: implementation)
+
+This mode starts at planning. Used when specification was done in a prior
+phase and artifacts already exist.
+
+| Stage + Substage | What to run next |
+|-----------------|-----------------|
+| planning / in-progress | `/feature-plan "<slug>"` |
+| planning / complete | `/feature-test "<slug>"` |
+| testing / in-progress | `/feature-test "<slug>"` |
+| testing / complete (cycle N) | `/feature-harden "<slug>"` |
+| hardening / in-progress | `/feature-harden "<slug>"` |
+| hardening / complete | `/feature-implement "<slug>"` |
+| hardening / skipped-no-signals | `/feature-implement "<slug>"` |
+| implementation / in-progress | `/feature-implement "<slug>"` |
+| implementation / escalated | `/feature-test "<slug>"` |
+| implementation / complete (cycle N) | `/feature-refactor "<slug>"` |
+| refactor / in-progress | `/feature-refactor "<slug>"` |
+| refactor / escalated-missing-tests | `/feature-test "<slug>" --add-missing` |
+| refactor / complete | `/feature-pr "<slug>"` |
+| pr / created (no retro) | `/feature-retro "<slug>"` |
+| pr / created (retro done) | `/feature-complete "<slug>"` |
+
+Note: Scoping, Domains, and Spec Authoring stages are skipped in
+implementation mode. Planning reads specification artifacts directly.
 
 If `automation_mode: autonomous` and the feature is mid-implementation or
 mid-refactor: note this in the Next Step display:
@@ -269,21 +347,26 @@ NEXT STEP
 - If the next step resolves to `/feature-pr` (stage is `refactor/complete`):
   ```
   Feature is ready for PR.
-    Type **yes**  to draft the PR  ·  or: stop
   ```
-  If "yes": invoke `/feature-pr "<slug>"` as a sub-agent immediately.
-  If "stop": display `Next: /feature-pr "<slug>"` and stop.
+  Use AskUserQuestion with options:
+    - "Draft PR"
+    - "Stop"
+
+  If "Draft PR": invoke `/feature-pr "<slug>"` as a sub-agent immediately.
+  If "Stop": display `Next: /feature-pr "<slug>"` and stop.
 
 - If the next step resolves to `/feature-retro` (stage is `pr/created` and
   cycle-log.md has no `retro-complete` entry): prompt for retrospective.
   ```
   PR is open. A retrospective captures what worked and what didn't while
   the feature is fresh — it writes back to the KB and decisions store.
-
-    Type **yes**  to run the retrospective  ·  or: skip
   ```
-  If "yes": invoke `/feature-retro "<slug>"` as a sub-agent immediately.
-  If "skip": display `When the PR merges: /feature-complete "<slug>"` and stop.
+  Use AskUserQuestion with options:
+    - "Run retrospective"
+    - "Skip"
+
+  If "Run retrospective": invoke `/feature-retro "<slug>"` as a sub-agent immediately.
+  If "Skip": display `When the PR merges: /feature-complete "<slug>"` and stop.
 
   If cycle-log.md already has a `retro-complete` entry: skip the retro prompt
   and display `When the PR merges: /feature-complete "<slug>"` instead.

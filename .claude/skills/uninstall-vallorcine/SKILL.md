@@ -72,14 +72,12 @@ These files and directories are NEVER removed:
 
 ## Step 3 — Confirm
 
-Ask:
-```
-Type **yes** to uninstall vallorcine  ·  or: stop
-```
+Use AskUserQuestion with options:
+  - "Uninstall"
+  - "Stop"
 
-Wait for the user's response.
-- If "stop" or anything other than "yes": exit with "Uninstall cancelled. No changes made."
-- If "yes": proceed.
+If "Stop": exit with "Uninstall cancelled. No changes made."
+If "Uninstall": proceed.
 
 ---
 

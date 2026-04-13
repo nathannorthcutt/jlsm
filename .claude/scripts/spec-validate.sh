@@ -54,6 +54,12 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
   [[ ! "$STATUS" =~ ^(DRAFT|ACTIVE|STABLE|DEPRECATED)$ ]] && \
     ERRORS+=("Invalid status: '$STATUS' — must be DRAFT|ACTIVE|STABLE|DEPRECATED")
 
+  # ── Check 4b: kind is valid enum (optional field)
+  KIND=$(fm "$FILE" '.kind // ""')
+  if [[ -n "$KIND" && ! "$KIND" =~ ^(interface-contract)$ ]]; then
+    ERRORS+=("Invalid kind: '$KIND' — must be interface-contract (or omit field)")
+  fi
+
   # ── Check 5: domains is a non-empty array
   DOMAIN_COUNT=$(fm "$FILE" '.domains | length // 0')
   [[ "$DOMAIN_COUNT" == "0" ]] && ERRORS+=("domains array is empty — at least one domain required")

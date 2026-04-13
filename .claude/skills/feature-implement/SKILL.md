@@ -246,6 +246,19 @@ For each construct:
 6. After a successful compile, re-read the edited lines to verify the edit
    persisted (earlier work unit edits can silently revert if old_string was stale).
 7. Update status.md substage → "implemented: <construct name>" after each passing unit
+8. **Tendency scan** — after this construct's tests pass, check for known
+   anti-patterns before moving to the next construct:
+   a. If `.feature/<slug>/known_issues.md` exists, read TENDENCY entries that
+      apply to this construct's domain. Do NOT introduce these patterns.
+   b. If `.kb/CLAUDE.md` exists, run:
+      `bash .claude/scripts/kb-search.sh "<domain> <construct-type>" --kb-root .kb --top 5`
+      For each result with `type: adversarial-finding`, read the entry's
+      `applies_to` patterns and `## Test guidance` section.
+   c. Scan your just-implemented code for matches against these patterns.
+      If found: fix proactively, re-run tests, confirm still green.
+      If not found: continue to next construct.
+   d. This scan should take <30 seconds. Do not deep-read more than 5 KB
+      entries. The goal is catching known anti-patterns, not a full audit.
 
 If a test fails unexpectedly after implementation: see Escalation Protocol.
 

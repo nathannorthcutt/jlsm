@@ -634,7 +634,7 @@ if [[ -d ".spec" && -d ".spec/domains" ]]; then
         if [[ -n "$fm_obligations" && "$obligation_count" -eq 0 ]]; then
             ob_text="$(echo "$fm_obligations" | sed 's/.*open_obligations:[[:space:]]*//' | tr -d '[]"' || true)"
             if [[ -n "$ob_text" ]]; then
-                ob_count="$(echo "$ob_text" | tr ',' '\n' | grep -c '[a-z]' 2>/dev/null || echo 1)"
+                ob_count="$(echo "$ob_text" | tr ',' '\n' | grep -c '[a-z]' 2>/dev/null)" || ob_count=1
                 echo "OBLIGATION|$spec_base|$ob_count|$ob_text" >> "$TMPDIR_SCAN/spec-obligations.txt"
             fi
         fi
@@ -916,7 +916,7 @@ if [[ -d ".decisions" ]]; then
     while IFS= read -r slug_dir; do
         adr_file="$slug_dir/adr.md"
         [[ -f "$adr_file" ]] || continue
-        if grep -qE 'status:.*"?deferred"?' "$adr_file" 2>/dev/null; then
+        if grep -qEi 'status:.*"?deferred"?|\*\*Status:\*\*.*deferred' "$adr_file" 2>/dev/null; then
             deferred_count=$((deferred_count + 1))
         fi
     done < <(find .decisions -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true)
@@ -930,7 +930,7 @@ if [[ -d ".decisions" ]]; then
             while IFS= read -r slug_dir; do
                 adr_file="$slug_dir/adr.md"
                 [[ -f "$adr_file" ]] || continue
-                if grep -qE 'status:.*"?deferred"?' "$adr_file" 2>/dev/null; then
+                if grep -qEi 'status:.*"?deferred"?|\*\*Status:\*\*.*deferred' "$adr_file" 2>/dev/null; then
                     adr_ts="$(date -r "$adr_file" '+%s' 2>/dev/null || echo 0)"
                     [[ "$adr_ts" -gt "$newest_deferred_ts" ]] && newest_deferred_ts="$adr_ts"
                 fi
@@ -999,6 +999,139 @@ if [[ -d ".spec" && -f ".spec/registry/manifest.json" ]]; then
             echo "ORPHANED|$fid|$spec_domains|$token_list" >> "$TMPDIR_SCAN/spec-orphaned.txt"
         fi
     done < <(jq -r '.features | keys[]' "$MANIFEST" 2>/dev/null)
+fi
+
+# ── Analysis 15: Cross-WD displacement (specs displaced that WDs depend on) ──
+# When a spec is displaced (state=INVALIDATED), check if any work definition
+# in any work group declares an artifact_dep on that spec. If so, the WD's
+# readiness is affected — it depends on a spec that no longer exists.
+
+> "$TMPDIR_SCAN/work-displacement.txt"
+
+if [[ -d ".work" && -d ".spec" && -f ".spec/registry/manifest.json" ]]; then
+    MANIFEST=".spec/registry/manifest.json"
+
+    # Collect all INVALIDATED spec paths
+    invalidated_paths=()
+    while IFS= read -r fid; do
+        [[ -z "$fid" ]] && continue
+        state=$(jq -r --arg id "$fid" '.features[$id].state // ""' "$MANIFEST")
+        [[ "$state" != "INVALIDATED" ]] && continue
+        rel=$(jq -r --arg id "$fid" '.features[$id].latest_file // ""' "$MANIFEST")
+        [[ -z "$rel" ]] && continue
+        invalidated_paths+=("$rel")
+    done < <(jq -r '.features | keys[]' "$MANIFEST" 2>/dev/null)
+
+    # Check each WD's artifact_deps against invalidated specs
+    # Write invalidated paths to a temp file to avoid subshell array issues
+    if [[ ${#invalidated_paths[@]} -gt 0 ]]; then
+        inv_tmp="$TMPDIR_SCAN/invalidated-paths.txt"
+        printf '%s\n' "${invalidated_paths[@]}" > "$inv_tmp"
+
+        for group_dir in $(find .work -mindepth 1 -maxdepth 1 -type d ! -name '_archive' ! -name '_refs' 2>/dev/null | sort); do
+            [[ -z "$group_dir" || ! -d "$group_dir" ]] && continue
+            group_name="$(basename "$group_dir")"
+            for wd_file in "$group_dir"/WD-*.md; do
+                [[ ! -f "$wd_file" ]] && continue
+                wd_id=$(awk '/^---$/{n++; next} n==1 && /^id:/{sub(/^id:[ ]*/, ""); print; exit} n>=2{exit}' "$wd_file")
+                [[ -z "$wd_id" ]] && continue
+                # Extract spec dep paths from artifact_deps
+                dep_paths=$(awk '/^---$/{n++; next} n>=2{exit} n==1 && /^artifact_deps:/{d=1; next} d && /^  - \{/{print; next} d && !/^  /{d=0}' "$wd_file" \
+                    | grep 'type: spec' | sed 's/.*path:[[:space:]]*"\([^"]*\)".*/\1/' || true)
+                for dep_path in $dep_paths; do
+                    [[ -z "$dep_path" ]] && continue
+                    dep_name="${dep_path##*/}"
+                    dep_domain="${dep_path%%/*}"
+                    while IFS= read -r inv_path; do
+                        [[ -z "$inv_path" ]] && continue
+                        inv_basename="${inv_path##*/}"
+                        inv_basename="${inv_basename%.md}"
+                        if [[ "$inv_path" == *"$dep_path"* ]] || \
+                           [[ "$inv_path" == *"/$dep_domain/"* && "$inv_basename" == *"$dep_name"* ]] || \
+                           [[ "$inv_basename" == *"-$dep_name" || "$inv_basename" == "$dep_name" ]]; then
+                            echo "DISPLACED_DEP|$group_name|$wd_id|$dep_path|$inv_path" >> "$TMPDIR_SCAN/work-displacement.txt"
+                        fi
+                    done < "$inv_tmp"
+                done
+            done
+        done
+    fi
+fi
+
+# ── Analysis 16: Stalled work groups ─────────────────────────────────────────
+# Work groups where no WD has changed status recently. Checks the modification
+# time of WD files — if all WDs are older than the threshold, the group is stalled.
+
+> "$TMPDIR_SCAN/work-stalled.txt"
+STALE_DAYS="${WORK_STALE_DAYS:-14}"
+
+if [[ -d ".work" ]]; then
+    while IFS= read -r group_dir; do
+        [[ -z "$group_dir" || ! -d "$group_dir" ]] && continue
+        group_name="$(basename "$group_dir")"
+
+        # Find the most recently modified WD file
+        newest_wd=""
+        newest_time=0
+        while IFS= read -r wd_file; do
+            [[ -z "$wd_file" ]] && continue
+            mod_time=$(stat -c %Y "$wd_file" 2>/dev/null || stat -f %m "$wd_file" 2>/dev/null || echo 0)
+            if (( mod_time > newest_time )); then
+                newest_time=$mod_time
+                newest_wd="$wd_file"
+            fi
+        done < <(find "$group_dir" -maxdepth 1 -name 'WD-*.md' -type f 2>/dev/null)
+
+        # Skip groups with no WDs
+        [[ -z "$newest_wd" ]] && continue
+
+        # Check if newest WD is older than threshold
+        now=$(date +%s)
+        age_days=$(( (now - newest_time) / 86400 ))
+        if (( age_days >= STALE_DAYS )); then
+            wd_count=$(find "$group_dir" -maxdepth 1 -name 'WD-*.md' -type f 2>/dev/null | wc -l)
+            complete_count=$(grep -l '^status: COMPLETE' "$group_dir"/WD-*.md 2>/dev/null | wc -l || true)
+            echo "STALLED|$group_name|$wd_count|$complete_count|${age_days}d" >> "$TMPDIR_SCAN/work-stalled.txt"
+        fi
+    done < <(find .work -mindepth 1 -maxdepth 1 -type d ! -name '_archive' ! -name '_refs' 2>/dev/null)
+fi
+
+# ── Analysis 17: Artifact dependency drift ───────────────────────────────────
+# Work definitions whose artifact_deps reference specs or ADRs that have been
+# modified more recently than the WD file itself. The artifact still exists
+# and may still be in the right state, but its content changed — the WD's
+# assumptions about that artifact may be stale.
+
+> "$TMPDIR_SCAN/work-drift.txt"
+
+if [[ -d ".work" && -d ".spec" ]]; then
+    while IFS= read -r group_dir; do
+        [[ -z "$group_dir" || ! -d "$group_dir" ]] && continue
+        group_name="$(basename "$group_dir")"
+        find "$group_dir" -maxdepth 1 -name 'WD-*.md' -type f 2>/dev/null | sort | while IFS= read -r wd_file; do
+            [[ -z "$wd_file" ]] && continue
+            wd_id=$(awk '/^---$/{n++; next} n==1 && /^id:/{sub(/^id:[ ]*/, ""); print; exit} n>=2{exit}' "$wd_file")
+            wd_status=$(awk '/^---$/{n++; next} n==1 && /^status:/{sub(/^status:[ ]*/, ""); print; exit} n>=2{exit}' "$wd_file")
+            # Only check non-COMPLETE WDs
+            [[ "$wd_status" == "COMPLETE" ]] && continue
+            [[ -z "$wd_id" ]] && continue
+
+            wd_mod=$(stat -c %Y "$wd_file" 2>/dev/null || stat -f %m "$wd_file" 2>/dev/null || echo 0)
+
+            # Check ADR deps — extract slugs, then check timestamps
+            adr_slugs=$(awk '/^---$/{n++; next} n>=2{exit} n==1 && /^artifact_deps:/{d=1; next} d && /^  - \{/{print; next} d && !/^  /{d=0}' "$wd_file" \
+                | (grep 'type: adr' || true) | sed 's/.*slug:[[:space:]]*"\([^"]*\)".*/\1/' || true)
+            for slug in $adr_slugs; do
+                [[ -z "$slug" ]] && continue
+                adr_file=".decisions/$slug/adr.md"
+                [[ ! -f "$adr_file" ]] && continue
+                adr_mod=$(stat -c %Y "$adr_file" 2>/dev/null || stat -f %m "$adr_file" 2>/dev/null || echo 0)
+                if (( adr_mod > wd_mod )); then
+                    echo "ADR_DRIFT|$group_name|$wd_id|$slug" >> "$TMPDIR_SCAN/work-drift.txt"
+                fi
+            done
+        done
+    done < <(find .work -mindepth 1 -maxdepth 1 -type d ! -name '_archive' ! -name '_refs' 2>/dev/null)
 fi
 
 # ── Write summary file ──────────────────────────────────────────────────────
@@ -1316,6 +1449,43 @@ if [[ -s "$TMPDIR_SCAN/roadmap-needed.txt" ]]; then
     echo "" >> "$SUMMARY_FILE"
 fi
 
+# Work group health
+if [[ -s "$TMPDIR_SCAN/work-displacement.txt" ]]; then
+    echo "## Work Group: Displaced Dependencies" >> "$SUMMARY_FILE"
+    echo "Work definitions depending on specs that have been INVALIDATED." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Group | WD | Dep Path | Invalidated Spec |" >> "$SUMMARY_FILE"
+    echo "|-------|----|----------|------------------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ group wd dep_path inv_path; do
+        echo "| $group | $wd | $dep_path | $inv_path |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/work-displacement.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+if [[ -s "$TMPDIR_SCAN/work-stalled.txt" ]]; then
+    echo "## Work Group: Stalled" >> "$SUMMARY_FILE"
+    echo "Work groups with no WD status changes in ${STALE_DAYS}+ days." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Group | WDs | Complete | Last Activity |" >> "$SUMMARY_FILE"
+    echo "|-------|-----|----------|---------------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ group wd_count complete age; do
+        echo "| $group | $wd_count | $complete | $age ago |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/work-stalled.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+if [[ -s "$TMPDIR_SCAN/work-drift.txt" ]]; then
+    echo "## Work Group: Artifact Drift" >> "$SUMMARY_FILE"
+    echo "WD artifact dependencies referencing artifacts modified after the WD was written." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Group | WD | Artifact | Type |" >> "$SUMMARY_FILE"
+    echo "|-------|----|----------|------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r drift_type group wd artifact; do
+        echo "| $group | $wd | $artifact | $drift_type |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/work-drift.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
 # ── Report ───────────────────────────────────────────────────────────────────
 
 echo "Scan complete: $COMMIT_COUNT commits analyzed"
@@ -1341,6 +1511,9 @@ echo "  Deferred audit feedback: $(wc -l < "$TMPDIR_SCAN/audit-feedback.txt" 2>/
 echo "  Cross-ref candidates: $xref_total"
 echo "  Orphaned specs: $(wc -l < "$TMPDIR_SCAN/spec-orphaned.txt" 2>/dev/null || echo 0)"
 echo "  Roadmap needed: $(wc -l < "$TMPDIR_SCAN/roadmap-needed.txt" 2>/dev/null || echo 0)"
+echo "  Work displacement: $(wc -l < "$TMPDIR_SCAN/work-displacement.txt" 2>/dev/null || echo 0)"
+echo "  Stalled work groups: $(wc -l < "$TMPDIR_SCAN/work-stalled.txt" 2>/dev/null || echo 0)"
+echo "  Work artifact drift: $(wc -l < "$TMPDIR_SCAN/work-drift.txt" 2>/dev/null || echo 0)"
 
 # ── Update curation state ─────────────────────────────────────────────────
 

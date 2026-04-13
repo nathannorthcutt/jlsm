@@ -324,6 +324,7 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 **Last successful checkpoint:** feature directory created
 **Automation mode:** not-set
 **Execution strategy:** not-set
+**Pipeline mode:** full
 
 ## Stage Completion
 
@@ -360,6 +361,23 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 | Cycle | Unit | Tests written | Tests passing | Refactor done | Missing tests |
 |-------|------|--------------|---------------|---------------|---------------|
 ```
+
+### Pipeline mode
+
+The `Pipeline mode` field controls which stages are active:
+
+- **full** (default) — all stages: scoping → domains → spec authoring → planning → testing → hardening → implementation → refactor
+- **specification** — specification-only: scoping → domains → spec authoring → complete. Used when a work definition's job is to produce artifacts (specs, ADRs, interface contracts) rather than implement behavior. Set by `/work-start` when the WD's `produces` list contains only specification artifacts.
+- **implementation** — implementation-only: planning → testing → hardening → implementation → refactor → complete. Skips scoping and domains (done during a prior specification phase). Starts from planning, consuming the artifacts produced by specification-phase runs. Set by `/work-start` when a WD's artifact deps are satisfied and its job is implementation.
+
+When `pipeline_mode` is `specification`:
+- The Stage Completion table omits Planning, Testing, Hardening, Implementation, Refactor rows
+- After Spec Authoring completes, the pipeline is done — proceed to `/feature-retro` then `/feature-complete`
+
+When `pipeline_mode` is `implementation`:
+- The Stage Completion table omits Scoping, Domains, Spec Authoring rows
+- status.md starts at `planning` stage (set by `/work-start`)
+- The planner reads specification artifacts directly instead of running scoping/domains
 
 ---
 

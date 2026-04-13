@@ -47,12 +47,16 @@ for slug_dir in "$DECISIONS_DIR"/*/; do
     slug="$(basename "$slug_dir")"
 
     # Parse frontmatter — extract status and depends_on
+    # Also falls back to markdown-style **Status:** if YAML frontmatter is absent
+    # (defensive: agent may write markdown format instead of YAML)
     status=""
     depends_on=""
     in_frontmatter=0
+    frontmatter_found=0
     while IFS= read -r line; do
         if [[ "$line" == "---" ]]; then
             if [[ $in_frontmatter -eq 1 ]]; then
+                frontmatter_found=1
                 break
             fi
             in_frontmatter=1
@@ -69,6 +73,13 @@ for slug_dir in "$DECISIONS_DIR"/*/; do
             esac
         fi
     done < "$adr_file"
+
+    # Fallback: if no YAML frontmatter status found, check for markdown-style
+    # **Status:** deferred (agent compliance issue — template says YAML, but
+    # LLM may write markdown format instead)
+    if [[ -z "$status" ]]; then
+        status="$(grep -oP '\*\*Status:\*\*\s*\K\S+' "$adr_file" 2>/dev/null | head -1 | tr '[:upper:]' '[:lower:]' || true)"
+    fi
 
     if [[ "$status" == "deferred" ]]; then
         # Extract parent ADR from "Resume When" section or CLAUDE.md

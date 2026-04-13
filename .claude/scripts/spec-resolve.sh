@@ -4,6 +4,7 @@
 # Optional env: OVERRIDE_DOMAINS="storage,compaction"
 # Optional env: NEW_SPEC_FILES="path1:path2" — draft specs to check for displacement
 # Optional env: INCLUDE_INVALIDATED=true — include INVALIDATED specs in separate section
+# Optional env: FILTER_KIND="interface-contract" — only include specs with this kind field
 # Output: markdown bundle on stdout | diagnostics on stderr
 
 set -euo pipefail
@@ -91,6 +92,14 @@ for fid in "${ALL_FEATURE_IDS[@]}"; do
   }
 
   spec_check_crlf "$spec_file" 2>/dev/null || continue
+
+  # Filter by kind if FILTER_KIND is set
+  if [[ -n "${FILTER_KIND:-}" ]]; then
+    spec_kind=$(fm "$spec_file" '.kind // ""')
+    if [[ "$spec_kind" != "$FILTER_KIND" ]]; then
+      continue
+    fi
+  fi
 
   # Only include APPROVED or ACTIVE states; DRAFT only if no unresolved conflicts
   state=$(fm "$spec_file" '.state // "UNKNOWN"')

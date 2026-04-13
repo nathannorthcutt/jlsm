@@ -118,18 +118,15 @@ function main() {
     const success = generate(slug, featureDir);
     if (success) {
       process.stderr.write(`narrative: wrote ${path.join(featureDir, "narrative.md")}\n`);
+      process.exit(0);
+    } else {
+      process.exit(1);
     }
   } catch (e) {
     process.stderr.write(`narrative: pipeline failed: ${e.message}\n`);
-    process.stderr.write(
-      "narrative: traceback follows (report at " +
-      "https://github.com/telefrek/vallorcine/issues):\n"
-    );
     process.stderr.write(e.stack + "\n");
+    process.exit(1);
   }
-
-  // Always exit 0
-  process.exit(0);
 }
 
 main();

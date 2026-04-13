@@ -67,6 +67,21 @@ job, not this skill's.
 
    If no INVALIDATED specs overlap or the section is absent, skip silently.
 
+5. **Work group context:** If `.work/` exists, run:
+   ```bash
+   bash .claude/scripts/work-context.sh --domains "<domains from spec-resolve bundle>"
+   ```
+   If output is non-empty, read it and note:
+   - **Downstream consumers:** Which work definitions depend on specs in this
+     domain. Surface: "WD-03 and WD-05 depend on specs in this domain — the
+     spec you author will affect their readiness."
+   - **Interface contracts:** If any work definition expects an interface
+     contract (`kind: interface-contract`) in this domain, note it: "WD-02
+     expects an interface contract at <path> — consider whether this spec
+     should be authored as an interface contract."
+   - This information does not change the authoring flow — it adds awareness
+     of who will consume the spec being authored.
+
 ---
 
 ## Pass 1 — Structured authoring

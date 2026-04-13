@@ -206,13 +206,13 @@ Wait for the user's response. Use their answer to:
    technology, approach, or paper that isn't in the KB, offer to commission
    research before re-evaluating:
    ```
-   I don't see <topic> in the KB. Want me to research it first so we can
-   evaluate it properly against the current decision?
-
-     yes  — I'll run /research and then come back to re-evaluate
-     no   — proceed with what we have
+   I don't see <topic> in the KB.
    ```
-   If "yes": invoke `/research "<subject>" context: "decisions revisit: <slug>"` as a sub-agent, then continue to Step 3 with
+   Use AskUserQuestion:
+     - "Research first" (description: "Run /research, then re-evaluate with new data")
+     - "Proceed without" (description: "Continue with what we have")
+
+   If "Research first": invoke `/research "<subject>" context: "decisions revisit: <slug>"` as a sub-agent, then continue to Step 3 with
    the new KB entry available.
 
 3. **Determine if the user already knows the answer** — if they say "I want

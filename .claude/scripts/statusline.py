@@ -117,7 +117,8 @@ def substage_label(stage: str, substage: str) -> str:
             return "escalation"
     elif stage == "implementation":
         if substage.startswith("implemented:"):
-            return substage.split(":", 1)[1].strip()
+            name = substage.split(":", 1)[1].strip()
+            return name[:19] + "\u2026" if len(name) > 20 else name
         if "all" in substage and "tests" in substage and "passing" in substage:
             return "all passing"
         if substage.startswith("escalat"):
@@ -195,6 +196,10 @@ def main():
 
     if feature_dir and os.path.isfile(f"{feature_dir}/status.md"):
         slug = os.path.basename(feature_dir)
+        # Truncate slug for display — long names push stage/tokens/context off screen
+        MAX_SLUG = 24
+        if len(slug) > MAX_SLUG:
+            slug = slug[:MAX_SLUG - 1] + "\u2026"
         actual_stage, substage = read_stage_from_status(f"{feature_dir}/status.md")
         current_stage = actual_stage or cached_stage
 

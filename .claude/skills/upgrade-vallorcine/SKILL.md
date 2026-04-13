@@ -114,10 +114,11 @@ Preserved (never touched):
   .kb/CLAUDE.md        if you have added topics
   .decisions/CLAUDE.md if you have added decisions
 
-  Type **yes**  to apply upgrade  ·  or: stop
-```
+Use AskUserQuestion with options:
+  - "Apply upgrade"
+  - "Stop"
 
-Wait. If "stop": exit cleanly with "Upgrade cancelled. No changes made."
+If "Stop": exit cleanly with "Upgrade cancelled. No changes made."
 
 ---
 

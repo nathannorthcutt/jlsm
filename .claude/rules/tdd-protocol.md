@@ -29,6 +29,14 @@ Before starting any pipeline command, run these scripts and display any output:
 - `bash .claude/scripts/adr-validate.sh` — warns if contradictory accepted ADRs exist
 All are advisory — never block on their output.
 
+## Never suggest ending a session (CRITICAL)
+During pipeline execution, NEVER suggest stopping, taking a break, or ending
+the session. The pipeline has explicit handoff points (AskUserQuestion with
+"Proceed" / "Stop" options) — those are the ONLY places where stopping is
+offered. Between those handoff points, execute the current stage to completion.
+Do not insert unsolicited suggestions like "this has been a productive session"
+or "you might want to stop here." The user decides when to stop.
+
 ## Idempotency rule (CRITICAL)
 Every command MUST read status.md before doing any work.
 If the stage it would perform is already complete, report and stop.
