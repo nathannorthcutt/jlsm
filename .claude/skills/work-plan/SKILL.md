@@ -1,18 +1,23 @@
 ---
-description: "Start implementing a specified work definition — implementation pipeline only"
+description: "Specify a work definition — produce specs and ADRs without implementation"
 argument-hint: "<group-slug> [WD-nn | next]"
 ---
 
-# /work-start "<group-slug>" [WD-nn | next]
+# /work-plan "<group-slug>" [WD-nn | next]
 
-Bridges a work definition from a work group into the implementation pipeline.
-Creates a `.feature/` directory and hands off to planning, testing, and
-implementation. For specification-only work (producing specs, ADRs, or
-interface contracts), use `/work-plan` instead.
+Specification-only pipeline for a work definition. Creates a feature directory,
+runs domain analysis and spec authoring, then stops. No implementation stages.
+
+Use this when:
+- A WD produces specification artifacts (ADRs, specs, interface contracts)
+- You want to plan and specify before implementing
+- You're running parallel specification across multiple terminal sessions
+
+For implementation after specification is complete, use `/work-start`.
 
 **Arguments:**
 - `<group-slug>` — the work group to draw from
-- `WD-nn` — start a specific work definition (e.g., WD-01)
+- `WD-nn` — specify a particular work definition (e.g., WD-01)
 - `next` — auto-select the highest-value READY work definition
 
 If no WD argument is provided, defaults to `next`.
@@ -43,7 +48,7 @@ Parse the output to determine the readiness state of all WDs.
 Display opening header:
 ```
 ───────────────────────────────────────────────
-🚀 WORK START · <group-slug>
+📝 WORK PLAN · <group-slug>
 ───────────────────────────────────────────────
 ```
 
@@ -67,12 +72,10 @@ Unblock by resolving these dependencies first.
 ```
 Use AskUserQuestion with options:
   - "Pick a different WD"
-  - "Run /work-plan first" (description: "Specify this WD to produce its required artifacts")
   - "Start anyway (skip readiness check)"
   - "Stop"
 
 If "Pick a different WD": show READY WDs and let user choose.
-If "Run /work-plan first": invoke `/work-plan "<group-slug>" WD-<nn>`.
 If "Start anyway": proceed to Step 4 with a warning logged.
 
 If IN_PROGRESS: check if a feature directory already exists for this WD:
@@ -122,7 +125,7 @@ Selected: WD-<nn> — <title>
 ```
 
 Use AskUserQuestion with options:
-  - "Start WD-<nn>"
+  - "Plan WD-<nn>"
   - "Pick a different WD"
   - "Stop"
 
@@ -134,7 +137,7 @@ Generate a feature slug from the work group and WD:
 ```
 <group-slug>--<wd-id-lowercase>
 ```
-Example: `auth-migration--wd-01`
+Example: `decisions-backlog--wd-01`
 
 Create `.feature/<slug>/` directory.
 
@@ -147,6 +150,7 @@ Read the WD file (`.work/<group-slug>/WD-<nn>.md`). Build `brief.md` from:
 
 **Source:** Work group '<group-slug>', WD-<nn>
 **Generated:** <YYYY-MM-DD>
+**Pipeline mode:** specification
 
 ## Description
 <WD Summary section content>
@@ -167,18 +171,7 @@ Read the WD file (`.work/<group-slug>/WD-<nn>.md`). Build `brief.md` from:
 <Run work-context.sh --group "<group-slug>" and include relevant excerpt>
 ```
 
-### 4b — Verify implementation readiness
-
-If the WD's `artifact_deps` include unresolved items (the WD was started
-with "Start anyway" in Step 3), display a warning:
-```
-  Warning: This WD has unresolved artifact dependencies.
-  Consider running /work-plan "<group-slug>" WD-<nn> first to produce
-  the required specifications.
-```
-Proceed regardless — the user explicitly chose to start.
-
-### 4c — Write status.md
+### 4b — Write status.md
 
 Write `.feature/<slug>/status.md` with the standard format plus work group
 metadata:
@@ -186,22 +179,20 @@ metadata:
 ```yaml
 work_group: <group-slug>
 work_definition: WD-<nn>
-pipeline_mode: implementation
+pipeline_mode: specification
 ```
 
-Set stage = `planning`, substage = `loading-context`.
+Set stage = `scoping`, substage = `complete`.
 
-Stage Completion table — implementation stages only:
+Stage Completion table — specification mode only:
 
 | Stage | Status |
 |-------|--------|
-| Planning | pending |
-| Testing | pending |
-| Hardening | pending |
-| Implementation | pending |
-| Refactor | pending |
+| Scoping | complete |
+| Domains | pending |
+| Spec Authoring | pending |
 
-### 4d — Update WD status
+### 4c — Update WD status
 
 Edit `.work/<group-slug>/WD-<nn>.md` — set `status: IN_PROGRESS`.
 Update `.work/<group-slug>/manifest.md` — update the WD's status in the table.
@@ -212,12 +203,12 @@ Update `.work/<group-slug>/manifest.md` — update the WD's status in the table.
 
 ```
 Feature directory created: .feature/<slug>/
-Pipeline mode: implementation (specifications already exist)
+Pipeline mode: specification (produce artifacts only)
 
-Proceeding directly to work planning — specs and ADRs will be loaded
-from the resolved context.
+Scoping is pre-populated from the work definition — proceeding to domain
+analysis and spec authoring.
 ```
-Invoke `/feature-plan "<slug>"`.
+Invoke `/feature-domains "<slug>"`.
 
 ---
 
@@ -226,7 +217,8 @@ Invoke `/feature-plan "<slug>"`.
 - The double-dash convention (`<group>--<wd>`) in the feature slug allows
   feature-resume, feature-retro, and feature-complete to auto-detect work
   group association without needing to read status.md.
-- The brief.md includes work group context so domain analysis and planning
-  have visibility into the broader initiative.
-- Status.md starts at planning/loading-context because specifications
-  should already exist from a prior `/work-plan` run or manual authoring.
+- The brief.md includes work group context so domain analysis and spec
+  authoring have visibility into the broader initiative.
+- Status.md starts at scoping/complete because the WD's Summary and
+  Acceptance Criteria serve as the pre-approved brief.
+- After specification is complete, use `/work-start` for implementation.

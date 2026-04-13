@@ -37,8 +37,9 @@ If `--all` flag is set:
 | <slug> | <n> | <n> | <n> | <n> | <n> |
 ...
 
-Ready to implement:
-  /work-start "<slug>" next   — for each group with READY WDs
+Ready to work on:
+  /work-plan "<slug>" next    — specify the first ready WD (produce specs/ADRs)
+  /work-start "<slug>" next   — implement a fully specified WD
 ```
 
 If no work groups exist:
@@ -127,9 +128,11 @@ Based on the readiness state, present specific next actions:
 
 ### If READY WDs exist:
 ```
-Ready to implement:
-  /work-start "<group-slug>" WD-<nn>   — start a specific WD
-  /work-start "<group-slug>" next      — start the highest-value ready WD
+Ready to work on:
+  /work-plan "<group-slug>" WD-<nn>    — specify a WD (produce specs/ADRs)
+  /work-plan "<group-slug>" next       — specify the highest-value ready WD
+  /work-start "<group-slug>" WD-<nn>   — implement a specific WD
+  /work-start "<group-slug>" next      — implement the highest-value ready WD
 ```
 
 ### If all remaining WDs are BLOCKED:

@@ -221,7 +221,10 @@ Next steps:
   1. Check readiness:
        /work-status "<group-slug>"
 
-  2. Start specifying the first ready work definition:
+  2. Specify the first ready work definition:
+       /work-plan "<group-slug>" next
+
+  Or implement directly (if specs already exist):
        /work-start "<group-slug>" next
 
   3. Or specify interface contracts first (recommended when
