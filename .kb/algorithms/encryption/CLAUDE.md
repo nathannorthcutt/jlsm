@@ -17,6 +17,7 @@ schemes implementable in pure Java for use in jlsm's document model.
 | [encrypt-memory-data.md](encrypt-memory-data.md) | encrypt-memory-data footprint | stable | — | feature-footprint: field-level encryption audit |
 | [prefix-fuzzy-searchable-encryption.md](prefix-fuzzy-searchable-encryption.md) | Searchable Encryption for Prefix and Fuzzy Queries | active | Prefix tokenization + DET | Encrypted LIKE and fuzzy matching |
 | [index-access-pattern-leakage.md](index-access-pattern-leakage.md) | Index Access Pattern Leakage and Mitigations | active | HKDF per-field keys (low cost) | Understanding and mitigating encrypted index leakage |
+| [encrypted-cross-field-joins.md](encrypted-cross-field-joins.md) | Encrypted Cross-Field Join Strategies | active | Same-key DET: zero cost | Joining on encrypted fields, leakage amplification risks |
 
 ## Comparison Summary
 

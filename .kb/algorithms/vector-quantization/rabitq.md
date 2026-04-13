@@ -9,7 +9,7 @@ complexity:
   time_query: "O(D/64) via POPCNT (1-bit) or FastScan (B-bit)"
   space: "O(N * B * D / 8) + O(N * 16) auxiliary"
 research_status: "active"
-last_researched: "2026-03-16"
+last_researched: "2026-04-13"
 sources:
   - url: "https://arxiv.org/abs/2405.12497"
     title: "RaBitQ: Quantizing High-Dimensional Vectors with a Theoretical Error Bound"
@@ -22,6 +22,10 @@ sources:
   - url: "https://arxiv.org/abs/2509.12086"
     title: "SAQ: Pushing the Limits of Vector Quantization"
     accessed: "2026-03-16"
+    type: "paper"
+  - url: "https://arxiv.org/abs/2504.19874"
+    title: "TurboQuant: Online Vector Quantization with Near-optimal Distortion Rate"
+    accessed: "2026-04-13"
     type: "paper"
   - url: "https://lancedb.com/blog/feature-rabitq-quantization/"
     title: "LanceDB RaBitQ Integration"
@@ -194,5 +198,56 @@ class RaBitQQuantizer {
 3. [SAQ (SIGMOD 2026)](https://arxiv.org/abs/2509.12086) — 80% lower error via code adjustment + segmentation
 4. [LanceDB RaBitQ](https://lancedb.com/blog/feature-rabitq-quantization/) — production integration
 
+## Updates 2026-04-13
+
+### TurboQuant (arXiv 2504.19874, 2025)
+
+Online VQ that achieves near-optimal distortion rate (within ~2.7x of the
+information-theoretic lower bound). Like RaBitQ, it applies a random rotation
+to induce coordinate independence — but differs in two key ways:
+
+1. **Optimal scalar quantizer per coordinate** instead of RaBitQ's uniform
+   sign-bit or uniform B-bit quantization. The rotation induces a concentrated
+   Beta distribution on coordinates; TurboQuant exploits this shape.
+2. **Two-stage inner product estimation**: MSE-optimal quantizer (biased for IP)
+   followed by a 1-bit Quantized JL transform on the residual, yielding an
+   unbiased IP estimator. RaBitQ uses auxiliary scalars for bias correction instead.
+
+Data-oblivious (no codebook, no PCA) — fully streaming like RaBitQ. Tested at
+2.5-3.5 bits/dim. Outperforms PQ and RaBitQ in recall with near-zero indexing
+time. Particularly relevant for KV-cache quantization (quality-neutral at 3.5 bpd).
+
+```
+// TurboQuant pseudocode (simplified)
+rotated = randomRotation(vector)          // same as RaBitQ
+code    = optimalScalarQuantize(rotated)   // Beta-aware, not uniform
+residual = rotated - dequantize(code)
+qjlBits = qjlTransform(residual)          // 1-bit QJL on residual
+store(code, qjlBits, norm)
+```
+
+### SAQ — additional context (arXiv 2509.12086, SIGMOD 2026)
+
+Already summarised in the main article. New benchmarks confirm: up to 5.4x
+accuracy improvement over PQ, 12.5x higher query throughput at 95% recall,
+and 80x faster encoding vs Extended RaBitQ. Requires PCA (data-dependent).
+
+### Implications for jlsm-vector
+
+The field is moving fast. TurboQuant's data-oblivious, streaming-compatible
+design makes it a strong alternative to RaBitQ for jlsm-vector, especially
+at 2-4 bit budgets where RaBitQ's uniform quantizer is suboptimal. SAQ wins
+on accuracy but requires PCA training, which conflicts with LSM streaming
+inserts. Recommended priority update:
+
+1. **SQ8** — unchanged, highest ROI
+2. **RaBitQ or TurboQuant** — evaluate both; TurboQuant may dominate at >1 bpd
+3. **SAQ** — consider for batch-built segments (compacted SSTables) only
+4. **Binary quantization** — candidate generation tier
+
+Sources:
+- [TurboQuant (2025)](https://arxiv.org/abs/2504.19874) — accessed 2026-04-13
+- [SAQ (SIGMOD 2026)](https://arxiv.org/abs/2509.12086) — accessed 2026-04-13
+
 ---
-*Researched: 2026-03-16 | Next review: 2026-06-14*
+*Researched: 2026-03-16 | Updated: 2026-04-13 | Next review: 2026-06-14*

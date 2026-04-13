@@ -9,7 +9,7 @@ complexity:
   time_query: "O(1) membership lookup"
   space: "O(n) membership list per node"
 research_status: "mature"
-last_researched: "2026-03-20"
+last_researched: "2026-04-13"
 applies_to: []
 related:
   - "distributed-systems/networking/multiplexed-transport-framing.md"
@@ -33,6 +33,18 @@ sources:
   - url: "https://www.hashicorp.com/en/blog/making-gossip-more-robust-with-lifeguard"
     title: "Making Gossip More Robust with Lifeguard"
     accessed: "2026-03-20"
+    type: "blog"
+  - url: "https://arxiv.org/abs/1707.00788"
+    title: "Lifeguard: Local Health Awareness for More Accurate Failure Detection"
+    accessed: "2026-04-13"
+    type: "paper"
+  - url: "https://arxiv.org/abs/1603.01529"
+    title: "Delta State Replicated Data Types"
+    accessed: "2026-04-13"
+    type: "paper"
+  - url: "https://manuel.bernhardt.io/2017/07/26/a-new-adaptive-accrual-failure-detector-for-akka"
+    title: "A New Adaptive Accrual Failure Detector for Akka"
+    accessed: "2026-04-13"
     type: "blog"
 ---
 
@@ -446,5 +458,95 @@ Anti-entropy gossip protocol with continuous state reconciliation:
   detections). Updated comparison to distinguish Raft (leader-based) from Rapid
   (leaderless consensus).
 
+## Updates 2026-04-13
+
+### Stall recovery and view reconciliation
+
+When a node's membership view diverges (network partition, prolonged GC, missed
+gossip rounds), three recovery strategies apply in escalating order:
+
+1. **Piggyback catch-up**: on reconnection, the stale node receives recent events
+   via normal piggybacked protocol messages. Sufficient for short stalls (< 10
+   protocol periods) where the dissemination buffer still holds missed events.
+2. **Anti-entropy full-state sync**: Scuttlebutt-style three-message digest
+   exchange (digest → delta → delta-ack) reconciles arbitrarily diverged views.
+   Triggered when a node detects its view is stale (incarnation gaps, unexpected
+   DEAD members responding). Cost: O(n) per sync, but infrequent.
+3. **Forced rejoin**: if divergence exceeds a configured threshold (e.g., >50%
+   of members unknown), the node performs a full rejoin via seed discovery,
+   discarding its local view entirely. Prevents zombie partitions.
+
+### Dynamic phi thresholds (self-tuning failure detection)
+
+Phi accrual computes suspicion from heartbeat inter-arrival time distribution:
+
+```
+phi = -log10(1 - CDF(timeSinceLastHeartbeat))
+```
+
+Self-tuning properties:
+- Maintains a sliding window (typically 1000 samples) of inter-arrival times
+- Mean and variance update continuously — if network jitter increases, the
+  distribution widens and phi grows more slowly, reducing false positives
+- Akka's adaptive variant approximates the CDF directly (no normal distribution
+  assumption) with a scaling factor (alpha=0.9) that dampens overestimation
+  during increasing latency
+- Recommended threshold: phi=8 (Cassandra), phi=12 (Akka default). Lower =
+  faster detection but more false positives
+
+### Piggybacked state efficiency
+
+Three techniques for reducing gossip payload size:
+
+1. **Delta-state CRDTs (delta-CRDTs)**: instead of shipping full membership state,
+   delta-mutators return only the changed portion (delta-state) which is joined
+   with remote state. Almeida et al. (2016) show this achieves operation-based
+   message sizes with state-based merge semantics over unreliable channels.
+2. **Digest exchange**: Scuttlebutt's three-phase protocol — send version vector
+   digest, receive only entries the peer is missing, send remaining. Avoids
+   redundant retransmission of already-known state.
+3. **Propagation-count priority**: SWIM's dissemination buffer orders events by
+   propagation count (least-propagated first), ensuring fresh events get
+   bandwidth priority. Events are dropped after reaching a propagation limit
+   of lambda*log(n), bounding buffer size.
+
+### Lifeguard extensions (Hashicorp, 2017) — detailed mechanisms
+
+The Lifeguard paper (Dadgar et al., 2017) introduces three extensions:
+
+**Local Health Multiplier (LHM)**: saturating counter (0 to S, default S=8)
+incremented on failed probes, missed nacks, self-suspicion refutations;
+decremented on successful probes. Scales timeouts:
+
+```
+ProbeTimeout  = BaseTimeout  * (LHM/S + 1)    // max 2x at LHM=S
+ProbeInterval = BaseInterval * (LHM/S + 1)
+```
+
+**Suspicion timeout with dogpile decay**: as independent confirmations (C)
+arrive, the suspicion timeout shrinks logarithmically:
+
+```
+timeout = max(Min, Max - (Max-Min) * log(C+1) / log(K+1))
+```
+
+K=3 confirmations needed for minimum timeout. First K confirmations are
+re-gossiped to amplify signal.
+
+**Buddy system**: suspected nodes are guaranteed to receive the suspicion via
+the next ping, enabling faster self-refutation through incarnation increment.
+
+**Results**: >50x false positive reduction vs baseline SWIM; negligible median
+detection latency increase (6-9% at p99/p99.9).
+
+### Frontier papers
+
+- Dadgar, A., Malone, J., & Armon, H. (2017). "Lifeguard: Local Health
+  Awareness for More Accurate Failure Detection." arXiv:1707.00788.
+- Almeida, P., Shoker, A., & Baquero, C. (2016). "Delta State Replicated
+  Data Types." arXiv:1603.01529. Journal of Parallel and Distributed Computing.
+- Leitão, J., Pereira, J., & Rodrigues, L. (2007). "Epidemic Broadcast Trees."
+  SRDS 2007 — hybrid protocol combining tree-based and gossip dissemination.
+
 ---
-*Researched: 2026-03-20 | Next review: 2026-09-20*
+*Researched: 2026-04-13 | Next review: 2026-10-13*

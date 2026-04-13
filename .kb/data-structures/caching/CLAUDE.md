@@ -15,6 +15,7 @@ implementations suitable for high-throughput storage engines.
 | [deferred-builder-validation.md](deferred-builder-validation.md) | Deferred builder validation | active | adversarial-finding | Builder setter validation consistency |
 | [missing-close-guard.md](missing-close-guard.md) | Missing close guard on cache operations | active | adversarial-finding | Use-after-close detection |
 | [striped-block-cache.md](striped-block-cache.md) | striped-block-cache feature footprint | stable | feature-footprint | Audit context for StripedBlockCache |
+| [concurrent-cache-eviction-strategies.md](concurrent-cache-eviction-strategies.md) | Concurrent Cache Eviction Strategies | active | O(1) amortized, TinyLFU admission | Cross-stripe eviction, parallel eviction, admission policies |
 
 ## Comparison Summary
 <!-- Write once 2+ subjects exist -->

@@ -11,6 +11,7 @@ integration, and in-memory data protection.
 | [jvm-key-handling-patterns.md](jvm-key-handling-patterns.md) | JVM Key Handling Patterns | stable | Off-heap Arena key storage | Caller-provided key lifecycle management |
 | [encryption-key-rotation-patterns.md](encryption-key-rotation-patterns.md) | Encryption Key Rotation Patterns | active | Compaction-driven re-encryption | LSM-tree key rotation without downtime |
 | [wal-encryption-approaches.md](wal-encryption-approaches.md) | WAL Encryption Approaches | active | AES-GCM per-record, seq# as nonce | WAL data-at-rest encryption |
+| [client-side-encryption-patterns.md](client-side-encryption-patterns.md) | Client-Side Encryption Patterns and SDK Design | active | Schema-driven per-field encryption | CSFLE SDK, pre-encrypted documents, key distribution |
 
 ## Comparison Summary
 
@@ -23,6 +24,7 @@ Three complementary security concerns:
 1. Start: [jvm-key-handling-patterns.md](jvm-key-handling-patterns.md) — key lifecycle, KMS integration, Arena-based storage
 2. Then: [encryption-key-rotation-patterns.md](encryption-key-rotation-patterns.md) — envelope encryption, compaction-driven rotation
 3. Then: [wal-encryption-approaches.md](wal-encryption-approaches.md) — record-level vs segment-level, compression ordering
+4. Then: [client-side-encryption-patterns.md](client-side-encryption-patterns.md) — CSFLE, SDK design, pre-encrypted document handling
 
 ## Research Gaps
 - Threat modeling for encrypted LSM-tree components (SSTable, MemTable)

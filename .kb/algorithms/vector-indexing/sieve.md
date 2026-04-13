@@ -181,5 +181,60 @@ class SieveIndex:
 1. [SIEVE (arXiv Jul 2025)](https://arxiv.org/html/2507.11907) — full paper
 2. [Filtered ANN Benchmark (Sep 2025)](https://arxiv.org/html/2509.07789v1) — validation
 
+## Updates 2026-04-13
+
+### HAKES Filter-Refine as Alternative Architecture (VLDB 2025)
+
+HAKES (arXiv:2505.12524, PVLDB 2025) takes a fundamentally different approach to
+filtered search than SIEVE: instead of building specialized per-predicate indexes,
+it uses a disaggregated filter-refine pipeline with compressed vectors in the filter
+stage. This creates a useful contrast point.
+
+**How it changes the recommendation:**
+- SIEVE remains superior for known, stable workloads where filter patterns repeat —
+  the 8x speedup over ACORN holds because specialized sub-indexes avoid scanning
+  irrelevant vectors entirely.
+- HAKES is better when: (a) the workload is unpredictable (no historical queries for
+  GreedyRatio), (b) the dataset is too large for multiple in-memory HNSW copies, or
+  (c) the deployment needs to scale horizontally (stateless filter nodes).
+- The two approaches are not mutually exclusive: SIEVE's routing DAG could dispatch to
+  HAKES-style filter-refine for unseen predicates instead of falling back to the base
+  index.
+
+**Comparison summary:**
+
+| Dimension | SIEVE | HAKES |
+|-----------|-------|-------|
+| Cold-start | Needs workload history | Works immediately |
+| Memory | 1.5-3x base (budgeted) | Compressed filter fits in memory |
+| Scaling | Single-node (in-memory) | Disaggregated, horizontal |
+| Best for | Known predicates, max QPS | Unknown predicates, large scale |
+| Throughput | 8x over ACORN | 16x over graph baselines |
+
+### Attribute Filtering Benchmark Validation (arXiv 2025)
+
+The comprehensive attribute filtering benchmark (referenced in data-partitioning Key
+Papers) provides independent validation of SIEVE's positioning:
+
+- IVF-based approaches perform best at low selectivity (large result sets) — this is
+  where SIEVE's per-predicate sub-indexes also excel, since each sub-index is
+  effectively a pre-filtered IVF partition.
+- At high selectivity (small result sets), brute-force on the filtered subset wins —
+  consistent with SIEVE's cost-model fallback that chooses brute-force when the
+  filtered subset is small enough.
+- Confirms that no single algorithm dominates across all selectivity ranges, validating
+  SIEVE's adaptive routing approach.
+
+**Implications for jlsm-vector:**
+- If jlsm-vector implements SIEVE-style routing, the fallback path for unseen predicates
+  could use HAKES-style compressed-vector filtering rather than full base-index search.
+- The cost model for "indexed vs brute-force" decision should incorporate selectivity
+  estimates, as the benchmark confirms this is the primary determinant of optimal strategy.
+
+### Updated Source List
+
+3. [HAKES (PVLDB 2025)](https://arxiv.org/abs/2505.12524) — disaggregated filter-refine alternative
+4. [Attribute Filtering in ANN (arXiv 2025)](https://arxiv.org/search/?query=attribute+filtering+ANN+benchmark) — selectivity-based validation
+
 ---
-*Researched: 2026-03-30 | Next review: 2026-09-30*
+*Researched: 2026-03-30 | Updated: 2026-04-13 | Next review: 2026-09-30*

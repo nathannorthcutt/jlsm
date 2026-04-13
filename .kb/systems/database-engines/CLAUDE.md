@@ -15,6 +15,9 @@ engines. Covers catalog persistence, table lifecycle, and startup recovery.
 | [wal-group-commit.md](wal-group-commit.md) | WAL Group Commit Patterns | active | Batch fsync amortization | Improving WAL write throughput |
 | [corruption-detection-repair.md](corruption-detection-repair.md) | Corruption Detection and Repair Strategies | active | Per-layer checksums + scrubbing | Data integrity verification and recovery |
 | [wal-recovery-patterns.md](wal-recovery-patterns.md) | WAL Recovery Patterns | active | 4 recovery modes (strict→skip-all) | Crash recovery, tail corruption, remote WAL replay |
+| [handle-lifecycle-patterns.md](handle-lifecycle-patterns.md) | Database Handle Lifecycle and Resource Budgeting | active | O(1) handle acquire | TTL, priority dispatch, cross-table budgets |
+| [schema-type-systems.md](schema-type-systems.md) | Schema Type Systems for Document Databases | active | O(1) per field validation | Binary types, bounded fields, schema migration |
+| [cross-table-transaction-patterns.md](cross-table-transaction-patterns.md) | Cross-Table Transaction Patterns (Single-Node) | active | Shared WAL or WriteBatch | Multi-table atomicity without distributed coordination |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->
