@@ -18,9 +18,12 @@ features:
   - slug: wal-compression-codec-api
     role: extends
     description: "MemorySegment-native codec API (zero-copy via direct ByteBuffer), per-record WAL compression on by default"
+  - slug: zstd-dictionary-compression-per-level-codec-policy
+    role: extends
+    description: "ZSTD codec via Panama FFM with pure-Java fallback, adaptive per-SSTable dictionary training, per-level codec policy, SSTable v4 format"
 composes: []
-spec_refs: ["F02", "F08", "F16", "F17"]
-decision_refs: ["sstable-block-compression-format", "compression-codec-api-design", "per-block-checksums", "backend-optimal-block-size", "wal-compression", "codec-thread-safety", "max-compressed-length"]
+spec_refs: ["F02", "F08", "F16", "F17", "F18"]
+decision_refs: ["sstable-block-compression-format", "compression-codec-api-design", "per-block-checksums", "backend-optimal-block-size", "wal-compression", "codec-thread-safety", "max-compressed-length", "codec-dictionary-support", "compaction-recompression"]
 kb_refs: ["algorithms/compression"]
 depends_on: ["data-management/schema-and-documents"]
 enables: []
