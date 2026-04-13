@@ -64,15 +64,22 @@ public final class JsonPrimitive implements JsonValue {
      * Creates a number-typed JSON primitive from raw text.
      *
      * <p>
-     * The raw text is preserved exactly as provided. No parsing or validation is performed at
-     * construction time beyond null checking.
+     * The raw text is preserved exactly as provided. Validation is performed at construction time
+     * to ensure the text represents a valid number (parseable by {@link BigDecimal}).
      *
-     * @param rawText the raw number text (e.g., "123", "1.5e10"); must not be null
+     * @param rawText the raw number text (e.g., "123", "1.5e10"); must not be null and must be a
+     *            valid numeric representation
      * @return a new number primitive
      * @throws NullPointerException if rawText is null
+     * @throws NumberFormatException if rawText is not a valid number
      */
     public static JsonPrimitive ofNumber(String rawText) {
         Objects.requireNonNull(rawText, "rawText must not be null");
+        try {
+            new BigDecimal(rawText);
+        } catch (NumberFormatException e) {
+            throw new NumberFormatException("Invalid number text: " + rawText);
+        }
         return new JsonPrimitive(Kind.NUMBER, null, rawText, false);
     }
 

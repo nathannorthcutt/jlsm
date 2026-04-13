@@ -242,10 +242,16 @@ public final class JsonValueAdapter {
                 requirePrimitiveNumber(jv, fieldName, "INT32");
                 final String text = ((JsonPrimitive) jv).asNumberText();
                 try {
-                    yield Integer.parseInt(text);
+                    final long val = Long.parseLong(text);
+                    if (val < Integer.MIN_VALUE || val > Integer.MAX_VALUE) {
+                        throw new IllegalArgumentException(
+                                "Field '" + fieldName + "' INT32 value out of range: " + text);
+                    }
+                    yield (int) val;
                 } catch (NumberFormatException e) {
                     throw new IllegalArgumentException(
-                            "Field '" + fieldName + "' INT32 value out of range: " + text, e);
+                            "Field '" + fieldName + "' INT32 value not a valid integer: " + text,
+                            e);
                 }
             }
             case INT64 -> {
@@ -305,7 +311,12 @@ public final class JsonValueAdapter {
                 requirePrimitiveNumber(jv, fieldName, "FLOAT64");
                 final String text = ((JsonPrimitive) jv).asNumberText();
                 try {
-                    yield Double.parseDouble(text);
+                    final double d = Double.parseDouble(text);
+                    if (!Double.isFinite(d)) {
+                        throw new IllegalArgumentException(
+                                "Field '" + fieldName + "' FLOAT64 value is non-finite");
+                    }
+                    yield d;
                 } catch (NumberFormatException e) {
                     throw new IllegalArgumentException(
                             "Field '" + fieldName + "' FLOAT64 value not a valid number: " + text,

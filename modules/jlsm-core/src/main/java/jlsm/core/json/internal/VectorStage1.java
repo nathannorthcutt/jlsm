@@ -50,6 +50,7 @@ public final class VectorStage1 {
         int[] buffer = new int[len];
         int count = 0;
         boolean inString = false;
+        boolean skipNext = false; // Carry: backslash at last lane of previous chunk
         int i = 0;
 
         // Process full vector-width chunks
@@ -66,8 +67,8 @@ public final class VectorStage1 {
 
             VectorMask<Byte> interestingMask = quotesMask.or(backslashMask).or(structuralMask);
 
-            if (!interestingMask.anyTrue()) {
-                // No interesting characters in this chunk — skip
+            if (!interestingMask.anyTrue() && !skipNext) {
+                // No interesting characters in this chunk and no carry — skip
                 i += LANE_COUNT;
                 continue;
             }
@@ -75,10 +76,18 @@ public final class VectorStage1 {
             // Fall back to scalar processing for this chunk since we need
             // to track string state correctly with backslash escapes
             for (int j = 0; j < LANE_COUNT; j++) {
+                if (skipNext) {
+                    skipNext = false;
+                    continue; // Skip byte escaped by backslash at end of previous chunk
+                }
                 byte b = input[i + j];
                 if (inString) {
                     if (b == '\\') {
-                        j++; // Skip escaped byte
+                        if (j + 1 < LANE_COUNT) {
+                            j++; // Skip escaped byte within this chunk
+                        } else {
+                            skipNext = true; // Escaped byte is in next chunk
+                        }
                     } else if (b == '"') {
                         buffer[count++] = i + j;
                         inString = false;
@@ -100,6 +109,10 @@ public final class VectorStage1 {
 
         // Scalar tail
         for (; i < len; i++) {
+            if (skipNext) {
+                skipNext = false;
+                continue; // Skip byte escaped by backslash at end of last vector chunk
+            }
             byte b = input[i];
             if (inString) {
                 if (b == '\\') {

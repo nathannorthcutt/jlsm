@@ -23,6 +23,7 @@ import java.util.Objects;
 public final class JsonlWriter implements AutoCloseable {
 
     private final OutputStream output;
+    private volatile boolean closed;
 
     /**
      * Creates a JSONL writer.
@@ -52,11 +53,21 @@ public final class JsonlWriter implements AutoCloseable {
     /**
      * Flushes and closes the underlying output stream.
      *
-     * @throws IOException if an I/O error occurs
+     * <p>
+     * This method is idempotent — subsequent calls after the first are silent no-ops.
+     *
+     * @throws IOException if an I/O error occurs on the first invocation
      */
     @Override
     public void close() throws IOException {
-        output.flush();
-        output.close();
+        if (closed) {
+            return;
+        }
+        closed = true;
+        try {
+            output.flush();
+        } finally {
+            output.close();
+        }
     }
 }

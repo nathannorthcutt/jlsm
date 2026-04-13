@@ -11,7 +11,7 @@ import java.util.Set;
  * An immutable, insertion-ordered JSON object.
  *
  * <p>
- * Keys are unique, non-blank strings; duplicate keys are rejected at construction. Values are
+ * Keys are unique, non-null strings; duplicate keys are rejected at construction. Values are
  * non-null {@link JsonValue} instances. Iteration order matches insertion order (as specified by
  * JSON interchange practice and RFC 8259 interoperability recommendations).
  *
@@ -46,7 +46,6 @@ public final class JsonObject implements JsonValue {
      * @param members the key-value pairs; must not be null, keys and values must not be null
      * @return a new immutable JsonObject
      * @throws NullPointerException if members, any key, or any value is null
-     * @throws IllegalArgumentException if any key is blank
      */
     public static JsonObject of(Map<String, JsonValue> members) {
         Objects.requireNonNull(members, "members must not be null");
@@ -55,9 +54,6 @@ public final class JsonObject implements JsonValue {
             String key = Objects.requireNonNull(entry.getKey(), "key must not be null");
             JsonValue value = Objects.requireNonNull(entry.getValue(),
                     "value must not be null for key: " + key);
-            if (key.isBlank()) {
-                throw new IllegalArgumentException("key must not be blank");
-            }
             copy.put(key, value);
         }
         return new JsonObject(Collections.unmodifiableMap(copy));
@@ -173,6 +169,7 @@ public final class JsonObject implements JsonValue {
     public static final class Builder {
 
         private final LinkedHashMap<String, JsonValue> members = new LinkedHashMap<>();
+        private boolean built;
 
         private Builder() {
         }
@@ -180,18 +177,19 @@ public final class JsonObject implements JsonValue {
         /**
          * Adds a key-value pair. Rejects duplicate keys.
          *
-         * @param key the key; must not be null and not blank
+         * @param key the key; must not be null
          * @param value the value; must not be null
          * @return this builder
          * @throws NullPointerException if key or value is null
-         * @throws IllegalArgumentException if the key is already present or blank
+         * @throws IllegalArgumentException if the key is already present
          */
         public Builder put(String key, JsonValue value) {
+            if (built) {
+                throw new IllegalStateException(
+                        "builder already used — cannot add entries after build()");
+            }
             Objects.requireNonNull(key, "key must not be null");
             Objects.requireNonNull(value, "value must not be null");
-            if (key.isBlank()) {
-                throw new IllegalArgumentException("key must not be blank");
-            }
             if (members.containsKey(key)) {
                 throw new IllegalArgumentException("duplicate key: " + key);
             }
@@ -205,6 +203,10 @@ public final class JsonObject implements JsonValue {
          * @return a new immutable JsonObject
          */
         public JsonObject build() {
+            if (built) {
+                throw new IllegalStateException("builder already used — cannot call build() again");
+            }
+            built = true;
             return new JsonObject(Collections.unmodifiableMap(new LinkedHashMap<>(members)));
         }
     }

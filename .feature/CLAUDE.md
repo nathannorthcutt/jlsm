@@ -18,6 +18,7 @@
 
 | Feature | Slug | Completed | Archive |
 |---------|------|-----------|---------|
+| ZSTD dictionary compression + per-level codec policy | zstd-dictionary-compression-per-level-codec-policy | 2026-04-12 | .feature/_archive/zstd-dictionary-compression-per-level-codec-policy/ |
 | WAL compression + MemorySegment codec API | wal-compression-codec-api | 2026-04-12 | .feature/_archive/wal-compression-codec-api/ |
 | Field-level in-memory encryption | encrypt-memory-data | 2026-03-19 | .feature/_archive/encrypt-memory-data/ |
 | Extract core encryption primitives | extract-core-encryption | 2026-03-19 | .feature/_archive/extract-core-encryption/ |
