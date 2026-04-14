@@ -1,23 +1,25 @@
 ---
 problem: "atomic-cross-stripe-eviction"
-date: "2026-03-30"
+date: "2026-04-13"
 version: 1
-status: "deferred"
+status: "closed"
 ---
 
-# Atomic Cross-Stripe Eviction — Deferred
+# Atomic Cross-Stripe Eviction — Closed (Non-Issue)
 
 ## Problem
-Atomic eviction across all stripes — currently a concurrent get() might briefly see an entry in an un-evicted stripe.
+Atomic eviction across all stripes — concurrent get() might briefly see an entry in an un-evicted stripe during sequential eviction.
 
-## Why Deferred
-Scoped out during `cross-stripe-eviction` decision. Brief inconsistency window is acceptable at current scale.
+## Decision
+**Will not pursue.** The brief inconsistency window is harmless.
 
-## Resume When
-When `cross-stripe-eviction` implementation is stable and this concern becomes blocking.
+## Reason
+The cache holds block DATA, not file references. A stale cached block from a compacted SSTable returns the same key-value data that was valid moments ago — it wastes a few bytes of cache space until the sequential loop reaches that stripe. This is not a correctness issue: SSTables are immutable, so the cached block contains valid data for that key at that version. The compaction result has the same or newer data, and the stale entry will be evicted within microseconds as the loop progresses.
 
-## What Is Known So Far
-See `.decisions/cross-stripe-eviction/adr.md` for the architectural context that excluded this concern.
+KB research at `.kb/data-structures/caching/concurrent-cache-eviction-strategies.md` confirms that sampling-based global eviction and TinyLFU admission are the real performance levers — atomic cross-stripe eviction does not appear as a concern in any production cache implementation reviewed (RocksDB LRUCache, Caffeine, Linux page cache).
 
-## Next Step
-Run `/architect "atomic-cross-stripe-eviction"` when ready to evaluate.
+## Context
+Deferred during `cross-stripe-eviction` (2026-03-17). The sequential loop design is correct and the inconsistency window is benign.
+
+## Conditions for Reopening
+- A correctness bug is found where stale cached blocks cause incorrect query results (would require a fundamental change in how cache entries reference data)

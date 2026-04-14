@@ -19,11 +19,11 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
-| Compaction Re-Compression | compaction-recompression | 2026-04-12 | Writer-factory injection with per-level codec policy |
-| Connection Pooling | connection-pooling | 2026-04-13 | Single-Connection Multiplexing — Kafka-style framing, int32 stream IDs, ReentrantLock write serialization |
 | Binary Field Type | binary-field-type | 2026-04-13 | Binary sealed permit + opaque BlobRef + BlobStore SPI |
 | Parameterized Field Bounds | parameterized-field-bounds | 2026-04-13 | BoundedArray sealed permit; numeric bounds deferred |
 | Schema Migration Policy | string-to-bounded-string-migration | 2026-04-13 | Compaction-time migration + on-demand scan with quarantine |
+| Vector Storage Cost Optimization | vector-storage-cost-optimization | 2026-04-13 | QuantizationConfig on IndexDefinition + custom SPI escape hatch |
+| Sparse Vector Support | sparse-vector-support | 2026-04-13 | SparseVectorType sealed permit + inverted index storage |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
@@ -45,8 +45,6 @@
 | Slow Node Detection | slow-node-detection | 2026-03-30 | cluster-membership-protocol |
 | Dynamic Membership Threshold | dynamic-membership-threshold | 2026-03-30 | cluster-membership-protocol |
 | Piggybacked State Exchange | piggybacked-state-exchange | 2026-03-30 | cluster-membership-protocol |
-| Atomic Cross-Stripe Eviction | atomic-cross-stripe-eviction | 2026-03-30 | cross-stripe-eviction |
-| Parallel Large Cache Eviction | parallel-large-cache-eviction | 2026-03-30 | cross-stripe-eviction |
 | Continuous Re-Discovery | continuous-rediscovery | 2026-03-30 | discovery-spi-design |
 | Discovery Environment Config | discovery-environment-config | 2026-03-30 | discovery-spi-design |
 | Authenticated Discovery | authenticated-discovery | 2026-03-30 | discovery-spi-design |
@@ -91,8 +89,8 @@
 | Transport Traffic Priority | transport-traffic-priority | 2026-03-30 | transport-abstraction-design |
 | Scatter Backpressure | scatter-backpressure | 2026-03-30 | transport-abstraction-design |
 | Bulk Data Transfer Channel | bulk-data-transfer-channel | 2026-04-13 | connection-pooling |
-| Vector Storage Cost Optimization | vector-storage-cost-optimization | 2026-03-30 | vector-type-serialization-encoding |
-| Sparse Vector Support | sparse-vector-support | 2026-03-30 | vector-type-serialization-encoding |
+| Vector Index Query Routing | vector-index-query-routing | 2026-04-13 | vector-storage-cost-optimization |
+| Automatic Quantization Selection | automatic-quantization-selection | 2026-04-13 | vector-storage-cost-optimization |
 | Cross-SST Dictionary Sharing | cross-sst-dictionary-sharing | 2026-04-12 | codec-dictionary-support |
 | WAL Dictionary Compression | wal-dictionary-compression | 2026-04-12 | codec-dictionary-support |
 | Pure-Java ZSTD Compressor | pure-java-zstd-compressor | 2026-04-12 | codec-dictionary-support |
@@ -110,6 +108,8 @@
 | Adaptive Compression Strategy | adaptive-compression-strategy | 2026-04-12 | Resolved by compaction-recompression — per-level policy inherent in factory design |
 | Message Serialization Format | message-serialization-format | 2026-04-13 | Subsumed by connection-pooling — framing protocol IS the message serialization format |
 | Non-Vector Index Type Review | non-vector-index-type-review | 2026-04-13 | Non-issue — EQUALITY/RANGE/UNIQUE/FULL_TEXT correctly implemented, compatibility matrix complete |
+| Atomic Cross-Stripe Eviction | atomic-cross-stripe-eviction | 2026-04-13 | Non-issue — brief inconsistency window is harmless (cache holds data, not file refs) |
+| Parallel Large Cache Eviction | parallel-large-cache-eviction | 2026-04-13 | Non-issue at current scale — sequential eviction of 16 stripes is negligible |
 
 ## Archived
 22 accepted decisions older than the 5 most recent: [history.md](history.md)

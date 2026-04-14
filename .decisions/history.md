@@ -21,6 +21,8 @@
 | Backend-Optimal Block Size | backend-optimal-block-size | 2026-04-10 | Parameterize block size on writer builder with named constants |
 | WAL Compression | wal-compression | 2026-04-12 | Per-record compression with MemorySegment-native codec API evolution |
 | Codec Dictionary Support | codec-dictionary-support | 2026-04-12 | Writer-orchestrated dictionary lifecycle, tiered Panama FFM detection |
+| Compaction Re-Compression | compaction-recompression | 2026-04-12 | Writer-factory injection with per-level codec policy |
+| Connection Pooling | connection-pooling | 2026-04-13 | Single-Connection Multiplexing — Kafka-style framing, int32 stream IDs, ReentrantLock write serialization |
 | Transport Abstraction Design | transport-abstraction-design | 2026-03-20 | Message-Oriented Transport — send + request with type dispatch, virtual/platform thread split |
 | Discovery SPI Design | discovery-spi-design | 2026-03-20 | Minimal Seed Provider with Optional Registration — discoverSeeds + default register/deregister |
 | Scatter-Gather Query Execution | scatter-gather-query-execution | 2026-03-20 | Partition-Aware Proxy Table — transparent Table interface, k-way merge, partition pruning |
