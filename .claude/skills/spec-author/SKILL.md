@@ -1,14 +1,15 @@
 ---
-description: "Author a hardened spec through two-pass adversarial review"
+description: "Author a hardened spec through multi-pass adversarial review"
 argument-hint: "<feature-id> <title>"
 effort: high
 ---
 
 # /spec-author <feature-id> <title>
 
-Author a hardened operational specification for a feature through a two-pass
-process: structured authoring followed by adversarial falsification. The
-output is a complete spec file ready for `/spec-write` registration.
+Author a hardened operational specification for a feature through multi-pass
+adversarial review: structured authoring, falsification, and automatic
+depth passes when critical findings indicate structural gaps. The output
+is a complete spec file ready for `/spec-write` registration.
 
 This skill operates on **design intent**, not implementation. The only code
 read during authoring is pre-existing components (for prerequisite stubs).
@@ -533,6 +534,52 @@ to the spec.
 
 ---
 
+## Pass 3 — Depth pass (mandatory)
+
+After applying the user's arbitration decisions from Pass 2, automatically
+run a depth pass. Do not prompt — this is mandatory.
+
+Round 2 fixes create new attack surface that round 1 could not see.
+Empirical data across multiple specs shows round 2 consistently finds
+critical/high issues that are *consequences* of round 1 fixes: deadlocks
+from new thread models, budget fictions from abstraction changes,
+duplicate data from retry semantics. These are invisible to a single
+falsification pass.
+
+### Depth pass execution
+
+The depth pass is structurally identical to Pass 2 (same subagent setup,
+same falsification lenses, same arbitration mode) with two additions:
+
+1. **Prior findings as input.** The subagent receives all accepted findings
+   from Pass 2 as additional context. These are attack vectors — knowing
+   "credits shifted from physical slabs to logical budget" tells the depth
+   pass to probe whether the budget actually bounds what it claims to.
+
+2. **Duplicate suppression.** The subagent must not re-report findings
+   already accepted in Pass 2. If a finding overlaps with an existing
+   requirement added during arbitration, skip it.
+
+After the depth pass, present findings in the same arbitration format.
+Apply the user's decisions to the spec.
+
+### Pass 4+ — Prompted on severity
+
+After the depth pass, evaluate the accepted findings:
+
+**If any critical or high findings were found:** use AskUserQuestion:
+- "Run another pass" (description: "Critical/high findings suggest more may remain")
+- "Done" (description: "Proceed to output")
+
+**If only medium/low findings:** proceed to output. Diminishing returns
+are likely.
+
+There is no limit on passes, but each subsequent offer beyond pass 3
+should note diminishing returns. Empirically: pass 3 captures the
+fix-consequence bugs, pass 4+ is rarely productive.
+
+---
+
 ## Output
 
 The final spec file, ready for `/spec-write <id> <title>` to register.
@@ -549,6 +596,7 @@ registration is mechanical.
   pre-existing code for prerequisite stubs
 - Never skip Pass 2 — nothing advances past a draft without a
   falsification pass
+- Never skip Pass 3 — the depth pass is mandatory, not severity-gated
 - Never suppress uncertain findings — surface them for arbitration
 - Never add a validation requirement without tracing its enforcement path
 - Always present the draft to the user between Pass 1 and Pass 2

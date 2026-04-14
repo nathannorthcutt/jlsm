@@ -372,7 +372,9 @@ The `Pipeline mode` field controls which stages are active:
 
 When `pipeline_mode` is `specification`:
 - The Stage Completion table omits Planning, Testing, Hardening, Implementation, Refactor rows
-- After Spec Authoring completes, the pipeline is done — proceed to `/feature-retro` then `/feature-complete`
+- After Spec Authoring completes, the specification phase is done. Do NOT
+  proceed to `/feature-retro` or `/feature-complete` — those run after
+  implementation via `/work-start`. Report that specs are ready and stop.
 
 When `pipeline_mode` is `implementation`:
 - The Stage Completion table omits Scoping, Domains, Spec Authoring rows

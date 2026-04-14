@@ -274,13 +274,12 @@ specification artifacts rather than implementing behavior.
 | scoping / confirming-brief | `/feature "<slug description>"` |
 | scoping / complete | `/feature-domains "<slug>"` |
 | domains / complete | Spec authoring (automatic via `/feature-domains`) |
-| spec-authoring / complete | `/feature-retro "<slug>"` — specification complete |
-| pr / created (no retro) | `/feature-retro "<slug>"` |
-| pr / created (retro done) | `/feature-complete "<slug>"` |
+| spec-authoring / complete | Done — `/work-start` for implementation |
 
 Note: Planning, Testing, Hardening, Implementation, and Refactor stages
-are skipped in specification mode. After spec authoring is done, proceed
-directly to retro.
+are skipped in specification mode. After spec authoring completes, the
+specification phase is done. Do NOT proceed to `/feature-retro` or
+`/feature-complete` — those run after implementation via `/work-start`.
 
 ### Implementation mode routing (pipeline_mode: implementation)
 

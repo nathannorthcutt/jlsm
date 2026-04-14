@@ -217,6 +217,21 @@ WHAT the system must do as a result. Without specs, the adversarial
 hardening and audit pipeline have nothing to falsify. Do not skip or
 bypass spec authoring for any WD type.
 
+**After spec authoring completes, stop.** Do not proceed to
+`/feature-retro` or `/feature-complete` — those run after implementation.
+Display:
+```
+───────────────────────────────────────────────
+📝 WORK PLAN complete · <group-slug> / WD-<nn>
+───────────────────────────────────────────────
+Specifications produced:
+  <list of spec files written or updated>
+
+The WD is ready for implementation:
+  /work-start "<group-slug>" WD-<nn>
+───────────────────────────────────────────────
+```
+
 ---
 
 ## Notes
@@ -229,3 +244,5 @@ bypass spec authoring for any WD type.
 - Status.md starts at scoping/complete because the WD's Summary and
   Acceptance Criteria serve as the pre-approved brief.
 - After specification is complete, use `/work-start` for implementation.
+- Do NOT run `/feature-retro` or `/feature-complete` after `/work-plan`.
+  Retro and completion happen after implementation, not after spec authoring.
