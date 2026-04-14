@@ -53,31 +53,26 @@ Display opening header:
 
 ### If specific WD (e.g., WD-01):
 
-Check if the specified WD is READY in the resolver output.
+Check the WD's status in the resolver output.
 
-If READY: proceed to Step 4.
+If SPECIFIED: proceed to Step 4.
 
-If BLOCKED: display the blockers from the resolver output:
+If READY or BLOCKED or SPECIFYING: the WD has not been through `/work-plan` yet.
 ```
-WD-<nn> (<title>) is BLOCKED:
-  - <blocker 1>
-  - <blocker 2>
-
-Unblock by resolving these dependencies first.
+WD-<nn> (<title>) needs specification before implementation.
+Run /work-plan "<group-slug>" WD-<nn> first.
 ```
 Use AskUserQuestion with options:
-  - "Pick a different WD"
   - "Run /work-plan first" (description: "Specify this WD to produce its required artifacts")
-  - "Start anyway (skip readiness check)"
+  - "Start anyway (skip specification)" (description: "Proceed without specs — not recommended")
   - "Stop"
 
-If "Pick a different WD": show READY WDs and let user choose.
 If "Run /work-plan first": invoke `/work-plan "<group-slug>" WD-<nn>`.
 If "Start anyway": proceed to Step 4 with a warning logged.
 
-If IN_PROGRESS: check if a feature directory already exists for this WD:
+If IMPLEMENTING: check if a feature directory already exists for this WD:
 ```
-WD-<nn> is already IN_PROGRESS.
+WD-<nn> is already being implemented.
 Feature directory: .feature/<group>--<wd-slug>/
 
 Resume with: /feature-resume "<group>--<wd-slug>"
@@ -92,24 +87,24 @@ Stop.
 
 ### If "next" (or no WD specified):
 
-From the READY WDs, select the one with the most downstream dependents
+From the SPECIFIED WDs, select the one with the most downstream dependents
 (i.e., the WD whose completion would unblock the most other WDs). This
 maximizes unblocking value.
 
 If multiple WDs tie on unblocking value, prefer the one with fewer
 artifact dependencies (simpler work first).
 
-If no WDs are READY:
+If no WDs are SPECIFIED:
 ```
-No work definitions are READY in '<group-slug>'.
+No work definitions are SPECIFIED in '<group-slug>'.
 
 Status:
-  <blocked>  blocked
-  <in_progress> in progress
+  <ready>  ready (needs /work-plan first)
+  <specifying> specifying
+  <implementing> implementing
   <complete> complete
 
-Unblock by resolving the artifact dependencies shown in:
-  /work-status "<group-slug>"
+Run /work-plan "<group-slug>" to specify a ready WD first.
 ```
 Stop.
 
@@ -203,7 +198,7 @@ Stage Completion table — implementation stages only:
 
 ### 4d — Update WD status
 
-Edit `.work/<group-slug>/WD-<nn>.md` — set `status: IN_PROGRESS`.
+Edit `.work/<group-slug>/WD-<nn>.md` — set `status: IMPLEMENTING`.
 Update `.work/<group-slug>/manifest.md` — update the WD's status in the table.
 
 ---

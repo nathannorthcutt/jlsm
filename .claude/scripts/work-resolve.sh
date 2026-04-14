@@ -4,8 +4,9 @@
 # Output: markdown readiness report on stdout | diagnostics on stderr
 #
 # Walks all WDs in a work group, cross-references their artifact_deps against
-# actual artifact states, and reports which are READY, BLOCKED, IN_PROGRESS,
-# or COMPLETE.
+# actual artifact states, and reports which are READY, BLOCKED, SPECIFYING,
+# SPECIFIED, IMPLEMENTING, or COMPLETE.
+# Legacy: IN_PROGRESS is treated as IMPLEMENTING for backwards compatibility.
 #
 # Readiness is computed each invocation — never cached.
 
@@ -47,7 +48,9 @@ declare -A WD_DEP_COUNT # id -> number of artifact deps
 
 READY_COUNT=0
 BLOCKED_COUNT=0
-IN_PROGRESS_COUNT=0
+SPECIFYING_COUNT=0
+SPECIFIED_COUNT=0
+IMPLEMENTING_COUNT=0
 COMPLETE_COUNT=0
 TOTAL_COUNT=0
 
@@ -69,20 +72,32 @@ while IFS= read -r wd_file; do
   WD_BLOCKERS["$wd_id"]=""
   ((TOTAL_COUNT++)) || true
 
-  # If already COMPLETE or IN_PROGRESS, respect the declared status
+  # Respect declared phase statuses — no recomputation needed
   if [[ "$wd_status" == "COMPLETE" ]]; then
     WD_STATUS["$wd_id"]="COMPLETE"
     ((COMPLETE_COUNT++)) || true
     continue
   fi
 
-  if [[ "$wd_status" == "IN_PROGRESS" ]]; then
-    WD_STATUS["$wd_id"]="IN_PROGRESS"
-    ((IN_PROGRESS_COUNT++)) || true
+  if [[ "$wd_status" == "IMPLEMENTING" || "$wd_status" == "IN_PROGRESS" ]]; then
+    WD_STATUS["$wd_id"]="IMPLEMENTING"
+    ((IMPLEMENTING_COUNT++)) || true
     continue
   fi
 
-  # For DRAFT, SPECIFIED, READY, or BLOCKED: compute readiness from deps
+  if [[ "$wd_status" == "SPECIFYING" ]]; then
+    WD_STATUS["$wd_id"]="SPECIFYING"
+    ((SPECIFYING_COUNT++)) || true
+    continue
+  fi
+
+  if [[ "$wd_status" == "SPECIFIED" ]]; then
+    WD_STATUS["$wd_id"]="SPECIFIED"
+    ((SPECIFIED_COUNT++)) || true
+    continue
+  fi
+
+  # For DRAFT: compute readiness from deps
   blockers=""
   dep_count=0
 
@@ -124,7 +139,7 @@ while IFS= read -r wd_file; do
 
 done < <(work_list_wds "$GROUP_DIR")
 
-echo "[resolve] Group: $GROUP_SLUG — $TOTAL_COUNT WDs ($READY_COUNT ready, $BLOCKED_COUNT blocked, $IN_PROGRESS_COUNT in progress, $COMPLETE_COUNT complete)" >&2
+echo "[resolve] Group: $GROUP_SLUG — $TOTAL_COUNT WDs ($READY_COUNT ready, $BLOCKED_COUNT blocked, $SPECIFYING_COUNT specifying, $SPECIFIED_COUNT specified, $IMPLEMENTING_COUNT implementing, $COMPLETE_COUNT complete)" >&2
 
 # ── Build dependency graph ───────────────────────────────────────────────────
 # For each WD, check if its produces match another WD's artifact_deps.
@@ -159,7 +174,7 @@ TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 cat <<EOF
 # Work Group Readiness: $GROUP_SLUG
 Generated: $TIMESTAMP
-Total: $TOTAL_COUNT | Ready: $READY_COUNT | Blocked: $BLOCKED_COUNT | In Progress: $IN_PROGRESS_COUNT | Complete: $COMPLETE_COUNT
+Total: $TOTAL_COUNT | Ready: $READY_COUNT | Blocked: $BLOCKED_COUNT | Specifying: $SPECIFYING_COUNT | Specified: $SPECIFIED_COUNT | Implementing: $IMPLEMENTING_COUNT | Complete: $COMPLETE_COUNT
 
 ## Status
 
@@ -167,8 +182,8 @@ Total: $TOTAL_COUNT | Ready: $READY_COUNT | Blocked: $BLOCKED_COUNT | In Progres
 |----|-------|--------|------|----------|
 EOF
 
-# Sort by status priority: READY first, then BLOCKED, IN_PROGRESS, COMPLETE
-for status_phase in READY BLOCKED IN_PROGRESS COMPLETE; do
+# Sort by status priority: actionable first
+for status_phase in READY BLOCKED SPECIFYING SPECIFIED IMPLEMENTING COMPLETE; do
   for wd_id in $(echo "${!WD_STATUS[@]}" | tr ' ' '\n' | sort); do
     [[ "${WD_STATUS[$wd_id]}" != "$status_phase" ]] && continue
     unblocks="${WD_UNBLOCKS[$wd_id]:-none}"

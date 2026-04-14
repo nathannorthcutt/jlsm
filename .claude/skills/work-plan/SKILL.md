@@ -78,18 +78,25 @@ Use AskUserQuestion with options:
 If "Pick a different WD": show READY WDs and let user choose.
 If "Start anyway": proceed to Step 4 with a warning logged.
 
-If IN_PROGRESS: check if a feature directory already exists for this WD:
+If SPECIFYING: check if a feature directory already exists for this WD:
 ```
-WD-<nn> is already IN_PROGRESS.
+WD-<nn> is already being specified.
 Feature directory: .feature/<group>--<wd-slug>/
 
 Resume with: /feature-resume "<group>--<wd-slug>"
 ```
 Stop.
 
-If COMPLETE:
+If SPECIFIED:
 ```
-WD-<nn> is already COMPLETE. Nothing to do.
+WD-<nn> is already specified. Ready for implementation:
+  /work-start "<group-slug>" WD-<nn>
+```
+Stop.
+
+If IMPLEMENTING or COMPLETE:
+```
+WD-<nn> is already past the specification phase. Nothing to do.
 ```
 Stop.
 
@@ -194,7 +201,7 @@ Stage Completion table — specification mode only:
 
 ### 4c — Update WD status
 
-Edit `.work/<group-slug>/WD-<nn>.md` — set `status: IN_PROGRESS`.
+Edit `.work/<group-slug>/WD-<nn>.md` — set `status: SPECIFYING`.
 Update `.work/<group-slug>/manifest.md` — update the WD's status in the table.
 
 ---
@@ -217,9 +224,10 @@ WHAT the system must do as a result. Without specs, the adversarial
 hardening and audit pipeline have nothing to falsify. Do not skip or
 bypass spec authoring for any WD type.
 
-**After spec authoring completes, stop.** Do not proceed to
-`/feature-retro` or `/feature-complete` — those run after implementation.
-Display:
+**After spec authoring completes, stop.** Update the WD status to
+`SPECIFIED` in `.work/<group-slug>/WD-<nn>.md` and the manifest. Do not
+proceed to `/feature-retro` or `/feature-complete` — those run after
+implementation. Display:
 ```
 ───────────────────────────────────────────────
 📝 WORK PLAN complete · <group-slug> / WD-<nn>

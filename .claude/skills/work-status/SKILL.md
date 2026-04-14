@@ -7,7 +7,7 @@ argument-hint: "<group-slug> [--all]"
 
 Shows the readiness state of a work group. Reports which work definitions are
 READY (all artifact dependencies satisfied), BLOCKED (with specific missing
-artifacts), IN_PROGRESS, or COMPLETE.
+artifacts), SPECIFYING, SPECIFIED, IMPLEMENTING, or COMPLETE.
 
 This is the "what can I work on next?" entry point.
 
@@ -32,9 +32,9 @@ If `--all` flag is set:
 📊 WORK STATUS · all groups
 ───────────────────────────────────────────────
 
-| Group | WDs | Ready | Blocked | In Progress | Complete |
-|-------|-----|-------|---------|-------------|----------|
-| <slug> | <n> | <n> | <n> | <n> | <n> |
+| Group | WDs | Ready | Specifying | Specified | Implementing | Complete |
+|-------|-----|-------|------------|-----------|--------------|----------|
+| <slug> | <n> | <n> | <n> | <n> | <n> | <n> |
 ...
 
 Ready to work on:
@@ -153,10 +153,17 @@ Consider running a retrospective on the overall effort:
   /feature-retro for individual features created from this group
 ```
 
-### If WDs are IN_PROGRESS:
+### If WDs are SPECIFYING or IMPLEMENTING:
 ```
-In progress:
-  WD-<nn> (<title>) — resume with /feature-resume "<group>--<wd-slug>"
+Active:
+  WD-<nn> (<title>) — SPECIFYING — resume with /feature-resume "<group>--<wd-slug>"
+  WD-<nn> (<title>) — IMPLEMENTING — resume with /feature-resume "<group>--<wd-slug>"
+```
+
+### If WDs are SPECIFIED:
+```
+Ready for implementation:
+  /work-start "<group-slug>" WD-<nn>   — implement a specified WD
 ```
 
 Stop.
