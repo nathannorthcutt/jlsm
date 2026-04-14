@@ -210,6 +210,13 @@ analysis and spec authoring.
 ```
 Invoke `/feature-domains "<slug>"`.
 
+**Spec authoring is mandatory.** Even for decisions-focused WDs, the
+architectural choices made in ADRs have behavioral implications that must
+be captured as specs. ADRs describe WHY a decision was made; specs define
+WHAT the system must do as a result. Without specs, the adversarial
+hardening and audit pipeline have nothing to falsify. Do not skip or
+bypass spec authoring for any WD type.
+
 ---
 
 ## Notes

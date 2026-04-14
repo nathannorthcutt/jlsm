@@ -1,6 +1,7 @@
 ---
 description: "Run adversarial audit pipeline against shipped code"
 argument-hint: "<entry-point>"
+effort: high
 ---
 
 # /audit "<entry-point>"

@@ -1,6 +1,7 @@
 ---
 description: "Author a hardened spec through two-pass adversarial review"
 argument-hint: "<feature-id> <title>"
+effort: high
 ---
 
 # /spec-author <feature-id> <title>

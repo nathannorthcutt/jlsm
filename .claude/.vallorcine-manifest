@@ -110,6 +110,7 @@
 .claude/scripts/subagent-hook.py
 .claude/scripts/subagent-hook.js
 .claude/scripts/subagent-hook-wrapper.sh
+.claude/scripts/precompact-hook.sh
 .claude/scripts/uninstall.sh
 .claude/scripts/spec-lib.sh
 .claude/scripts/spec-validate.sh

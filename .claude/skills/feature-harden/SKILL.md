@@ -1,6 +1,7 @@
 ---
 description: "Adversarial test hardening — domain-lens behavioral attacks on contracts before implementation"
 argument-hint: "<feature-slug> [--unit <WU-N>] [--lite]"
+effort: high
 ---
 
 # /feature-harden "<feature-slug>" [--unit <WU-N>] [--lite]
