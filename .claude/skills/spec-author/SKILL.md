@@ -580,13 +580,19 @@ fix-consequence bugs, pass 4+ is rarely productive.
 
 ---
 
-## Output
+## Output — Register the spec
 
-The final spec file, ready for `/spec-write <id> <title>` to register.
+After all adversarial passes are complete and arbitration decisions applied,
+register the spec by invoking `/spec-write "<id>" "<title>"` directly.
 
-The user runs `/spec-write` separately — this skill does not register the
-spec in the manifest. Separation of concerns: authoring is cognitive,
-registration is mechanical.
+**This is mandatory.** `/spec-author` owns the full lifecycle: draft →
+falsify → arbitrate → register. The caller should never need to call
+`/spec-write` separately. This prevents the shortcut where an unfalsified
+draft gets registered without adversarial review.
+
+After `/spec-write` completes, verify the spec is in APPROVED state in
+`.spec/registry/manifest.json`. If it registered as DRAFT (due to
+unresolved conflicts), report the issue — do not silently return.
 
 ---
 
@@ -602,3 +608,5 @@ registration is mechanical.
 - Always present the draft to the user between Pass 1 and Pass 2
 - The subagent for Pass 2 must receive the complete Pass 1 output, not
   a summary — summaries lose the detail that adversarial review needs
+- Always register the spec via `/spec-write` at the end — the caller
+  must never need to call `/spec-write` separately

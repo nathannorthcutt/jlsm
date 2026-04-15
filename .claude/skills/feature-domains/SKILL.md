@@ -455,9 +455,10 @@ a single pass:
   Specs will define behavioral requirements before work planning begins.
   ```
 - Invoke `/spec-author "<feature-id>" "<slug>"` as a sub-agent immediately.
-  The spec-author reads brief.md and domains.md to produce hardened specs.
-  After spec-author completes, invoke `/spec-write "<feature-id>" "<slug>"`
-  to register the spec, then invoke `/feature-plan "<slug>"` as a sub-agent.
+  The spec-author handles the full lifecycle: draft → falsify → arbitrate →
+  register (via `/spec-write` internally). Do NOT call `/spec-write`
+  separately — `/spec-author` owns registration.
+  After spec-author completes, invoke `/feature-plan "<slug>"` as a sub-agent.
 
 If "Stop":
 ```
