@@ -19,6 +19,10 @@
 | WD-07 Partitioning & Rebalancing | decisions-backlog--wd-07 | 2026-04-14 | spec-authoring complete | 13 decisions specified across 7 specs (F27-F33); OB-F33-01 resolved by F37 |
 | WD-08 Query Execution | decisions-backlog--wd-08 | 2026-04-14 | spec-authoring complete | 3 decisions confirmed across 3 specs (F38-F40) |
 | WD-09 Encryption & Security | decisions-backlog--wd-09 | 2026-04-14 | spec-authoring complete | 11 decisions (6 confirmed, 4 re-deferred, 1 closed); F41-F42 specs |
+| WD-11 Partition Optimization | decisions-backlog--wd-11 | 2026-04-15 | spec-authoring complete | 3 decisions (3 accepted); F43 spec + F30 R20-R63 |
+| WD-10 Rebalancing Safety & Recovery | decisions-backlog--wd-10 | 2026-04-15 | spec-authoring complete | 5 decisions (5 accepted); F48 spec + F27/F29/F32 |
+| WD-13 Catalog & Scan Lifecycle | decisions-backlog--wd-13 | 2026-04-15 | spec-authoring complete | 4 decisions (4 accepted); F44 spec + F39/F37/F33 |
+| WD-12 Encrypted Query Capabilities | decisions-backlog--wd-12 | 2026-04-15 | spec-authoring complete | 4 decisions (3 accepted, 1 re-deferred); F45-F47 specs |
 
 ## Completed / Archived
 

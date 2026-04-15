@@ -17,17 +17,23 @@
 | vector-indexing | domains/vector-indexing/ | vector search hnsw ivf-flat ann similarity float16 precision encoding | 2 |
 | serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer integrity checksum varint | 6 |
 | storage | domains/storage/ | memtable wal flush compaction object-store block cache manifest block-size byte-budget | 4 |
-| encryption | domains/encryption/ | aes gcm kms tmk sek key-derivation cipher block-encryption | 3 |
+| encryption | domains/encryption/ | aes gcm kms tmk sek key-derivation cipher block-encryption sdk prefix fuzzy | 6 |
 | query | domains/query/ | sql query plan statistics join index scan filter | 2 |
-| engine | domains/engine/ | database engine table catalog schema partition transaction | 14 |
+| engine | domains/engine/ | database engine table catalog schema partition transaction | 15 |
 | cluster-membership | domains/cluster-membership/ | membership protocol discovery rediscovery health stall recovery slow-node detection heartbeat metadata | 2 |
 | cluster-transport | domains/cluster-transport/ | transport framing multiplexing connection NIO TCP wire-protocol stream-id backpressure | 3 |
-| partitioning | domains/partitioning/ | partition rebalancing ownership transfer drain catch-up epoch state-machine safety trigger policy weighted capacity affinity takeover priority throttling hotspot compaction-scheduling vector-pruning cross-partition transactions replication raft consensus leader-election quorum snapshot migration cutover rollback | 7 |
+| partitioning | domains/partitioning/ | partition rebalancing ownership transfer drain catch-up epoch state-machine safety trigger policy weighted capacity affinity takeover priority throttling hotspot compaction-scheduling vector-pruning cross-partition transactions replication raft consensus leader-election quorum snapshot migration cutover rollback write-distributor prefix-hash corruption repair quarantine scrubbing anti-entropy | 9 |
 
 ## Recently Added (last 10)
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-15 | F48 | partitioning, storage | Corruption Repair and Recovery |
+| 2026-04-15 | F47 | encryption | Encrypted Fuzzy Matcher |
+| 2026-04-15 | F46 | encryption | Encrypted Prefix Index |
+| 2026-04-15 | F45 | encryption, engine | Client-Side Encryption SDK |
+| 2026-04-15 | F44 | engine | Scan Lease GC Watermark |
+| 2026-04-15 | F43 | partitioning | Sequential Insert Hotspot Mitigation |
 | 2026-04-14 | F42 | encryption, storage | WAL Encryption |
 | 2026-04-14 | F41 | encryption, engine | Encryption Lifecycle |
 | 2026-04-14 | F40 | engine | Distributed Join Strategy |
@@ -36,8 +42,6 @@
 | 2026-04-14 | F37 | engine | Catalog Operations |
 | 2026-04-14 | F36 | engine | Remote Serialization |
 | 2026-04-14 | F35 | engine | Cross-Table Transactions |
-| 2026-04-14 | F34 | engine | Handle Lifecycle |
-| 2026-04-14 | F33 | partitioning | Table Migration |
 | 2026-04-14 | F32 | partitioning | Partition Replication |
 | 2026-04-14 | F31 | partitioning | Cross-Partition Transactions |
 | 2026-04-14 | F30 | partitioning | Partition Data Operations |

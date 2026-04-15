@@ -19,15 +19,15 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
-| Index Access Pattern Leakage | index-access-pattern-leakage | 2026-04-14 | Low-Cost Mitigation Bundle — per-field HKDF + padding + leakage docs |
-| Unencrypted-to-Encrypted Migration | unencrypted-to-encrypted-migration | 2026-04-14 | Compaction-Driven Migration — same mechanism as key rotation |
-| WAL Entry Encryption | wal-entry-encryption | 2026-04-14 | Per-Record AES-GCM-256 with Sequence-Number Nonce |
-| Encryption Key Rotation | encryption-key-rotation | 2026-04-14 | Envelope Encryption + Compaction-Driven Re-Encryption |
-| Per-Field Key Binding | per-field-key-binding | 2026-04-14 | HKDF derivation from master key — automatic per-field isolation |
+| Client-Side Encryption SDK | client-side-encryption-sdk | 2026-04-15 | Schema-driven auto-encrypt/decrypt with KeyVault SPI — per-field HKDF, off-heap key caching |
+| Encrypted Prefix/Wildcard Queries | encrypted-prefix-wildcard-queries | 2026-04-15 | Prefix tokenization + DET — AES-SIV encrypted prefixes in LsmInvertedIndex, L4 leakage profile |
+| Encrypted Fuzzy Matching | encrypted-fuzzy-matching | 2026-04-15 | LSH + Bloom filter — n-gram shingling, AES-GCM encrypted filter, approximate matching, L2 leakage |
+| Corruption Repair and Recovery | corruption-repair-recovery | 2026-04-15 | Layered repair — quarantine + compaction (single-node), read repair + anti-entropy + targeted replica fetch (replicated) |
+| Un-WAL'd Memtable Data Loss | un-walled-memtable-data-loss | 2026-04-15 | Documented data loss window (F27) eliminated by Raft replication (F32) for committed writes |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
-<!-- 54 items (was 61: -6 confirmed, -1 closed from WD-09 encryption batch). Grouped by parent ADR for readability. -->
+<!-- 39 items (was 42: -3 confirmed from WD-12 client-side-encryption-sdk, encrypted-prefix-wildcard-queries, encrypted-fuzzy-matching; encrypted-cross-field-joins re-deferred with updated date). Grouped by parent ADR for readability. -->
 
 | Problem | Slug | Deferred | Parent ADR |
 |---------|------|----------|------------|
@@ -47,9 +47,7 @@
 | Quarantine Resolution Policy | quarantine-resolution-policy | 2026-04-13 | string-to-bounded-string-migration |
 | Cross-Table Schema Migration | cross-table-schema-migration | 2026-04-13 | string-to-bounded-string-migration |
 | Authenticated Discovery | authenticated-discovery | 2026-03-30 | discovery-spi-design |
-| Encrypted Prefix/Wildcard Queries | encrypted-prefix-wildcard-queries | 2026-04-14 | encrypted-index-strategy |
-| Encrypted Fuzzy Matching | encrypted-fuzzy-matching | 2026-04-14 | encrypted-index-strategy |
-| Encrypted Cross-Field Joins | encrypted-cross-field-joins | 2026-04-14 | encrypted-index-strategy |
+| Encrypted Cross-Field Joins | encrypted-cross-field-joins | 2026-04-15 | encrypted-index-strategy |
 | Handle Priority Levels | handle-priority-levels | 2026-03-30 | engine-api-surface-design |
 | Cross-Table Handle Budgets | cross-table-handle-budgets | 2026-03-30 | engine-api-surface-design |
 | Handle Timeout/TTL | handle-timeout-ttl | 2026-03-30 | engine-api-surface-design |
@@ -58,24 +56,11 @@
 | Weighted Node Capacity | weighted-node-capacity | 2026-03-30 | partition-to-node-ownership |
 | Partition Affinity | partition-affinity | 2026-03-30 | partition-to-node-ownership |
 | Rebalancing Trigger Policy | rebalancing-trigger-policy | 2026-03-30 | partition-to-node-ownership |
-| Corruption Repair and Recovery | corruption-repair-recovery | 2026-04-11 | per-block-checksums |
-| Client-Side Encryption SDK | client-side-encryption-sdk | 2026-04-14 | pre-encrypted-document-signaling |
-| In-Flight Write Protection | in-flight-write-protection | 2026-03-30 | rebalancing-grace-period-strategy |
-| Partition Takeover Priority | partition-takeover-priority | 2026-03-30 | rebalancing-grace-period-strategy |
-| Concurrent WAL Replay Throttling | concurrent-wal-replay-throttling | 2026-03-30 | rebalancing-grace-period-strategy |
-| Un-WAL'd Memtable Data Loss | un-walled-memtable-data-loss | 2026-03-30 | rebalancing-grace-period-strategy |
 | Atomic Multi-Table DDL | atomic-multi-table-ddl | 2026-03-30 | table-catalog-persistence |
-| Catalog Replication | catalog-replication | 2026-03-30 | table-catalog-persistence |
-| Table Migration Protocol | table-migration-protocol | 2026-03-30 | table-catalog-persistence |
 | Partition Replication Protocol | partition-replication-protocol | 2026-03-30 | table-partitioning |
 | Cross-Partition Transactions | cross-partition-transactions | 2026-03-30 | table-partitioning |
-| Vector Query Partition Pruning | vector-query-partition-pruning | 2026-03-30 | table-partitioning |
-| Sequential Insert Hotspot | sequential-insert-hotspot | 2026-03-30 | table-partitioning |
-| Partition-Aware Compaction | partition-aware-compaction | 2026-03-30 | table-partitioning |
 | Adaptive Weight Tuning | adaptive-weight-tuning | 2026-04-13 | transport-traffic-priority |
 | Hierarchical Query Memory Budget | hierarchical-query-memory-budget | 2026-04-13 | scatter-backpressure |
-| Scan Snapshot Binding | scan-snapshot-binding | 2026-04-13 | scatter-backpressure |
-| Scan Lease GC Watermark | scan-lease-gc-watermark | 2026-04-13 | scatter-backpressure |
 | Bulk Data Transfer Channel | bulk-data-transfer-channel | 2026-04-13 | connection-pooling |
 | Vector Index Query Routing | vector-index-query-routing | 2026-04-13 | vector-storage-cost-optimization |
 | Automatic Quantization Selection | automatic-quantization-selection | 2026-04-13 | vector-storage-cost-optimization |
@@ -106,4 +91,4 @@
 | Pre-Encrypted Flag Persistence | pre-encrypted-flag-persistence | 2026-04-14 | Non-issue — write-side flag is intentionally ephemeral; per-field markers belong in client-side-encryption-sdk |
 
 ## Archived
-34 accepted decisions older than the 5 most recent: [history.md](history.md)
+42 accepted decisions older than the 5 most recent: [history.md](history.md)

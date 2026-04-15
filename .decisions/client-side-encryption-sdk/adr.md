@@ -1,38 +1,60 @@
 ---
 problem: "client-side-encryption-sdk"
-date: "2026-03-30"
-version: 1
-status: "deferred"
-depends_on: ["per-field-pre-encryption", "encryption-key-rotation", "per-field-key-binding"]
+date: "2026-04-15"
+version: 2
+status: "accepted"
+decision_refs: ["per-field-pre-encryption", "pre-encrypted-flag-persistence"]
+spec_refs: ["F45"]
 ---
 
-# Client-Side Encryption SDK — Deferred
+# Client-Side Encryption SDK
 
 ## Problem
-A client-side encryption SDK that wraps the encryption primitives into a higher-level API for external consumers — schema-driven auto-encrypt/decrypt, KeyVault abstraction, encrypted blob wrapping.
 
-## Why Deferred
-Dependencies are now resolved (per-field-pre-encryption, encryption-key-rotation, per-field-key-binding all confirmed 2026-04-14), but the SDK itself is a substantial API surface requiring implementation of those dependencies first. The SDK needs:
-1. Working per-field pre-encryption (bitset flag)
-2. Working key rotation (envelope encryption + compaction-driven)
-3. Working per-field key binding (HKDF derivation)
-4. KeyVault SPI design (caller-provided key resolution)
+How should the library expose a client-side encryption API that lets callers
+manage their own encryption keys and pre-encrypt document fields before
+storage?
 
-## Resume When
-Core encryption features (per-field-pre-encryption, per-field-key-binding, encryption-key-rotation) are implemented and tested.
+## Decision
 
-## What Is Known So Far
-KB research is complete: `.kb/systems/security/client-side-encryption-patterns.md` covers MongoDB CSFLE, AWS DB Encryption SDK, KeyVault abstraction, and per-field type byte detection. The design should follow the schema-driven auto-encrypt pattern:
-- Schema declarations drive per-field encryption
-- KeyVault interface resolves keyId to DEK material (caller-provided implementation)
-- Envelope encryption wraps DEKs with CMK via KMS
-- Write path: SDK intercepts `JlsmDocument.of()`, encrypts marked fields, produces `JlsmDocument.preEncrypted()`
-- Read path: SDK intercepts query results, decrypts marked fields transparently
+**Schema-driven auto-encrypt/decrypt with KeyVault SPI** -- the SDK follows
+the MongoDB CSFLE / AWS Database Encryption SDK pattern. Callers configure
+per-field encryption via `EncryptionConfig` (field name, EncryptionSpec
+variant, keyId), provide a `KeyVault` implementation that resolves key IDs
+to DEK material, and the SDK transparently encrypts on write and decrypts
+on read.
 
-Key design decisions already made:
-- Per-field pre-encryption: bitset flag (confirmed)
-- Per-field keys: HKDF from master key for library-managed; explicit keyId for SDK-managed (future)
-- Key rotation: envelope encryption + compaction-driven re-encryption (confirmed)
+Key design choices resolved by F45:
+- `KeyVault` SPI with `resolve(keyId)` returning `MemorySegment` -- no
+  KMS coupling (R1-R5)
+- `LocalKeyVault` provided for testing and single-deployment (R6-R7)
+- Auto-encrypt produces `JlsmDocument.preEncrypted()` per F41 R2 (R12-R13)
+- HKDF per-field key derivation reuses F41 R10-R11 (R12)
+- Key caching with bounded TTL (default 5 min) and off-heap storage (R22-R25)
+- Leakage profile exposure per field (R29-R30)
 
-## Next Step
-After core encryption implementation: `/architect "client-side-encryption-sdk"` — focus on KeyVault SPI, auto-encrypt interceptor design, and encrypted blob format.
+## Context
+
+Originally deferred during per-field-pre-encryption decision (2026-03-30)
+because the pre-encryption bitset, key hierarchy, and per-field key binding
+had not yet been specified. All three are now resolved by F41 (Encryption
+Lifecycle, APPROVED). The closed ADR `pre-encrypted-flag-persistence`
+directed per-field markers to this SDK.
+
+## Alternatives Considered
+
+- **Inline encryption in JlsmDocument factory methods**: Simpler but
+  conflates the library's internal encryption dispatch with caller-managed
+  keys. The SDK as a separate layer keeps the boundary clean.
+- **Per-field KeyVault resolution (keyId per field)**: The chosen design
+  supports this via EncryptionConfig's per-field keyId.
+
+## Consequences
+
+- Callers get a high-level API for field-level encryption without knowing
+  the library's internal encryption mechanics
+- The KeyVault SPI allows plugging in any KMS (AWS KMS, HashiCorp Vault,
+  local file-based) without library changes
+- Key caching reduces KMS round-trips but introduces a staleness window
+  (configurable TTL)
+- The SDK does not manage key rotation -- that remains F41's responsibility

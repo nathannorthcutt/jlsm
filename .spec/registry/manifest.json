@@ -20,7 +20,7 @@
     "encryption": {
       "shard_path": "domains/encryption/INDEX.md",
       "description": "aes gcm kms tmk sek key-derivation cipher block-encryption",
-      "feature_count": 3
+      "feature_count": 6
     },
     "query": {
       "shard_path": "domains/query/INDEX.md",
@@ -30,7 +30,7 @@
     "engine": {
       "shard_path": "domains/engine/INDEX.md",
       "description": "database engine table catalog schema partition transaction",
-      "feature_count": 14
+      "feature_count": 15
     },
     "cluster-membership": {
       "shard_path": "domains/cluster-membership/INDEX.md",
@@ -44,8 +44,8 @@
     },
     "partitioning": {
       "shard_path": "domains/partitioning/INDEX.md",
-      "description": "partition rebalancing ownership transfer drain catch-up epoch state-machine safety trigger policy weighted capacity affinity hotspot compaction-scheduling vector-pruning cross-partition transactions percolator snapshot-isolation replication raft consensus leader-election quorum snapshot learner migration cutover rollback",
-      "feature_count": 7
+      "description": "partition rebalancing ownership transfer drain catch-up epoch state-machine safety trigger policy weighted capacity affinity hotspot compaction-scheduling vector-pruning cross-partition transactions percolator snapshot-isolation replication raft consensus leader-election quorum snapshot learner migration cutover rollback corruption repair quarantine scrubbing anti-entropy",
+      "feature_count": 9
     }
   },
   "features": {
@@ -351,6 +351,50 @@
       "state": "APPROVED",
       "domains": [
         "encryption",
+        "storage"
+      ]
+    },
+    "F43": {
+      "latest_file": "domains/partitioning/F43-sequential-insert-hotspot-mitigation.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F44": {
+      "latest_file": "domains/engine/F44-scan-lease-gc-watermark.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F45": {
+      "latest_file": "domains/encryption/F45-client-side-encryption-sdk.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption",
+        "engine"
+      ]
+    },
+    "F46": {
+      "latest_file": "domains/encryption/F46-encrypted-prefix-index.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption"
+      ]
+    },
+    "F47": {
+      "latest_file": "domains/encryption/F47-encrypted-fuzzy-matcher.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption"
+      ]
+    },
+    "F48": {
+      "latest_file": "domains/partitioning/F48-corruption-repair-recovery.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning",
         "storage"
       ]
     }

@@ -18,10 +18,10 @@
 | WD-07 | Partitioning & Rebalancing | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
 | WD-08 | Query Execution | SPECIFIED | decisions | 0 | adr:, adr:, adr: |
 | WD-09 | Encryption & Security | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
-| WD-10 | Rebalancing Safety & Recovery | DRAFT | decisions | 0 | adr:partition-takeover-priority, adr:concurrent-wal-replay-throttling, adr:in-flight-write-protection, adr:un-walled-memtable-data-loss, adr:corruption-repair-recovery |
-| WD-11 | Partition Optimization | DRAFT | decisions | 0 | adr:sequential-insert-hotspot, adr:partition-aware-compaction, adr:vector-query-partition-pruning |
-| WD-12 | Encrypted Query Capabilities | DRAFT | decisions | 0 | adr:encrypted-prefix-wildcard-queries, adr:encrypted-fuzzy-matching, adr:encrypted-cross-field-joins, adr:client-side-encryption-sdk |
-| WD-13 | Catalog & Scan Lifecycle | DRAFT | decisions | 0 | adr:catalog-replication, adr:table-migration-protocol, adr:scan-snapshot-binding, adr:scan-lease-gc-watermark |
+| WD-10 | Rebalancing Safety & Recovery | READY | decisions | 0 | adr:, adr:, adr:, adr:, adr: |
+| WD-11 | Partition Optimization | SPECIFIED | decisions | 0 | adr:, adr:, adr: |
+| WD-12 | Encrypted Query Capabilities | READY | decisions | 0 | adr:, adr:, adr:, adr: |
+| WD-13 | Catalog & Scan Lifecycle | READY | decisions | 0 | adr:, adr:, adr:, adr: |
 
 **Total:** 81 decisions (11 gap-fill, 35 minor, 19 full + 16 newly unblocked)
 

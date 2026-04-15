@@ -16,3 +16,4 @@
 | F39 | Distributed Pagination | ACTIVE | — | limit-offset-pushdown, scatter-backpressure, scatter-gather-query-execution |
 | F40 | Distributed Join Strategy | ACTIVE | — | distributed-join-execution, scatter-backpressure, scatter-gather-query-execution, table-partitioning |
 | F41 | Encryption Lifecycle | ACTIVE | — | per-field-pre-encryption, per-field-key-binding, encryption-key-rotation, unencrypted-to-encrypted-migration, index-access-pattern-leakage |
+| F44 | Scan Lease GC Watermark | ACTIVE | — | scan-lease-gc-watermark, scatter-backpressure |

@@ -4,6 +4,20 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| In-Flight Write Protection | in-flight-write-protection | 2026-04-15 | Drain-and-reject with in-flight completion guarantee — structured rejection metadata |
+| Concurrent WAL Replay Throttling | concurrent-wal-replay-throttling | 2026-04-15 | Three-gate resource bounding — concurrency, I/O throughput, memory budget, compaction backpressure |
+| Partition Takeover Priority | partition-takeover-priority | 2026-04-15 | Pluggable TakeoverPrioritizer — SmallestFirstPrioritizer default, LargestFirstPrioritizer alternative |
+| Scan Lease GC Watermark | scan-lease-gc-watermark | 2026-04-15 | Lease-based watermark hold — bounded duration, compaction consultation, per-partition tracking |
+| Table Migration Protocol | table-migration-protocol | 2026-04-15 | Raft learner migration — 5-phase state machine with rollback from every phase |
+| Catalog Replication | catalog-replication | 2026-04-15 | Dedicated Raft catalog group — epoch-based caching, strong DDL consistency |
+| Scan Snapshot Binding | scan-snapshot-binding | 2026-04-15 | Sequence-number binding with degraded fallback — point-in-time consistency via continuation token |
+| Partition-Aware Compaction | partition-aware-compaction | 2026-04-15 | CompactionScheduler SPI — round-robin + size-weighted strategies, configurable concurrency limits |
+| Vector Query Partition Pruning | vector-query-partition-pruning | 2026-04-15 | PartitionPruner SPI — centroid-based + metadata-based pruning with composite strategy |
+| Sequential Insert Hotspot | sequential-insert-hotspot | 2026-04-15 | PrefixHashDistributor — MurmurHash3 prefix prepended to logical key; deterministic, cross-platform, configurable prefix length |
+| Index Access Pattern Leakage | index-access-pattern-leakage | 2026-04-14 | Low-Cost Mitigation Bundle — per-field HKDF + padding + leakage docs |
+| Unencrypted-to-Encrypted Migration | unencrypted-to-encrypted-migration | 2026-04-14 | Compaction-Driven Migration — same mechanism as key rotation |
+| WAL Entry Encryption | wal-entry-encryption | 2026-04-14 | Per-Record AES-GCM-256 with Sequence-Number Nonce |
+| Encryption Key Rotation | encryption-key-rotation | 2026-04-14 | Envelope Encryption + Compaction-Driven Re-Encryption |
 | Per-Field Pre-Encryption | per-field-pre-encryption | 2026-04-14 | Bitset Flag — long preEncryptedBitset in JlsmDocument |
 | Block Cache / Block Size Interaction | block-cache-block-size-interaction | 2026-04-14 | Per-entry byte-budget eviction via MemorySegment.byteSize() |
 | SSTable End-to-End Integrity | sstable-end-to-end-integrity | 2026-04-14 | Three-layer — fsync discipline + VarInt-prefixed blocks + per-section CRC32C |
