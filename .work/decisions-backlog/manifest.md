@@ -18,8 +18,12 @@
 | WD-07 | Partitioning & Rebalancing | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
 | WD-08 | Query Execution | SPECIFIED | decisions | 0 | adr:, adr:, adr: |
 | WD-09 | Encryption & Security | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-10 | Rebalancing Safety & Recovery | DRAFT | decisions | 0 | adr:partition-takeover-priority, adr:concurrent-wal-replay-throttling, adr:in-flight-write-protection, adr:un-walled-memtable-data-loss, adr:corruption-repair-recovery |
+| WD-11 | Partition Optimization | DRAFT | decisions | 0 | adr:sequential-insert-hotspot, adr:partition-aware-compaction, adr:vector-query-partition-pruning |
+| WD-12 | Encrypted Query Capabilities | DRAFT | decisions | 0 | adr:encrypted-prefix-wildcard-queries, adr:encrypted-fuzzy-matching, adr:encrypted-cross-field-joins, adr:client-side-encryption-sdk |
+| WD-13 | Catalog & Scan Lifecycle | DRAFT | decisions | 0 | adr:catalog-replication, adr:table-migration-protocol, adr:scan-snapshot-binding, adr:scan-lease-gc-watermark |
 
-**Total:** 65 decisions (11 gap-fill, 35 minor, 19 full)
+**Total:** 81 decisions (11 gap-fill, 35 minor, 19 full + 16 newly unblocked)
 
 ## Dependency Graph
 
@@ -33,6 +37,13 @@ WD-06 (Engine API)     ─── blocked by WD-05 (connection-pooling, message-s
 WD-07 (Partitioning)   ─── blocked by WD-05 (connection-pooling, message-serialization-format)
 WD-08 (Query)          ─── blocked by WD-07 (cross-partition-transactions)
 WD-09 (Encryption)     ─── independent
+WD-10 (Rebalancing Safety) ─── independent (unblocked by WD-07)
+WD-11 (Partition Opt)  ─── independent (unblocked by WD-07)
+WD-12 (Encrypted Query)─── independent (unblocked by WD-09)
+  └─ internal: fuzzy-matching after prefix-queries
+WD-13 (Catalog & Scan) ─── independent (unblocked by WD-06 + WD-08)
+  └─ internal: scan-lease-gc-watermark after scan-snapshot-binding
+  └─ internal: table-migration-protocol after catalog-replication
 ```
 
 ## Suggested Execution Order

@@ -7,4 +7,4 @@
 
 | Group | Goal | Status | Created | WDs |
 |-------|------|--------|---------|-----|
-| decisions-backlog | Resolve deferred decision backlog per roadmap | active | 2026-04-13 | 9 |
+| decisions-backlog | Resolve deferred decision backlog per roadmap | active | 2026-04-13 | 13 |
