@@ -434,6 +434,21 @@ as its primary input.
 
 If "Proceed":
 - Update status.md: Spec Authoring stage → `in-progress`
+
+**If `pipeline_mode: specification` (from `/work-plan`):** stop here.
+Domain analysis is complete. The calling command (`/work-plan`) will
+iterate over the identified specs and invoke `/spec-author` for each
+one sequentially. Display:
+```
+Domain analysis complete. Specs to produce:
+  <list of spec titles and domains from domains.md>
+
+Returning to /work-plan for sequential spec authoring.
+```
+Return control to the caller.
+
+**Otherwise (full or implementation mode):** invoke spec authoring as
+a single pass:
 - Display:
   ```
   Spec infrastructure detected — routing through spec authoring.

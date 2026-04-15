@@ -24,6 +24,11 @@ done
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 [[ "$CURRENT_BRANCH" == "$MAIN_BRANCH" ]] && exit 0
 
+# Skip if the branch is ahead of or at main — differences are our changes,
+# not missing entries. Only warn when main has commits we don't have.
+BEHIND_COUNT="$(git rev-list --count HEAD.."$MAIN_BRANCH" 2>/dev/null || echo "0")"
+[[ "$BEHIND_COUNT" == "0" ]] && exit 0
+
 # Compare each index file against main's version
 stale_files=()
 

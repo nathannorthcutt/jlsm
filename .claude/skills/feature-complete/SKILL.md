@@ -106,11 +106,12 @@ status.md and does not match the `<group>--<wd>` double-dash convention.**
 If this is a work-group-sourced feature:
 
 1. Determine the work group slug (from status.md `work_group` field or slug prefix)
-2. Update `.work/<group>/manifest.md` — set the WD's status to COMPLETE in the table
+2. Verify the WD frontmatter has `status: COMPLETE` (should already be set
+   by the retro step)
 3. Update `.work/CLAUDE.md` — increment the Complete count for this group
 
-This is a bookkeeping step only — the WD status itself should already be COMPLETE
-from the retro step. This updates the index files.
+The manifest table is automatically synced by `work-resolve.sh` — do not
+update it manually.
 
 ---
 

@@ -199,7 +199,9 @@ Stage Completion table — implementation stages only:
 ### 4d — Update WD status
 
 Edit `.work/<group-slug>/WD-<nn>.md` — set `status: IMPLEMENTING`.
-Update `.work/<group-slug>/manifest.md` — update the WD's status in the table.
+
+The manifest table is automatically synced by `work-resolve.sh` — do not
+update it manually.
 
 ---
 

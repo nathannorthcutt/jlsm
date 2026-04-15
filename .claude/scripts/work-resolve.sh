@@ -167,6 +167,41 @@ for wd_id in "${!WD_FILE[@]}"; do
   done < <(work_fm_produces "${WD_FILE[$wd_id]}")
 done
 
+# ── Sync manifest table (single source of truth: WD frontmatter) ────────────
+
+MANIFEST_FILE="$GROUP_DIR/manifest.md"
+if [[ -f "$MANIFEST_FILE" ]]; then
+  # Build the updated WD table from computed state
+  NEW_TABLE="| WD | Title | Status | Domains | Deps | Produces |"
+  NEW_TABLE+=$'\n'"|----|-------|--------|---------|------|----------|"
+  for wd_id in $(echo "${!WD_FILE[@]}" | tr ' ' '\n' | sort); do
+    wd_file="${WD_FILE[$wd_id]}"
+    domains=$(work_fm "$wd_file" "domains" | tr -d '[]' | sed 's/,/, /g')
+    [[ -z "$domains" ]] && domains="—"
+    dep_count="${WD_DEP_COUNT[$wd_id]}"
+    # Summarize produces
+    produces=""
+    while IFS='|' read -r prod_type prod_path _ prod_kind; do
+      [[ -z "$prod_type" ]] && continue
+      if [[ -n "$produces" ]]; then produces+=", "; fi
+      produces+="$prod_type:$prod_path"
+    done < <(work_fm_produces "$wd_file")
+    [[ -z "$produces" ]] && produces="—"
+    NEW_TABLE+=$'\n'"| $wd_id | ${WD_TITLE[$wd_id]} | ${WD_STATUS[$wd_id]} | $domains | $dep_count | $produces |"
+  done
+
+  # Replace the table in manifest.md between the header row and the next
+  # blank line or section header. Use awk for reliable multi-line replacement.
+  awk -v new_table="$NEW_TABLE" '
+    /^\| WD / { in_table=1; print new_table; next }
+    in_table && /^\|/ { next }
+    in_table && !/^\|/ { in_table=0 }
+    { print }
+  ' "$MANIFEST_FILE" > "$MANIFEST_FILE.tmp" && mv "$MANIFEST_FILE.tmp" "$MANIFEST_FILE"
+
+  echo "[resolve] Synced manifest.md with computed status" >&2
+fi
+
 # ── Emit readiness report ────────────────────────────────────────────────────
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

@@ -202,20 +202,30 @@ Stage Completion table — specification mode only:
 ### 4c — Update WD status
 
 Edit `.work/<group-slug>/WD-<nn>.md` — set `status: SPECIFYING`.
-Update `.work/<group-slug>/manifest.md` — update the WD's status in the table.
+
+The manifest table is automatically synced by `work-resolve.sh` — do not
+update it manually.
 
 ---
 
-## Step 5 — Hand off to pipeline
+## Step 5 — Domain analysis
 
 ```
 Feature directory created: .feature/<slug>/
 Pipeline mode: specification (produce artifacts only)
 
 Scoping is pre-populated from the work definition — proceeding to domain
-analysis and spec authoring.
+analysis.
 ```
 Invoke `/feature-domains "<slug>"`.
+
+In specification mode, `/feature-domains` returns after domain analysis
+without chaining into spec authoring. It produces `domains.md` which
+identifies the specs to write.
+
+---
+
+## Step 5b — Sequential spec authoring
 
 **Spec authoring is mandatory.** Even for decisions-focused WDs, the
 architectural choices made in ADRs have behavioral implications that must
@@ -224,10 +234,53 @@ WHAT the system must do as a result. Without specs, the adversarial
 hardening and audit pipeline have nothing to falsify. Do not skip or
 bypass spec authoring for any WD type.
 
-**After spec authoring completes, stop.** Update the WD status to
-`SPECIFIED` in `.work/<group-slug>/WD-<nn>.md` and the manifest. Do not
-proceed to `/feature-retro` or `/feature-complete` — those run after
-implementation. Display:
+Read `domains.md` to identify the specs that need to be authored. For
+each spec to produce, **in sequence**:
+
+1. Invoke `/spec-author "<feature-id>" "<title>"` as a separate subagent.
+   Each invocation gets a clean context but reads previously registered
+   specs via the resolver — so spec 2 sees spec 1's requirements, spec 3
+   sees both. This is the compounding loop: each spec's falsification
+   catches contradictions with prior specs.
+
+2. After `/spec-author` completes, verify the spec is registered and in
+   APPROVED state via `.spec/registry/manifest.json`. If still DRAFT,
+   falsification was incomplete — stop and report the error.
+
+3. Proceed to the next spec.
+
+Display progress between specs:
+```
+Spec authoring: <completed>/<total>
+  ✓ F24 — Pool-Aware Block Size Configuration (APPROVED)
+  → F25 — Byte-Budget Block Cache (authoring...)
+```
+
+---
+
+## Step 6 — Verify specs and finalize WD status
+
+After all specs are authored, verify that every spec produced by this WD
+is in APPROVED state. Check `.spec/registry/manifest.json`.
+
+**If any spec is still DRAFT:** do NOT mark the WD as SPECIFIED.
+```
+⚠ Spec <ID> is still in DRAFT state — falsification incomplete.
+Run /spec-author "<feature-id>" "<title>" to complete adversarial review.
+```
+Stop and wait for the user to resolve.
+
+**If all specs are APPROVED:** update the WD:
+
+1. Edit `.work/<group-slug>/WD-<nn>.md` — set `status: SPECIFIED`
+
+The manifest table is automatically synced by `work-resolve.sh` — do not
+update it manually.
+
+Do NOT proceed to `/feature-retro` or `/feature-complete` — those run
+after implementation.
+
+Display:
 ```
 ───────────────────────────────────────────────
 📝 WORK PLAN complete · <group-slug> / WD-<nn>
