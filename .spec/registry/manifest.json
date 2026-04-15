@@ -15,12 +15,12 @@
     "storage": {
       "shard_path": "domains/storage/INDEX.md",
       "description": "memtable wal flush compaction object-store block cache manifest block-size byte-budget",
-      "feature_count": 3
+      "feature_count": 4
     },
     "encryption": {
       "shard_path": "domains/encryption/INDEX.md",
       "description": "aes gcm kms tmk sek key-derivation cipher block-encryption",
-      "feature_count": 1
+      "feature_count": 3
     },
     "query": {
       "shard_path": "domains/query/INDEX.md",
@@ -29,8 +29,8 @@
     },
     "engine": {
       "shard_path": "domains/engine/INDEX.md",
-      "description": "database engine table catalog schema partition",
-      "feature_count": 6
+      "description": "database engine table catalog schema partition transaction",
+      "feature_count": 14
     },
     "cluster-membership": {
       "shard_path": "domains/cluster-membership/INDEX.md",
@@ -41,6 +41,11 @@
       "shard_path": "domains/cluster-transport/INDEX.md",
       "description": "transport framing multiplexing connection NIO TCP wire-protocol stream-id backpressure",
       "feature_count": 3
+    },
+    "partitioning": {
+      "shard_path": "domains/partitioning/INDEX.md",
+      "description": "partition rebalancing ownership transfer drain catch-up epoch state-machine safety trigger policy weighted capacity affinity hotspot compaction-scheduling vector-pruning cross-partition transactions percolator snapshot-isolation replication raft consensus leader-election quorum snapshot learner migration cutover rollback",
+      "feature_count": 7
     }
   },
   "features": {
@@ -232,6 +237,120 @@
       "state": "DRAFT",
       "domains": [
         "serialization",
+        "storage"
+      ]
+    },
+    "F27": {
+      "latest_file": "domains/partitioning/F27-rebalancing-safety.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F28": {
+      "latest_file": "domains/partitioning/F28-rebalancing-policy.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F29": {
+      "latest_file": "domains/partitioning/F29-rebalancing-operations.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F30": {
+      "latest_file": "domains/partitioning/F30-partition-data-operations.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F31": {
+      "latest_file": "domains/partitioning/F31-cross-partition-transactions.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F32": {
+      "latest_file": "domains/partitioning/F32-partition-replication.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F33": {
+      "latest_file": "domains/partitioning/F33-table-migration.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F34": {
+      "latest_file": "domains/engine/F34-handle-lifecycle.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F35": {
+      "latest_file": "domains/engine/F35-cross-table-transactions.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F36": {
+      "latest_file": "domains/engine/F36-remote-serialization.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F37": {
+      "latest_file": "domains/engine/F37-catalog-operations.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F38": {
+      "latest_file": "domains/engine/F38-aggregation-query-merge.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F39": {
+      "latest_file": "domains/engine/F39-distributed-pagination.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F40": {
+      "latest_file": "domains/engine/F40-distributed-join-strategy.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F41": {
+      "latest_file": "domains/encryption/F41-encryption-lifecycle.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption",
+        "engine"
+      ]
+    },
+    "F42": {
+      "latest_file": "domains/encryption/F42-wal-encryption.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption",
         "storage"
       ]
     }

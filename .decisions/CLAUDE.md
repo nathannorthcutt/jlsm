@@ -19,19 +19,26 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
-| SSTable End-to-End Integrity | sstable-end-to-end-integrity | 2026-04-14 | Three-layer — fsync discipline + VarInt-prefixed blocks + per-section CRC32C |
-| Block Cache / Block Size Interaction | block-cache-block-size-interaction | 2026-04-14 | Per-entry byte-budget eviction via MemorySegment.byteSize() |
-| Automatic Backend Detection | automatic-backend-detection | 2026-04-14 | Pool-aware block size configuration — derive from ArenaBufferPool |
-| Continuous Re-Discovery | continuous-rediscovery | 2026-04-13 | Periodic loop + optional watchSeeds() for sub-second push-based discovery |
-| Membership View Stall Recovery | membership-view-stall-recovery | 2026-04-13 | Tiered Escalation — piggyback → anti-entropy → forced rejoin |
+| Index Access Pattern Leakage | index-access-pattern-leakage | 2026-04-14 | Low-Cost Mitigation Bundle — per-field HKDF + padding + leakage docs |
+| Unencrypted-to-Encrypted Migration | unencrypted-to-encrypted-migration | 2026-04-14 | Compaction-Driven Migration — same mechanism as key rotation |
+| WAL Entry Encryption | wal-entry-encryption | 2026-04-14 | Per-Record AES-GCM-256 with Sequence-Number Nonce |
+| Encryption Key Rotation | encryption-key-rotation | 2026-04-14 | Envelope Encryption + Compaction-Driven Re-Encryption |
+| Per-Field Key Binding | per-field-key-binding | 2026-04-14 | HKDF derivation from master key — automatic per-field isolation |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
-<!-- 67 items (was 64: +4 new from binary-field-type, -1 binary-field-type confirmed). Grouped by parent ADR for readability. -->
+<!-- 54 items (was 61: -6 confirmed, -1 closed from WD-09 encryption batch). Grouped by parent ADR for readability. -->
 
 | Problem | Slug | Deferred | Parent ADR |
 |---------|------|----------|------------|
-| Distributed Join Execution | distributed-join-execution | 2026-03-20 | scatter-gather-query-execution |
+| Shuffle/Repartition Joins | shuffle-repartition-joins | 2026-04-14 | distributed-join-execution |
+| Semi-Join Reduction | semi-join-reduction | 2026-04-14 | distributed-join-execution |
+| Query Planner Integration | query-planner-integration | 2026-04-14 | distributed-join-execution |
+| Join Ordering Optimization | join-ordering-optimization | 2026-04-14 | distributed-join-execution |
+| Secondary-Sort Pagination | secondary-sort-pagination | 2026-04-14 | limit-offset-pushdown |
+| Backward Pagination | backward-pagination | 2026-04-14 | limit-offset-pushdown |
+| DISTINCT Aggregate Decomposition | distinct-aggregate-decomposition | 2026-04-14 | aggregation-query-merge |
+| Holistic Aggregate Support | holistic-aggregate-support | 2026-04-14 | aggregation-query-merge |
 | Default LSM-Backed BlobStore | default-lsm-blob-store | 2026-04-13 | binary-field-type |
 | Blob Storage Strategy for Object Storage | blob-object-storage-strategy | 2026-04-13 | binary-field-type |
 | Blob Streaming API Design | blob-streaming-api | 2026-04-13 | binary-field-type |
@@ -40,32 +47,23 @@
 | Quarantine Resolution Policy | quarantine-resolution-policy | 2026-04-13 | string-to-bounded-string-migration |
 | Cross-Table Schema Migration | cross-table-schema-migration | 2026-04-13 | string-to-bounded-string-migration |
 | Authenticated Discovery | authenticated-discovery | 2026-03-30 | discovery-spi-design |
-| Encrypted Prefix/Wildcard Queries | encrypted-prefix-wildcard-queries | 2026-03-30 | encrypted-index-strategy |
-| Encrypted Fuzzy Matching | encrypted-fuzzy-matching | 2026-03-30 | encrypted-index-strategy |
-| Encrypted Cross-Field Joins | encrypted-cross-field-joins | 2026-03-30 | encrypted-index-strategy |
-| Index Access Pattern Leakage | index-access-pattern-leakage | 2026-03-30 | encrypted-index-strategy |
+| Encrypted Prefix/Wildcard Queries | encrypted-prefix-wildcard-queries | 2026-04-14 | encrypted-index-strategy |
+| Encrypted Fuzzy Matching | encrypted-fuzzy-matching | 2026-04-14 | encrypted-index-strategy |
+| Encrypted Cross-Field Joins | encrypted-cross-field-joins | 2026-04-14 | encrypted-index-strategy |
 | Handle Priority Levels | handle-priority-levels | 2026-03-30 | engine-api-surface-design |
 | Cross-Table Handle Budgets | cross-table-handle-budgets | 2026-03-30 | engine-api-surface-design |
 | Handle Timeout/TTL | handle-timeout-ttl | 2026-03-30 | engine-api-surface-design |
 | Cross-Table Transactions | cross-table-transactions | 2026-03-30 | engine-api-surface-design |
 | Remote Serialization Protocol | remote-serialization-protocol | 2026-03-30 | engine-api-surface-design |
-| Encryption Key Rotation | encryption-key-rotation | 2026-03-30 | field-encryption-api-design |
-| WAL Entry Encryption | wal-entry-encryption | 2026-03-30 | field-encryption-api-design |
-| Unencrypted-to-Encrypted Migration | unencrypted-to-encrypted-migration | 2026-03-30 | field-encryption-api-design |
-| Per-Field Key Binding | per-field-key-binding | 2026-03-30 | field-encryption-api-design |
 | Weighted Node Capacity | weighted-node-capacity | 2026-03-30 | partition-to-node-ownership |
 | Partition Affinity | partition-affinity | 2026-03-30 | partition-to-node-ownership |
 | Rebalancing Trigger Policy | rebalancing-trigger-policy | 2026-03-30 | partition-to-node-ownership |
 | Corruption Repair and Recovery | corruption-repair-recovery | 2026-04-11 | per-block-checksums |
-| Per-Field Pre-Encryption | per-field-pre-encryption | 2026-03-30 | pre-encrypted-document-signaling |
-| Pre-Encrypted Flag Persistence | pre-encrypted-flag-persistence | 2026-03-30 | pre-encrypted-document-signaling |
-| Client-Side Encryption SDK | client-side-encryption-sdk | 2026-03-30 | pre-encrypted-document-signaling |
+| Client-Side Encryption SDK | client-side-encryption-sdk | 2026-04-14 | pre-encrypted-document-signaling |
 | In-Flight Write Protection | in-flight-write-protection | 2026-03-30 | rebalancing-grace-period-strategy |
 | Partition Takeover Priority | partition-takeover-priority | 2026-03-30 | rebalancing-grace-period-strategy |
 | Concurrent WAL Replay Throttling | concurrent-wal-replay-throttling | 2026-03-30 | rebalancing-grace-period-strategy |
 | Un-WAL'd Memtable Data Loss | un-walled-memtable-data-loss | 2026-03-30 | rebalancing-grace-period-strategy |
-| Aggregation Query Merge | aggregation-query-merge | 2026-03-30 | scatter-gather-query-execution |
-| LIMIT/OFFSET Partition Pushdown | limit-offset-pushdown | 2026-03-30 | scatter-gather-query-execution |
 | Atomic Multi-Table DDL | atomic-multi-table-ddl | 2026-03-30 | table-catalog-persistence |
 | Catalog Replication | catalog-replication | 2026-03-30 | table-catalog-persistence |
 | Table Migration Protocol | table-migration-protocol | 2026-03-30 | table-catalog-persistence |
@@ -105,6 +103,7 @@
 | Ownership Lookup Optimization | ownership-lookup-optimization | 2026-04-13 | Premature optimization — epoch-keyed caching is O(1) hit, O(N) miss is ~10µs at 1000 nodes |
 | Parallel Large Cache Eviction | parallel-large-cache-eviction | 2026-04-13 | Non-issue at current scale — sequential eviction of 16 stripes is negligible |
 | Full MemorySegment Codec API | memorysegment-codec-api | 2026-04-14 | Subsumed by wal-compression — MemorySegment compress/decompress already added |
+| Pre-Encrypted Flag Persistence | pre-encrypted-flag-persistence | 2026-04-14 | Non-issue — write-side flag is intentionally ephemeral; per-field markers belong in client-side-encryption-sdk |
 
 ## Archived
-28 accepted decisions older than the 5 most recent: [history.md](history.md)
+34 accepted decisions older than the 5 most recent: [history.md](history.md)

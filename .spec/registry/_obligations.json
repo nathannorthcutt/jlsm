@@ -1,4 +1,16 @@
 {
   "version": 1,
-  "obligations": []
+  "obligations": [
+    {
+      "id": "OB-F33-01",
+      "spec": "F33",
+      "description": "Catalog metadata update during migration (R30-R35) depends on catalog-replication (WD-06, not yet specified). Requirements R30-R35 must be revisited when catalog-replication is specified.",
+      "blocked_by": "catalog-replication (WD-06)",
+      "affects": ["F33.R30", "F33.R31", "F33.R32", "F33.R33", "F33.R34", "F33.R35"],
+      "status": "resolved",
+      "created": "2026-04-14",
+      "resolved_by": "F37",
+      "resolved_date": "2026-04-14"
+    }
+  ]
 }

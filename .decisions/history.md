@@ -4,6 +4,12 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| Per-Field Pre-Encryption | per-field-pre-encryption | 2026-04-14 | Bitset Flag — long preEncryptedBitset in JlsmDocument |
+| Block Cache / Block Size Interaction | block-cache-block-size-interaction | 2026-04-14 | Per-entry byte-budget eviction via MemorySegment.byteSize() |
+| SSTable End-to-End Integrity | sstable-end-to-end-integrity | 2026-04-14 | Three-layer — fsync discipline + VarInt-prefixed blocks + per-section CRC32C |
+| Aggregation Query Merge | aggregation-query-merge | 2026-04-14 | Two-Phase Partial Aggregation with Cardinality Guard |
+| LIMIT/OFFSET Partition Pushdown | limit-offset-pushdown | 2026-04-14 | Top-N Pushdown with Keyset Pagination |
+| Distributed Join Execution | distributed-join-execution | 2026-04-14 | Co-Partitioned + Broadcast two-tier strategy |
 | Slow Node Detection | slow-node-detection | 2026-04-13 | Composite — Phi Bands + Peer Comparison + Request Latency |
 | Piggybacked State Exchange | piggybacked-state-exchange | 2026-04-13 | Fixed-Field Heartbeat Metadata — 10 bytes, O(1) parsing, version byte |
 | Scatter Backpressure | scatter-backpressure | 2026-04-13 | Credit-Based + Flow API composite — hard memory cap via ArenaBufferPool, non-blocking demand |
@@ -40,3 +46,6 @@
 | Codec Thread Safety | codec-thread-safety | 2026-04-10 | Stateless and thread-safe contract on CompressionCodec interface |
 | Max Compressed Length | max-compressed-length | 2026-04-10 | Add maxCompressedLength(int) default method to CompressionCodec |
 | Per-Block Checksums | per-block-checksums | 2026-04-10 | CRC32C per-block checksum in CompressionMap.Entry |
+| Continuous Re-Discovery | continuous-rediscovery | 2026-04-13 | Periodic loop + optional watchSeeds() for sub-second push-based discovery |
+| Membership View Stall Recovery | membership-view-stall-recovery | 2026-04-13 | Tiered Escalation — piggyback → anti-entropy → forced rejoin |
+| Automatic Backend Detection | automatic-backend-detection | 2026-04-14 | Pool-aware block size configuration — derive from ArenaBufferPool |

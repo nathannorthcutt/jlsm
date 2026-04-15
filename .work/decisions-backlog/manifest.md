@@ -7,17 +7,17 @@
 
 ## Work Definitions
 
-| WD | Title | Status | Decisions | Effort |
-|----|-------|--------|-----------|--------|
-| WD-01 | Schema & Field Types | SPECIFIED | 4 | 4 minor |
-| WD-02 | Storage & Compression | SPECIFIED | 10 | 2 gap-fill, 6 minor, 2 full |
-| WD-03 | Cache | SPECIFIED | 2 | 2 minor |
-| WD-04 | Vector | SPECIFIED | 2 | 2 minor |
-| WD-05 | Cluster Networking & Discovery | SPECIFIED | 12 | 2 gap-fill, 9 minor, 1 full |
-| WD-06 | Engine API & Catalog | READY | 8 | 1 gap-fill, 3 minor, 4 full |
-| WD-07 | Partitioning & Rebalancing | READY | 13 | 1 gap-fill, 9 minor, 3 full |
-| WD-08 | Query Execution | READY | 3 | 2 minor, 1 full |
-| WD-09 | Encryption & Security | READY | 11 | 1 gap-fill, 4 minor, 6 full |
+| WD | Title | Status | Domains | Deps | Produces |
+|----|-------|--------|---------|------|----------|
+| WD-01 | Schema & Field Types | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr: |
+| WD-02 | Storage & Compression | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-03 | Cache | SPECIFIED | decisions | 0 | adr:, adr: |
+| WD-04 | Vector | SPECIFIED | decisions | 0 | adr:, adr: |
+| WD-05 | Cluster Networking & Discovery | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-06 | Engine API & Catalog | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-07 | Partitioning & Rebalancing | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-08 | Query Execution | SPECIFIED | decisions | 0 | adr:, adr:, adr: |
+| WD-09 | Encryption & Security | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
 
 **Total:** 65 decisions (11 gap-fill, 35 minor, 19 full)
 
