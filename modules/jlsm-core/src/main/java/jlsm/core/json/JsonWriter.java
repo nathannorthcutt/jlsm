@@ -197,7 +197,7 @@ public final class JsonWriter {
                 case '\r' -> sb.append("\\r");
                 case '\t' -> sb.append("\\t");
                 default -> {
-                    if (c < 0x20) {
+                    if (c < 0x20 || Character.isSurrogate(c)) {
                         sb.append("\\u");
                         sb.append(String.format("%04x", (int) c));
                     } else {
@@ -210,7 +210,7 @@ public final class JsonWriter {
     }
 
     private static void appendIndent(StringBuilder sb, int level, int spacesPerLevel) {
-        int total = level * spacesPerLevel;
+        int total = Math.multiplyExact(level, spacesPerLevel);
         for (int i = 0; i < total; i++) {
             sb.append(' ');
         }

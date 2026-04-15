@@ -1,23 +1,34 @@
 ---
 problem: "ownership-lookup-optimization"
-date: "2026-03-30"
+date: "2026-04-13"
 version: 1
-status: "deferred"
+status: "closed"
 ---
 
-# Ownership Lookup Optimization — Deferred
+# Ownership Lookup Optimization — Closed (Won't Pursue)
 
 ## Problem
-Hot-path lookup optimization beyond simple epoch-keyed caching.
+Hot-path lookup optimization for partition→node ownership mapping beyond simple
+epoch-keyed caching.
 
-## Why Deferred
-Scoped out during `partition-to-node-ownership` decision. Simple epoch-keyed caching is sufficient initially.
+## Decision
+**Will not pursue.** This topic is explicitly ruled out and should not be raised again.
 
-## Resume When
-When `partition-to-node-ownership` implementation is stable and this concern becomes blocking.
+## Reason
+Premature optimization. The parent ADR (partition-to-node-ownership) specifies epoch-keyed
+caching: the HRW result is cached and invalidated only when the membership view epoch
+changes. Cache hits are O(1). Cache misses (O(N) HRW recomputation where N = number of
+nodes) take ~10µs at 1000 nodes with splitmix64 hashing and occur only on membership view
+changes — rare events (node join/leave). There is no evidence of a performance bottleneck.
 
-## What Is Known So Far
-See `.decisions/partition-to-node-ownership/adr.md` for the architectural context that excluded this concern.
+## Context
+- Parent ADR: `.decisions/partition-to-node-ownership/adr.md` — HRW with epoch-keyed caching
+- HRW computation: O(N) hash comparisons per partition on cache miss
+- At 1000 nodes: ~1000 × 10ns = ~10µs per cache miss
+- Cache miss frequency: only on membership epoch change (rare — node join/leave events)
 
-## Next Step
-Run `/architect "ownership-lookup-optimization"` when ready to evaluate.
+## Conditions for Reopening
+If profiling shows the O(N) cache miss path is a measurable bottleneck (e.g., during
+rapid cluster scaling with frequent membership changes causing high epoch churn), reopen
+with `/architect "ownership-lookup-optimization"` and evaluate precomputed ownership tables,
+consistent hashing rings, or incremental HRW updates.

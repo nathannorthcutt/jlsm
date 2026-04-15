@@ -1,24 +1,31 @@
 ---
 problem: "cross-sst-dictionary-sharing"
-date: "2026-04-12"
-version: 1
+date: "2026-04-14"
+version: 2
 status: "deferred"
 depends_on: ["codec-dictionary-support"]
 ---
 
-# Cross-SST Dictionary Sharing — Deferred
+# Cross-SST Dictionary Sharing — Re-Deferred
 
 ## Problem
-Dictionary sharing across SSTable files — each file currently trains its own dictionary. Sharing dictionaries across files in the same compaction level could reduce storage overhead and improve cache efficiency.
+Dictionary sharing across SSTable files — each file currently trains its own
+dictionary. Sharing could reduce storage overhead and improve cache efficiency.
 
 ## Why Deferred
-Scoped out during `codec-dictionary-support` decision. Per-SST dictionaries are simpler and adapt to each file's data distribution.
+codec-dictionary-support (confirmed 2026-04-12) defines per-SST dictionaries.
+That feature has not been implemented yet, let alone benchmarked. Cross-file
+sharing adds lifecycle complexity (dictionary store, ID-based routing) that is
+only justified if per-SST dictionaries prove to have excessive overhead.
 
 ## Resume When
-When `codec-dictionary-support` implementation is stable and per-SST dictionaries prove to have excessive overhead or poor cache behavior.
+When codec-dictionary-support is implemented and benchmarks show per-SST
+dictionary overhead (storage or cache) is a measurable problem.
 
 ## What Is Known So Far
-RocksDB uses per-SST dictionaries. Cross-file sharing would require a dictionary store and ID-based routing. See `.decisions/codec-dictionary-support/adr.md` and `.kb/algorithms/compression/zstd-dictionary-compression.md`.
+- KB: `.kb/algorithms/compression/zstd-dictionary-compression.md`
+- RocksDB uses per-SST dictionaries — no evidence cross-file sharing is needed
+- codec-dictionary-support ADR: writer-orchestrated, per-SST lifecycle
 
 ## Next Step
-Run `/architect "cross-sst-dictionary-sharing"` when ready to evaluate.
+Run `/architect "cross-sst-dictionary-sharing"` when benchmarks demonstrate the need.

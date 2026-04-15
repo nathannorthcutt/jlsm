@@ -73,6 +73,8 @@ public final class JsonlReader implements AutoCloseable {
     private final InputStream input;
     private final ErrorMode errorMode;
     private final Consumer<ParseError> errorCallback;
+    private boolean streamCalled;
+    private BufferedReader buffered;
 
     /**
      * Creates a JSONL reader with FAIL_FAST error mode and no callback.
@@ -109,8 +111,14 @@ public final class JsonlReader implements AutoCloseable {
      * @return a lazy stream of parsed JSON values
      */
     public Stream<JsonValue> stream() {
-        final var buffered = new BufferedReader(
-                new InputStreamReader(input, StandardCharsets.UTF_8));
+        if (streamCalled) {
+            throw new IllegalStateException("stream() has already been called — "
+                    + "JsonlReader is single-use because the underlying InputStream is stateful");
+        }
+        streamCalled = true;
+
+        this.buffered = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        final var buffered = this.buffered;
 
         Spliterator<JsonValue> spliterator = new Spliterators.AbstractSpliterator<>(Long.MAX_VALUE,
                 Spliterator.ORDERED | Spliterator.NONNULL) {
@@ -162,6 +170,12 @@ public final class JsonlReader implements AutoCloseable {
      */
     @Override
     public void close() throws Exception {
-        input.close();
+        try {
+            if (buffered != null) {
+                buffered.close();
+            }
+        } finally {
+            input.close();
+        }
     }
 }

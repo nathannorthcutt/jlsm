@@ -15,16 +15,47 @@
 | Domain | Path | Description | Specs |
 |--------|------|-------------|-------|
 | vector-indexing | domains/vector-indexing/ | vector search hnsw ivf-flat ann similarity float16 precision encoding | 2 |
-| serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer | 5 |
-| storage | domains/storage/ | memtable wal flush compaction object-store block cache manifest | 1 |
-| encryption | domains/encryption/ | aes gcm kms tmk sek key-derivation cipher block-encryption | 1 |
+| serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer integrity checksum varint | 6 |
+| storage | domains/storage/ | memtable wal flush compaction object-store block cache manifest block-size byte-budget | 4 |
+| encryption | domains/encryption/ | aes gcm kms tmk sek key-derivation cipher block-encryption sdk prefix fuzzy | 6 |
 | query | domains/query/ | sql query plan statistics join index scan filter | 2 |
-| engine | domains/engine/ | database engine table catalog schema partition | 5 |
+| engine | domains/engine/ | database engine table catalog schema partition transaction | 15 |
+| cluster-membership | domains/cluster-membership/ | membership protocol discovery rediscovery health stall recovery slow-node detection heartbeat metadata | 2 |
+| cluster-transport | domains/cluster-transport/ | transport framing multiplexing connection NIO TCP wire-protocol stream-id backpressure | 3 |
+| partitioning | domains/partitioning/ | partition rebalancing ownership transfer drain catch-up epoch state-machine safety trigger policy weighted capacity affinity takeover priority throttling hotspot compaction-scheduling vector-pruning cross-partition transactions replication raft consensus leader-election quorum snapshot migration cutover rollback write-distributor prefix-hash corruption repair quarantine scrubbing anti-entropy | 9 |
 
 ## Recently Added (last 10)
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-15 | F48 | partitioning, storage | Corruption Repair and Recovery |
+| 2026-04-15 | F47 | encryption | Encrypted Fuzzy Matcher |
+| 2026-04-15 | F46 | encryption | Encrypted Prefix Index |
+| 2026-04-15 | F45 | encryption, engine | Client-Side Encryption SDK |
+| 2026-04-15 | F44 | engine | Scan Lease GC Watermark |
+| 2026-04-15 | F43 | partitioning | Sequential Insert Hotspot Mitigation |
+| 2026-04-14 | F42 | encryption, storage | WAL Encryption |
+| 2026-04-14 | F41 | encryption, engine | Encryption Lifecycle |
+| 2026-04-14 | F40 | engine | Distributed Join Strategy |
+| 2026-04-14 | F39 | engine | Distributed Pagination |
+| 2026-04-14 | F38 | engine | Aggregation Query Merge |
+| 2026-04-14 | F37 | engine | Catalog Operations |
+| 2026-04-14 | F36 | engine | Remote Serialization |
+| 2026-04-14 | F35 | engine | Cross-Table Transactions |
+| 2026-04-14 | F32 | partitioning | Partition Replication |
+| 2026-04-14 | F31 | partitioning | Cross-Partition Transactions |
+| 2026-04-14 | F30 | partitioning | Partition Data Operations |
+| 2026-04-14 | F29 | partitioning | Rebalancing Operations |
+| 2026-04-14 | F28 | partitioning | Rebalancing Policy |
+| 2026-04-14 | F27 | partitioning | Rebalancing Safety |
+| 2026-04-14 | F26 | serialization, storage | SSTable End-to-End Integrity |
+| 2026-04-14 | F25 | storage | Byte-Budget Block Cache |
+| 2026-04-14 | F24 | storage | Pool-Aware Block Size Configuration |
+| 2026-04-14 | F23 | cluster-membership | Cluster Health & Recovery |
+| 2026-04-14 | F22 | cluster-membership | Continuous Rediscovery |
+| 2026-04-14 | F21 | cluster-transport | Scatter-Gather Flow Control |
+| 2026-04-14 | F20 | cluster-transport | Transport Traffic Priority |
+| 2026-04-14 | F19 | cluster-transport | Multiplexed Transport Framing |
 | 2026-04-12 | F18 | serialization, storage | ZSTD Dictionary Compression with Per-Level Codec Policy |
 | 2026-04-12 | F17 | serialization, storage | WAL Compression with MemorySegment Codec API |
 | 2026-04-11 | F16 | serialization, storage | SSTable v3 Format Upgrade |

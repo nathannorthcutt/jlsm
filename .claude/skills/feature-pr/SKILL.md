@@ -32,10 +32,13 @@ If a previous PR draft exists in `.feature/<slug>/pr-draft.md`:
 A PR draft already exists for '<slug>'.
 Draft: .feature/<slug>/pr-draft.md
 
-  Type **yes**  to proceed to PR creation  ·  or: regenerate
 ```
-If "regenerate": proceed to regenerate the draft.
-If "yes": skip to Step 6 — PR creation (attempt to create the PR from the existing draft).
+Use AskUserQuestion with options:
+  - "Proceed to PR"
+  - "Regenerate"
+
+If "Regenerate": proceed to regenerate the draft.
+If "Proceed to PR": skip to Step 6 — PR creation (attempt to create the PR from the existing draft).
 
 ---
 
@@ -116,15 +119,17 @@ Source & tests:
   M src/auth/session.ts
   ? tests/auth/test-session.ts
 
-These should be included in your PR. Want me to stage them?
-  yes  — stage all listed files
-  pick — let me choose which to stage
-  skip — proceed without staging (I'll handle it manually)
+These should be included in your PR.
+
+Use AskUserQuestion with options:
+  - "Stage all"
+  - "Let me pick"
+  - "Skip (I'll handle it manually)"
 ```
 
-**If "yes":** run `git add` for all listed files. Report what was staged.
-**If "pick":** present numbered list, user picks by number. Stage selected.
-**If "skip":** proceed to Step 1. Note in the PR description that uncommitted
+**If "Stage all":** run `git add` for all listed files. Report what was staged.
+**If "Let me pick":** present numbered list, user picks by number. Stage selected.
+**If "Skip":** proceed to Step 1. Note in the PR description that uncommitted
 files were detected (so the reviewer knows to check).
 
 ### If no uncommitted files found
@@ -229,11 +234,14 @@ Title: <title>
 
 <checklist>
 ─────────────────────────────────────────────────────────────
-  Type **yes**  to finalize this draft  ·  or: describe adjustments
 ─────────────────────────────────────────────────────────────
 ```
 
-Iterate on feedback. When the user types **yes**, write to disk.
+Use AskUserQuestion with options:
+  - "Finalize"
+  - "Describe adjustments" (Other — accepts custom input)
+
+Iterate on feedback. When the user chooses "Finalize", write to disk.
 
 ---
 
@@ -373,12 +381,15 @@ When the PR merges, run:
 A retrospective captures what worked and what didn't while the feature is fresh.
 It writes back to the KB and decisions store — making the next feature better.
 
-  Type **yes**  to run /feature-retro now  ·  or: skip
 ───────────────────────────────────────────────
 ```
 
-If "yes": invoke `/feature-retro "<slug>"` as a sub-agent immediately.
-If "skip": stop.
+Use AskUserQuestion with options:
+  - "Run retro now"
+  - "Skip"
+
+If "Run retro now": invoke `/feature-retro "<slug>"` as a sub-agent immediately.
+If "Skip": stop.
 
 **If `gh` is available:**
 
@@ -389,11 +400,13 @@ Display:
   Tokens : <TOKEN_USAGE>
 Draft: .feature/<slug>/pr-draft.md
 
-  Type: create  to open the PR now via gh  ·  or: skip
+Use AskUserQuestion with options:
+  - "Create PR now"
+  - "Skip"
 ───────────────────────────────────────────────
 ```
 
-If "skip":
+If "Skip":
 ```
 When you're ready:
   gh pr create --title "<title>" --body-file .feature/<slug>/pr-draft.md
@@ -403,7 +416,7 @@ When the PR merges, run:
 ```
 Stop.
 
-If "create":
+If "Create PR now":
 
 Run:
 ```
@@ -431,12 +444,15 @@ When the PR merges:
 A retrospective captures what worked and what didn't while the feature is fresh.
 It writes back to the KB and decisions store — making the next feature better.
 
-  Type **yes**  to run /feature-retro now  ·  or: skip
 ───────────────────────────────────────────────
 ```
 
-If "yes": invoke `/feature-retro "<slug>"` as a sub-agent immediately.
-If "skip": stop.
+Use AskUserQuestion with options:
+  - "Run retro now"
+  - "Skip"
+
+If "Run retro now": invoke `/feature-retro "<slug>"` as a sub-agent immediately.
+If "Skip": stop.
 
 If `gh pr create` fails (e.g. branch not pushed, no remote): display the error
 and fall back to the manual instructions above. Do not retry automatically.

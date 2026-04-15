@@ -45,6 +45,11 @@ public final class PanamaStage1 {
         int count = 0;
         boolean inString = false;
 
+        // Carry: number of trailing backslashes from the previous block.
+        // Needed so that computeEscapedQuotes can account for backslash runs
+        // that span a 64-byte block boundary.
+        int prevBlockTrailingBackslashes = 0;
+
         // Process 64-byte blocks using bitmask approach with CLMUL
         int blockStart = 0;
         while (blockStart + 64 <= len) {
@@ -67,7 +72,9 @@ public final class PanamaStage1 {
 
             // Compute escaped quotes: a quote is escaped if preceded by an odd
             // number of backslashes. We need to find backslash runs and determine parity.
-            long escapedQuotes = computeEscapedQuotes(backslashBits, quoteBits);
+            // Pass the carry from the previous block so cross-boundary runs are counted.
+            long escapedQuotes = computeEscapedQuotes(backslashBits, quoteBits,
+                    prevBlockTrailingBackslashes);
             long unescapedQuotes = quoteBits & ~escapedQuotes;
 
             // Use carry-less multiply to compute prefix-XOR of unescaped quotes.
@@ -100,11 +107,31 @@ public final class PanamaStage1 {
                 inString = !inString;
             }
 
+            // Compute trailing backslash count for carry to next block/tail.
+            // Count consecutive set bits from bit 63 downward in backslashBits.
+            int trailingBs = 0;
+            for (int k = 63; k >= 0; k--) {
+                if ((backslashBits & (1L << k)) != 0) {
+                    trailingBs++;
+                } else {
+                    break;
+                }
+            }
+            prevBlockTrailingBackslashes = trailingBs;
+
             blockStart += 64;
         }
 
-        // Scalar tail for remaining bytes
-        for (int i = blockStart; i < len; i++) {
+        // Scalar tail for remaining bytes.
+        // If the last full block ended with an odd-length trailing backslash run,
+        // the first byte of the tail is escaped and must be skipped.
+        int tailStart = blockStart;
+        if (prevBlockTrailingBackslashes > 0 && (prevBlockTrailingBackslashes & 1) != 0
+                && tailStart < len) {
+            // The last backslash of the previous block escapes the first byte of the tail.
+            tailStart++;
+        }
+        for (int i = tailStart; i < len; i++) {
             byte b = input[i];
             if (inString) {
                 if (b == '\\') {
@@ -155,9 +182,15 @@ public final class PanamaStage1 {
 
     /**
      * Computes which quote bits are escaped (preceded by odd number of backslashes).
+     *
+     * @param backslashBits bitmask of backslash positions in this block
+     * @param quoteBits bitmask of quote positions in this block
+     * @param prevTrailingBackslashes number of consecutive trailing backslashes from the previous
+     *            block (0 if this is the first block)
      */
-    private static long computeEscapedQuotes(long backslashBits, long quoteBits) {
-        if (backslashBits == 0L) {
+    private static long computeEscapedQuotes(long backslashBits, long quoteBits,
+            int prevTrailingBackslashes) {
+        if (backslashBits == 0L && prevTrailingBackslashes == 0) {
             return 0L;
         }
 
@@ -167,7 +200,7 @@ public final class PanamaStage1 {
         long bits = quoteBits;
         while (bits != 0) {
             int qPos = Long.numberOfTrailingZeros(bits);
-            // Count consecutive backslashes before this quote
+            // Count consecutive backslashes before this quote within this block
             int bsCount = 0;
             for (int k = qPos - 1; k >= 0; k--) {
                 if ((backslashBits & (1L << k)) != 0) {
@@ -175,6 +208,11 @@ public final class PanamaStage1 {
                 } else {
                     break;
                 }
+            }
+            // If the backslash run extends to position 0 of this block, add the
+            // trailing backslash count carried from the previous block.
+            if (bsCount == qPos) {
+                bsCount += prevTrailingBackslashes;
             }
             if ((bsCount & 1) != 0) {
                 escaped |= (1L << qPos);

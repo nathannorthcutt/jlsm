@@ -13,11 +13,22 @@
 | Engine clustering | engine-clustering | 2026-03-20 | planning complete | work-plan.md written, 22 stubs created |
 | JSON-only SIMD on-demand + JSONL streaming | json-only-simd-jsonl | 2026-04-10 | planning complete | work-plan.md written, 16 stubs created |
 | SSTable v3 format upgrade | sstable-v3-format-upgrade | 2026-04-11 | planning complete | work-plan.md written, 1 stub created |
+| WD-02 Storage & Compression | decisions-backlog--wd-02 | 2026-04-14 | spec-authoring complete | 10 decisions resolved (3 confirmed, 1 closed, 1 re-deferred, 5 perf-gated re-deferred); F24-F26 specs |
+| WD-05 Cluster Networking & Discovery | decisions-backlog--wd-05 | 2026-04-13 | spec-authoring complete | 12 decisions resolved (7 confirmed, 4 closed, 1 re-deferred); F19-F23 specs |
+| WD-06 Engine API & Catalog | decisions-backlog--wd-06 | 2026-04-14 | spec-authoring complete | 7 decisions specified across 4 specs (F34-F37); F37 resolves OB-F33-01 |
+| WD-07 Partitioning & Rebalancing | decisions-backlog--wd-07 | 2026-04-14 | spec-authoring complete | 13 decisions specified across 7 specs (F27-F33); OB-F33-01 resolved by F37 |
+| WD-08 Query Execution | decisions-backlog--wd-08 | 2026-04-14 | spec-authoring complete | 3 decisions confirmed across 3 specs (F38-F40) |
+| WD-09 Encryption & Security | decisions-backlog--wd-09 | 2026-04-14 | spec-authoring complete | 11 decisions (6 confirmed, 4 re-deferred, 1 closed); F41-F42 specs |
+| WD-11 Partition Optimization | decisions-backlog--wd-11 | 2026-04-15 | spec-authoring complete | 3 decisions (3 accepted); F43 spec + F30 R20-R63 |
+| WD-10 Rebalancing Safety & Recovery | decisions-backlog--wd-10 | 2026-04-15 | spec-authoring complete | 5 decisions (5 accepted); F48 spec + F27/F29/F32 |
+| WD-13 Catalog & Scan Lifecycle | decisions-backlog--wd-13 | 2026-04-15 | spec-authoring complete | 4 decisions (4 accepted); F44 spec + F39/F37/F33 |
+| WD-12 Encrypted Query Capabilities | decisions-backlog--wd-12 | 2026-04-15 | spec-authoring complete | 4 decisions (3 accepted, 1 re-deferred); F45-F47 specs |
 
 ## Completed / Archived
 
 | Feature | Slug | Completed | Archive |
 |---------|------|-----------|---------|
+| ZSTD dictionary compression + per-level codec policy | zstd-dictionary-compression-per-level-codec-policy | 2026-04-12 | .feature/_archive/zstd-dictionary-compression-per-level-codec-policy/ |
 | WAL compression + MemorySegment codec API | wal-compression-codec-api | 2026-04-12 | .feature/_archive/wal-compression-codec-api/ |
 | Field-level in-memory encryption | encrypt-memory-data | 2026-03-19 | .feature/_archive/encrypt-memory-data/ |
 | Extract core encryption primitives | extract-core-encryption | 2026-03-19 | .feature/_archive/extract-core-encryption/ |

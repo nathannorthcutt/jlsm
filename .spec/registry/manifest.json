@@ -9,18 +9,18 @@
     },
     "serialization": {
       "shard_path": "domains/serialization/INDEX.md",
-      "description": "encoding decoding sstable document serializer binary format footer",
-      "feature_count": 7
+      "description": "encoding decoding sstable document serializer binary format footer integrity checksum varint",
+      "feature_count": 8
     },
     "storage": {
       "shard_path": "domains/storage/INDEX.md",
-      "description": "memtable wal flush compaction object-store block cache manifest",
-      "feature_count": 1
+      "description": "memtable wal flush compaction object-store block cache manifest block-size byte-budget",
+      "feature_count": 4
     },
     "encryption": {
       "shard_path": "domains/encryption/INDEX.md",
       "description": "aes gcm kms tmk sek key-derivation cipher block-encryption",
-      "feature_count": 1
+      "feature_count": 6
     },
     "query": {
       "shard_path": "domains/query/INDEX.md",
@@ -29,8 +29,23 @@
     },
     "engine": {
       "shard_path": "domains/engine/INDEX.md",
-      "description": "database engine table catalog schema partition",
-      "feature_count": 6
+      "description": "database engine table catalog schema partition transaction",
+      "feature_count": 15
+    },
+    "cluster-membership": {
+      "shard_path": "domains/cluster-membership/INDEX.md",
+      "description": "membership protocol discovery rediscovery health stall recovery slow-node detection heartbeat metadata",
+      "feature_count": 2
+    },
+    "cluster-transport": {
+      "shard_path": "domains/cluster-transport/INDEX.md",
+      "description": "transport framing multiplexing connection NIO TCP wire-protocol stream-id backpressure",
+      "feature_count": 3
+    },
+    "partitioning": {
+      "shard_path": "domains/partitioning/INDEX.md",
+      "description": "partition rebalancing ownership transfer drain catch-up epoch state-machine safety trigger policy weighted capacity affinity hotspot compaction-scheduling vector-pruning cross-partition transactions percolator snapshot-isolation replication raft consensus leader-election quorum snapshot learner migration cutover rollback corruption repair quarantine scrubbing anti-entropy",
+      "feature_count": 9
     }
   },
   "features": {
@@ -165,6 +180,221 @@
       "state": "DRAFT",
       "domains": [
         "serialization",
+        "storage"
+      ]
+    },
+    "F19": {
+      "latest_file": "domains/cluster-transport/F19-multiplexed-transport-framing.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-transport"
+      ]
+    },
+    "F20": {
+      "latest_file": "domains/cluster-transport/F20-transport-traffic-priority.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-transport"
+      ]
+    },
+    "F21": {
+      "latest_file": "domains/cluster-transport/F21-scatter-gather-flow-control.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-transport"
+      ]
+    },
+    "F22": {
+      "latest_file": "domains/cluster-membership/F22-continuous-rediscovery.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-membership"
+      ]
+    },
+    "F23": {
+      "latest_file": "domains/cluster-membership/F23-cluster-health-and-recovery.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-membership"
+      ]
+    },
+    "F24": {
+      "latest_file": "domains/storage/F24-pool-aware-block-size.md",
+      "state": "DRAFT",
+      "domains": [
+        "storage"
+      ]
+    },
+    "F25": {
+      "latest_file": "domains/storage/F25-byte-budget-block-cache.md",
+      "state": "DRAFT",
+      "domains": [
+        "storage"
+      ]
+    },
+    "F26": {
+      "latest_file": "domains/serialization/F26-sstable-end-to-end-integrity.md",
+      "state": "DRAFT",
+      "domains": [
+        "serialization",
+        "storage"
+      ]
+    },
+    "F27": {
+      "latest_file": "domains/partitioning/F27-rebalancing-safety.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F28": {
+      "latest_file": "domains/partitioning/F28-rebalancing-policy.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F29": {
+      "latest_file": "domains/partitioning/F29-rebalancing-operations.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F30": {
+      "latest_file": "domains/partitioning/F30-partition-data-operations.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F31": {
+      "latest_file": "domains/partitioning/F31-cross-partition-transactions.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F32": {
+      "latest_file": "domains/partitioning/F32-partition-replication.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F33": {
+      "latest_file": "domains/partitioning/F33-table-migration.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F34": {
+      "latest_file": "domains/engine/F34-handle-lifecycle.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F35": {
+      "latest_file": "domains/engine/F35-cross-table-transactions.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F36": {
+      "latest_file": "domains/engine/F36-remote-serialization.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F37": {
+      "latest_file": "domains/engine/F37-catalog-operations.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F38": {
+      "latest_file": "domains/engine/F38-aggregation-query-merge.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F39": {
+      "latest_file": "domains/engine/F39-distributed-pagination.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F40": {
+      "latest_file": "domains/engine/F40-distributed-join-strategy.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F41": {
+      "latest_file": "domains/encryption/F41-encryption-lifecycle.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption",
+        "engine"
+      ]
+    },
+    "F42": {
+      "latest_file": "domains/encryption/F42-wal-encryption.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption",
+        "storage"
+      ]
+    },
+    "F43": {
+      "latest_file": "domains/partitioning/F43-sequential-insert-hotspot-mitigation.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning"
+      ]
+    },
+    "F44": {
+      "latest_file": "domains/engine/F44-scan-lease-gc-watermark.md",
+      "state": "APPROVED",
+      "domains": [
+        "engine"
+      ]
+    },
+    "F45": {
+      "latest_file": "domains/encryption/F45-client-side-encryption-sdk.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption",
+        "engine"
+      ]
+    },
+    "F46": {
+      "latest_file": "domains/encryption/F46-encrypted-prefix-index.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption"
+      ]
+    },
+    "F47": {
+      "latest_file": "domains/encryption/F47-encrypted-fuzzy-matcher.md",
+      "state": "APPROVED",
+      "domains": [
+        "encryption"
+      ]
+    },
+    "F48": {
+      "latest_file": "domains/partitioning/F48-corruption-repair-recovery.md",
+      "state": "APPROVED",
+      "domains": [
+        "partitioning",
         "storage"
       ]
     }

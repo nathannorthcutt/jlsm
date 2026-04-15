@@ -1,6 +1,6 @@
 ---
 problem: "authenticated-discovery"
-date: "2026-03-30"
+date: "2026-04-13"
 version: 1
 status: "deferred"
 ---
@@ -8,16 +8,26 @@ status: "deferred"
 # Authenticated Discovery — Deferred
 
 ## Problem
-Authenticated discovery (TLS, tokens) — implementation concern, not SPI concern.
+Should cluster nodes authenticate during discovery/bootstrap, and if so, what
+mechanism (mTLS, shared token, TOFU)?
 
 ## Why Deferred
-Scoped out during `discovery-spi-design` decision. Implementation concern, not SPI concern.
+Transport TLS is not yet implemented. The connection-pooling ADR explicitly states
+"assume plain TCP initially." Authentication is orthogonal to the discovery SPI —
+it's a transport-layer concern layered on top of TCP connections. Evaluating auth
+strategies before the transport has TLS support would produce a decision without
+an implementation target.
 
 ## Resume When
-When `discovery-spi-design` implementation is stable and this concern becomes blocking.
+When transport TLS support is implemented and the cluster needs to operate on
+untrusted networks.
 
 ## What Is Known So Far
-See `.decisions/discovery-spi-design/adr.md` for the architectural context that excluded this concern.
+KB research at `.kb/distributed-systems/cluster-membership/service-discovery-patterns.md`
+covers mTLS, shared-token (HMAC), and TOFU strategies with a comparison matrix.
+Production systems: CockroachDB requires mTLS by default, Cassandra makes it optional,
+Consul uses gossip encryption + mTLS. The recommendation for jlsm will likely be
+mTLS for production with shared-token as a simpler alternative for small clusters.
 
 ## Next Step
-Run `/architect "authenticated-discovery"` when ready to evaluate.
+Run `/architect "authenticated-discovery"` when transport TLS is available.

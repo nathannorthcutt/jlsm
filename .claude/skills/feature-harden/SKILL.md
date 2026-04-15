@@ -1,6 +1,7 @@
 ---
 description: "Adversarial test hardening — domain-lens behavioral attacks on contracts before implementation"
 argument-hint: "<feature-slug> [--unit <WU-N>] [--lite]"
+effort: high
 ---
 
 # /feature-harden "<feature-slug>" [--unit <WU-N>] [--lite]
@@ -175,15 +176,31 @@ For each construct with cross-module dependencies:
 
 ### Lens: concurrency
 
-For each construct with thread-sharing signals:
+**Spec contracts drive this lens.** If the resolved spec bundle contains
+concurrency requirements (from Step 1e of spec authoring), use them to
+determine which constructs need concurrency attacks and what the expected
+behavior is. A spec that says "thread-safe" means concurrent tests must
+pass. A spec that says "not thread-safe" means concurrent tests should
+verify the documented limitation, not find bugs in unsupported usage.
+
+For each construct with thread-sharing signals OR spec concurrency contracts:
 - **Concurrent access:** What happens if this method is called from two
-  threads simultaneously? Is the outcome defined by the contract?
+  threads simultaneously? Is the outcome defined by the spec contract?
+  If the spec declares thread-safe, the outcome must be correct. If the
+  spec declares not-thread-safe, concurrent access is undefined — skip
+  this construct for concurrent-access attacks.
 - **Atomicity:** Are multi-step operations (check-then-act, read-modify-
   write) specified as atomic? Can callers observe intermediate state?
+  The spec's concurrency contract should declare which operations are
+  atomic. If it doesn't, that's a hardening finding — propose the
+  requirement.
 - **Close under contention:** What happens if close() races with an
   active operation? Is the outcome specified?
 - **Ordering:** If operations must happen in a specific order, is that
   order enforceable? What if events arrive out of order?
+- **Spec-code mismatch:** If the spec declares thread-safe but the
+  implementation has no synchronization, that is a critical finding —
+  the contract is violated.
 
 ### Lens: data_transformation
 

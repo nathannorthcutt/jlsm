@@ -25,6 +25,13 @@ import java.util.Objects;
 public final class JsonParser {
 
     private static final int DEFAULT_MAX_DEPTH = 256;
+    /**
+     * Upper bound on configurable maxDepth. Bounded mutual recursion uses ~3 stack frames per
+     * nesting level (parseValue → parseObject/parseArray → parseValue); 4096 levels ≈ 12k frames,
+     * well within default JVM stack size (~512–1024 frames at ~1 KiB each on a 512 KiB stack).
+     * Allowing arbitrary values (e.g., Integer.MAX_VALUE) risks StackOverflowError.
+     */
+    private static final int MAX_DEPTH_LIMIT = 4096;
 
     /**
      * Parses a JSON string into a {@link JsonValue} tree with default max depth (256).
@@ -51,8 +58,9 @@ public final class JsonParser {
      */
     public static JsonValue parse(String json, int maxDepth) {
         Objects.requireNonNull(json, "json must not be null");
-        if (maxDepth <= 0) {
-            throw new IllegalArgumentException("maxDepth must be positive, got " + maxDepth);
+        if (maxDepth <= 0 || maxDepth > MAX_DEPTH_LIMIT) {
+            throw new IllegalArgumentException(
+                    "maxDepth must be between 1 and " + MAX_DEPTH_LIMIT + ", got " + maxDepth);
         }
 
         byte[] input = json.getBytes(StandardCharsets.UTF_8);
@@ -490,6 +498,10 @@ public final class JsonParser {
          * Advances pos past the expected structural character and advances structIdx.
          */
         private void advancePastStructural(char expected) {
+            assert pos < input.length && input[pos] == (byte) expected
+                    : "structural mismatch: expected '" + expected + "' at pos " + pos
+                            + " but found '" + (pos < input.length ? (char) input[pos] : "EOF")
+                            + "'";
             // Advance structIdx to match current position if needed
             while (structIdx < structPositions.length && structPositions[structIdx] < pos) {
                 structIdx++;

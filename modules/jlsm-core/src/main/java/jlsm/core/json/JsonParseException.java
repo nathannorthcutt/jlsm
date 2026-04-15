@@ -47,6 +47,7 @@ public final class JsonParseException extends RuntimeException {
     }
 
     private static String formatMessage(String message, long offset) {
+        java.util.Objects.requireNonNull(message, "message");
         if (offset >= 0) {
             return message + " (at byte offset " + offset + ")";
         }

@@ -217,15 +217,19 @@ KB currently contains:
   <n> topics: <list from CLAUDE.md Topic Map>
 
 I can research this now and add it to the KB.
-  Type **yes**  to start research  ·  or: stop
 ```
+Use AskUserQuestion with options:
+  - "Start research"
+  - "Stop"
 
 When stale entries were found:
 ```
 Some entries used to answer this question may be outdated.
 I can refresh the research and update the KB.
-  Type **yes**  to refresh stale entries  ·  or: skip  to use current data as-is
 ```
+Use AskUserQuestion with options:
+  - "Refresh stale entries"
+  - "Use current data"
 
 When gaps were identified alongside valid results:
 ```
@@ -234,8 +238,10 @@ improve the answer:
   <gap description>
 
 I can research the gaps now and update the KB.
-  Type **yes**  to research gaps  ·  or: skip
 ```
+Use AskUserQuestion with options:
+  - "Research gaps"
+  - "Skip"
 
 **If the user chooses to research:**
 
@@ -325,8 +331,10 @@ Description : <description>
 Path        : .kb/<name>/
 Existing topics: <list or "none yet">
 
-  Type **yes**  to create  ·  or: stop
 ```
+Use AskUserQuestion with options:
+  - "Create"
+  - "Stop"
 
 **Step 3 — Create**
 

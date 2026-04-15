@@ -104,10 +104,11 @@ Parse the entry text. Ask:
   Scope: global  (or type a module/area name to scope it)
   Expires: <date 90 days from now>  (or type a date, or: never)
 
-  Type **yes** to save · or: adjust
-```
+Use AskUserQuestion with options:
+  - "Save"
+  - "Adjust"
 
-If "adjust": ask what to change, re-display, confirm again.
+If "Adjust": ask what to change, re-display, confirm again.
 
 ### Step 2 — Write
 

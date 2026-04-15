@@ -11,3 +11,4 @@
 | eviction-scope-mismatch | [eviction-scope-mismatch.md](eviction-scope-mismatch.md) | Eviction targets wrong entity or uses stale state in bounded-resource pools | 2026-04-07 |
 | fan-out-iterator-leak | [fan-out-iterator-leak.md](fan-out-iterator-leak.md) | Fan-out query collects iterators from partitions; partial failure or abandonment leaks unclosed sources | 2026-04-07 |
 | non-idempotent-close | [non-idempotent-close.md](non-idempotent-close.md) | close() re-delegates without tracking prior invocation; causes double-free or redundant I/O | 2026-04-07 |
+| multi-resource-close-ordering | [multi-resource-close-ordering.md](multi-resource-close-ordering.md) | Wrapper components creating internal closeables without tracking for close | 2026-04-12 |

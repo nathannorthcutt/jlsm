@@ -131,17 +131,14 @@ def main():
         success = generate(slug, feature_dir)
         if success:
             print(f"narrative: wrote {Path(feature_dir) / 'narrative.md'}", file=sys.stderr)
+            sys.exit(0)
+        else:
+            sys.exit(1)
     except Exception as e:
-        # Catch everything — narrative generation must never crash the retro
         print(f"narrative: pipeline failed: {e}", file=sys.stderr)
-        # Log enough detail to file an issue
         import traceback
-        print(f"narrative: traceback follows (report at "
-              f"https://github.com/telefrek/vallorcine/issues):", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-
-    # Always exit 0 — this is an optional enhancement
-    sys.exit(0)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

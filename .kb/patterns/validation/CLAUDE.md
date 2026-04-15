@@ -12,3 +12,6 @@
 | untrusted-storage-byte-length | [untrusted-storage-byte-length.md](untrusted-storage-byte-length.md) | Decode routines that trust persisted byte array lengths without runtime bounds checks | 2026-04-08 |
 | assert-only-guard-anti-pattern | [assert-only-guard-anti-pattern.md](assert-only-guard-anti-pattern.md) | assert used as sole guard in public API; disabled in production leaves path unprotected | 2026-04-11 |
 | silent-empty-result-dispatch | [silent-empty-result-dispatch.md](silent-empty-result-dispatch.md) | Dispatch returns empty result silently instead of signaling missing index or error | 2026-04-11 |
+| simd-cross-boundary-carry-state | [simd-cross-boundary-carry-state.md](simd-cross-boundary-carry-state.md) | SIMD block-boundary escape state not carried across chunks | 2026-04-12 |
+| integer-overflow-silent-truncation | [integer-overflow-silent-truncation.md](integer-overflow-silent-truncation.md) | Multiplication overflow in user-controlled arithmetic silently wraps | 2026-04-12 |
+| one-shot-api-missing-guard | [one-shot-api-missing-guard.md](one-shot-api-missing-guard.md) | Single-use APIs documented but not enforced at runtime | 2026-04-12 |

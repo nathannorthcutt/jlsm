@@ -17,6 +17,7 @@ SIMD compatibility.
 | [float16-vector-support.md](float16-vector-support.md) | Float16 vector support (feature footprint) | stable | 50% storage reduction | Feature history, adversarial findings |
 | [precision-overflow-silent-data-loss.md](precision-overflow-silent-data-loss.md) | Precision overflow → invisible vectors (adversarial) | active | data-integrity | Float16/quantized index validation |
 | [non-finite-vector-element.md](non-finite-vector-element.md) | Non-finite vector elements accepted at construction (adversarial) | active | data-integrity | Any vector field accepting float[]/short[] at API boundary |
+| [sparse-vector-representations.md](sparse-vector-representations.md) | Sparse Vector Representations and Indexing | active | O(nnz) per vector | Learned sparse (SPLADE), hybrid dense+sparse search |
 
 ## Comparison Summary
 

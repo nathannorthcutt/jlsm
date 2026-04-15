@@ -14,6 +14,7 @@ test {
     jvmArgs '--add-exports', 'jlsm.core/jlsm.tree.internal=ALL-UNNAMED'
     jvmArgs '--add-modules', 'jdk.incubator.vector'
     jvmArgs '--add-exports', 'jlsm.core/jlsm.core.json.internal=ALL-UNNAMED'
+    jvmArgs '--add-opens', 'jlsm.core/jlsm.core.json=ALL-UNNAMED'
     jvmArgs '--enable-native-access=ALL-UNNAMED'
     jvmArgs '-ea'
 }

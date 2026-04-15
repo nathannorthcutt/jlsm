@@ -14,6 +14,7 @@ backed stores that need range scan support.
 | [vector-search-partitioning.md](vector-search-partitioning.md) | Vector search + hybrid filtering in distributed systems | active | scatter-gather O(P*k) | Vector + filter + text search topology |
 | [table-partitioning.md](table-partitioning.md) | table-partitioning (feature footprint) | stable | feature audit record | Range partitioning implementation overview |
 | [multi-writer-wal.md](multi-writer-wal.md) | Multi-Writer WAL Design Patterns | active | Per-partition: zero coordination | Partitioned table WAL coordination |
+| [partition-rebalancing-protocols.md](partition-rebalancing-protocols.md) | Partition Rebalancing and Data Migration Protocols | active | Raft snapshot + learner replica | Trigger policies, split/merge, ownership transfer |
 
 ## Comparison Summary
 
@@ -40,10 +41,7 @@ extreme scale, but doesn't co-locate with document storage.
 | EcoTune | SIGMOD 2025 | Dynamic compaction policy selection |
 
 ## Research Gaps
-- Partition rebalancing algorithms (load-aware vs size-aware splitting)
-- Raft/Paxos per-partition replication details
 - Multi-tenant partition isolation strategies
-- Cross-partition transaction coordination (2PC, Calvin, Percolator)
 - Vector index rebuild cost during range split/merge
 - Adaptive nprobe selection based on filter selectivity
 - SIEVE-style multi-index approach within range partitions

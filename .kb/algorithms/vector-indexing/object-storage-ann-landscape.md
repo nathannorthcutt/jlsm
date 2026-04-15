@@ -125,5 +125,74 @@ Given jlsm's LSM-tree architecture and existing IvfFlat/Hnsw implementations:
 3. [Amazon S3 Vectors](https://aws.amazon.com/s3/features/vectors/) — production validation
 4. [OdinANN (FAST 2026)](https://www.usenix.org/conference/fast26/presentation/guo) — latest graph-based research
 
+## Updates 2026-04-13
+
+### HAKES — Disaggregated Filter-Refine (VLDB 2025)
+
+HAKES (arXiv:2505.12524, PVLDB Vol 18 No 9) introduces a disaggregated two-stage
+architecture for scalable vector search that directly challenges the monolithic
+index-per-node model used by Milvus and similar systems.
+
+**Key contributions:**
+- Explicit filter-refine pipeline: a fast filter stage uses highly compressed vectors
+  (binary/scalar quantized) to identify candidates, then a refine stage re-ranks with
+  full-precision vectors to recover recall. Stages can run on separate node pools.
+- IVF-based sharding for the filter stage: partitions distribute naturally across
+  stateless filter nodes, enabling horizontal scaling without graph connectivity issues.
+- Concurrent read-write support without the contention that plagues graph-based indexes.
+- 16x higher throughput than graph-based baselines at comparable recall.
+
+**Impact on the decision matrix:** HAKES validates that IVF + compressed-vector filter
+is production-viable at scale. It strengthens the "partition-based for remote storage"
+recommendation: the filter stage's compressed vectors fit in memory even when full
+vectors live on object storage. The disaggregated design maps well to cloud-native
+deployments where filter and refine pools scale independently.
+
+**Implications for jlsm-vector:**
+- The filter-refine pattern fits naturally into IvfFlat: quantized centroids + compressed
+  posting summaries for filtering, full-precision posting lists on S3 for refinement.
+- Pseudocode sketch for a two-stage query:
+
+```
+def query_filter_refine(q, k, nprobe, rerank_factor):
+    # Stage 1: filter with compressed vectors (in-memory)
+    candidates = ivf_search_compressed(q, nprobe, k * rerank_factor)
+    # Stage 2: refine with full-precision vectors (from S3/disk)
+    full_vectors = fetch_full_precision(candidates)
+    return rerank(q, full_vectors, k)
+```
+
+### CrackIVF — Deferred Adaptive Index Construction (arXiv 2025)
+
+CrackIVF (arXiv:2503.01823) eliminates upfront index construction by building
+partitions incrementally as queries arrive — inspired by database cracking.
+
+**Key contributions:**
+- 10-1000x faster initialization: begins answering queries immediately with a minimal
+  index; no k-means clustering or full-dataset scan required at startup.
+- Progressive adaptation: partitions refine toward the query workload over time,
+  eventually converging to quality comparable to eagerly-built IVF.
+- Serves over 1 million queries before traditional approaches finish building their index.
+- Targets "embedding data lakes" where pre-indexing all datasets is impractical —
+  cold or infrequently accessed vector collections.
+
+**Impact on the decision matrix:** CrackIVF fills a gap in the object storage
+landscape: what to do when a dataset is too large or too cold to justify upfront
+indexing. For jlsm, this is the compaction-deferred scenario — vectors flushed to
+S3 can be queried via brute-force scan initially, with partition structure emerging
+as query patterns stabilize.
+
+**Implications for jlsm-vector:**
+- Natural fit for the LSM insert buffer model: new vectors in MemTable are unindexed;
+  CrackIVF-style deferred partitioning replaces the current "flush then index" step.
+- Cold SSTable levels on S3 could remain lightly-indexed until queries target them.
+- Complements LIRE (incremental-partition-maintenance.md): LIRE maintains existing
+  partitions; CrackIVF creates them on demand.
+
+### Updated Source List
+
+5. [HAKES (PVLDB 2025)](https://arxiv.org/abs/2505.12524) — disaggregated filter-refine
+6. [CrackIVF (arXiv 2025)](https://arxiv.org/abs/2503.01823) — deferred adaptive construction
+
 ---
-*Researched: 2026-03-30 | Next review: 2026-09-30*
+*Researched: 2026-03-30 | Updated: 2026-04-13 | Next review: 2026-09-30*

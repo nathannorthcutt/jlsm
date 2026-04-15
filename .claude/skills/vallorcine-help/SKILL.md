@@ -70,6 +70,14 @@ command to run, then explain what it does and what the user can expect.
 - `/decisions defer "<problem>"` — park a topic for later
 - `/decisions close "<problem>"` — rule out permanently
 
+**Work coordination (multi-feature):**
+- `/work "<goal>"` — create a work group for coordinating multi-feature work
+- `/work-decompose "<slug>"` — decompose a work group into work definitions with dependency graph
+- `/work-status "<slug>"` — show readiness: what is ready, blocked, or complete
+- `/work-status --all` — readiness summary across all active work groups
+- `/work-plan "<slug>" [WD-nn | next]` — specify a WD (domain analysis + spec authoring only)
+- `/work-start "<slug>" [WD-nn | next]` — start implementing a specified work definition
+
 **Codebase quality:**
 - `/audit "<entry-point>"` — run the adversarial audit pipeline against shipped code. Finds bugs, proves them with failing tests, fixes the code. Accepts feature slugs, file paths, spec references, or prior audit reports.
 - `/curate` — review codebase quality: find stale decisions, knowledge gaps, implicit dependencies, spec coverage gaps, unspecified shared types, and spec-code drift

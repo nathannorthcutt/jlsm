@@ -24,6 +24,12 @@ key bytes on the heap," scan all classes in the feature for the same anti-patter
 and fix them proactively. This prevents the same bug from being rediscovered in
 subsequent rounds or by the Refactor Agent.
 
+Also check the KB for known tendency patterns in the current domain (Step 2.8 in
+feature-implement). If `kb-search.sh` returns `type: adversarial-finding` entries
+matching the construct you just implemented, scan your code against their
+`applies_to` patterns. Fix matches before moving on — they are bugs that prior
+audits proved exist in similar code.
+
 ## Escalation
 If a test cannot be satisfied: append code-escalation to cycle-log.md, update
 status.md, and report to the Test Writer with the specific conflict. Stop.

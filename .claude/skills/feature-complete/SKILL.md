@@ -48,9 +48,9 @@ This is fine if:
   - The PR has already merged
   - You intentionally skipped stages (e.g. no refactor needed for small changes)
 
-  Type **yes**  ·  or: stop
-```
-Wait for explicit confirmation before continuing.
+Use AskUserQuestion with options:
+  - "Proceed"
+  - "Stop"
 
 ---
 
@@ -60,6 +60,29 @@ Display opening header:
 📦 FEATURE COMPLETE · <slug>
 ───────────────────────────────────────────────
 ```
+
+## Step 1b — Ensure narrative exists
+
+Check if `.feature/<slug>/narrative.md` exists. If not, attempt to generate it:
+```bash
+bash .claude/scripts/narrative-wrapper.sh "<slug>" ".feature/<slug>"
+```
+
+If generation succeeds:
+```
+  📖 Narrative generated before archival: .feature/<slug>/narrative.md
+```
+
+If generation fails:
+```
+  ⚠️ Narrative generation failed. The feature will be archived without it.
+  To generate after archival: bash .claude/scripts/narrative-wrapper.sh "<slug>" ".feature/_archive/<slug>"
+```
+
+Do not block archival on narrative failure — but always attempt it and always
+report the outcome.
+
+---
 
 ## Step 2 — Archive the working directory
 
@@ -72,6 +95,23 @@ as a short-term reference but does not go into the repository.
 
 If `.feature/_archive/` does not exist, create it (it should have been created
 by /setup-vallorcine, but create it if missing).
+
+---
+
+## Step 2b — Work group manifest update
+
+**Skip this step if the feature slug does not have a `work_group` field in
+status.md and does not match the `<group>--<wd>` double-dash convention.**
+
+If this is a work-group-sourced feature:
+
+1. Determine the work group slug (from status.md `work_group` field or slug prefix)
+2. Verify the WD frontmatter has `status: COMPLETE` (should already be set
+   by the retro step)
+3. Update `.work/CLAUDE.md` — increment the Complete count for this group
+
+The manifest table is automatically synced by `work-resolve.sh` — do not
+update it manually.
 
 ---
 
@@ -94,4 +134,10 @@ Permanent records (not moved):
 
 To recover working files if needed:
   cp -r .feature/_archive/<slug>/ .feature/<slug>/
+```
+
+If work-group-sourced, append:
+```
+Work group: <group> — <complete>/<total> work definitions complete
+Next ready WD: /work-start "<group>" next
 ```

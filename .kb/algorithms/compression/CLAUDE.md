@@ -19,6 +19,7 @@ Covers speed/ratio tradeoffs, per-block encoding formats, and pure-Java implemen
 | [sstable-v3-format-upgrade.md](sstable-v3-format-upgrade.md) | sstable-v3-format-upgrade (feature footprint) | stable | feature audit record | v3 format: CRC32C checksums, configurable block size |
 | [wal-compression-patterns.md](wal-compression-patterns.md) | WAL Compression Patterns in LSM Implementations | active | Per-record: 1-6 byte overhead | WAL record-level compression |
 | [zstd-dictionary-compression.md](zstd-dictionary-compression.md) | ZSTD Dictionary Compression in Storage Engines | active | 2-2.5x ratio improvement on small blocks | Per-SST dictionary training for cold/archival levels |
+| [pure-java-compression-codecs.md](pure-java-compression-codecs.md) | Pure-Java Compression Codec Implementation | active | LZ4: feasible, ZSTD: Panama FFM only | No-native-dependency compression strategy |
 
 ## Comparison Summary
 

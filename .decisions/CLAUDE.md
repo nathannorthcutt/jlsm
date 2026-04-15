@@ -19,78 +19,51 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
-| Per-Block Checksums | per-block-checksums | 2026-04-10 | CRC32C per-block checksum in CompressionMap.Entry |
-| Backend-Optimal Block Size | backend-optimal-block-size | 2026-04-10 | Parameterize block size on writer builder with named constants |
-| WAL Compression | wal-compression | 2026-04-12 | Per-record compression with MemorySegment-native codec API evolution |
-| Codec Dictionary Support | codec-dictionary-support | 2026-04-12 | Writer-orchestrated dictionary lifecycle, tiered Panama FFM detection |
-| Compaction Re-Compression | compaction-recompression | 2026-04-12 | Writer-factory injection with per-level codec policy |
+| Client-Side Encryption SDK | client-side-encryption-sdk | 2026-04-15 | Schema-driven auto-encrypt/decrypt with KeyVault SPI — per-field HKDF, off-heap key caching |
+| Encrypted Prefix/Wildcard Queries | encrypted-prefix-wildcard-queries | 2026-04-15 | Prefix tokenization + DET — AES-SIV encrypted prefixes in LsmInvertedIndex, L4 leakage profile |
+| Encrypted Fuzzy Matching | encrypted-fuzzy-matching | 2026-04-15 | LSH + Bloom filter — n-gram shingling, AES-GCM encrypted filter, approximate matching, L2 leakage |
+| Corruption Repair and Recovery | corruption-repair-recovery | 2026-04-15 | Layered repair — quarantine + compaction (single-node), read repair + anti-entropy + targeted replica fetch (replicated) |
+| Un-WAL'd Memtable Data Loss | un-walled-memtable-data-loss | 2026-04-15 | Documented data loss window (F27) eliminated by Raft replication (F32) for committed writes |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
-<!-- 65 items. Grouped by parent ADR for readability. -->
+<!-- 39 items (was 42: -3 confirmed from WD-12 client-side-encryption-sdk, encrypted-prefix-wildcard-queries, encrypted-fuzzy-matching; encrypted-cross-field-joins re-deferred with updated date). Grouped by parent ADR for readability. -->
 
 | Problem | Slug | Deferred | Parent ADR |
 |---------|------|----------|------------|
-| Distributed Join Execution | distributed-join-execution | 2026-03-20 | scatter-gather-query-execution |
-| Binary Field Type | binary-field-type | 2026-03-30 | bounded-string-field-type |
-| Parameterized Field Bounds | parameterized-field-bounds | 2026-03-30 | bounded-string-field-type |
-| String to BoundedString Migration | string-to-bounded-string-migration | 2026-03-30 | bounded-string-field-type |
-| Automatic Backend Detection | automatic-backend-detection | 2026-04-11 | backend-optimal-block-size |
-| Block Cache / Block Size Interaction | block-cache-block-size-interaction | 2026-04-11 | backend-optimal-block-size |
-| Membership View Stall Recovery | membership-view-stall-recovery | 2026-03-30 | cluster-membership-protocol |
-| Slow Node Detection | slow-node-detection | 2026-03-30 | cluster-membership-protocol |
-| Dynamic Membership Threshold | dynamic-membership-threshold | 2026-03-30 | cluster-membership-protocol |
-| Piggybacked State Exchange | piggybacked-state-exchange | 2026-03-30 | cluster-membership-protocol |
-| Atomic Cross-Stripe Eviction | atomic-cross-stripe-eviction | 2026-03-30 | cross-stripe-eviction |
-| Parallel Large Cache Eviction | parallel-large-cache-eviction | 2026-03-30 | cross-stripe-eviction |
-| Continuous Re-Discovery | continuous-rediscovery | 2026-03-30 | discovery-spi-design |
-| Discovery Environment Config | discovery-environment-config | 2026-03-30 | discovery-spi-design |
+| Shuffle/Repartition Joins | shuffle-repartition-joins | 2026-04-14 | distributed-join-execution |
+| Semi-Join Reduction | semi-join-reduction | 2026-04-14 | distributed-join-execution |
+| Query Planner Integration | query-planner-integration | 2026-04-14 | distributed-join-execution |
+| Join Ordering Optimization | join-ordering-optimization | 2026-04-14 | distributed-join-execution |
+| Secondary-Sort Pagination | secondary-sort-pagination | 2026-04-14 | limit-offset-pushdown |
+| Backward Pagination | backward-pagination | 2026-04-14 | limit-offset-pushdown |
+| DISTINCT Aggregate Decomposition | distinct-aggregate-decomposition | 2026-04-14 | aggregation-query-merge |
+| Holistic Aggregate Support | holistic-aggregate-support | 2026-04-14 | aggregation-query-merge |
+| Default LSM-Backed BlobStore | default-lsm-blob-store | 2026-04-13 | binary-field-type |
+| Blob Storage Strategy for Object Storage | blob-object-storage-strategy | 2026-04-13 | binary-field-type |
+| Blob Streaming API Design | blob-streaming-api | 2026-04-13 | binary-field-type |
+| Inline Small Blob Optimization | inline-small-blob-optimization | 2026-04-13 | binary-field-type |
+| Numeric Field Range Bounds | numeric-field-range-bounds | 2026-04-13 | parameterized-field-bounds |
+| Quarantine Resolution Policy | quarantine-resolution-policy | 2026-04-13 | string-to-bounded-string-migration |
+| Cross-Table Schema Migration | cross-table-schema-migration | 2026-04-13 | string-to-bounded-string-migration |
 | Authenticated Discovery | authenticated-discovery | 2026-03-30 | discovery-spi-design |
-| Table Ownership Discovery | table-ownership-discovery | 2026-03-30 | discovery-spi-design |
-| Encrypted Prefix/Wildcard Queries | encrypted-prefix-wildcard-queries | 2026-03-30 | encrypted-index-strategy |
-| Encrypted Fuzzy Matching | encrypted-fuzzy-matching | 2026-03-30 | encrypted-index-strategy |
-| Encrypted Cross-Field Joins | encrypted-cross-field-joins | 2026-03-30 | encrypted-index-strategy |
-| Index Access Pattern Leakage | index-access-pattern-leakage | 2026-03-30 | encrypted-index-strategy |
+| Encrypted Cross-Field Joins | encrypted-cross-field-joins | 2026-04-15 | encrypted-index-strategy |
 | Handle Priority Levels | handle-priority-levels | 2026-03-30 | engine-api-surface-design |
 | Cross-Table Handle Budgets | cross-table-handle-budgets | 2026-03-30 | engine-api-surface-design |
 | Handle Timeout/TTL | handle-timeout-ttl | 2026-03-30 | engine-api-surface-design |
 | Cross-Table Transactions | cross-table-transactions | 2026-03-30 | engine-api-surface-design |
 | Remote Serialization Protocol | remote-serialization-protocol | 2026-03-30 | engine-api-surface-design |
-| Full MemorySegment Codec API | memorysegment-codec-api | 2026-04-11 | max-compressed-length |
-| Encryption Key Rotation | encryption-key-rotation | 2026-03-30 | field-encryption-api-design |
-| WAL Entry Encryption | wal-entry-encryption | 2026-03-30 | field-encryption-api-design |
-| Unencrypted-to-Encrypted Migration | unencrypted-to-encrypted-migration | 2026-03-30 | field-encryption-api-design |
-| Per-Field Key Binding | per-field-key-binding | 2026-03-30 | field-encryption-api-design |
-| Non-Vector Index Type Review | non-vector-index-type-review | 2026-03-30 | index-definition-api-simplification |
 | Weighted Node Capacity | weighted-node-capacity | 2026-03-30 | partition-to-node-ownership |
 | Partition Affinity | partition-affinity | 2026-03-30 | partition-to-node-ownership |
-| Ownership Lookup Optimization | ownership-lookup-optimization | 2026-03-30 | partition-to-node-ownership |
 | Rebalancing Trigger Policy | rebalancing-trigger-policy | 2026-03-30 | partition-to-node-ownership |
-| SSTable End-to-End Integrity | sstable-end-to-end-integrity | 2026-04-11 | per-block-checksums |
-| Corruption Repair and Recovery | corruption-repair-recovery | 2026-04-11 | per-block-checksums |
-| Per-Field Pre-Encryption | per-field-pre-encryption | 2026-03-30 | pre-encrypted-document-signaling |
-| Pre-Encrypted Flag Persistence | pre-encrypted-flag-persistence | 2026-03-30 | pre-encrypted-document-signaling |
-| Client-Side Encryption SDK | client-side-encryption-sdk | 2026-03-30 | pre-encrypted-document-signaling |
-| In-Flight Write Protection | in-flight-write-protection | 2026-03-30 | rebalancing-grace-period-strategy |
-| Partition Takeover Priority | partition-takeover-priority | 2026-03-30 | rebalancing-grace-period-strategy |
-| Concurrent WAL Replay Throttling | concurrent-wal-replay-throttling | 2026-03-30 | rebalancing-grace-period-strategy |
-| Un-WAL'd Memtable Data Loss | un-walled-memtable-data-loss | 2026-03-30 | rebalancing-grace-period-strategy |
-| Aggregation Query Merge | aggregation-query-merge | 2026-03-30 | scatter-gather-query-execution |
-| LIMIT/OFFSET Partition Pushdown | limit-offset-pushdown | 2026-03-30 | scatter-gather-query-execution |
 | Atomic Multi-Table DDL | atomic-multi-table-ddl | 2026-03-30 | table-catalog-persistence |
-| Catalog Replication | catalog-replication | 2026-03-30 | table-catalog-persistence |
-| Table Migration Protocol | table-migration-protocol | 2026-03-30 | table-catalog-persistence |
 | Partition Replication Protocol | partition-replication-protocol | 2026-03-30 | table-partitioning |
 | Cross-Partition Transactions | cross-partition-transactions | 2026-03-30 | table-partitioning |
-| Vector Query Partition Pruning | vector-query-partition-pruning | 2026-03-30 | table-partitioning |
-| Sequential Insert Hotspot | sequential-insert-hotspot | 2026-03-30 | table-partitioning |
-| Partition-Aware Compaction | partition-aware-compaction | 2026-03-30 | table-partitioning |
-| Transport Traffic Priority | transport-traffic-priority | 2026-03-30 | transport-abstraction-design |
-| Message Serialization Format | message-serialization-format | 2026-03-30 | transport-abstraction-design |
-| Connection Pooling | connection-pooling | 2026-03-30 | transport-abstraction-design |
-| Scatter Backpressure | scatter-backpressure | 2026-03-30 | transport-abstraction-design |
-| Vector Storage Cost Optimization | vector-storage-cost-optimization | 2026-03-30 | vector-type-serialization-encoding |
-| Sparse Vector Support | sparse-vector-support | 2026-03-30 | vector-type-serialization-encoding |
+| Adaptive Weight Tuning | adaptive-weight-tuning | 2026-04-13 | transport-traffic-priority |
+| Hierarchical Query Memory Budget | hierarchical-query-memory-budget | 2026-04-13 | scatter-backpressure |
+| Bulk Data Transfer Channel | bulk-data-transfer-channel | 2026-04-13 | connection-pooling |
+| Vector Index Query Routing | vector-index-query-routing | 2026-04-13 | vector-storage-cost-optimization |
+| Automatic Quantization Selection | automatic-quantization-selection | 2026-04-13 | vector-storage-cost-optimization |
 | Cross-SST Dictionary Sharing | cross-sst-dictionary-sharing | 2026-04-12 | codec-dictionary-support |
 | WAL Dictionary Compression | wal-dictionary-compression | 2026-04-12 | codec-dictionary-support |
 | Pure-Java ZSTD Compressor | pure-java-zstd-compressor | 2026-04-12 | codec-dictionary-support |
@@ -106,6 +79,16 @@
 | Similarity Function Placement | similarity-function-placement | 2026-04-12 | Non-issue — current IndexDefinition placement is correct, no awkwardness materialized |
 | Codec Negotiation | codec-negotiation | 2026-04-12 | Already solved — codecId in compression map IS the negotiation protocol |
 | Adaptive Compression Strategy | adaptive-compression-strategy | 2026-04-12 | Resolved by compaction-recompression — per-level policy inherent in factory design |
+| Message Serialization Format | message-serialization-format | 2026-04-13 | Subsumed by connection-pooling — framing protocol IS the message serialization format |
+| Non-Vector Index Type Review | non-vector-index-type-review | 2026-04-13 | Non-issue — EQUALITY/RANGE/UNIQUE/FULL_TEXT correctly implemented, compatibility matrix complete |
+| Atomic Cross-Stripe Eviction | atomic-cross-stripe-eviction | 2026-04-13 | Non-issue — brief inconsistency window is harmless (cache holds data, not file refs) |
+| Discovery Environment Config | discovery-environment-config | 2026-04-13 | Already resolved by discovery-spi-design — constructor injection per implementation |
+| Table Ownership Discovery | table-ownership-discovery | 2026-04-13 | Already resolved by partition-to-node-ownership (HRW) + table-catalog-persistence |
+| Dynamic Membership Threshold | dynamic-membership-threshold | 2026-04-13 | Static config via F04 R2 is sufficient; dynamic adjustment risks split-brain safety |
+| Ownership Lookup Optimization | ownership-lookup-optimization | 2026-04-13 | Premature optimization — epoch-keyed caching is O(1) hit, O(N) miss is ~10µs at 1000 nodes |
+| Parallel Large Cache Eviction | parallel-large-cache-eviction | 2026-04-13 | Non-issue at current scale — sequential eviction of 16 stripes is negligible |
+| Full MemorySegment Codec API | memorysegment-codec-api | 2026-04-14 | Subsumed by wal-compression — MemorySegment compress/decompress already added |
+| Pre-Encrypted Flag Persistence | pre-encrypted-flag-persistence | 2026-04-14 | Non-issue — write-side flag is intentionally ephemeral; per-field markers belong in client-side-encryption-sdk |
 
 ## Archived
-21 accepted decisions older than the 5 most recent: [history.md](history.md)
+42 accepted decisions older than the 5 most recent: [history.md](history.md)

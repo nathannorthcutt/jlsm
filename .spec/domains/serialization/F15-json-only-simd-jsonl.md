@@ -1,7 +1,7 @@
 ---
 {
   "id": "F15",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["serialization", "engine"],
@@ -43,6 +43,8 @@ R7. `JsonPrimitive.asString()` must return the string value when the primitive i
 
 R8. `JsonPrimitive` must store numbers as their original text representation from parsing. `asNumberText()` must return this original text. Convenience methods `asInt()`, `asLong()`, `asDouble()`, and `asBigDecimal()` must parse from the stored text on each call, throwing `NumberFormatException` if the value cannot be represented in the requested type (e.g., `asInt()` on `"1e2"` must throw because `1e2` is not an integer literal).
 
+R47. `JsonPrimitive.ofNumber(String)` must reject text that is not a valid JSON number at construction time, throwing `NumberFormatException`. Deferred validation (accepting arbitrary text and failing only at accessor time) is not permitted.
+
 R9. `JsonObject` must provide Map-like access to its members: `get(String key)` returning `JsonValue`, `containsKey(String key)`, `keys()` returning a `Set<String>`, `size()`, `entrySet()`, and `getOrDefault(String key, JsonValue defaultValue)`.
 
 R10. `JsonObject` must preserve insertion order of keys. Iterating `keys()` or `entrySet()` must return entries in the order they were added.
@@ -57,6 +59,8 @@ R14. `JsonObject` and `JsonArray` must implement `equals()` and `hashCode()` bas
 
 R15. `JsonObject` must be constructable only via a static factory method or builder that validates all keys are non-null, non-blank strings and all values are non-null `JsonValue` instances. `JsonArray` must be constructable only via a static factory method that validates all elements are non-null `JsonValue` instances. Direct public constructors that bypass validation must not exist.
 
+R48. `JsonObject.Builder` must enforce single-use semantics: after `build()` is called, subsequent calls to `put()` or `build()` must throw `IllegalStateException`. The builder must not be reusable.
+
 ### On-demand JSON parser (jlsm-core)
 
 R16. The JSON parser must implement a two-stage architecture internally: stage 1 builds a structural index of all token positions in the input, stage 2 materializes values from the indexed positions.
@@ -66,6 +70,8 @@ R17. The public `parse(String)` method must return a fully materialized, self-co
 R18. Stage 1 structural indexing must classify characters into structural categories (commas, colons, brackets/braces, whitespace, quotes) using SIMD vector operations when the runtime tier supports it.
 
 R19. Stage 1 must correctly identify quoted string regions by computing the parity of consecutive backslash runs before each quote character. A quote preceded by an even number of backslashes (including zero) is a structural quote; a quote preceded by an odd number is escaped. The backslash-parity computation must handle runs of arbitrary length.
+
+R49. Stage 1 structural indexing must carry backslash-parity state across processing block boundaries. A backslash run at the end of one block must affect escape classification of the first byte(s) of the next block and the scalar tail.
 
 R20. The parser must implement three processing tiers with automatic runtime detection: Tier 1 (Panama FFM with PCLMULQDQ/PMULL for carry-less multiply quote masking), Tier 2 (Vector API for character classification and a shift-XOR cascade for prefix-XOR), Tier 3 (pure scalar byte-by-byte processing).
 
@@ -77,21 +83,31 @@ R23. Tier 2 code that references `jdk.incubator.vector` classes must be isolated
 
 R24. The parser must throw `JsonParseException` (a new unchecked exception type in the jlsm-core JSON package) for all parse failures. The exception must include the byte offset of the error and a description of what was expected versus what was found.
 
+R50. `JsonParseException` constructors must reject null message arguments with `NullPointerException`.
+
 R25. The parser must correctly handle all JSON value types as defined by RFC 8259: objects, arrays, strings (with all escape sequences including `\uXXXX` surrogate pairs), numbers (integer and floating-point, including exponent notation), `true`, `false`, and `null`. The parser is intentionally stricter than RFC 8259 in the following ways: duplicate keys are rejected (R11), and trailing content after a complete value is rejected (R28).
+
+R51. The JSON writer must escape lone surrogate characters (U+D800-U+DFFF) as `\uXXXX` sequences. Lone surrogates in Java strings must not be written as raw UTF-8, which would produce invalid output.
 
 R26. The parser must accept and correctly parse documents containing any valid Unicode content, including supplementary characters represented as surrogate pairs in `\uXXXX` escapes.
 
 R27. The parser must handle empty objects `{}`, empty arrays `[]`, and nested structures up to a configurable maximum depth (default: 256). Inputs exceeding the maximum depth must be rejected with a `JsonParseException` indicating the depth limit was reached. The parser must not use recursion for depth traversal.
 
+R52. The configurable maximum depth parameter must have both a lower bound (at least 1) and an upper bound (no greater than 4096). Values outside this range must be rejected with `IllegalArgumentException` at parse time.
+
 R28. The parser must reject trailing content after a complete JSON value (e.g., `{"a":1}garbage`) with a `JsonParseException`.
 
 R29. The parser must detect and report truncated input (unexpected end of input) with a `JsonParseException` indicating the parse was incomplete.
+
+R59. The JSON writer must detect integer overflow when computing indentation width (`level * spacesPerLevel`) and fail with an exception rather than producing silently incorrect output.
 
 ### JSONL streaming (jlsm-core)
 
 R30. A `JsonlReader` must read JSON Lines from an `InputStream`, producing one `JsonValue` per non-empty line. Blank lines (empty or whitespace-only) must be skipped.
 
 R31. `JsonlReader` must support a `stream()` method returning `Stream<JsonValue>`, enabling composition with standard `Stream` operations (map, filter, collect, etc.).
+
+R53. `JsonlReader.stream()` must be callable at most once per reader instance. A second invocation must throw `IllegalStateException`. This prevents creation of competing readers on the same underlying stream.
 
 R32. `JsonlReader` must not accumulate data across lines. After processing each line and delivering the corresponding `JsonValue` to the caller, all input buffers and intermediate state for that line must be eligible for garbage collection. The memory required per line is proportional to the size of that line's JSON content, not to the total stream size.
 
@@ -101,11 +117,17 @@ R34. In skip-on-error mode, `JsonlReader` must report skipped lines via a caller
 
 R35. `JsonlReader` must implement `AutoCloseable`. Closing the reader must close the underlying input stream.
 
+R54. `JsonlReader.close()` must close all internal resources created by `stream()`, including any intermediate buffered reader. Resources must be closed using the deferred exception pattern (close all, propagate first exception).
+
 R36. A `JsonlWriter` must write `JsonValue` instances to an `OutputStream`, one compact JSON value per line followed by a newline character (`\n`). Any `JsonValue` subtype (`JsonObject`, `JsonArray`, `JsonPrimitive`, `JsonNull`) must be accepted.
 
 R37. `JsonlWriter` must not buffer an unbounded number of writes. Each `write(JsonValue)` call must produce output (subject to the underlying stream's buffering).
 
 R38. `JsonlWriter` must implement `AutoCloseable`. Closing the writer must flush pending output and close the underlying output stream.
+
+R55. `JsonlWriter.close()` must be idempotent. A second call to `close()` must not throw an exception or perform redundant I/O operations.
+
+R56. `JsonlWriter.close()` must release the underlying output stream even when `flush()` throws an exception. The flush exception must propagate to the caller, but stream closure must not be skipped.
 
 R39. `JsonlWriter` must reject null `JsonValue` arguments with a `NullPointerException`.
 
@@ -120,6 +142,10 @@ R42. `JlsmDocument.fromJson(String, JlsmSchema)` in `jlsm-table` must use the `j
 R43. `JlsmDocument.toJson()` and `toJson(boolean)` in `jlsm-table` must use the `jlsm-core` JSON writer infrastructure internally. The public API signature must not change.
 
 R44. The adaptation from `JsonValue` to `JlsmDocument` field values (used by `fromJson`) must apply the same type validation and range checking as the current `JlsmDocument.of()` factory. Numeric narrowing (e.g., JSON number to INT8) must reject out-of-range values with `IllegalArgumentException`. JSON `null` must map to an absent field (null in the values array). JSON types that do not match the schema field type must be rejected with a descriptive error including the field name, expected type, and actual JSON type.
+
+R57. FLOAT64 inbound adaptation must reject non-finite values (NaN, positive infinity, negative infinity) with `IllegalArgumentException`, consistent with the FLOAT16 and FLOAT32 adaptation paths.
+
+R58. Numeric type adaptation from JSON to schema fields (INT8, INT16, INT32) must distinguish overflow from format errors by providing distinct error messages. Overflow of a valid integer must produce an "out of range" error; non-integer text must produce a "not a valid integer" error.
 
 ### Cross-spec amendments
 

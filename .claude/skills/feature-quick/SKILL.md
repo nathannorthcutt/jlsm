@@ -102,11 +102,13 @@ Options:
   1. Continue as /feature-quick — I'll keep it tight and flag scope creep if I find it
   2. Switch to /feature — run /feature "<description>" for the full pipeline
 
-  Type **yes**  to stay as /feature-quick  ·  or: feature
+Use AskUserQuestion with options:
+  - "Stay as quick"
+  - "Switch to full /feature"
 ───────────────────────────────────────────────
 ```
 
-If "yes": continue as /feature-quick, note the signals in status.md and proceed with
+If "Stay as quick": continue as /feature-quick, note the signals in status.md and proceed with
 heightened scope vigilance (see Step 3).
 
 **4+ signals:** Hard redirect. The description is clearly feature-scale:
@@ -129,13 +131,14 @@ scoping before writing code.
 Recommended: /feature "<description>"
 
 I can still run this as /feature-quick if you're certain it's smaller than it sounds.
-  1  yes — continue as /feature-quick (I understand the risk)
-  2  no — switch to /feature
-  Type 1 or 2.
+
+Use AskUserQuestion with options:
+  - "Continue as quick (I understand the risk)"
+  - "Switch to /feature"
 ───────────────────────────────────────────────
 ```
 
-Only proceed as /feature-quick if user types 1.
+Only proceed as /feature-quick if user selects "Continue as quick".
 Record forced override in status.md: `complexity_override: true`.
 
 ### After complexity check — understand the task
@@ -280,9 +283,12 @@ Display:
 Tests I'll write:
   1. test_<n> — <scenario>
   2. test_<n> — <scenario>
-  Type **yes**  ·  or: describe changes
+Use AskUserQuestion with options:
+  - "Approve"
+  - "Describe changes"
+  (include Other for custom input)
 ```
-Write on "continue" or immediately if the user provides changes.
+Write on "Approve" or immediately if the user provides changes.
 
 Run the test suite. Confirm all new tests fail.
 Update status.md: Testing cycle 1 → `complete`, substage → "tests verified failing".
@@ -294,10 +300,12 @@ Display:
 <n> tests written and verified failing.
 
 ───────────────────────────────────────────────
-  Type **yes**  ·  or: stop
+Use AskUserQuestion with options:
+  - "Proceed"
+  - "Stop"
 ───────────────────────────────────────────────
 ```
-If "yes": proceed to Step 5.
+If "Proceed": proceed to Step 5.
 
 ---
 
@@ -319,10 +327,12 @@ Display:
 All tests passing.
 
 ───────────────────────────────────────────────
-  Type **yes**  ·  or: stop
+Use AskUserQuestion with options:
+  - "Proceed"
+  - "Stop"
 ───────────────────────────────────────────────
 ```
-If "yes": proceed to Step 6.
+If "Proceed": proceed to Step 6.
 
 ---
 
@@ -365,10 +375,12 @@ Changes:
 Note: this touched <area> which may be worth a full /feature pass later.
 
 ───────────────────────────────────────────────
-  Type: pr  to draft a PR now  ·  or: skip
+Use AskUserQuestion with options:
+  - "Draft PR now"
+  - "Skip"
   (run /feature-pr "<quick-slug>" any time)
 ───────────────────────────────────────────────
 ```
 
-If the user types pr: invoke /feature-pr "<quick-slug>" as a sub-agent immediately.
-If "stop": stop.
+If "Draft PR now": invoke /feature-pr "<quick-slug>" as a sub-agent immediately.
+If "Skip": stop.

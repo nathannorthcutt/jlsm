@@ -1,6 +1,7 @@
 ---
 description: "Verify a spec against its implementation"
 argument-hint: "<feature-id>"
+effort: high
 ---
 
 # /spec-verify <feature-id>

@@ -1,13 +1,15 @@
 ---
-description: "Author a hardened spec through two-pass adversarial review"
+description: "Author a hardened spec through multi-pass adversarial review"
 argument-hint: "<feature-id> <title>"
+effort: high
 ---
 
 # /spec-author <feature-id> <title>
 
-Author a hardened operational specification for a feature through a two-pass
-process: structured authoring followed by adversarial falsification. The
-output is a complete spec file ready for `/spec-write` registration.
+Author a hardened operational specification for a feature through multi-pass
+adversarial review: structured authoring, falsification, and automatic
+depth passes when critical findings indicate structural gaps. The output
+is a complete spec file ready for `/spec-write` registration.
 
 This skill operates on **design intent**, not implementation. The only code
 read during authoring is pre-existing components (for prerequisite stubs).
@@ -66,6 +68,21 @@ job, not this skill's.
      spec as context.
 
    If no INVALIDATED specs overlap or the section is absent, skip silently.
+
+5. **Work group context:** If `.work/` exists, run:
+   ```bash
+   bash .claude/scripts/work-context.sh --domains "<domains from spec-resolve bundle>"
+   ```
+   If output is non-empty, read it and note:
+   - **Downstream consumers:** Which work definitions depend on specs in this
+     domain. Surface: "WD-03 and WD-05 depend on specs in this domain — the
+     spec you author will affect their readiness."
+   - **Interface contracts:** If any work definition expects an interface
+     contract (`kind: interface-contract`) in this domain, note it: "WD-02
+     expects an interface contract at <path> — consider whether this spec
+     should be authored as an interface contract."
+   - This information does not change the authoring flow — it adds awareness
+     of who will consume the spec being authored.
 
 ---
 
@@ -149,7 +166,26 @@ Build a checklist from what you find. Then review each surface requirement
 against the checklist. For each failure mode that isn't addressed by an
 existing requirement, add a requirement.
 
-### Step 1e — Collapse user decisions, expand requirements
+### Step 1e — Declare concurrency contracts
+
+For every construct introduced by this spec, add a concurrency requirement.
+This is not optional — see the concurrency contract probe in Pass 2a for
+the full rationale.
+
+For each construct, ask the user (or determine from the domain analysis):
+- Will this be used from multiple threads?
+- If shared: what concurrency model? (immutable, synchronized, confined)
+- If not shared: state it explicitly as a requirement
+
+If the answer is unknown, write the requirement as thread-confined by
+default: "This type is not thread-safe. Callers must not share instances
+across threads without external synchronization." The user can upgrade
+to thread-safe during review if the use case demands it.
+
+This step ensures that Pass 2 falsification has a concurrency contract to
+verify against, rather than discovering the gap and having to add it.
+
+### Step 1f — Collapse user decisions, expand requirements
 
 Review the requirements for clusters that stem from the same conceptual
 decision. For each cluster:
@@ -177,11 +213,46 @@ adjust requirements at this point.
 **Mode: Adversarial.** Slow, zero-deference, exhaustive. Treat the Pass 1
 output as a hypothesis to be falsified.
 
+### KB adversarial findings (load before launching subagent)
+
+If `.kb/CLAUDE.md` exists, scan the Topic Map for categories relevant to
+this feature's domains. Read any `type: adversarial-finding` entries in
+matching categories. These are real bug patterns from prior audits — concrete
+attacks that broke real code in similar domains.
+
+Pass these findings to the subagent as additional input. They provide
+concrete attack vectors that the falsification pass should check against
+each requirement. A KB entry like `nan-score-ordering-corruption` turns
+"what about NaN?" from an abstract question into a proven failure pattern
+with specific test guidance.
+
+### Implementation grounding (load before launching subagent)
+
+Read the source files that the feature will modify or interact with.
+Use the domain analysis (`domains.md`) file list and the work plan stubs
+(if available) to identify which files exist. Read method signatures,
+type declarations, and API boundaries — not full implementations.
+
+The purpose is NOT to spec implementation details. It is to discover
+which concrete technology decisions the implementation will encounter:
+- Does the code use floating point? → IEEE 754 edge cases are real, not abstract
+- Does it manage resources (streams, connections, handles)? → lifecycle bugs are real
+- Does it parse external input? → encoding/validation gaps are real
+- Does it share state across threads? → concurrency hazards are real
+
+Without this grounding, the falsification pass reasons about spec text
+in isolation and misses gaps that are obvious when you see the actual
+types involved. A spec that says "numbers stored as text" doesn't trigger
+"what about NaN?" until you see that the implementation uses `double`.
+
 Launch a subagent for this pass. The subagent receives:
 - The complete draft spec from Pass 1
 - The feature brief and domain analysis
 - The resolved context bundle
 - The list of prerequisite stubs created in Pass 1
+- KB adversarial findings for the feature's domains (if any)
+- Key source file signatures from the feature's domain (types, method
+  signatures, API boundaries — NOT full implementation bodies)
 
 The subagent's prompt must include:
 
@@ -203,6 +274,179 @@ For each successful disproof, produce:
    missing, or overly broad, and why they permit the attack
 5. **Tightened requirement:** suggested replacement text that closes
    the gap
+
+**KB adversarial pattern check (mandatory if findings were provided).**
+For each adversarial-finding entry provided, check whether any requirement
+in the draft is vulnerable to the same pattern. The entry's `domain` field
+tells you which requirements to focus on. The `## Test guidance` section
+describes the specific attack. The `## What happens` section describes the
+failure mode.
+
+For each match: construct a concrete attack against the specific
+requirement (not just "this pattern might apply" — show exactly which
+requirement, which input, what breaks). If the requirement already handles
+the case, note it and move on. If it doesn't, produce a finding.
+
+**Degenerate value checklist (mandatory).** For every requirement that
+involves a typed value (numeric, string, collection, or nullable), check
+these cases mechanically. These are language-agnostic — they apply
+regardless of implementation language.
+
+Numeric types:
+- NaN — not-a-number. Can the value be NaN? What happens downstream?
+- Positive and negative infinity — same questions.
+- Negative zero — does -0.0 vs 0.0 matter for equality, ordering, display?
+- Boundary values — if the spec declares a precision or range, what
+  happens at and beyond the boundary? (overflow, underflow, truncation)
+- Zero — does zero have special semantics? Division, indexing, sizing?
+
+String/text types:
+- Empty string — vs null vs absent. Are these three cases distinguished?
+- Null bytes — embedded \0 in strings. Truncation risk.
+- Unicode boundaries — surrogate pairs, BOM, RTL markers, combining chars.
+
+Collection types:
+- Empty collection — zero elements. Does downstream code assume non-empty?
+- Single element — boundary between "one" and "many" behavior.
+- Null elements — can the collection contain nulls? What happens?
+
+Nullable/optional types:
+- Null vs absent vs default — are these three states distinguished?
+  A field that is null, a field that is missing, and a field that has its
+  default value may need different behavior.
+
+Size/capacity:
+- Maximum size — if the spec declares a limit, what happens at the
+  limit and one beyond it? Is the error behavior specified?
+
+For each case that produces wrong or unspecified behavior: produce a
+finding using the standard format above.
+
+**Boundary validation probe (mandatory).** For every requirement that uses
+"reject", "validate", "must not accept", or "throw on invalid":
+- Is the validation unconditional? Could it be bypassed by configuration,
+  optimization, debug flags, or assertion settings?
+- Are ALL entry points that could send invalid data enumerated? For each
+  entry point, does validation happen there or does a requirement on the
+  caller guarantee validity?
+- Is the validation complete? If the requirement says "reject invalid X",
+  does it enumerate what "invalid" means, or could an implementation
+  interpret it narrowly?
+- For mutable inputs: is the validation on the value at call time, or
+  could the caller mutate the input after validation but before use?
+
+**Standards compliance probe (mandatory).** For every requirement that
+references a standard, specification, or protocol (RFC, IEEE, Unicode,
+HTTP, SQL, etc.):
+
+A compliance claim is a contract. "Compliant with RFC 8259" means the
+implementation MUST accept everything the RFC says is valid and MUST
+reject everything the RFC says is invalid. No exceptions, no "we're
+stricter." If the spec rejects something the standard allows, the spec
+is non-compliant — period.
+
+- Identify every OTHER requirement in the spec that restricts or extends
+  the standard's behavior. For each one: does the standard allow what the
+  spec rejects? If yes, the compliance claim is false. The spec must
+  either remove the restriction, or replace the compliance claim with an
+  explicit deviation list: "Implements RFC 8259 with the following
+  deviations: (1) duplicate keys rejected, (2) trailing content rejected."
+  These are not stricter compliance — they are deviations from the
+  standard that must be documented as requirements.
+- For every degenerate case in the standard (empty values, maximum sizes,
+  optional features, deprecated behaviors): does the spec handle it? If
+  the standard allows empty string keys and the spec says "non-blank
+  keys", that is a contradiction — produce a finding.
+- Every deviation from the standard must be its own numbered requirement
+  so it can be tested independently. "Stricter than RFC 8259" is not a
+  requirement — it's a vague claim. "Rejects duplicate keys (deviation
+  from RFC 8259 Section 4)" is a testable requirement.
+
+**Resource lifecycle probe (mandatory).** For every requirement that
+introduces a closeable, disposable, or acquirable resource — or any
+construct that wraps streams, connections, handles, buffers, or locks:
+- What happens to objects derived from this resource (iterators, streams,
+  cursors, views) after the resource is closed? Must they throw, or can
+  they silently return stale data?
+- What happens if creation/construction fails partway? Are partially
+  allocated sub-resources released?
+- What happens if close/dispose itself fails? Is the resource left in a
+  usable state, an unusable state, or an undefined state?
+- What happens if close is called twice? Must it be idempotent?
+
+**Cross-construct atomicity probe (mandatory).** Review the full
+requirement set for groups of requirements that describe the same
+logical operation across multiple constructs (e.g., "insert updates
+index A" + "insert updates index B"):
+- If one succeeds and the other fails, what state is the system in?
+- Is partial completion acceptable, or must the operation be atomic?
+- If atomic: is the rollback mechanism specified? What state do
+  observers see during the operation?
+- If not atomic: is the partial-failure state documented? Can the
+  system recover, or is manual intervention required?
+
+**Error propagation probe (mandatory).** For every requirement that
+specifies an error, exception, or failure condition:
+- After the error occurs, what is the state of the object that threw?
+  Is it reusable without re-initialization?
+- If the operation was mid-stream (writing, parsing, iterating), what
+  happens to output written so far? Is it visible to observers? Is it
+  valid?
+- If the object holds shared resources (streams, buffers, connections),
+  what state are those resources in after the error? Must the caller
+  close/dispose them explicitly?
+- Can the error propagate to a context where it's unexpected? (e.g.,
+  a checked exception thrown through an interface that doesn't declare it)
+
+**Identity and equality probe (mandatory).** For every data type
+introduced by the spec that will participate in comparison, lookup,
+deduplication, caching, or sorting:
+- What does equality mean? Reference identity, structural equality, or
+  domain-specific equivalence?
+- If the type contains fields with non-obvious equality semantics
+  (floating point, opaque handles, lazy-loaded values), does the spec
+  define how those fields affect equality?
+- If two instances are "equal", can they be substituted for each other
+  in all contexts? If not, the spec needs a weaker equivalence relation.
+
+**Concurrency contract probe (mandatory).** Every construct introduced
+by the spec must declare its thread-safety model. This is not optional
+— the absence of a concurrency statement is a spec gap, because it
+leaves the implementer guessing and the test writer unable to verify.
+
+For every construct (type, interface, resource, service) in the spec:
+- Is it designed to be called from multiple threads? If yes: what is
+  the concurrency model? (immutable, internally synchronized, requires
+  external synchronization, thread-confined)
+- If NOT designed for concurrent use: the spec must say so explicitly.
+  "This type is not thread-safe — callers must not share instances
+  across threads without external synchronization" is a requirement.
+- For constructs that manage shared resources (caches, pools, registries,
+  indexes): concurrent access is likely regardless of intent. The spec
+  must declare whether concurrent operations are safe, and if so, what
+  guarantees hold (atomicity of individual operations, consistency of
+  compound operations, visibility of mutations).
+- For compound operations (check-then-act, get-or-create, position-then-
+  read): are they atomic? If not, the spec must state that callers are
+  responsible for atomicity.
+
+A spec that says nothing about concurrency is incomplete. The test writer
+cannot write concurrency tests without knowing the contract. The
+implementer cannot choose between synchronized and unsynchronized without
+knowing the intent. Declare it.
+
+**Trust boundary probe (mandatory).** For every requirement that
+describes a predicate, status check, or query consumed by other
+constructs:
+- Does the predicate have sub-states within "true"? (e.g., "is member"
+  could mean active, joining, or leaving.) Do all consumers agree on
+  which sub-states count as true?
+- If the input comes from another construct (not user input), does the
+  spec explicitly trust it ("assumes X is valid, validated by Y") or
+  validate it? Implicit trust is a spec gap.
+
+For each case that produces wrong or unspecified behavior: produce a
+finding using the standard format above.
 
 If the adversary cannot construct a concrete attack for a requirement,
 the requirement stands as written. No changes.
@@ -230,6 +474,9 @@ Review the full requirement set (Pass 1 + new additions) for:
   requirement B to fail
 - **Ordering dependencies:** requirement A must be implemented before B
   but this ordering isn't stated
+- **Atomicity gaps:** multiple requirements that describe the same
+  logical operation on different constructs. If one can succeed while
+  another fails, the partial-failure state must be specified.
 - **Ambiguous alternatives:** a requirement that uses "either X or Y",
   "may", or conditional language allowing two mutually exclusive
   implementations. If two test writers could independently write tests
@@ -287,13 +534,65 @@ to the spec.
 
 ---
 
-## Output
+## Pass 3 — Depth pass (mandatory)
 
-The final spec file, ready for `/spec-write <id> <title>` to register.
+After applying the user's arbitration decisions from Pass 2, automatically
+run a depth pass. Do not prompt — this is mandatory.
 
-The user runs `/spec-write` separately — this skill does not register the
-spec in the manifest. Separation of concerns: authoring is cognitive,
-registration is mechanical.
+Round 2 fixes create new attack surface that round 1 could not see.
+Empirical data across multiple specs shows round 2 consistently finds
+critical/high issues that are *consequences* of round 1 fixes: deadlocks
+from new thread models, budget fictions from abstraction changes,
+duplicate data from retry semantics. These are invisible to a single
+falsification pass.
+
+### Depth pass execution
+
+The depth pass is structurally identical to Pass 2 (same subagent setup,
+same falsification lenses, same arbitration mode) with two additions:
+
+1. **Prior findings as input.** The subagent receives all accepted findings
+   from Pass 2 as additional context. These are attack vectors — knowing
+   "credits shifted from physical slabs to logical budget" tells the depth
+   pass to probe whether the budget actually bounds what it claims to.
+
+2. **Duplicate suppression.** The subagent must not re-report findings
+   already accepted in Pass 2. If a finding overlaps with an existing
+   requirement added during arbitration, skip it.
+
+After the depth pass, present findings in the same arbitration format.
+Apply the user's decisions to the spec.
+
+### Pass 4+ — Prompted on severity
+
+After the depth pass, evaluate the accepted findings:
+
+**If any critical or high findings were found:** use AskUserQuestion:
+- "Run another pass" (description: "Critical/high findings suggest more may remain")
+- "Done" (description: "Proceed to output")
+
+**If only medium/low findings:** proceed to output. Diminishing returns
+are likely.
+
+There is no limit on passes, but each subsequent offer beyond pass 3
+should note diminishing returns. Empirically: pass 3 captures the
+fix-consequence bugs, pass 4+ is rarely productive.
+
+---
+
+## Output — Register the spec
+
+After all adversarial passes are complete and arbitration decisions applied,
+register the spec by invoking `/spec-write "<id>" "<title>"` directly.
+
+**This is mandatory.** `/spec-author` owns the full lifecycle: draft →
+falsify → arbitrate → register. The caller should never need to call
+`/spec-write` separately. This prevents the shortcut where an unfalsified
+draft gets registered without adversarial review.
+
+After `/spec-write` completes, verify the spec is in APPROVED state in
+`.spec/registry/manifest.json`. If it registered as DRAFT (due to
+unresolved conflicts), report the issue — do not silently return.
 
 ---
 
@@ -303,8 +602,11 @@ registration is mechanical.
   pre-existing code for prerequisite stubs
 - Never skip Pass 2 — nothing advances past a draft without a
   falsification pass
+- Never skip Pass 3 — the depth pass is mandatory, not severity-gated
 - Never suppress uncertain findings — surface them for arbitration
 - Never add a validation requirement without tracing its enforcement path
 - Always present the draft to the user between Pass 1 and Pass 2
 - The subagent for Pass 2 must receive the complete Pass 1 output, not
   a summary — summaries lose the detail that adversarial review needs
+- Always register the spec via `/spec-write` at the end — the caller
+  must never need to call `/spec-write` separately

@@ -261,6 +261,7 @@ brief and acceptance criteria don't mention but the interface implies.
 | **Closeable / AutoCloseable / resource lifecycle** | Cleanup on all paths, use-after-close safety | `test_close_releases_resources`, `test_use_after_close_throws` |
 | **Mutable state** (add, put, insert, update, delete on a collection/store) | Interaction: sequences of mutations produce expected state | `test_add_then_remove_restores_original`, `test_multiple_adds_accumulate` |
 | **Iterator / stream / cursor** | Exhaustion, empty iteration, concurrent modification | `test_empty_iteration`, `test_iterator_exhaustion` |
+| **Concurrency contract (from spec)** | If spec declares thread-safe: concurrent access, check-then-act atomicity, close-under-contention. If spec declares not-thread-safe: document in test comment, no concurrency tests. | `test_concurrent_<operation>`, `test_close_during_<operation>` |
 | **Factory / builder** | Invalid configuration, required fields, build order | `test_build_without_required_field_throws` |
 | **Comparable / ordering** | Symmetry, transitivity, consistency with equals | `test_ordering_symmetry`, `test_ordering_transitivity` |
 | **Numeric parameters** (capacity, size, count, limit, offset) | Zero, negative, overflow | `test_zero_capacity`, `test_negative_throws` |
@@ -389,6 +390,10 @@ discovery where each audit finds the next layer.
 - Mutable arrays/collections stored by reference without defensive copying
 - Float/double encoding — sign-bit handling differences between integer and IEEE 754
 - Multi-step mutations that aren't atomic — delete-then-insert, check-then-act
+- **Concurrency contract violations** — if the spec declares this construct
+  thread-safe, check: are compound operations (get-or-create, check-then-act,
+  position-then-read) actually atomic? If the spec declares not-thread-safe,
+  note it but don't generate false concurrency findings
 - Switch/instanceof that don't cover all sealed interface subtypes
 - Silent truncation or Math.min instead of fail-fast on mismatched dimensions/sizes
 - Not-equals predicates interacting with null field values

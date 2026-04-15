@@ -206,13 +206,13 @@ Wait for the user's response. Use their answer to:
    technology, approach, or paper that isn't in the KB, offer to commission
    research before re-evaluating:
    ```
-   I don't see <topic> in the KB. Want me to research it first so we can
-   evaluate it properly against the current decision?
-
-     yes  — I'll run /research and then come back to re-evaluate
-     no   — proceed with what we have
+   I don't see <topic> in the KB.
    ```
-   If "yes": invoke `/research "<subject>" context: "decisions revisit: <slug>"` as a sub-agent, then continue to Step 3 with
+   Use AskUserQuestion:
+     - "Research first" (description: "Run /research, then re-evaluate with new data")
+     - "Proceed without" (description: "Continue with what we have")
+
+   If "Research first": invoke `/research "<subject>" context: "decisions revisit: <slug>"` as a sub-agent, then continue to Step 3 with
    the new KB entry available.
 
 3. **Determine if the user already knows the answer** — if they say "I want
@@ -616,11 +616,167 @@ concrete dependencies, not cluster-level ordering preferences.
 Display the roadmap summary and use AskUserQuestion:
 - "Start with Phase 1" — begin working through the first cluster
 - "Pick a cluster" — choose a specific cluster to focus on
+- "Create work group" (description: "Translate roadmap clusters into a work group for parallel execution")
 - "Done" — roadmap is written, user will return later
 
 If "Start with Phase 1" or "Pick a cluster": suggest the appropriate
 next command for each item (e.g., `/architect "<slug>"` for minor/full
 features, or a direct implementation reference for gap-fills).
+
+If "Create work group": proceed to Step 9.
+
+If "Done": stop.
+
+### Step 9 — Create work group (if selected)
+
+Only runs if the user chose "Create work group" in Step 8.
+
+#### 9a — Choose group slug
+
+Use AskUserQuestion with options:
+  - "decisions-backlog" (description: "Use the default group name")
+  - Other — user provides a custom slug
+
+#### 9b — Create group directory and work.md
+
+Create `.work/<group-slug>/` directory. Write `.work/<group-slug>/work.md`:
+
+```yaml
+---
+group: <group-slug>
+goal: Resolve deferred decision backlog per roadmap
+status: active
+created: <YYYY-MM-DD>
+---
+```
+
+```markdown
+## Goal
+
+Resolve <n> deferred architecture decisions organized into <n> thematic
+clusters per the roadmap at `.decisions/roadmap.md`.
+
+## Scope
+
+### In scope
+<list each cluster name and its decision count>
+
+### Out of scope
+- Decisions not in the deferred backlog
+- Implementation beyond ADR resolution (implementation follows via /work-start)
+
+## Ordering Constraints
+<from roadmap Dependencies and Suggested Sequence sections>
+
+## Shared Interfaces
+None — decisions are documentation artifacts.
+
+## Success Criteria
+- All deferred decisions in the roadmap are either accepted, closed, or
+  re-deferred with updated conditions
+```
+
+#### 9c — Create WD files from clusters
+
+For each roadmap cluster (from the `## Clusters` section of
+`.decisions/roadmap.md`), write `.work/<group-slug>/WD-<NN>.md`:
+
+```yaml
+---
+id: WD-<NN>
+title: <Cluster Name>
+group: <group-slug>
+status: DRAFT
+domains: [decisions]
+artifact_deps:
+  - { type: adr, slug: "<slug>", required_status: accepted }
+  ...
+produces:
+  - { type: adr, slug: "<slug>" }
+  ...
+---
+```
+
+```markdown
+## Summary
+
+<cluster description from roadmap — 2-3 sentences>
+
+Decisions in this cluster: <slug1>, <slug2>, ...
+
+## Acceptance Criteria
+
+- Each decision slug in this cluster has an accepted ADR or is explicitly
+  closed/re-deferred
+- Implementation notes recorded for any that need follow-up features
+
+## Implementation Notes
+
+**Effort classification:**
+- Gap-fills: <slugs>
+- Minor features: <slugs>
+- Full features: <slugs>
+
+**Approach:** Process gap-fills first (direct TDD pass), then minor features
+(brief /architect evaluation), then full features (full /architect + /feature
+pipeline).
+```
+
+**Numbering:** WD-01, WD-02, etc. — in roadmap priority order (Phase 1
+clusters first).
+
+**artifact_deps rules for cross-cluster dependencies:**
+- If the roadmap says "Cluster B depends on Cluster A because of <slug>",
+  then the WD for Cluster B gets
+  `artifact_deps: [{type: adr, slug: "<slug>", required_status: accepted}]`
+  pointing to the decision from Cluster A that must be resolved first.
+- Only add deps for concrete decision-level dependencies, not cluster-level
+  ordering preferences.
+
+**produces rules:**
+- Each WD lists all decision slugs in its cluster as
+  `produces: [{type: adr, slug: "<slug>"}]`.
+
+**Immediate promotions handling:**
+- Decisions flagged as "Immediate promotions" in the roadmap's
+  `## Immediate Actions` section become a separate WD (e.g.,
+  "WD-01 — Immediate Promotions") with no `artifact_deps`. This WD is
+  immediately READY. Its `produces` list contains the promoted slugs.
+  Number it WD-01 so it sorts first.
+
+#### 9d — Run work-resolve.sh and update manifest
+
+Run:
+```bash
+bash .claude/scripts/work-resolve.sh "<group-slug>"
+```
+
+Write `.work/<group-slug>/manifest.md` using the same format as
+`/work-decompose` Step 6 (populate the Work Definitions table and
+Dependency Graph from the WD files).
+
+Update `.work/CLAUDE.md` — add a row to the Active Work Groups table.
+
+#### 9e — Present result
+
+```
+Work group '<group-slug>' created from roadmap.
+
+  <N> work definitions (<N> ready, <N> blocked)
+  <N> decisions across <N> clusters
+
+Files:
+  .work/<group-slug>/work.md       — scope
+  .work/<group-slug>/manifest.md   — WD registry
+  .work/<group-slug>/WD-*.md       — individual work definitions
+
+Next steps:
+  /work-plan "<group-slug>" next    — specify the first ready cluster
+  /work-start "<group-slug>" next   — implement a fully specified cluster
+  /work-status "<group-slug>"       — check readiness
+```
+
+Stop.
 
 ---
 

@@ -385,22 +385,24 @@ Combine results from 2a (direct navigation) and 2b (keyword scan). Mark the
 source of each candidate:
 
 ```
-── Candidates ──────────────────────────────────
+── Candidates (preliminary — evaluation and falsification follow) ──
 Candidates identified:
   ✓ .kb/algorithms/vector-indexing/hnsw.md
   ✓ .kb/algorithms/vector-indexing/ivf-flat.md
   ✓ .kb/infrastructure/databases/connection-pooling.md  (keyword match: "throughput")
   ✗ DiskANN — not in KB (needs research)
+
+This list may change — falsification (Step 6) can discover missing
+candidates or invalidate existing ones. Decision is at Step 7.
 ```
 
 Keyword-matched candidates are shown with the matching term so the user can
-quickly judge relevance. The user can exclude any candidate before subject
-files are loaded in Step 4.
+quickly judge relevance.
 
 **Neutral presentation:** list candidates without editorial commentary.
 Do not indicate which candidate you expect to win, which seems "natural,"
-or which is "obviously" best. The user reviews the list and decides what
-to evaluate. Evaluation happens at Step 4, recommendation at Step 7.
+or which is "obviously" best. Do NOT use AskUserQuestion here — this is
+informational display, not a decision point. Proceed directly to Step 2d.
 
 ---
 
@@ -442,6 +444,34 @@ If **defer**: write a deferred ADR (same as Step 0D) with the coverage gap
 noted in "What Is Known So Far." Stop.
 
 **If the KB has direct coverage:** skip this step silently.
+
+---
+
+## Step 2e — Work group context (if applicable)
+
+Check whether `.work/` exists. If it does, run:
+```bash
+bash .claude/scripts/work-context.sh --domains "<comma-separated domains from this decision>"
+```
+
+If the output is non-empty, read it silently and use it to inform Steps 3-5:
+
+- **Forward compatibility:** If other work definitions in the same domains are
+  planned, note which ones. The decision being made here may affect their
+  specifications. Flag any potential conflicts: "This ADR constrains
+  WD-03's planned interface — verify compatibility before accepting."
+
+- **Ordering gates:** If this decision depends on an artifact that another WD
+  is supposed to produce but hasn't yet, surface it: "This decision assumes
+  <artifact> exists, but WD-01 has not yet produced it. Consider gating this
+  decision or making the assumption explicit."
+
+- **Multi-consumer ADRs:** If the work context shows multiple WDs depend on
+  the same ADR slug, note the breadth of impact: "This decision affects N
+  work definitions — changes after acceptance will require coordinated updates."
+
+This step is silent when no work groups exist or when the decision's domains
+don't overlap with any planned work.
 
 ---
 
@@ -532,6 +562,18 @@ This is informational — it does not block the current decision.
 files directly (no ADR lookup needed).
 
 ### 4b — Score candidates
+
+**IMPORTANT: This is intermediate analysis, not a decision point.** Display
+a clear header before scoring begins:
+
+```
+── Evaluating candidates (analysis in progress — decision is at Step 7) ──
+```
+
+Do NOT use AskUserQuestion or pause for input during scoring. The user should
+not be choosing between candidates at this stage — falsification (Step 6) may
+discover missing candidates, challenge scores, or revise the recommendation.
+The deliberation at Step 7 is the only point where the user selects a candidate.
 
 For each loaded candidate:
 1. Read the full subject file at `.kb/<topic>/<category>/<subject>.md`
@@ -688,7 +730,12 @@ Every score row must include:
 After writing evaluation.md, launch a subagent to challenge the recommendation
 before presenting it to the user. This step is not skippable.
 
-Display: `── Falsification ───────────────────────────`
+**Do NOT pause for user input before falsification.** The candidate list and
+scores shown during Step 4 are preliminary — falsification may discover missing
+candidates, weaken scores, or change the recommendation entirely. Proceed
+directly from Step 5 to Step 6 without asking the user to choose or confirm.
+
+Display: `── Falsification (may revise candidates) ──`
 
 ### Subagent dispatch
 
@@ -900,6 +947,13 @@ One per turn maximum. Only ask when genuinely ambiguous:
 
 Never re-ask questions already answered in the constraint profile.
 Never ask hypothetical or open-ended future questions.
+
+**Action proposals during deliberation:**
+When the deliberation surfaces follow-up work (spec amendments, research
+commissions, deferred decisions), NEVER present the choice as a prose
+question ("Want me to X now, or defer to Y?"). Use AskUserQuestion with
+labeled options. Prose questions do not force a pause — Claude may answer
+its own question and execute without user consent.
 
 ### 7c — Confirmation and write
 
