@@ -13,6 +13,8 @@
 | Engine clustering | engine-clustering | 2026-03-20 | planning complete | work-plan.md written, 22 stubs created |
 | JSON-only SIMD on-demand + JSONL streaming | json-only-simd-jsonl | 2026-04-10 | planning complete | work-plan.md written, 16 stubs created |
 | SSTable v3 format upgrade | sstable-v3-format-upgrade | 2026-04-11 | planning complete | work-plan.md written, 1 stub created |
+| WD-02 Storage & Compression | decisions-backlog--wd-02 | 2026-04-14 | spec-authoring complete | 10 decisions resolved (3 confirmed, 1 closed, 1 re-deferred, 5 perf-gated re-deferred); F24-F26 specs |
+| WD-05 Cluster Networking & Discovery | decisions-backlog--wd-05 | 2026-04-13 | spec-authoring complete | 12 decisions resolved (7 confirmed, 4 closed, 1 re-deferred); F19-F23 specs |
 
 ## Completed / Archived
 

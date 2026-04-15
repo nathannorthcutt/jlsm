@@ -9,11 +9,11 @@
 
 | WD | Title | Status | Decisions | Effort |
 |----|-------|--------|-----------|--------|
-| WD-01 | Schema & Field Types | COMPLETE | 4 | 4 minor |
-| WD-02 | Storage & Compression | READY | 10 | 2 gap-fill, 6 minor, 2 full |
-| WD-03 | Cache | COMPLETE | 2 | 2 minor |
-| WD-04 | Vector | COMPLETE | 2 | 2 minor |
-| WD-05 | Cluster Networking & Discovery | READY | 12 | 2 gap-fill, 9 minor, 1 full |
+| WD-01 | Schema & Field Types | SPECIFIED | 4 | 4 minor |
+| WD-02 | Storage & Compression | SPECIFIED | 10 | 2 gap-fill, 6 minor, 2 full |
+| WD-03 | Cache | SPECIFIED | 2 | 2 minor |
+| WD-04 | Vector | SPECIFIED | 2 | 2 minor |
+| WD-05 | Cluster Networking & Discovery | SPECIFIED | 12 | 2 gap-fill, 9 minor, 1 full |
 | WD-06 | Engine API & Catalog | READY | 8 | 1 gap-fill, 3 minor, 4 full |
 | WD-07 | Partitioning & Rebalancing | READY | 13 | 1 gap-fill, 9 minor, 3 full |
 | WD-08 | Query Execution | READY | 3 | 2 minor, 1 full |

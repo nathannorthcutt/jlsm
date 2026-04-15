@@ -4,6 +4,14 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| Slow Node Detection | slow-node-detection | 2026-04-13 | Composite — Phi Bands + Peer Comparison + Request Latency |
+| Piggybacked State Exchange | piggybacked-state-exchange | 2026-04-13 | Fixed-Field Heartbeat Metadata — 10 bytes, O(1) parsing, version byte |
+| Scatter Backpressure | scatter-backpressure | 2026-04-13 | Credit-Based + Flow API composite — hard memory cap via ArenaBufferPool, non-blocking demand |
+| Transport Traffic Priority | transport-traffic-priority | 2026-04-13 | DRR + Strict-Priority Bypass — O(1) scheduling, heartbeat bypass, starvation-free |
+| Vector Storage Cost Optimization | vector-storage-cost-optimization | 2026-04-13 | QuantizationConfig on IndexDefinition + custom SPI escape hatch |
+| Schema Migration Policy | string-to-bounded-string-migration | 2026-04-13 | Compaction-time migration + on-demand scan with quarantine |
+| Parameterized Field Bounds | parameterized-field-bounds | 2026-04-13 | BoundedArray sealed permit; numeric bounds deferred |
+| Binary Field Type | binary-field-type | 2026-04-13 | Binary sealed permit + opaque BlobRef + BlobStore SPI |
 | Field Encryption API Design | field-encryption-api-design | 2026-03-18 | Schema Annotation — FieldDefinition carries sealed EncryptionSpec, keys in Arena-backed holder |
 | Index Definition API Simplification | index-definition-api-simplification | 2026-03-17 | Derive dimensions from schema VectorType — remove vectorDimensions from record |
 | Stripe Hash Function | stripe-hash-function | 2026-03-17 | Stafford variant 13 (splitmix64) — zero-allocation, sub-nanosecond |

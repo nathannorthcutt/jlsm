@@ -14,6 +14,7 @@ last_researched: "2026-04-13"
 applies_to: []
 related:
   - "distributed-systems/networking/multiplexed-transport-framing.md"
+  - "distributed-systems/query-execution/distributed-scan-cursors.md"
 decision_refs: ["scatter-backpressure"]
 sources:
   - url: "https://prestodb.io/blog/2019/08/19/memory-tracking/"

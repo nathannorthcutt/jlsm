@@ -14,13 +14,16 @@
 |-------|------|------------|-------|--------------|
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 7 | 54 | 2026-04-13 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 9 | 2026-04-13 |
-| distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 7 | 20 | 2026-04-13 |
+| distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 7 | 23 | 2026-04-13 |
 | patterns | [patterns/](patterns/CLAUDE.md) | 6 | 27 | 2026-04-12 |
 | systems | [systems/](systems/CLAUDE.md) | 5 | 47 | 2026-04-13 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-13 | distributed-systems | cluster-membership | view-stall-recovery |
+| 2026-04-13 | distributed-systems | cluster-membership | fail-slow-detection |
+| 2026-04-13 | distributed-systems | query-execution | distributed-scan-cursors |
 | 2026-04-13 | systems | database-engines | schema-type-systems |
 | 2026-04-13 | systems | database-engines | cross-table-transaction-patterns |
 | 2026-04-13 | systems | database-engines | handle-lifecycle-patterns |
@@ -28,9 +31,6 @@
 | 2026-04-13 | algorithms | encryption | encrypted-cross-field-joins |
 | 2026-04-13 | algorithms | compression | pure-java-compression-codecs |
 | 2026-04-13 | data-structures | caching | concurrent-cache-eviction-strategies |
-| 2026-04-13 | distributed-systems | cluster-membership | service-discovery-patterns |
-| 2026-04-13 | distributed-systems | transactions | cross-partition-protocols |
-| 2026-04-13 | distributed-systems | consensus | partition-replication-consensus |
 
 ## Shared References
 `_refs/complexity-notation.md` — notation key used in algorithm files

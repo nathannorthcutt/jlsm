@@ -15,16 +15,26 @@
 | Domain | Path | Description | Specs |
 |--------|------|-------------|-------|
 | vector-indexing | domains/vector-indexing/ | vector search hnsw ivf-flat ann similarity float16 precision encoding | 2 |
-| serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer | 5 |
-| storage | domains/storage/ | memtable wal flush compaction object-store block cache manifest | 1 |
+| serialization | domains/serialization/ | encoding decoding sstable document serializer binary format footer integrity checksum varint | 6 |
+| storage | domains/storage/ | memtable wal flush compaction object-store block cache manifest block-size byte-budget | 3 |
 | encryption | domains/encryption/ | aes gcm kms tmk sek key-derivation cipher block-encryption | 1 |
 | query | domains/query/ | sql query plan statistics join index scan filter | 2 |
 | engine | domains/engine/ | database engine table catalog schema partition | 5 |
+| cluster-membership | domains/cluster-membership/ | membership protocol discovery rediscovery health stall recovery slow-node detection heartbeat metadata | 2 |
+| cluster-transport | domains/cluster-transport/ | transport framing multiplexing connection NIO TCP wire-protocol stream-id backpressure | 3 |
 
 ## Recently Added (last 10)
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-14 | F26 | serialization, storage | SSTable End-to-End Integrity |
+| 2026-04-14 | F25 | storage | Byte-Budget Block Cache |
+| 2026-04-14 | F24 | storage | Pool-Aware Block Size Configuration |
+| 2026-04-14 | F23 | cluster-membership | Cluster Health & Recovery |
+| 2026-04-14 | F22 | cluster-membership | Continuous Rediscovery |
+| 2026-04-14 | F21 | cluster-transport | Scatter-Gather Flow Control |
+| 2026-04-14 | F20 | cluster-transport | Transport Traffic Priority |
+| 2026-04-14 | F19 | cluster-transport | Multiplexed Transport Framing |
 | 2026-04-12 | F18 | serialization, storage | ZSTD Dictionary Compression with Per-Level Codec Policy |
 | 2026-04-12 | F17 | serialization, storage | WAL Compression with MemorySegment Codec API |
 | 2026-04-11 | F16 | serialization, storage | SSTable v3 Format Upgrade |

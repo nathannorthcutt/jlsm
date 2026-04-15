@@ -15,6 +15,8 @@ membership dissemination (gossip/piggybacking), and split-brain detection
 | [ismember-ignores-state.md](ismember-ignores-state.md) | isMember() returns true for DEAD members | active | adversarial-finding | Membership state transition handling |
 | [engine-clustering.md](engine-clustering.md) | engine-clustering feature footprint | stable | feature-footprint | Cluster membership + ownership audit |
 | [service-discovery-patterns.md](service-discovery-patterns.md) | Service Discovery Patterns for Cluster Bootstrap | active | O(1) cached lookup | Bootstrap, rediscovery, authenticated discovery |
+| [view-stall-recovery.md](view-stall-recovery.md) | Membership View Stall Recovery | active | O(n) anti-entropy sync | Quorum loss recovery, partition healing, tiered escalation |
+| [fail-slow-detection.md](fail-slow-detection.md) | Fail-Slow Node Detection | active | O(1) per heartbeat | Degraded node detection, phi bands, peer scoring, routing |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->
@@ -22,6 +24,8 @@ membership dissemination (gossip/piggybacking), and split-brain detection
 ## Recommended Reading Order
 1. Start: [cluster-membership-protocols.md](cluster-membership-protocols.md) — SWIM protocol, failure detection, split-brain
 2. Then: [service-discovery-patterns.md](service-discovery-patterns.md) — bootstrap, environment config, auth'd discovery
+3. Then: [view-stall-recovery.md](view-stall-recovery.md) — quorum loss, tiered escalation, anti-entropy sync
+4. Then: [fail-slow-detection.md](fail-slow-detection.md) — degraded state detection, phi bands, peer scoring
 
 ## Research Gaps
 - Raft-based membership (strong consistency alternative to SWIM)

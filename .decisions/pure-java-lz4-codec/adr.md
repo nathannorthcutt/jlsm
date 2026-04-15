@@ -1,31 +1,37 @@
 ---
 problem: "pure-java-lz4-codec"
-date: "2026-04-12"
-version: 1
+date: "2026-04-14"
+version: 2
 status: "deferred"
+depends_on: ["wal-compression"]
 ---
 
-# Pure-Java LZ4 Codec — Deferred
+# Pure-Java LZ4 Codec — Re-Deferred
 
 ## Problem
 A pure-Java LZ4 implementation operating directly on MemorySegment for zero-copy
-compression. LZ4 is ~15x faster than Deflate at comparable ratios on small
-records, making it better suited as the default WAL codec.
+compression. LZ4 is ~15x faster than Deflate, making it better suited as the
+default WAL and SSTable codec.
 
 ## Why Deferred
-Scoped out during `wal-compression` decision. Deflate via direct ByteBuffer is
-sufficient for initial implementation. LZ4 is an optimization, not a requirement.
+Performance-gated. WAL compression is specified (wal-compression ADR) but no
+benchmarks exist yet to demonstrate that Deflate latency is a measurable
+bottleneck. LZ4 is an optimization, not a requirement. Pure-Java LZ4 achieves
+30-50% of native throughput — adequate for most workloads, but the need hasn't
+been demonstrated.
 
 ## Resume When
-When WAL compression is implemented and benchmarks show Deflate latency is
-a measurable bottleneck, or when a pure-Java LZ4 implementation is needed
-for SSTable compression performance.
+When WAL compression is implemented and JMH benchmarks show Deflate compression
+latency is a measurable bottleneck in the write path (not just theoretically
+slower).
 
 ## What Is Known So Far
-See `.decisions/wal-compression/adr.md` for the MemorySegment codec API.
-See `.kb/algorithms/compression/block-compression-algorithms.md` — LZ4 is
-implementable in ~200 lines of pure Java. ~780 MB/s compress, ~4970 MB/s
-decompress. Ratio ~2:1.
+- KB: `.kb/algorithms/compression/pure-java-compression-codecs.md` — feasible in
+  ~200 lines, 200-400 MB/s compress, 800-1500 MB/s decompress
+- KB: `.kb/algorithms/compression/block-compression-algorithms.md` — LZ4 survey
+- The MemorySegment codec API is ready (wal-compression ADR) — LZ4 would
+  implement the `compress(MemorySegment, MemorySegment)` method directly
+- Multiple reference implementations exist: Apache Kafka, Lucene, aircompressor
 
 ## Next Step
-Run `/architect "pure-java-lz4-codec"` when ready to evaluate.
+Run `/architect "pure-java-lz4-codec"` when benchmarks demonstrate the need.

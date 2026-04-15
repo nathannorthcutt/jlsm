@@ -9,13 +9,13 @@
     },
     "serialization": {
       "shard_path": "domains/serialization/INDEX.md",
-      "description": "encoding decoding sstable document serializer binary format footer",
-      "feature_count": 7
+      "description": "encoding decoding sstable document serializer binary format footer integrity checksum varint",
+      "feature_count": 8
     },
     "storage": {
       "shard_path": "domains/storage/INDEX.md",
-      "description": "memtable wal flush compaction object-store block cache manifest",
-      "feature_count": 1
+      "description": "memtable wal flush compaction object-store block cache manifest block-size byte-budget",
+      "feature_count": 3
     },
     "encryption": {
       "shard_path": "domains/encryption/INDEX.md",
@@ -31,6 +31,16 @@
       "shard_path": "domains/engine/INDEX.md",
       "description": "database engine table catalog schema partition",
       "feature_count": 6
+    },
+    "cluster-membership": {
+      "shard_path": "domains/cluster-membership/INDEX.md",
+      "description": "membership protocol discovery rediscovery health stall recovery slow-node detection heartbeat metadata",
+      "feature_count": 2
+    },
+    "cluster-transport": {
+      "shard_path": "domains/cluster-transport/INDEX.md",
+      "description": "transport framing multiplexing connection NIO TCP wire-protocol stream-id backpressure",
+      "feature_count": 3
     }
   },
   "features": {
@@ -162,6 +172,63 @@
     },
     "F18": {
       "latest_file": "domains/serialization/F18-zstd-dictionary-compression.md",
+      "state": "DRAFT",
+      "domains": [
+        "serialization",
+        "storage"
+      ]
+    },
+    "F19": {
+      "latest_file": "domains/cluster-transport/F19-multiplexed-transport-framing.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-transport"
+      ]
+    },
+    "F20": {
+      "latest_file": "domains/cluster-transport/F20-transport-traffic-priority.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-transport"
+      ]
+    },
+    "F21": {
+      "latest_file": "domains/cluster-transport/F21-scatter-gather-flow-control.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-transport"
+      ]
+    },
+    "F22": {
+      "latest_file": "domains/cluster-membership/F22-continuous-rediscovery.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-membership"
+      ]
+    },
+    "F23": {
+      "latest_file": "domains/cluster-membership/F23-cluster-health-and-recovery.md",
+      "state": "DRAFT",
+      "domains": [
+        "cluster-membership"
+      ]
+    },
+    "F24": {
+      "latest_file": "domains/storage/F24-pool-aware-block-size.md",
+      "state": "DRAFT",
+      "domains": [
+        "storage"
+      ]
+    },
+    "F25": {
+      "latest_file": "domains/storage/F25-byte-budget-block-cache.md",
+      "state": "DRAFT",
+      "domains": [
+        "storage"
+      ]
+    },
+    "F26": {
+      "latest_file": "domains/serialization/F26-sstable-end-to-end-integrity.md",
       "state": "DRAFT",
       "domains": [
         "serialization",
