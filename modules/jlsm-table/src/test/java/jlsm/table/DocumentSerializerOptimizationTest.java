@@ -20,6 +20,7 @@ class DocumentSerializerOptimizationTest {
 
     // ---- Happy path ----
 
+    // @spec F06.R1,R2,R14 — heap fast path produces correct round-trip for heap-backed segments
     @Test
     void testHeapBackedSegmentDeserializesCorrectly() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
@@ -39,6 +40,7 @@ class DocumentSerializerOptimizationTest {
         assertTrue(result.getBoolean("active"));
     }
 
+    // @spec F06.R3,R14 — off-heap fallback via toArray() produces correct round-trip
     @Test
     void testOffHeapSegmentDeserializesCorrectly() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
@@ -62,6 +64,7 @@ class DocumentSerializerOptimizationTest {
         }
     }
 
+    // @spec F06.R10,R11,R13,R14 — dispatch table decodes all field types byte-identically
     @Test
     void testAllFieldTypesRoundTripAfterOptimization() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
@@ -89,6 +92,7 @@ class DocumentSerializerOptimizationTest {
         assertEquals(9999999999999L, result.getTimestamp("ts"));
     }
 
+    // @spec F06.R6,R7,R8,R15 — prefixBoolCount handles writeFieldCount < fieldCount correctly
     @Test
     void testSchemaEvolutionWithPrecomputedConstants() {
         // Serialize with 3-field schema
@@ -184,6 +188,7 @@ class DocumentSerializerOptimizationTest {
 
     // ---- Structural (optimization verification) ----
 
+    // @spec F06.R14,R20,R22 — multiple round-trips preserve values; backing array not retained
     @Test
     void testSerializeDeserializeRoundTripIsIdentity() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
@@ -206,6 +211,7 @@ class DocumentSerializerOptimizationTest {
         }
     }
 
+    // @spec F06.R1 — heap-backed segments decode via backing-array fast path
     @Test
     void testHeapSegmentUsesBackingArrayDirectly() {
         // This test verifies the optimization contract: for heap-backed segments,
@@ -230,6 +236,7 @@ class DocumentSerializerOptimizationTest {
         assertEquals(99, result.getInt("val"));
     }
 
+    // @spec F06.R3 — off-heap segments trigger toArray() fallback copy
     @Test
     void testOffHeapSegmentCopiesBytes() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("val", FieldType.Primitive.INT32)

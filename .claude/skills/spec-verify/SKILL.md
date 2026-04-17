@@ -59,12 +59,35 @@ Identify the implementation files. Sources (in priority order):
 Focus on the code that implements the requirements. Do not read the entire
 codebase — read targeted files.
 
-**Annotate as you go.** For every enforcement point discovered during
-verification — whether from existing annotations, work plans, or domain
-scanning — ensure an `@spec` annotation exists in the code. If an
-enforcement point is found but not annotated, add the annotation before
-proceeding to the verdict. This ensures that every verification pass
-leaves the codebase with complete traceability for the verified spec.
+**Annotate implementation as you go.** For every enforcement point
+discovered during verification — whether from existing annotations, work
+plans, or domain scanning — ensure an `@spec` annotation exists in the
+code. If an enforcement point is found but not annotated, add the
+annotation before proceeding to the verdict.
+
+**Annotate tests as you go.** For every test method that validates a
+requirement, ensure an `@spec` annotation exists on the test. Find tests
+by:
+1. Existing `@spec` annotations in test files (from spec-trace.sh)
+2. Test names/assertions that correspond to requirements (e.g.,
+   `testNullKeyRejection` → R15 null key check)
+3. Adversarial test classes that reference spec findings
+
+If a test validates a requirement but lacks an `@spec` annotation, add it.
+
+**Track test coverage gaps.** After annotating both implementation and
+test files, identify requirements with:
+- Implementation annotation but no test annotation — **test gap**
+- Neither implementation nor test annotation — **missing implementation**
+
+Report test gaps in the verification output. Requirements with test gaps
+are still verifiable (the implementation exists) but the test traceability
+is incomplete. Phase 5 (repair) should write structural/behavioral tests
+for requirements that have zero test coverage, including:
+- Reflection tests for structural requirements (final class, sealed
+  interface, absent methods, package visibility)
+- Behavioral tests for validation/rejection requirements
+- Skip negative concurrency claims (flaky test territory)
 
 Annotation rules (from `.spec/CLAUDE.md` Code Traceability section):
 - Format: `// @spec FXX.RN` or `// @spec FXX.RN — brief description`
@@ -113,6 +136,7 @@ For each non-SATISFIED requirement, classify it into one of three categories:
 | **code-bug** | Spec is correct, code doesn't match | Fix code + write regression test |
 | **stale-spec** | Code is correct (or stricter), spec text is outdated | Amend spec text |
 | **needs-decision** | Genuinely ambiguous — code does Y, spec says X, both are defensible | User decides direction |
+| **test-gap** | Requirement SATISFIED but no test-side @spec annotation | Write/annotate tests |
 
 Present ALL findings batched, grouped by classification:
 
@@ -132,6 +156,12 @@ Stale spec text (code is correct, spec needs update):
   R42 — spec says "silently ignores trailing bytes" but code now rejects them.
         Code is stricter, which is better.
   R43 — spec says "document in public API" but javadoc is missing.
+
+Test gaps (SATISFIED but no test traceability):
+  R1 — final class, testable via reflection (Modifier.isFinal)
+  R54 — private final fields, testable via reflection
+  R62 — no toString override, testable via reflection
+  ... (N requirements with implementation but no linked tests)
 
 Use AskUserQuestion with relevant options.
 ```
@@ -268,6 +298,43 @@ requirement against the spec:
 If any requirement is still not SATISFIED after the fix, investigate.
 Either the fix is incomplete (iterate) or the spec needs amendment
 (reclassify as stale-spec and return to Phase 4).
+
+### Step 5.5 — Fill test gaps
+
+For each **test-gap** finding (requirement SATISFIED but no test-side
+`@spec` annotation):
+
+1. **Check if an existing test already validates this requirement.** Search
+   test files for assertions that exercise the requirement's behavior (e.g.,
+   a test named `testNullKeyRejection` likely covers a null-rejection
+   requirement). If found, add the `@spec` annotation to the existing test.
+
+2. **If no existing test covers the requirement, write one.** Categorize
+   the requirement and write the appropriate test type:
+
+   | Requirement type | Test approach |
+   |-----------------|---------------|
+   | Behavioral (validation, rejection, output) | Standard input/output assertion |
+   | Structural (final class, sealed, package) | Reflection test (Modifier checks) |
+   | Absent behavior (no toString, no Serializable) | Reflection test (method/interface absence) |
+   | Documentation (javadoc, API contract) | Skip — not testable |
+   | Negative concurrency (no synchronization) | Skip — flaky test territory |
+
+3. **Annotate every test** with `@spec FXX.RN` linking it to the requirement.
+
+4. **Run the test suite** to confirm all new tests pass. Test-gap tests
+   must pass immediately (unlike regression tests for violations which must
+   fail first) — the implementation already satisfies the requirement, the
+   test just didn't exist.
+
+Present test-gap results:
+```
+── Test gap results: <id> ──────────────────────
+  Existing tests annotated: <count>
+  New tests written: <count>
+  Skipped (untestable): <count>
+  Total test coverage: <annotated>/<total requirements>
+```
 
 ---
 

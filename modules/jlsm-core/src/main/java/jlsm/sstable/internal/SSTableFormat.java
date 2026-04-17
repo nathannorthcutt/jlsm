@@ -75,6 +75,7 @@ package jlsm.sstable.internal;
 // @spec F02.R11 — v2 layout: data blocks, compression map, key index, bloom, footer
 // @spec F02.R12 — 64-byte footer with 8 big-endian long fields
 // @spec F02.R15 — v1 magic 0x4A4C534D53535401, v2 magic ...02
+// @spec F16.R13,R14,R17 — v3 magic 0x...03, 72-byte footer, named block-size constants
 public final class SSTableFormat {
 
     /** Magic number v1: ASCII "JLSMSST\x01" packed as a big-endian long. */
@@ -150,6 +151,7 @@ public final class SSTableFormat {
      * @param blockSize the block size to validate
      * @throws IllegalArgumentException if the block size is invalid
      */
+    // @spec F16.R11 — min 1024, max 33554432, power-of-two; IAE identifies violated constraint
     public static void validateBlockSize(int blockSize) {
         if (blockSize < MIN_BLOCK_SIZE) {
             throw new IllegalArgumentException(

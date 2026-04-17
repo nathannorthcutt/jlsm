@@ -164,7 +164,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.bloomFactory = bloomFactory;
         this.codec = codec;
         this.blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
-        this.v3 = false;
+        // @spec F16.R16 — codec-configured writers produce v3 format; no-codec writers stay v1
+        this.v3 = codec != null;
         this.dictionaryTrainingEnabled = false;
         this.dictionaryBlockThreshold = 64;
         this.dictionaryMaxBufferBytes = 256L * 1024 * 1024;
@@ -265,7 +266,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
         lastKeyBytes = keyBytes;
         entryCount++;
 
-        // Flush block if it exceeds the target size
+        // @spec F16.R12 — flush threshold reads configured field, not a hardcoded constant
         if (currentBlock.byteSize() >= blockSize) {
             flushCurrentBlock();
         }
@@ -318,6 +319,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
     /**
      * Compresses a single serialized block with the specified codec and writes it to the channel.
      */
+    // @spec F16.R4,R5 — CRC32C over exact on-disk bytes (compressed or raw post-fallback)
     private void compressAndWriteBlock(byte[] blockBytes, CompressionCodec useCodec)
             throws IOException {
         try (Arena arena = Arena.ofConfined()) {
@@ -395,8 +397,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
             if (dictEligible && !dictBufferAbandoned && dictBufferedBlocks != null) {
                 // Dictionary training lifecycle
                 finishWithDictionaryTraining();
-            } else if (codec != null && v3) {
+            } else if (codec != null) {
+                // @spec F16.R16 — codec-configured writers always produce v3 (never v2)
                 // v3 layout: [data blocks][compression map v3][key index][bloom filter][footer 72]
+                assert v3 : "codec-configured writers must always set v3=true";
                 if (dictionaryTrainingEnabled && !dictEligible) {
                     // Training was requested but not eligible (non-ZSTD or native unavailable)
                     trainingResult = new DictionaryTrainingResult(false, false, null, 0);
@@ -405,25 +409,6 @@ public final class TrieSSTableWriter implements SSTableWriter {
                             "buffer limit exceeded", 0);
                 }
                 finishV3Layout();
-            } else if (codec != null) {
-                // v2 layout: [data blocks][compression map][key index][bloom filter][footer 64]
-                long mapOffset = writePosition;
-                CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
-                writeBytes(compressionMap.serialize());
-                long mapLength = writePosition - mapOffset;
-
-                long indexOffset = writePosition;
-                writeKeyIndexV2();
-                long indexLength = writePosition - indexOffset;
-
-                long filterOffset = writePosition;
-                MemorySegment filterBytes = bloomFilter.serialize();
-                byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
-                writeBytes(filterArray);
-                long filterLength = writePosition - filterOffset;
-
-                writeFooterV2(mapOffset, mapLength, indexOffset, indexLength, filterOffset,
-                        filterLength);
             } else {
                 // v1 layout: [data blocks][key index][bloom filter][footer 48]
                 long indexOffset = writePosition;
@@ -522,21 +507,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeBytes(buf);
     }
 
-    private void writeFooterV2(long mapOffset, long mapLength, long idxOffset, long idxLength,
-            long fltOffset, long fltLength) throws IOException {
-        byte[] buf = new byte[SSTableFormat.FOOTER_SIZE_V2];
-        int off = 0;
-        off = writeLong(buf, off, mapOffset);
-        off = writeLong(buf, off, mapLength);
-        off = writeLong(buf, off, idxOffset);
-        off = writeLong(buf, off, idxLength);
-        off = writeLong(buf, off, fltOffset);
-        off = writeLong(buf, off, fltLength);
-        off = writeLong(buf, off, entryCount);
-        writeLong(buf, off, SSTableFormat.MAGIC_V2);
-        writeBytes(buf);
-    }
-
+    // @spec F16.R14,R15 — 72-byte v3 footer: 9 BE longs ending with MAGIC_V3; blockSize stored
     private void writeFooterV3(long mapOffset, long mapLength, long idxOffset, long idxLength,
             long fltOffset, long fltLength) throws IOException {
         byte[] buf = new byte[SSTableFormat.FOOTER_SIZE_V3];
@@ -749,6 +720,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
             return this;
         }
 
+        // @spec F16.R10,R11 — Builder.blockSize(int) validates and stores; default
+        // DEFAULT_BLOCK_SIZE
         public Builder blockSize(int blockSize) {
             SSTableFormat.validateBlockSize(blockSize);
             this.blockSize = blockSize;
@@ -837,6 +810,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
             if (bloomFactory == null) {
                 bloomFactory = n -> new BlockedBloomFilter(n, 0.01);
             }
+            // @spec F16.R16 — non-default blockSize without codec rejected at construction
             if (blockSize != SSTableFormat.DEFAULT_BLOCK_SIZE && codec == null) {
                 throw new IllegalArgumentException(
                         "non-default blockSize requires a compression codec");

@@ -43,6 +43,7 @@ import java.util.Set;
  *      Compression Format</a>
  */
 // @spec F02.R13 — 17-byte entries: offset(8) + compressedSize(4) + uncompressedSize(4) + codecId(1)
+// @spec F16.R1,R3,R22 — v3 adds 4-byte CRC32C checksum; entry record accepts full signed int range
 public final class CompressionMap {
 
     /** Size in bytes of a single compression map entry. */
@@ -181,6 +182,7 @@ public final class CompressionMap {
      *
      * @return byte array in v3 format
      */
+    // @spec F16.R1,R2 — v3 serialization: 21-byte entries with CRC32C, long arithmetic on overflow
     public byte[] serializeV3() {
         long longSize = 4L + (long) entries.size() * SSTableFormat.COMPRESSION_MAP_ENTRY_SIZE_V3;
         if (longSize > Integer.MAX_VALUE) {
@@ -264,6 +266,7 @@ public final class CompressionMap {
      * @throws IllegalArgumentException if the data is malformed or version is unsupported
      * @throws NullPointerException if data is null
      */
+    // @spec F16.R2,R3 — version-aware deserialize: 17-byte v2 or 21-byte v3 entries
     public static CompressionMap deserialize(byte[] data, int version) {
         if (version == 2) {
             return deserialize(data);

@@ -19,6 +19,8 @@ class VectorFieldTypeAdversarialTest {
     /**
      * VFT-3: float[] passed to JlsmDocument.of() is stored by reference. Mutating the original
      * array after construction changes the document's internal state.
+     *
+     * @spec F14.R30 — of() defensively clones float[] for VectorType(FLOAT32)
      */
     @Test
     void vft3_float32VectorMutationAfterConstruction() {
@@ -39,6 +41,8 @@ class VectorFieldTypeAdversarialTest {
 
     /**
      * VFT-3: short[] (FLOAT16 vector) passed to JlsmDocument.of() is stored by reference.
+     *
+     * @spec F14.R30 — of() defensively clones short[] for VectorType(FLOAT16)
      */
     @Test
     void vft3_float16VectorMutationAfterConstruction() {
@@ -62,6 +66,8 @@ class VectorFieldTypeAdversarialTest {
     /**
      * VFT-4: float[] vector containing NaN should be rejected at construction. NaN produces garbage
      * in similarity computations (cosine → NaN/NaN → NaN, invisible in search).
+     *
+     * @spec F14.R27 — FLOAT32 vector finiteness check rejects NaN
      */
     @Test
     void vft4_float32VectorWithNanElementRejected() {
@@ -75,6 +81,8 @@ class VectorFieldTypeAdversarialTest {
 
     /**
      * VFT-4: float[] vector containing Infinity should be rejected at construction.
+     *
+     * @spec F14.R27 — FLOAT32 vector finiteness check rejects Infinity
      */
     @Test
     void vft4_float32VectorWithInfinityRejected() {
@@ -89,6 +97,8 @@ class VectorFieldTypeAdversarialTest {
     /**
      * VFT-5: short[] (FLOAT16) vector containing NaN bits should be rejected at construction.
      * Float16 NaN is any value with exponent=0x1F and non-zero mantissa (e.g., 0x7E00).
+     *
+     * @spec F14.R27 — FLOAT16 finiteness check rejects NaN (0x7C00 exponent mask)
      */
     @Test
     void vft5_float16VectorWithNanBitsRejected() {
@@ -103,6 +113,8 @@ class VectorFieldTypeAdversarialTest {
     /**
      * VFT-5: short[] (FLOAT16) vector containing Infinity bits should be rejected at construction.
      * Float16 +Inf = 0x7C00, -Inf = 0xFC00.
+     *
+     * @spec F14.R27 — FLOAT16 finiteness check rejects Infinity
      */
     @Test
     void vft5_float16VectorWithInfinityBitsRejected() {
@@ -136,6 +148,8 @@ class VectorFieldTypeAdversarialTest {
      *
      * Note: if VFT-4 fix rejects NaN at construction, this test becomes untriggerable (good). We
      * test the serializer path directly in case pre-validated data enters.
+     *
+     * @spec F14.R27 — non-finite vector rejection at construction prevents bad JSON round-trip
      */
     @Test
     void vft11_jsonRoundTripNanInFloat32VectorPreserved() {
@@ -200,10 +214,10 @@ class VectorFieldTypeAdversarialTest {
     // ── VFT-3 (output side): values() exposes mutable internal state ────
 
     /**
-     * VFT-3 (output): values() is package-private and exposes the raw mutable array. This is by
-     * design for serializer performance. This test documents that the input-side defensive copy (at
-     * JlsmDocument.of()) prevents caller-side mutation, and verifies the serializer path produces
-     * consistent results from a freshly constructed document.
+     * VFT-3 (output): values() is package-private. Input-side defensive copy (at JlsmDocument.of())
+     * prevents caller-side mutation from reaching the serializer.
+     *
+     * @spec F14.R30 — of() clones float[] before storing
      */
     @Test
     void vft3_inputSideDefensiveCopyPreventsMutationBeforeSerialization() {

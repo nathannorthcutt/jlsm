@@ -311,14 +311,15 @@ class SSTableCompressionAdversarialTest {
             w.finish();
         }
 
-        // Locate key index via footer: v2 layout is [... mapOffset, mapLength, idxOffset,
-        // idxLength, ...]. idxOffset lives at footerStart+16 (bytes 16..23).
+        // Locate key index via footer. Writer now produces v3 when a codec is configured:
+        // v3 layout is [mapOffset, mapLength, idxOffset, idxLength, fltOffset, fltLength,
+        // entryCount, blockSize, MAGIC_V3]. idxOffset lives at footerStart+16 (bytes 16..23).
         long fileSize = Files.size(path);
         long idxOffset;
         int keyLen;
         try (SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.READ)) {
-            long footerStart = fileSize - SSTableFormat.FOOTER_SIZE_V2;
-            ByteBuffer footer = ByteBuffer.allocate(SSTableFormat.FOOTER_SIZE_V2);
+            long footerStart = fileSize - SSTableFormat.FOOTER_SIZE_V3;
+            ByteBuffer footer = ByteBuffer.allocate(SSTableFormat.FOOTER_SIZE_V3);
             ch.position(footerStart);
             while (footer.hasRemaining()) {
                 if (ch.read(footer) < 0)

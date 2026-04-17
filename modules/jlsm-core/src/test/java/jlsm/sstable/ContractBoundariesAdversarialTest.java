@@ -189,11 +189,12 @@ class ContractBoundariesAdversarialTest {
             writer.finish();
         }
 
-        // Step 2: Corrupt the footer's mapLength field to exceed Integer.MAX_VALUE
-        // v2 footer layout (64 bytes from end): mapOffset(8), mapLength(8), ...
-        // mapLength starts at fileSize - 56
+        // Step 2: Corrupt the footer's mapLength field to exceed Integer.MAX_VALUE.
+        // v3 footer layout (72 bytes from end): mapOffset(0), mapLength(8), idxOffset(16),
+        // idxLength(24), fltOffset(32), fltLength(40), entryCount(48), blockSize(56), MAGIC_V3(64).
+        // mapLength starts at fileSize - 72 + 8 = fileSize - 64
         long fileSize = Files.size(file);
-        long mapLengthOffset = fileSize - 56;
+        long mapLengthOffset = fileSize - 64;
         long corruptMapLength = 0x0000_0001_0000_0000L; // 4 GiB — exceeds Integer.MAX_VALUE
 
         try (SeekableByteChannel ch = Files.newByteChannel(file, StandardOpenOption.WRITE)) {
@@ -243,7 +244,7 @@ class ContractBoundariesAdversarialTest {
         // but CompressionMap.deserialize sees that the data is too short for the claimed block
         // count.
         long fileSize = Files.size(file);
-        long mapOffsetFieldPos = fileSize - 64; // mapOffset is first field in v2 footer
+        long mapOffsetFieldPos = fileSize - 72; // mapOffset is first field in v3 footer
         long mapOffset;
         try (SeekableByteChannel ch = Files.newByteChannel(file, StandardOpenOption.READ)) {
             ch.position(mapOffsetFieldPos);
@@ -326,13 +327,14 @@ class ContractBoundariesAdversarialTest {
             writer.finish();
         }
 
-        // Attempt to open using the v1 API — should get a clear error about v2 format
+        // Attempt to open using the v1 API — should get a clear error about v3 format (the
+        // writer now always produces v3 when a compression codec is configured, per F16 R16).
         IOException ex = assertThrows(IOException.class, () -> TrieSSTableReader.open(file,
                 jlsm.bloom.blocked.BlockedBloomFilter.deserializer(), null));
-        // The error message should mention "v2" to help the caller understand they need
-        // the v2 open method with codecs, not just an opaque "bad magic" error
-        assertTrue(ex.getMessage().toLowerCase().contains("v2"),
-                "error should mention v2 format to guide caller, got: " + ex.getMessage());
+        // The error message should mention the compressed version (v3) to help the caller
+        // understand they need the open method with codecs, not just an opaque "bad magic" error.
+        assertTrue(ex.getMessage().toLowerCase().contains("v3"),
+                "error should mention v3 format to guide caller, got: " + ex.getMessage());
     }
 
     // Finding: F-R1.cb.2.4
@@ -388,11 +390,11 @@ class ContractBoundariesAdversarialTest {
         }
 
         // Step 2: Corrupt the footer's idxLength field to 0x8000_0000L (2^31)
-        // v2 footer layout (64 bytes from end): mapOffset(0), mapLength(8), idxOffset(16),
-        // idxLength(24), fltOffset(32), fltLength(40), entryCount(48), MAGIC_V2(56)
-        // idxLength is at fileSize - 64 + 24 = fileSize - 40
+        // v3 footer layout (72 bytes from end): mapOffset(0), mapLength(8), idxOffset(16),
+        // idxLength(24), fltOffset(32), fltLength(40), entryCount(48), blockSize(56), MAGIC_V3(64).
+        // idxLength is at fileSize - 72 + 24 = fileSize - 48
         long fileSize = Files.size(file);
-        long idxLengthOffset = fileSize - 40;
+        long idxLengthOffset = fileSize - 48;
         long corruptIdxLength = 0x8000_0000L; // 2^31 — exceeds Integer.MAX_VALUE
 
         try (SeekableByteChannel ch = Files.newByteChannel(file, StandardOpenOption.WRITE)) {
@@ -434,11 +436,11 @@ class ContractBoundariesAdversarialTest {
         }
 
         // Step 2: Corrupt the footer's fltLength field to 0x1_0000_0000L (2^32)
-        // v2 footer layout (64 bytes from end): mapOffset(0), mapLength(8), idxOffset(16),
-        // idxLength(24), fltOffset(32), fltLength(40), entryCount(48), MAGIC_V2(56)
-        // fltLength is at fileSize - 64 + 40 = fileSize - 24
+        // v3 footer layout (72 bytes from end): mapOffset(0), mapLength(8), idxOffset(16),
+        // idxLength(24), fltOffset(32), fltLength(40), entryCount(48), blockSize(56), MAGIC_V3(64).
+        // fltLength is at fileSize - 72 + 40 = fileSize - 32
         long fileSize = Files.size(file);
-        long fltLengthOffset = fileSize - 24;
+        long fltLengthOffset = fileSize - 32;
         long corruptFltLength = 0x1_0000_0000L; // 2^32 — exceeds Integer.MAX_VALUE, truncates to 0
 
         try (SeekableByteChannel ch = Files.newByteChannel(file, StandardOpenOption.WRITE)) {
@@ -455,8 +457,12 @@ class ContractBoundariesAdversarialTest {
                 () -> TrieSSTableReader.open(file,
                         jlsm.bloom.blocked.BlockedBloomFilter.deserializer(), null,
                         CompressionCodec.deflate()));
-        assertTrue(ex.getMessage().contains("fltLength"),
-                "exception should mention fltLength, got: " + ex.getMessage());
+        // v3 footer validation may trip on either (a) fltLength > Integer.MAX_VALUE or
+        // (b) the flt section spilling past footerStart. Either is an acceptable failure mode:
+        // both are IOException at validation time, as F16 R20/R21 require.
+        assertTrue(ex.getMessage().contains("fltLength") || ex.getMessage().contains("flt section"),
+                "exception should mention fltLength or flt section bounds, got: "
+                        + ex.getMessage());
     }
 
     // Finding: F-R1.cb.3.4
@@ -484,11 +490,11 @@ class ContractBoundariesAdversarialTest {
 
         // Step 2: Corrupt idxLength to be twice the file size.
         // idxOffset stays valid (small positive), but idxOffset + idxLength >> fileSize.
-        // v2 footer layout (64 bytes from end): mapOffset(0), mapLength(8), idxOffset(16),
-        // idxLength(24), fltOffset(32), fltLength(40), entryCount(48), MAGIC_V2(56)
-        // idxLength is at fileSize - 64 + 24 = fileSize - 40
+        // v3 footer layout (72 bytes from end): mapOffset(0), mapLength(8), idxOffset(16),
+        // idxLength(24), fltOffset(32), fltLength(40), entryCount(48), blockSize(56), MAGIC_V3(64).
+        // idxLength is at fileSize - 72 + 24 = fileSize - 48
         long fileSize = Files.size(file);
-        long idxLengthOffset = fileSize - 40;
+        long idxLengthOffset = fileSize - 48;
         long corruptIdxLength = fileSize * 2; // positive, fits in int, but exceeds file bounds
 
         try (SeekableByteChannel ch = Files.newByteChannel(file, StandardOpenOption.WRITE)) {

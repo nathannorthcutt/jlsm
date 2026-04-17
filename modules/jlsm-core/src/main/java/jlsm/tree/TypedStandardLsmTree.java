@@ -179,6 +179,13 @@ public final class TypedStandardLsmTree {
             delegateBuilder.compressionPolicy(policy);
             return (B) this;
         }
+
+        // @spec F16.R23 — typed builder delegates blockSize to StandardLsmTree.Builder
+        @SuppressWarnings("unchecked")
+        public B blockSize(int blockSize) {
+            delegateBuilder.blockSize(blockSize);
+            return (B) this;
+        }
     }
 
     // -----------------------------------------------------------------------

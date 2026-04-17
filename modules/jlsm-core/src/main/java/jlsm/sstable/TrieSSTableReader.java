@@ -81,6 +81,9 @@ public final class TrieSSTableReader implements SSTableReader {
     // v3: per-block CRC32C verification
     private final boolean hasChecksums;
 
+    // @spec F16.R15 — block size recorded at write time (v3+) or default (v1/v2)
+    private final long blockSize;
+
     private volatile boolean closed = false;
 
     private static final VarHandle CLOSED;
@@ -102,13 +105,21 @@ public final class TrieSSTableReader implements SSTableReader {
             long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
             CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap) {
         this(metadata, keyIndex, bloomFilter, dataEnd, eagerData, lazyChannel, blockCache,
-                compressionMap, codecMap, false);
+                compressionMap, codecMap, false, SSTableFormat.DEFAULT_BLOCK_SIZE);
     }
 
     private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
             long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
             CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap,
             boolean hasChecksums) {
+        this(metadata, keyIndex, bloomFilter, dataEnd, eagerData, lazyChannel, blockCache,
+                compressionMap, codecMap, hasChecksums, SSTableFormat.DEFAULT_BLOCK_SIZE);
+    }
+
+    private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
+            long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
+            CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap,
+            boolean hasChecksums, long blockSize) {
         this.metadata = metadata;
         this.keyIndex = keyIndex;
         this.bloomFilter = bloomFilter;
@@ -119,6 +130,18 @@ public final class TrieSSTableReader implements SSTableReader {
         this.compressionMap = compressionMap;
         this.codecMap = codecMap;
         this.hasChecksums = hasChecksums;
+        this.blockSize = blockSize;
+    }
+
+    /**
+     * Returns the data-block size recorded at write time for this SSTable. For v3+ files this is
+     * the value stored in the footer's blockSize field (validated during {@code open}). For v1 and
+     * v2 files (which predate the footer blockSize field) this returns
+     * {@link SSTableFormat#DEFAULT_BLOCK_SIZE} — the value v2 writers hardcoded.
+     */
+    // @spec F16.R15,R18 — exposes blockSize from footer (v3+) or 4096 default (v1/v2)
+    public long blockSize() {
+        return blockSize;
     }
 
     // ---- v1 factory methods (no compression) ----
@@ -128,6 +151,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return open(path, bloomDeserializer, null);
     }
 
+    // @spec F16.R19 — v1 path: no compression map, no decompression, no CRC32C (per F02 R15)
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
             BlockCache blockCache) throws IOException {
         Objects.requireNonNull(path, "path must not be null");
@@ -147,7 +171,7 @@ public final class TrieSSTableReader implements SSTableReader {
             ch.close();
 
             return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, data, null,
-                    blockCache, null, null, false);
+                    blockCache, null, null, false, footer.blockSize);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -176,7 +200,7 @@ public final class TrieSSTableReader implements SSTableReader {
             SSTableMetadata meta = buildMetadata(path, fileSize, footer, keyIndex);
 
             return new TrieSSTableReader(meta, keyIndex, bloom, footer.idxOffset, null, ch,
-                    blockCache, null, null, false);
+                    blockCache, null, null, false, footer.blockSize);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -248,7 +272,7 @@ public final class TrieSSTableReader implements SSTableReader {
             ch.close();
 
             return new TrieSSTableReader(meta, keyIndex, bloom, dataEnd, data, null, blockCache,
-                    compressionMap, codecMap, checksums);
+                    compressionMap, codecMap, checksums, footer.blockSize);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -312,7 +336,7 @@ public final class TrieSSTableReader implements SSTableReader {
             SSTableMetadata meta = buildMetadata(path, fileSize, footer, keyIndex);
 
             return new TrieSSTableReader(meta, keyIndex, bloom, dataEnd, null, ch, blockCache,
-                    compressionMap, codecMap, checksums);
+                    compressionMap, codecMap, checksums, footer.blockSize);
         } catch (IOException e) {
             ch.close();
             throw e;
@@ -454,6 +478,7 @@ public final class TrieSSTableReader implements SSTableReader {
     /**
      * Reads and decompresses a single block by index using the compression map.
      */
+    // @spec F16.R6,R7,R8 — CRC32C verify before decompress; cache hit skips; skipped when v2
     private byte[] readAndDecompressBlock(int blockIndex) throws IOException {
         assert compressionMap != null : "readAndDecompressBlock called on v1 reader";
         assert codecMap != null : "codecMap must not be null for v2";
@@ -528,6 +553,7 @@ public final class TrieSSTableReader implements SSTableReader {
      * Reads and decompresses a single block by index, bypassing the BlockCache. Used by scan
      * iterators to avoid polluting the shared cache with sequential reads.
      */
+    // @spec F16.R7 — scan paths verify CRC32C on every disk read (no BlockCache coupling)
     private byte[] readAndDecompressBlockNoCache(int blockIndex) throws IOException {
         assert compressionMap != null : "readAndDecompressBlockNoCache called on v1 reader";
         assert codecMap != null : "codecMap must not be null for v2";
@@ -588,6 +614,8 @@ public final class TrieSSTableReader implements SSTableReader {
      *
      * @throws CorruptBlockException if the computed checksum does not match the expected value
      */
+    // @spec F16.R5,R6,R9 — java.util.zip.CRC32C over on-disk bytes; mismatch →
+    // CorruptBlockException
     private static void verifyCrc32c(byte[] data, int blockIndex, int expectedChecksum)
             throws CorruptBlockException {
         CRC32C crc = new CRC32C();
@@ -735,9 +763,10 @@ public final class TrieSSTableReader implements SSTableReader {
     // @spec F02.R30 — long-to-int truncation guarded
     // @spec F02.R31 — all offsets as long, no int narrowing
     // @spec F02.R34 — section overlap detection
+    // @spec F16.R15 — v3+ footer carries blockSize; v1/v2 populate with 4096 (pre-v3 default)
     private record Footer(int version, long mapOffset, long mapLength, long dictOffset,
             long dictLength, long idxOffset, long idxLength, long fltOffset, long fltLength,
-            long entryCount) {
+            long entryCount, long blockSize) {
 
         /**
          * Validates footer field consistency against the file size. All offsets and lengths must be
@@ -745,6 +774,7 @@ public final class TrieSSTableReader implements SSTableReader {
          *
          * @throws IOException if any field is invalid
          */
+        // @spec F16.R20,R21 — non-negative offsets/lengths, section-ordering, all IOException
         void validate(long fileSize) throws IOException {
             if (entryCount < 0) {
                 throw new IOException("corrupt SSTable footer: negative entryCount " + entryCount);
@@ -850,20 +880,34 @@ public final class TrieSSTableReader implements SSTableReader {
         long fltLength = readLong(buf, 24);
         long entryCount = readLong(buf, 32);
         long magic = readLong(buf, 40);
-        if (magic == SSTableFormat.MAGIC_V2) {
-            throw new IOException(
-                    "SSTable file is v2 format — use the open/openLazy overload that accepts CompressionCodec");
+        if (magic == SSTableFormat.MAGIC_V2 || magic == SSTableFormat.MAGIC_V3
+                || magic == SSTableFormat.MAGIC_V4) {
+            String detectedVersion = magic == SSTableFormat.MAGIC_V2 ? "v2"
+                    : (magic == SSTableFormat.MAGIC_V3 ? "v3" : "v4");
+            throw new IOException("SSTable file is " + detectedVersion
+                    + " format — use the open/openLazy overload that accepts CompressionCodec");
         }
         if (magic != SSTableFormat.MAGIC) {
+            // Re-read final 8 bytes in case the file is longer than a v1 footer (v3+)
+            byte[] magicBuf = readBytes(ch, fileSize - 8, 8);
+            long trueMagic = readLong(magicBuf, 0);
+            if (trueMagic == SSTableFormat.MAGIC_V2 || trueMagic == SSTableFormat.MAGIC_V3
+                    || trueMagic == SSTableFormat.MAGIC_V4) {
+                String detectedVersion = trueMagic == SSTableFormat.MAGIC_V2 ? "v2"
+                        : (trueMagic == SSTableFormat.MAGIC_V3 ? "v3" : "v4");
+                throw new IOException("SSTable file is " + detectedVersion
+                        + " format — use the open/openLazy overload that accepts CompressionCodec");
+            }
             throw new IOException("not a valid SSTable file: bad magic " + Long.toHexString(magic));
         }
         Footer footer = new Footer(1, 0, 0, 0, 0, idxOffset, idxLength, fltOffset, fltLength,
-                entryCount);
+                entryCount, SSTableFormat.DEFAULT_BLOCK_SIZE);
         footer.validate(fileSize);
         return footer;
     }
 
     /** Reads footer detecting v1, v2, or v3 format from magic bytes. */
+    // @spec F16.R17,R20,R21 — magic-based version dispatch; validates blockSize + section ordering
     private static Footer readFooter(SeekableByteChannel ch, long fileSize) throws IOException {
         if (fileSize < SSTableFormat.FOOTER_SIZE) {
             throw new IOException("not a valid SSTable file: too small");
@@ -913,7 +957,7 @@ public final class TrieSSTableReader implements SSTableReader {
                                 .formatted(fltOffset, fltOffset + fltLength, footerStart));
             }
             Footer footer = new Footer(4, mapOffset, mapLength, dictOffset, dictLength, idxOffset,
-                    idxLength, fltOffset, fltLength, entryCount);
+                    idxLength, fltOffset, fltLength, entryCount, rawBlockSize);
             footer.validate(fileSize);
             return footer;
         } else if (magic == SSTableFormat.MAGIC_V3) {
@@ -945,7 +989,7 @@ public final class TrieSSTableReader implements SSTableReader {
                                 .formatted(fltOffset, fltOffset + fltLength, footerStart));
             }
             Footer footer = new Footer(3, mapOffset, mapLength, 0, 0, idxOffset, idxLength,
-                    fltOffset, fltLength, entryCount);
+                    fltOffset, fltLength, entryCount, rawBlockSize);
             footer.validate(fileSize);
             return footer;
         } else if (magic == SSTableFormat.MAGIC_V2) {
@@ -961,8 +1005,9 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltOffset = readLong(buf, 32);
             long fltLength = readLong(buf, 40);
             long entryCount = readLong(buf, 48);
+            // @spec F16.R18 — v2 files predate the block-size footer field; writers hardcoded 4096
             Footer footer = new Footer(2, mapOffset, mapLength, 0, 0, idxOffset, idxLength,
-                    fltOffset, fltLength, entryCount);
+                    fltOffset, fltLength, entryCount, SSTableFormat.DEFAULT_BLOCK_SIZE);
             footer.validate(fileSize);
             return footer;
         } else if (magic == SSTableFormat.MAGIC) {
@@ -974,7 +1019,7 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltLength = readLong(buf, 24);
             long entryCount = readLong(buf, 32);
             Footer footer = new Footer(1, 0, 0, 0, 0, idxOffset, idxLength, fltOffset, fltLength,
-                    entryCount);
+                    entryCount, SSTableFormat.DEFAULT_BLOCK_SIZE);
             footer.validate(fileSize);
             return footer;
         } else {

@@ -119,9 +119,10 @@ class DataTransformationAdversarialTest {
             w.finish();
         }
 
-        // Step 2: Patch the first block's blockOffset to a value > Integer.MAX_VALUE
+        // Step 2: Patch the first block's blockOffset to a value > Integer.MAX_VALUE.
+        // Writer now produces v3 (72-byte footer) when a codec is configured, per F16 R16.
         byte[] fileBytes = Files.readAllBytes(path);
-        int footerStart = fileBytes.length - SSTableFormat.FOOTER_SIZE_V2;
+        int footerStart = fileBytes.length - SSTableFormat.FOOTER_SIZE_V3;
         long mapOffset = readLong(fileBytes, footerStart);
 
         // Compression map: [4-byte blockCount][entries...]

@@ -125,6 +125,7 @@ public final class DocumentSerializer {
         private final FieldDecoder[] decoders;
         private final FieldEncryptionDispatch encryptionDispatch;
 
+        // @spec F06.R6,R7,R10,R11,R12,R13,R21 — precompute schema constants, build dispatch table
         // @spec F13.R59 — rejects schemas with >65535 fields at serialization time
         SchemaSerializer(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
             this.schema = schema;
@@ -174,6 +175,7 @@ public final class DocumentSerializer {
             this.encryptionDispatch = new FieldEncryptionDispatch(schema, keyHolder);
         }
 
+        // @spec F06.R19,R20 — serialization path + on-disk binary format unchanged
         @Override
         public MemorySegment serialize(JlsmDocument doc) {
             Objects.requireNonNull(doc, "doc must not be null");
@@ -321,6 +323,7 @@ public final class DocumentSerializer {
             return MemorySegment.ofArray(buf);
         }
 
+        // @spec F06.R8,R9,R14,R15,R16,R17,R18,R22,R23,R24 — optimized deserialize
         @Override
         public JlsmDocument deserialize(MemorySegment segment) {
             Objects.requireNonNull(segment, "segment must not be null");
@@ -350,16 +353,22 @@ public final class DocumentSerializer {
             // We only read min(writeFieldCount, currentFieldCount) fields
             final int readCount = Math.min(writeFieldCount, fieldCount);
 
-            // Validate that boolean field positions are compatible between write-time
-            // and current schema for the overlapping fields. If a field changed type
-            // to/from BOOLEAN, the bool bitmask layout is incompatible.
-            final int expectedBoolCount = prefixBoolCount[readCount];
-            if (writeBoolCount != expectedBoolCount) {
-                throw new IllegalArgumentException(
-                        "schema evolution incompatible: write-time boolean count (" + writeBoolCount
-                                + ") differs from current schema boolean count ("
-                                + expectedBoolCount + ") for the first " + readCount
-                                + " fields; field types must not change between schema versions");
+            // @spec F06.R16 — overlap-bool-count check is only strict when the writer's
+            // schema fits inside the reader's (forward compatibility). For tail-field
+            // removal (writeFieldCount > fieldCount), writeBoolCount is the total over
+            // the write-time schema and includes booleans in the removed tail; the
+            // header does not carry the write-time prefix-bool count at fieldCount, so
+            // overlap type consistency cannot be verified here. We accept the data and
+            // decode using the current schema's prefixBoolCount.
+            if (writeFieldCount <= fieldCount) {
+                final int expectedBoolCount = prefixBoolCount[readCount];
+                if (writeBoolCount != expectedBoolCount) {
+                    throw new IllegalArgumentException("schema evolution incompatible: write-time"
+                            + " boolean count (" + writeBoolCount
+                            + ") differs from current schema boolean count (" + expectedBoolCount
+                            + ") for the first " + readCount
+                            + " fields; field types must not change between schema versions");
+                }
             }
 
             final int writeNullMaskBytes = (writeFieldCount + 7) / 8;
@@ -1177,6 +1186,7 @@ public final class DocumentSerializer {
      * via {@code MemorySegment.ofArray(byte[])}), returns the backing array directly — zero-copy.
      * For off-heap or sliced segments, falls back to {@code toArray()}.
      */
+    // @spec F06.R1,R2,R3,R4,R5 — heap fast path for full-array byte[] segments; fallback otherwise
     private static ByteArrayView extractBytes(MemorySegment segment) {
         Optional<Object> heapBase = segment.heapBase();
         if (heapBase.isPresent() && heapBase.get() instanceof byte[] data

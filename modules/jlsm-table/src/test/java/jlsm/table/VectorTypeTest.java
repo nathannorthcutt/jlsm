@@ -192,6 +192,7 @@ class VectorTypeTest {
 
     // ── JSON round-trip ─────────────────────────────────────────────────
 
+    // @spec F14.R25,R45,R47 — JSON round-trip for VECTOR(FLOAT32)
     @Test
     void jsonRoundTrip_float32Vector() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -208,6 +209,7 @@ class VectorTypeTest {
         assertArrayEquals(vector, result);
     }
 
+    // @spec F14.R25,R45,R47 — JSON round-trip for VECTOR(FLOAT16)
     @Test
     void jsonRoundTrip_float16Vector() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -227,6 +229,7 @@ class VectorTypeTest {
 
     // ── Dimension validation ────────────────────────────────────────────
 
+    // @spec F14.R26 — vector dimension must match schema declaration
     @Test
     void documentOf_dimensionMismatch() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -237,6 +240,7 @@ class VectorTypeTest {
                 () -> JlsmDocument.of(schema, "vec", new float[]{ 1.0f, 2.0f, 3.0f }));
     }
 
+    // @spec F14.R10,R11 — null vector value accepted, stored as absent
     @Test
     void documentSerializer_roundTripsNullVector() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())

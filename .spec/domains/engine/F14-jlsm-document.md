@@ -1,9 +1,9 @@
 ---
 {
   "id": "F14",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["engine"],
   "requires": ["F13"],
   "invalidates": [],
@@ -27,7 +27,7 @@ R2. `JlsmDocument` must have package-private constructors only. Direct construct
 
 R3. The two-argument package-private constructor `JlsmDocument(JlsmSchema, Object[])` must delegate to the three-argument constructor with `preEncrypted = false`. `[EXPLICIT]`
 
-R4. The three-argument package-private constructor must validate via assertions: schema is non-null, values is non-null, and `values.length == schema.fields().size()`. When assertions are disabled, these checks are skipped. `[IMPLICIT]`
+R4. The three-argument package-private constructor must validate via runtime checks: schema and values are rejected with `NullPointerException` (via `Objects.requireNonNull`), and a `values.length != schema.fields().size()` mismatch is rejected with `IllegalArgumentException`. Runtime checks are preferred over assertions here so the invariants hold in production even though the constructor is package-private. `[EXPLICIT]`
 
 R5. The package-private constructors must not defensively copy the `values` array. Internal callers within the `jlsm.table` package are trusted to not mutate the array after construction. `[IMPLICIT]`
 
@@ -89,7 +89,7 @@ R29. `validateType` must throw `IllegalArgumentException` when the value's Java 
 
 R30. `JlsmDocument.of` must defensively copy `float[]` and `short[]` values for `VectorType` fields via `clone()`. The caller's array must not be aliased by the document. `[EXPLICIT]`
 
-R31. `JlsmDocument.of` must not defensively copy values for non-`VectorType` fields (including `Object[]` for `ArrayType`, `String`, boxed primitives, nested `JlsmDocument`). `[IMPLICIT]`
+R31. `JlsmDocument.of` must not defensively copy values for scalar and reference fields that are safe to alias: `String`, boxed primitives, and nested `JlsmDocument`. `Object[]` values for `ArrayType` fields are deep-copied per R68; `float[]`/`short[]` values for `VectorType` fields are cloned per R30. `[EXPLICIT]`
 
 R32. `JlsmDocument.preEncrypted` must defensively copy `VectorType` field values via `clone()`, consistent with the `of()` factory. `[EXPLICIT]`
 
@@ -131,17 +131,17 @@ R46. `toJson(boolean pretty)` must serialize with 2-space indentation when `pret
 
 R47. `fromJson(String json, JlsmSchema schema)` must deserialize a JSON string into a `JlsmDocument` conforming to the given schema. `[EXPLICIT]`
 
-### Serialization (YAML)
+### Serialization (YAML — removed)
 
-R48. `toYaml()` must serialize the document to a YAML block-style string. `[EXPLICIT]`
+R48. `JlsmDocument` must not expose `toYaml()` or any YAML-writing method. YAML serialization was removed by F15.R1; callers use `toJson()` for human-readable output. `[ABSENT]`
 
-R49. `fromYaml(String yaml, JlsmSchema schema)` must deserialize a YAML string into a `JlsmDocument` conforming to the given schema. `[EXPLICIT]`
+R49. `JlsmDocument` must not expose `fromYaml(String, JlsmSchema)` or any YAML-parsing method. YAML deserialization was removed by F15.R1; callers use `fromJson` instead. `[ABSENT]`
 
 ### Pre-encrypted document support
 
 R50. `isPreEncrypted()` must be package-private. It must return `true` for documents created via `preEncrypted()`, `false` for documents created via `of()` or the package-private constructors. `[EXPLICIT]`
 
-R51. `values()` must be package-private. It must return the internal `Object[]` array directly, without defensive copy. `[EXPLICIT]`
+R51. `values()` must be package-private. It must return a defensive clone of the internal `Object[]` array (via `values.clone()`), so that package-private callers cannot mutate document state through the returned reference. Vector and array contents inside the cloned top-level array are still shared by reference; callers that need mutable access must clone those element arrays themselves (e.g., `IndexRegistry.extractFieldValue` clones vector arrays before returning). `[EXPLICIT]`
 
 ### Internal access (DocumentAccess)
 
@@ -153,7 +153,7 @@ R53. The `create` method on the accessor must invoke the two-argument package-pr
 
 R54. The `schema` and `preEncrypted` fields are `private final` and immutable after construction. `[EXPLICIT]`
 
-R55. The `values` array reference is `private final`, but the array contents are mutable. Package-private callers with access to `values()` can mutate array elements. `[IMPLICIT]`
+R55. The `values` array reference is `private final`. Because `values()` returns a clone (R51), package-private callers cannot mutate the top-level array slot for a field through that accessor. Mutable element arrays (`float[]`/`short[]` vectors, nested `Object[]` arrays) remain reachable through the clone; callers that hold such references must not mutate them unless they own a copy. `[IMPLICIT]`
 
 R56. `JlsmDocument` does not provide any synchronization. Concurrent read and write access to the same document instance (via package-private `values()` array mutation) is not thread-safe. `[IMPLICIT]`
 
@@ -219,3 +219,100 @@ R69. `JlsmDocument.getLong()` must throw a descriptive `NullPointerException` wi
 
 - The `values` array is not defensively copied at construction. Package-private code that mutates the array after constructing a document will see the mutation reflected in the document. This is a deliberate trust boundary, not a bug.
 - Nested `JlsmDocument` for `ObjectType` fields is not validated against the nested schema. A caller can store a document with a mismatched schema.
+
+---
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-16
+
+All 69 requirements verified against `modules/jlsm-table/src/main/java/jlsm/table/JlsmDocument.java` and its tests under `modules/jlsm-table/src/test/java/jlsm/table/`.
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `JlsmDocument.java:18` — `public final class JlsmDocument` in `jlsm.table` |
+| R2 | SATISFIED | `JlsmDocument.java:50,61` — both constructors package-private |
+| R3 | SATISFIED | `JlsmDocument.java:51` — `this(schema, values, false)` |
+| R4 | SATISFIED (amended) | `JlsmDocument.java:62-67` — `Objects.requireNonNull` + length IAE |
+| R5 | SATISFIED | `JlsmDocument.java:69` — direct reference assignment |
+| R6 | SATISFIED | `JlsmDocument.java:87` — `Objects.requireNonNull(schema)` |
+| R7 | SATISFIED | `JlsmDocument.java:89-92` |
+| R8 | SATISFIED | `JlsmDocument.java:99-102` — message includes index |
+| R9 | SATISFIED | `JlsmDocument.java:104-106` — message includes field name |
+| R10 | SATISFIED | `JlsmDocument.java:113-115` — nulls skip `validateType` |
+| R11 | SATISFIED | `JlsmDocument.java:94` — `new Object[size]` initializes to null |
+| R12 | SATISFIED | `JlsmDocument.java:119` — delegates to 2-arg constructor |
+| R13 | SATISFIED | `JlsmDocument.java:137` |
+| R14 | SATISFIED | `JlsmDocument.java:139-142` |
+| R15 | SATISFIED | `JlsmDocument.java:148-151` |
+| R16 | SATISFIED | `JlsmDocument.java:152-155` |
+| R17 | SATISFIED | `JlsmDocument.java:159-161` — `EncryptionSpec.None` branch |
+| R18 | SATISFIED | `JlsmDocument.java:163-168` |
+| R19 | SATISFIED | `JlsmDocument.java:180` — 3-arg ctor with `true` |
+| R20 | SATISFIED | `JlsmDocument.java:176` — `defensiveCopyIfVector` |
+| R21 | SATISFIED | `validateType` `STRING` case |
+| R22 | SATISFIED | `validateType` primitive switch (lines 470-478) |
+| R23 | SATISFIED | `validateType` `BoundedString` (lines 533-542) |
+| R24 | SATISFIED | `validateType` `ArrayType` recurses per element (lines 481-495) |
+| R25 | SATISFIED | `validateType` `VectorType` accepts `float[]`/`short[]` |
+| R26 | SATISFIED | `validateType` dimension check (lines 500-504, 515-519) |
+| R27 | SATISFIED | `validateType` finiteness checks (lines 505-511, 520-526) |
+| R28 | SATISFIED | `validateType` `ObjectType` case (line 532) |
+| R29 | SATISFIED | `expect()` helper (lines 546-553) |
+| R30 | SATISFIED | `defensiveCopyIfVector` clones vector arrays |
+| R31 | SATISFIED (amended) | `defensiveCopyIfVector` clones vectors; `deepCopyArray` clones `Object[]`; scalars pass through |
+| R32 | SATISFIED | `preEncrypted` line 176 invokes `defensiveCopyIfVector` |
+| R33 | SATISFIED | `requireIndex` calls `Objects.requireNonNull` |
+| R34 | SATISFIED | `requireIndex` throws IAE on `idx < 0` |
+| R35 | SATISFIED | all typed getters throw NPE when value is null |
+| R36 | SATISFIED | all typed getters throw IAE on type mismatch |
+| R37 | SATISFIED | `getString` accepts STRING and `BoundedString` |
+| R38 | SATISFIED | `getLong` accepts INT64 and TIMESTAMP |
+| R39 | SATISFIED | `getFloat16Bits` returns raw `short` |
+| R40 | SATISFIED | `getArray` returns `((Object[]) val).clone()` |
+| R41 | SATISFIED | `getObject` returns `(JlsmDocument) val` directly |
+| R42 | SATISFIED | `schema()` returns the stored reference |
+| R43 | SATISFIED | `isNull` checks `values[idx] == null` |
+| R44 | SATISFIED | via `requireIndex` |
+| R45 | SATISFIED | `toJson()` — `JsonWriter.write(JsonValueAdapter.toJsonValue(this))` |
+| R46 | SATISFIED | `toJson(boolean pretty)` — 2-space indent on pretty |
+| R47 | SATISFIED | `fromJson(String, JlsmSchema)` |
+| R48 | SATISFIED (amended) | No `toYaml` method present — F15.R1 invalidation |
+| R49 | SATISFIED (amended) | No `fromYaml` method present — F15.R1 invalidation |
+| R50 | SATISFIED | `isPreEncrypted()` package-private, line 215 |
+| R51 | SATISFIED (amended) | `values()` returns `values.clone()` line 224; audit `ContractBoundariesAdversarialTest.test_JlsmDocument_values_returnsDefensiveCopy` |
+| R52 | SATISFIED | Static initializer registers `DocumentAccess.Accessor` (lines 20-38) |
+| R53 | SATISFIED | `create` calls 2-arg ctor (line 30) — produces non-pre-encrypted |
+| R54 | SATISFIED | `private final JlsmSchema schema` / `private final boolean preEncrypted` |
+| R55 | SATISFIED (amended) | Top-level slot mutation prevented by R51 clone |
+| R56 | SATISFIED | No synchronization primitives |
+| R57 | SATISFIED | Trivially — primitives/strings are immutable |
+| R58 | SATISFIED | `equals` uses schema + preEncrypted + `Arrays.deepEquals(values)` (lines 193-202) |
+| R59 | SATISFIED | `hashCode` uses schema + preEncrypted + `Arrays.deepHashCode(values)` (lines 205-208) |
+| R60 | SATISFIED | `getFloat32Vector` clones `float[]` |
+| R61 | SATISFIED | `getFloat16Vector` clones `short[]` |
+| R62 | SATISFIED | No `toString()` override — default `Object.toString()` |
+| R63 | SATISFIED | No `implements Serializable` |
+| R64 | SATISFIED | `ObjectType` validation only checks Java type |
+| R65 | SATISFIED | No `set`/`with` method present |
+| R66 | SATISFIED | `assigned[]` array in `of` (lines 95, 107-110) |
+| R67 | SATISFIED | `MAX_ARRAY_NESTING_DEPTH = 32` enforced in `validateType` (lines 482-486) |
+| R68 | SATISFIED | `deepCopyArray` recursively clones nested `Object[]` (lines 583-593) |
+| R69 | SATISFIED | `getLong` throws NPE with field name (lines 277-279) |
+
+**Overall: PASS_WITH_NOTES** — all requirements satisfied after amendment.
+
+Amendments applied: 6
+Code fixes applied: 0
+Regression tests added: 0
+Obligations deferred: 0
+Undocumented behavior: 0 new findings
+
+#### Amendments
+
+- **R4**: "validate via assertions … When assertions are disabled, these checks are skipped" → runtime checks (`Objects.requireNonNull` + IAE on length mismatch). Code is stricter than original spec.
+- **R31**: "must not defensively copy values for non-VectorType fields (including `Object[]` for `ArrayType`)" → `Object[]` IS deep-copied per R68; only scalar/reference fields pass through. Resolves direct contradiction with R68.
+- **R48**: "`toYaml()` must serialize to YAML block-style" → now `[ABSENT]`. Aligned with F15.R1 formal invalidation.
+- **R49**: "`fromYaml(String, JlsmSchema)` must deserialize" → now `[ABSENT]`. Aligned with F15.R1.
+- **R51**: "return the internal `Object[]` array directly, without defensive copy" → returns `values.clone()`. Required by audit regression test (`ContractBoundariesAdversarialTest:799`).
+- **R55**: "Package-private callers with access to `values()` can mutate array elements" → top-level slot mutation prevented by R51 clone; element-array sharing still applies and is documented.

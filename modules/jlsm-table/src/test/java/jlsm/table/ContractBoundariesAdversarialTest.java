@@ -795,6 +795,36 @@ class ContractBoundariesAdversarialTest {
     // Correct behavior: values() should return a clone so callers cannot mutate document internals
     // Fix location: JlsmDocument.values() (JlsmDocument.java:211-212)
     // Regression watch: Ensure serializer and other read-only callers still work correctly
+    // Documented limitation — NOT a bug
+    // ObjectType fields are validated by Java type only (JlsmDocument), not by
+    // conformance to the ObjectType's declared inner-schema field list. A caller
+    // can store a sub-document whose schema's fields disagree with the
+    // ObjectType's fields, and of() will accept it. This test pins that
+    // limitation so a future change that adds deeper validation (a likely
+    // enhancement) will deliberately touch this assertion.
+    // @spec F14.R64 — nested ObjectType values NOT validated against inner schema
+    @Test
+    void test_JlsmDocument_objectType_notValidatedAgainstInnerSchema() {
+        JlsmSchema outerSchema = JlsmSchema.builder("outer", 1).objectField("addr", inner -> inner
+                .field("city", FieldType.Primitive.STRING).field("zip", FieldType.Primitive.INT32))
+                .build();
+
+        // Build a sub-document with a DIFFERENT schema (fields don't match the
+        // declared ObjectType's inner field list at all).
+        JlsmSchema mismatchedInner = JlsmSchema.builder("other", 1)
+                .field("unrelated_field", FieldType.Primitive.STRING).build();
+        JlsmDocument mismatched = JlsmDocument.of(mismatchedInner, "unrelated_field", "value");
+
+        // of() must NOT throw — only Java type JlsmDocument is checked
+        JlsmDocument outer = assertDoesNotThrow(
+                () -> JlsmDocument.of(outerSchema, "addr", mismatched),
+                "ObjectType validation only checks Java type, not inner schema conformance — "
+                        + "a schema-mismatched JlsmDocument must be accepted by of()");
+        assertSame(mismatched, outer.getObject("addr"),
+                "nested JlsmDocument is stored by reference without conformance check");
+    }
+
+    // @spec F14.R51 — regression test for values() defensive clone
     @Test
     void test_JlsmDocument_values_returnsDefensiveCopy() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())

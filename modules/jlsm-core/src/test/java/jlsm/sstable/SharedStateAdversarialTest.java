@@ -196,7 +196,8 @@ class SharedStateAdversarialTest {
                 long.class, // idxLength
                 long.class, // fltOffset
                 long.class, // fltLength
-                long.class // entryCount
+                long.class, // entryCount
+                long.class // blockSize
         );
         footerCtor.setAccessible(true);
 
@@ -216,7 +217,8 @@ class SharedStateAdversarialTest {
                 200L, // idxLength — idx spans [100, 300)
                 200L, // fltOffset — flt starts at 200, inside idx
                 100L, // fltLength — flt spans [200, 300)
-                10L // entryCount
+                10L, // entryCount
+                4096L // blockSize
         );
 
         InvocationTargetException ex = assertThrows(InvocationTargetException.class,
@@ -248,7 +250,8 @@ class SharedStateAdversarialTest {
                 long.class, // idxLength
                 long.class, // fltOffset
                 long.class, // fltLength
-                long.class // entryCount
+                long.class, // entryCount
+                long.class // blockSize
         );
         footerCtor.setAccessible(true);
 
@@ -269,7 +272,8 @@ class SharedStateAdversarialTest {
                 100L, // idxLength
                 oversizedMapLength + 100L, // fltOffset — after idx section
                 64L, // fltLength
-                10L // entryCount
+                10L, // entryCount
+                4096L // blockSize
         );
 
         InvocationTargetException ex = assertThrows(InvocationTargetException.class,

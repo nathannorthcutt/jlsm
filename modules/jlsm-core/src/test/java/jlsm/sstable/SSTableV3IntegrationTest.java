@@ -80,6 +80,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 1: Write and read v3 with compression ----
 
+    // @spec F16.R4,R5,R6,R7,R14,R17 — end-to-end v3 write/read with CRC32C verification
     @Test
     void writeAndReadV3WithCompression(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-compressed.sst");
@@ -119,6 +120,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 2: Write and read v3 with custom block size ----
 
+    // @spec F16.R10,R12,R13,R14 — writer honors blockSize via Builder, roundtrip preserves data
     @Test
     void writeAndReadV3WithCustomBlockSize(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-large-blocks.sst");
@@ -148,8 +150,45 @@ class SSTableV3IntegrationTest {
         }
     }
 
+    // @spec F16.R15 — reader exposes the blockSize stored in the v3 footer
+    @Test
+    void readerExposesStoredBlockSizeFromV3Footer(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("v3-blocksize-roundtrip.sst");
+        int chosen = 16384; // non-default, pow2, within [1024, 32 MiB]
+
+        try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01))
+                .codec(CompressionCodec.deflate(6)).blockSize(chosen).build()) {
+            w.append(put("k", "v", 1));
+            w.finish();
+        }
+
+        try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                null, CompressionCodec.none(), CompressionCodec.deflate())) {
+            assertEquals((long) chosen, r.blockSize(),
+                    "reader.blockSize() must return the value stored in the v3 footer");
+        }
+    }
+
+    // @spec F16.R15,R18 — v1/v2 files return the default block size (4096)
+    @Test
+    void readerReportsDefaultBlockSizeForV1Files(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("v1-blocksize-default.sst");
+        try (TrieSSTableWriter w = new TrieSSTableWriter(1L, Level.L0, path)) {
+            w.append(put("k", "v", 1));
+            w.finish();
+        }
+
+        try (TrieSSTableReader r = TrieSSTableReader.open(path,
+                BlockedBloomFilter.deserializer())) {
+            assertEquals((long) SSTableFormat.DEFAULT_BLOCK_SIZE, r.blockSize(),
+                    "v1 reader must report DEFAULT_BLOCK_SIZE since v1 has no footer blockSize");
+        }
+    }
+
     // ---- Test 3: Writer with codec produces v3 magic ----
 
+    // @spec F16.R16 — codec-configured writer writes MAGIC_V3 (never MAGIC_V2)
     @Test
     void writerWithCodecProducesV3Magic(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-magic.sst");
@@ -167,6 +206,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 4: Writer without codec produces v1 magic ----
 
+    // @spec F16.R16 — uncompressed writes (no codec) continue to produce v1 format
     @Test
     void writerWithoutCodecProducesV1(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v1-magic.sst");
@@ -181,6 +221,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 5: Builder rejects non-default block size without codec ----
 
+    // @spec F16.R16 — non-default blockSize without codec rejected at construction
     @Test
     void builderRejectsNonDefaultBlockSizeWithoutCodec() {
         assertThrows(IllegalArgumentException.class,
@@ -191,12 +232,13 @@ class SSTableV3IntegrationTest {
                 "non-default block size without a codec should be rejected");
     }
 
-    // ---- Test 6: v3 reader reads v2 file correctly ----
+    // ---- Test 6: v3 reader reads file written via legacy constructor (now v3 per R16) ----
 
+    // @spec F16.R16 — codec-configured legacy constructor produces v3 (not v2)
     @Test
-    void v3ReaderReadsV2FileCorrectly(@TempDir Path dir) throws IOException {
-        // Write a v2 file using the existing constructor (with codec, no builder)
-        Path path = dir.resolve("v2-compat.sst");
+    void v3ReaderReadsFileFromLegacyConstructor(@TempDir Path dir) throws IOException {
+        // Before F16 this constructor produced v2; after R16 it produces v3.
+        Path path = dir.resolve("legacy-ctor.sst");
         CompressionCodec deflate = CompressionCodec.deflate();
         try (TrieSSTableWriter w = new TrieSSTableWriter(1L, Level.L0, path,
                 n -> new BlockedBloomFilter(n, 0.01), deflate)) {
@@ -206,7 +248,10 @@ class SSTableV3IntegrationTest {
             w.finish();
         }
 
-        // Read with the v3-capable reader (same open method — it should detect v2 magic)
+        // The legacy constructor must now produce v3 output.
+        assertEquals(SSTableFormat.MAGIC_V3, readMagic(path),
+                "5-arg constructor with codec must produce MAGIC_V3 (never v2)");
+
         try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
                 null, CompressionCodec.none(), CompressionCodec.deflate())) {
             assertEquals(3L, r.metadata().entryCount());
@@ -220,6 +265,8 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 7: v3 reader reads v1 file correctly ----
 
+    // @spec F16.R8,R17,R19 — v3-capable reader falls back to v1 (hasChecksums=false branch);
+    // v2 (also hasChecksums=false) is the same code path — version dispatch sets the flag
     @Test
     void v3ReaderReadsV1FileCorrectly(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v1-compat.sst");
@@ -242,6 +289,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 8: Corrupted block throws CorruptBlockException ----
 
+    // @spec F16.R6,R9 — corruption surfaces as CorruptBlockException with diagnostic fields
     @Test
     void corruptedBlockThrowsCorruptBlockException(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-corrupt.sst");
@@ -288,6 +336,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 9: v3 footer with invalid block size throws IOException ----
 
+    // @spec F16.R20 — invalid blockSize from on-disk v3 footer produces IOException
     @Test
     void v3FooterWithInvalidBlockSizeThrowsIOException(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-bad-blocksize.sst");
@@ -325,6 +374,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 10: CRC32C computed after compression fallback ----
 
+    // @spec F16.R4 — CRC32C computed over post-fallback bytes (raw when NONE fallback triggers)
     @Test
     void crc32cComputedAfterCompressionFallback(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-incompressible.sst");
@@ -361,5 +411,39 @@ class SSTableV3IntegrationTest {
             }
             assertEquals(200, count);
         }
+    }
+
+    // @spec F16.R21 — v3 section ordering validation rejects overlapping sections with IOException
+    @Test
+    void v3FooterRejectsFlSectionOverlappingFooter(@TempDir Path dir) throws IOException {
+        Path path = dir.resolve("v3-overlap.sst");
+        try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01))
+                .codec(CompressionCodec.deflate(6)).build()) {
+            w.append(put("k", "v", 1));
+            w.finish();
+        }
+
+        // Corrupt the fltLength field so that flt section extends past footerStart.
+        // v3 footer layout: mapOffset(0), mapLength(8), idxOffset(16), idxLength(24),
+        // fltOffset(32), fltLength(40), entryCount(48), blockSize(56), MAGIC_V3(64).
+        // fltLength is at fileSize - 72 + 40 = fileSize - 32.
+        long fileSize = Files.size(path);
+        try (SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.WRITE)) {
+            ch.position(fileSize - 32);
+            ByteBuffer buf = ByteBuffer.allocate(8);
+            buf.putLong(fileSize); // fltLength = fileSize ensures overlap with footer
+            buf.flip();
+            ch.write(buf);
+        }
+
+        IOException ex = assertThrows(IOException.class,
+                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(), null,
+                        CompressionCodec.none(), CompressionCodec.deflate()));
+        assertTrue(
+                ex.getMessage().contains("overlap") || ex.getMessage().contains("exceeds")
+                        || ex.getMessage().contains("flt"),
+                "R21: section-ordering violation must surface as IOException, got: "
+                        + ex.getMessage());
     }
 }
