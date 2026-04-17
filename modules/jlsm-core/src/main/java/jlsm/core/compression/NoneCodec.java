@@ -25,6 +25,9 @@ import java.util.Objects;
  * @see <a href="../../.decisions/compression-codec-api-design/adr.md">ADR: Compression Codec API
  *      Design</a>
  */
+// @spec F02.R4 — passthrough, copy in both directions
+// @spec F02.R8 — rejects null input
+// @spec F17.R6 — rejects null segments
 final class NoneCodec implements CompressionCodec {
 
     /** Singleton instance. */
@@ -54,18 +57,18 @@ final class NoneCodec implements CompressionCodec {
 
         final long srcSize = src.byteSize();
 
-        // R7: empty source -> zero-length slice (before dst size check per R11)
+        // @spec F17.R7 — zero-length source returns zero-length slice
         if (srcSize == 0) {
             return dst.asSlice(0, 0);
         }
 
-        // R11: undersized dst check
+        // @spec F17.R11 — throws if destination too small
         if (dst.byteSize() < srcSize) {
             throw new IllegalStateException("dst.byteSize()=%d < maxCompressedLength(%d)=%d"
                     .formatted(dst.byteSize(), srcSize, srcSize));
         }
 
-        // R12: MemorySegment.copy() — no byte[]
+        // @spec F17.R12 — MemorySegment.copy, no byte[] intermediary
         MemorySegment.copy(src, 0, dst, 0, srcSize);
         return dst.asSlice(0, srcSize);
     }
@@ -75,31 +78,30 @@ final class NoneCodec implements CompressionCodec {
         Objects.requireNonNull(src, "src must not be null");
         Objects.requireNonNull(dst, "dst must not be null");
 
-        // R10: negative uncompressedLength
+        // @spec F17.R10 — rejects negative uncompressedLength
         if (uncompressedLength < 0) {
             throw new IllegalArgumentException(
                     "uncompressedLength must be non-negative, got: " + uncompressedLength);
         }
 
-        // R8: empty src, zero length -> zero-length slice
+        // @spec F17.R8 — empty source + zero length returns zero-length
         if (uncompressedLength == 0 && src.byteSize() == 0) {
             return dst.asSlice(0, 0);
         }
 
-        // R9: non-empty src, zero length -> UncheckedIOException
+        // @spec F17.R9 — non-empty source + zero length throws
         if (uncompressedLength == 0 && src.byteSize() > 0) {
             throw new UncheckedIOException(new IOException(
                     "Cannot decompress %d bytes into 0 bytes".formatted(src.byteSize())));
         }
 
-        // R13: src.byteSize() must equal uncompressedLength for NoneCodec
+        // @spec F17.R13 — MemorySegment.copy, size must match
         if (src.byteSize() != uncompressedLength) {
             throw new UncheckedIOException(new IOException(
                     "NoneCodec size mismatch: src.byteSize()=%d, expected uncompressedLength=%d"
                             .formatted(src.byteSize(), uncompressedLength)));
         }
 
-        // R13: MemorySegment.copy() — no byte[]
         MemorySegment.copy(src, 0, dst, 0, uncompressedLength);
         return dst.asSlice(0, uncompressedLength);
     }

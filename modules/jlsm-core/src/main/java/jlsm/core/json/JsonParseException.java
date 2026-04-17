@@ -8,7 +8,8 @@ package jlsm.core.json;
  * description of the problem. The offset is best-effort: it points to the approximate location but
  * may not be exact for all error types.
  *
- * @spec F15.R24 — unchecked exception with byte offset and description
+ * @spec F15.R24 — unchecked exception with byte offset
+ * @spec F15.R50 — rejects null message
  */
 public final class JsonParseException extends RuntimeException {
 

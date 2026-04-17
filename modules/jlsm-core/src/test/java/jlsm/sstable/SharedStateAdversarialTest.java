@@ -813,12 +813,13 @@ class SharedStateAdversarialTest {
         // Close the reader — sets closed = true
         reader.close();
 
-        // Bug: hasNext() returns true because it only checks `next != null` and ignores
-        // the closed flag. IndexRangeIterator correctly returns `!closed && next != null`.
-        // After fix: hasNext() should return false for a closed reader.
-        assertFalse(iter.hasNext(),
-                "CompressedBlockIterator.hasNext() returned true after reader was closed "
-                        + "— should return false, consistent with IndexRangeIterator");
+        // F08.R19 (v3): hasNext() must signal the close rather than silently returning
+        // false. Original finding assumed "return false" was the fix, but that lets a
+        // for-each loop terminate without the caller noticing the close. The authoritative
+        // signal is IllegalStateException, symmetric with next() / advance().
+        assertThrows(IllegalStateException.class, iter::hasNext,
+                "CompressedBlockIterator.hasNext() must throw IllegalStateException after "
+                        + "reader close, not silently return true or false");
     }
 
 }

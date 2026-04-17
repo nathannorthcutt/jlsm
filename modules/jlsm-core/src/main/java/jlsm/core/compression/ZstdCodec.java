@@ -44,6 +44,10 @@ import java.util.Objects;
  * @see <a href="../../../../.spec/domains/serialization/F18-zstd-dictionary-compression.md">F18
  *      R1-R3a, R7, R7a, R8, R9, R17a-R17c, R26, R28</a>
  */
+// @spec F17.R39b — tiered detection: native, pure-Java decomp, Deflate fallback
+// @spec F17.R41 — dictionary is immutable shared state, thread-safe
+// @spec F17.R42 — dictionary bytes not modified after construction
+// @spec F17.R39d — CDict/DDict read-only, shareable across threads
 final class ZstdCodec implements CompressionCodec, AutoCloseable {
 
     /** ZSTD codec ID for native Tier 1. */

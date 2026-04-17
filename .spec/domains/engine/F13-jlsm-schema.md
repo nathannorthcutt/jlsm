@@ -3,7 +3,7 @@
   "id": "F13",
   "version": 1,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["engine"],
   "requires": [],
   "invalidates": [],
@@ -191,3 +191,79 @@ R59. `DocumentSerializer` must reject schemas with more than 65535 fields with `
 
 - No `toString()` override — the default `Object.toString()` is used, which provides no structural information.
 - No field-count upper bound — extremely large schemas are accepted. Downstream consumers with memory constraints should validate field count independently.
+
+---
+
+## Verification Notes
+
+### Verified: v1 — 2026-04-16
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `JlsmSchema.java:25` — `public final class JlsmSchema` |
+| R2 | SATISFIED | `JlsmSchema.java:45` private ctor; builder is sole entry point (line 143) |
+| R3 | SATISFIED | `JlsmSchema.java:144` — `Objects.requireNonNull(name, ...)` |
+| R4 | SATISFIED | `JlsmSchema.java:46` — runtime `Objects.requireNonNull` (stronger than spec's `assert`) |
+| R5 | SATISFIED | `JlsmSchema.java:47` — runtime `Objects.requireNonNull` (stronger than `assert`) |
+| R6 | SATISFIED | `JlsmSchema.java:51-54` — runtime range check + IAE (stronger than `assert`); builder at 297-303 |
+| R7 | SATISFIED | `JlsmSchema.java:48-50` constructor; builder at 145-147 |
+| R8 | SATISFIED | `JlsmSchema.java:28-29` — both constants `private static final` |
+| R9 | SATISFIED | `JlsmSchema.java:58` `List.copyOf`; `fields()` returns unmodifiable (88-90) |
+| R10 | SATISFIED | `JlsmSchema.java:65-68` — message includes duplicate name and schema name |
+| R11 | SATISFIED | loop at `JlsmSchema.java:63-70` no-ops on empty list |
+| R12 | SATISFIED | `List.copyOf` preserves iteration order; `ArrayList` preserves insert order |
+| R13 | SATISFIED | `JlsmSchema.java:127-130` — HashMap-backed `getOrDefault` |
+| R14 | SATISFIED | `JlsmSchema.java:129` — `getOrDefault(name, -1)` |
+| R15 | SATISFIED | `JlsmSchema.java:128` — `Objects.requireNonNull` |
+| R16 | SATISFIED | `JlsmSchema.java:71` — `Map.copyOf(indexMap)` |
+| R17 | SATISFIED | `JlsmSchema.java:76-78` |
+| R18 | SATISFIED | `JlsmSchema.java:82-84` |
+| R19 | SATISFIED | `JlsmSchema.java:94-96`; default 10 set at builder entry (line 148) |
+| R20 | SATISFIED | `JlsmSchema.java:271-273` — `nestedDepth = currentDepth + 1` |
+| R21 | SATISFIED | `JlsmSchema.java:263` |
+| R22 | SATISFIED | `JlsmSchema.java:264` |
+| R23 | SATISFIED | `JlsmSchema.java:333-337` — `buildFields` throws IAE including depth and limit |
+| R24 | SATISFIED | `FieldType.java:45-49` — `ObjectType` compact ctor copies via `List.copyOf` |
+| R25 | SATISFIED | `JlsmSchema.java:192-193` |
+| R26 | SATISFIED | `JlsmSchema.java:214-216` |
+| R27 | SATISFIED | `JlsmSchema.java:199` uses 2-arg `FieldDefinition` ctor which defaults to `EncryptionSpec.NONE` (`FieldDefinition.java:34-36`) |
+| R28 | SATISFIED | `JlsmSchema.java:238-239` |
+| R29 | SATISFIED | `JlsmSchema.java:242` — delegates to `FieldType.vector` |
+| R30 | SATISFIED | `JlsmSchema.java:297-303` — rejects >25 and <0 with IAE |
+| R31 | SATISFIED | range check at `JlsmSchema.java:297,301` admits `[0, 25]` |
+| R32 | SATISFIED | `JlsmSchema.java:148` — `DEFAULT_MAX_DEPTH` passed to Builder |
+| R33 | SATISFIED | `JlsmSchema.java:316-323` — re-validates `maxDepth <= ABSOLUTE_MAX_DEPTH` |
+| R34 | UNTESTABLE | thread-safety claim; single `ArrayList` in Builder confirms absence of synchronization |
+| R35 | SATISFIED | `JlsmSchema.java:31-35` — all fields `private final` |
+| R36 | SATISFIED | `JlsmSchema.java:58` — `List.copyOf` |
+| R37 | SATISFIED | `JlsmSchema.java:71` — `Map.copyOf` |
+| R38 | UNTESTABLE | thread-safety claim; justified by R35-R37 immutability |
+| R39 | SATISFIED | `FieldDefinition.java:15` — `public record FieldDefinition(String name, FieldType type, EncryptionSpec encryption)` |
+| R40 | SATISFIED | `FieldDefinition.java:21-25` — compact ctor null checks |
+| R41 | SATISFIED | `FieldDefinition.java:34-36` — 2-arg ctor defaults to `EncryptionSpec.NONE` |
+| R42 | SATISFIED | `FieldType.java:18-19` — sealed permits exactly 5 types |
+| R43 | SATISFIED | `FieldType.java:23-25` — enum with all 10 constants |
+| R44 | SATISFIED | `FieldType.java:118-121` — rejects non-FLOAT16/32 |
+| R45 | SATISFIED | `FieldType.java:122-125` |
+| R46 | SATISFIED | `FieldType.java:99-103` |
+| R47 | SATISFIED | `FieldType.java:34-36` |
+| R48 | SATISFIED | `FieldType.java:46-49` — null check + `List.copyOf` |
+| R49 | SATISFIED | `FieldType.java:133-208` — all factories present |
+| R50 | SATISFIED | `JlsmSchema.java:99-109` — uses name, version, fields, maxDepth |
+| R51 | SATISFIED | `JlsmSchema.java:112-115` — `Objects.hash(name, version, fields, maxDepth)` |
+| R52 | SATISFIED | `JlsmSchema.java:194-196, 217-219` — `isBlank()` check + IAE |
+| R53 | SATISFIED | no `toString()` override in `JlsmSchema.java` |
+| R54 | SATISFIED | class does not implement `Serializable` |
+| R55 | SATISFIED | no field-count check at schema level (enforced only in `DocumentSerializer`) |
+| R56 | SATISFIED | `JlsmSchema.java:265-267` — `objectField` rejects blank names |
+| R57 | SATISFIED | `FieldType.java:60-67, 80-87` — `toSchema` passes `fd.encryption()` |
+| R58 | SATISFIED | `FieldType.java:80-87` — second overload accepts and propagates `maxDepth` |
+| R59 | SATISFIED | `DocumentSerializer.java:140-142` — rejects `fieldCount > 0xFFFF` with IAE |
+
+**Overall: PASS**
+
+Obligations resolved: 0
+Obligations remaining: 0
+Undocumented behavior:
+- `Builder.maxDepth(int)` throws `IllegalStateException` on nested builders (`JlsmSchema.java:293-296`) — enforces that `maxDepth` can only be configured on the root builder. Not currently covered by a requirement; consider R60.
+- `DocumentSerializer` also rejects schema `version > 0xFFFF` (`DocumentSerializer.java:132-135`); this is F12 serialization territory, not F13.

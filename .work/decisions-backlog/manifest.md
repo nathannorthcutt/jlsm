@@ -18,10 +18,10 @@
 | WD-07 | Partitioning & Rebalancing | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
 | WD-08 | Query Execution | SPECIFIED | decisions | 0 | adr:, adr:, adr: |
 | WD-09 | Encryption & Security | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
-| WD-10 | Rebalancing Safety & Recovery | READY | decisions | 0 | adr:, adr:, adr:, adr:, adr: |
+| WD-10 | Rebalancing Safety & Recovery | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr: |
 | WD-11 | Partition Optimization | SPECIFIED | decisions | 0 | adr:, adr:, adr: |
-| WD-12 | Encrypted Query Capabilities | READY | decisions | 0 | adr:, adr:, adr:, adr: |
-| WD-13 | Catalog & Scan Lifecycle | READY | decisions | 0 | adr:, adr:, adr:, adr: |
+| WD-12 | Encrypted Query Capabilities | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr: |
+| WD-13 | Catalog & Scan Lifecycle | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr: |
 
 **Total:** 81 decisions (11 gap-fill, 35 minor, 19 full + 16 newly unblocked)
 

@@ -13,6 +13,7 @@ class JlsmSchemaEncryptionTest {
 
     // ── field() with encryption spec ─────────────────────────────────────
 
+    // @spec F13.R26
     @Test
     void builder_fieldWithEncryption_preservesSpec() {
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -23,6 +24,7 @@ class JlsmSchemaEncryptionTest {
         assertInstanceOf(EncryptionSpec.Deterministic.class, fd.encryption());
     }
 
+    // @spec F13.R26
     @Test
     void builder_fieldWithOpaque_preservesSpec() {
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -32,6 +34,7 @@ class JlsmSchemaEncryptionTest {
 
     // ── field() without encryption spec still works ──────────────────────
 
+    // @spec F13.R27
     @Test
     void builder_fieldWithoutEncryption_defaultsToNone() {
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -41,6 +44,7 @@ class JlsmSchemaEncryptionTest {
 
     // ── Mixed fields ─────────────────────────────────────────────────────
 
+    // @spec F13.R9,R12,R26,R27
     @Test
     void builder_mixedFields_preserveAllSpecs() {
         final JlsmSchema schema = JlsmSchema.builder("users", 1)
@@ -58,6 +62,7 @@ class JlsmSchemaEncryptionTest {
 
     // ── null encryption in builder rejects ───────────────────────────────
 
+    // @spec F13.R26
     @Test
     void builder_fieldWithNullEncryption_throws() {
         assertThrows(NullPointerException.class,

@@ -20,6 +20,7 @@ class VectorTypeTest {
 
     // ── FieldType.VectorType construction ────────────────────────────────
 
+    // @spec F13.R44
     @Test
     void vectorType_createsWithFloat32() {
         var vt = new FieldType.VectorType(FieldType.Primitive.FLOAT32, 128);
@@ -27,6 +28,7 @@ class VectorTypeTest {
         assertEquals(128, vt.dimensions());
     }
 
+    // @spec F13.R44
     @Test
     void vectorType_createsWithFloat16() {
         var vt = new FieldType.VectorType(FieldType.Primitive.FLOAT16, 64);
@@ -34,24 +36,28 @@ class VectorTypeTest {
         assertEquals(64, vt.dimensions());
     }
 
+    // @spec F13.R44
     @Test
     void vectorType_rejectsStringElementType() {
         assertThrows(IllegalArgumentException.class,
                 () -> new FieldType.VectorType(FieldType.Primitive.STRING, 128));
     }
 
+    // @spec F13.R44
     @Test
     void vectorType_rejectsInt32ElementType() {
         assertThrows(IllegalArgumentException.class,
                 () -> new FieldType.VectorType(FieldType.Primitive.INT32, 128));
     }
 
+    // @spec F13.R45
     @Test
     void vectorType_rejectsZeroDimensions() {
         assertThrows(IllegalArgumentException.class,
                 () -> new FieldType.VectorType(FieldType.Primitive.FLOAT32, 0));
     }
 
+    // @spec F13.R45
     @Test
     void vectorType_rejectsNegativeDimensions() {
         assertThrows(IllegalArgumentException.class,
@@ -60,6 +66,7 @@ class VectorTypeTest {
 
     // ── FieldType.vector() factory ───────────────────────────────────────
 
+    // @spec F13.R49
     @Test
     void vectorFactory_returnsVectorType() {
         FieldType result = FieldType.vector(FieldType.Primitive.FLOAT32, 128);
@@ -71,6 +78,7 @@ class VectorTypeTest {
 
     // ── JlsmSchema.Builder.vectorField() ─────────────────────────────────
 
+    // @spec F13.R28,R29
     @Test
     void schemaBuilder_vectorField() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())

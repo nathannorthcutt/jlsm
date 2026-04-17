@@ -84,34 +84,41 @@ class JsonObjectTest {
         assertThrows(NullPointerException.class, () -> JsonObject.builder().put("a", null));
     }
 
-    // === Empty and whitespace-only keys are valid per RFC 8259 ===
+    // === F15.R15 (v3): blank keys are rejected, stricter than RFC 8259 ===
+    //
+    // R25 documents this as jlsm's third stricter-than-RFC parser behavior, alongside
+    // duplicate-key and trailing-content rejection. This intentionally overrides the prior
+    // F-R1.cb.4.4 audit fix that had relaxed the check to match RFC 8259. The override is
+    // documented in F15 v3 verification notes.
 
-    // Updated by audit finding F-R1.cb.4.4: blank key rejection was a bug,
-    // empty string and whitespace-only strings are valid JSON member names per RFC 8259 Section 7.
-
+    // @spec F15.R15 — JsonObject.of must reject empty-string keys with IAE
     @Test
-    void ofAcceptsEmptyKey() {
+    void ofRejectsEmptyKey() {
         Map<String, JsonValue> map = new LinkedHashMap<>();
         map.put("", JsonPrimitive.ofNumber("1"));
-        JsonObject obj = JsonObject.of(map);
-        assertEquals(1, obj.size());
-        assertEquals(JsonPrimitive.ofNumber("1"), obj.get(""));
+        assertThrows(IllegalArgumentException.class, () -> JsonObject.of(map));
     }
 
+    // @spec F15.R15 — JsonObject.of must reject whitespace-only keys with IAE
     @Test
-    void ofAcceptsWhitespaceOnlyKey() {
+    void ofRejectsWhitespaceOnlyKey() {
         Map<String, JsonValue> map = new LinkedHashMap<>();
         map.put("  ", JsonPrimitive.ofNumber("1"));
-        JsonObject obj = JsonObject.of(map);
-        assertEquals(1, obj.size());
-        assertEquals(JsonPrimitive.ofNumber("1"), obj.get("  "));
+        assertThrows(IllegalArgumentException.class, () -> JsonObject.of(map));
     }
 
+    // @spec F15.R15 — Builder.put must reject empty-string keys with IAE
     @Test
-    void builderAcceptsEmptyKey() {
-        JsonObject obj = JsonObject.builder().put("", JsonPrimitive.ofNumber("1")).build();
-        assertEquals(1, obj.size());
-        assertEquals(JsonPrimitive.ofNumber("1"), obj.get(""));
+    void builderRejectsEmptyKey() {
+        assertThrows(IllegalArgumentException.class,
+                () -> JsonObject.builder().put("", JsonPrimitive.ofNumber("1")));
+    }
+
+    // @spec F15.R15 — Builder.put must reject whitespace-only keys with IAE
+    @Test
+    void builderRejectsWhitespaceOnlyKey() {
+        assertThrows(IllegalArgumentException.class,
+                () -> JsonObject.builder().put("   ", JsonPrimitive.ofNumber("1")));
     }
 
     // === Map-like access ===

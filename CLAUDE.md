@@ -27,14 +27,6 @@ Modules: `jlsm-core` (interfaces + implementations), `jlsm-indexing`, `jlsm-vect
 
 ## Feature Development
 `.feature/<slug>/` — on-demand only. Profile: `.feature/project-config.md`
-Quick: `/quick "<description>"` — Full: `/feature "<description>"`
-Resume: `/feature-resume "<slug>"` — Status: `/feature-status "<slug>"`
-
-## Knowledge Base & Decisions
-`.kb/<topic>/<category>/<subject>.md` and `.decisions/<slug>/adr.md` — on-demand only.
-Commands: `/research` `/architect` `/kb-lookup` `/adr-review`
-## Feature Development
-`.feature/<slug>/` — on-demand only. Profile: `.feature/project-config.md`
 Quick: `/feature-quick "<description>"` — Full: `/feature "<description>"`
 Resume: `/feature-resume "<slug>"` — Status: `/feature-resume "<slug>" --status`
 Entry point: `/vallorcine-help`

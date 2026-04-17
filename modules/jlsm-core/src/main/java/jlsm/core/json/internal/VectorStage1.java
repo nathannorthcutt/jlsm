@@ -13,8 +13,9 @@ import java.util.Objects;
  * Uses {@code jdk.incubator.vector.ByteVector} for SIMD-accelerated character classification.
  * Processes input in lane-width chunks and falls back to scalar for the tail.
  *
- * @spec F15.R20 — tier 2 Vector API structural scanning
- * @spec F15.R23 — requires jdk.incubator.vector
+ * @spec F15.R20 — Tier 2: Vector API character classification
+ * @spec F15.R23 — isolated class, loaded only during detection
+ * @spec F15.R49 — carries backslash-parity across block boundaries
  */
 public final class VectorStage1 {
 

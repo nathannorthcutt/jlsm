@@ -13,6 +13,7 @@ class FieldDefinitionEncryptionTest {
 
     // ── 3-arg construction ───────────────────────────────────────────────
 
+    // @spec F13.R39,R40
     @Test
     void threeArgConstructor_preservesEncryptionSpec() {
         final FieldDefinition fd = new FieldDefinition("secret", FieldType.Primitive.STRING,
@@ -29,6 +30,7 @@ class FieldDefinitionEncryptionTest {
         assertSame(EncryptionSpec.NONE, fd.encryption());
     }
 
+    // @spec F13.R40
     @Test
     void threeArgConstructor_rejectsNullEncryption() {
         assertThrows(NullPointerException.class,
@@ -37,6 +39,7 @@ class FieldDefinitionEncryptionTest {
 
     // ── Backward-compatible 2-arg construction ───────────────────────────
 
+    // @spec F13.R41
     @Test
     void twoArgConstructor_defaultsToNone() {
         final FieldDefinition fd = new FieldDefinition("name", FieldType.Primitive.STRING);

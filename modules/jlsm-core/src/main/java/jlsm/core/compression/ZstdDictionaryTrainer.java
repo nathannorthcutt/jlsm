@@ -40,6 +40,7 @@ import java.util.Objects;
  * @see <a href="../../../../.spec/domains/serialization/F18-zstd-dictionary-compression.md">F18
  *      R15-R17</a>
  */
+// @spec F17.R39e — dictionary training lifecycle encapsulated
 public final class ZstdDictionaryTrainer {
 
     /** Minimum dictionary size in bytes (inclusive). */

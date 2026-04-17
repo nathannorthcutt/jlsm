@@ -23,7 +23,7 @@ package jlsm.core.json;
  * <p>
  * All implementations are deeply immutable. Equality semantics are defined per subtype.
  *
- * @spec F15.R4 — sealed interface hierarchy for JSON value types
+ * @spec F15.R4 — sealed interface permitting JsonObject, JsonArray, JsonPrimitive, JsonNull
  */
 public sealed interface JsonValue permits JsonObject, JsonArray, JsonPrimitive, JsonNull {
 }

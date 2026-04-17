@@ -125,6 +125,7 @@ public final class DocumentSerializer {
         private final FieldDecoder[] decoders;
         private final FieldEncryptionDispatch encryptionDispatch;
 
+        // @spec F13.R59 — rejects schemas with >65535 fields at serialization time
         SchemaSerializer(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
             this.schema = schema;
 

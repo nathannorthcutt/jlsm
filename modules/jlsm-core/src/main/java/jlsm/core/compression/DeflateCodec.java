@@ -37,6 +37,12 @@ import java.util.zip.Inflater;
  * @see <a href="../../.kb/algorithms/compression/block-compression-algorithms.md">KB: Block
  *      Compression Algorithms</a>
  */
+// @spec F02.R5 — configurable level 0-9
+// @spec F02.R6 — Deflater/Inflater released in finally
+// @spec F02.R9 — overflow-safe bounds validation
+// @spec F02.R10 — rejects negative uncompressedLength
+// @spec F17.R16 — Deflater/Inflater per-call, released in finally
+// @spec F17.R17 — configurable level 0-9, rejects invalid
 final class DeflateCodec implements CompressionCodec {
 
     private final int level;
@@ -77,6 +83,7 @@ final class DeflateCodec implements CompressionCodec {
         return inputLength + (inputLength >> 12) + (inputLength >> 14) + (inputLength >> 25) + 13;
     }
 
+    // @spec F17.R14 — zero-copy via asByteBuffer, no byte[] intermediary
     @Override
     public MemorySegment compress(MemorySegment src, MemorySegment dst) {
         Objects.requireNonNull(src, "src must not be null");
@@ -125,6 +132,7 @@ final class DeflateCodec implements CompressionCodec {
         }
     }
 
+    // @spec F17.R15 — zero-copy inflate via asByteBuffer
     @Override
     public MemorySegment decompress(MemorySegment src, MemorySegment dst, int uncompressedLength) {
         Objects.requireNonNull(src, "src must not be null");

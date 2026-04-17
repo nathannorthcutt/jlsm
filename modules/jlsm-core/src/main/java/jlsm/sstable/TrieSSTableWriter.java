@@ -47,6 +47,10 @@ import java.util.zip.CRC32C;
  * State machine: {@code OPEN → FINISHED → CLOSED} and {@code OPEN → CLOSED}. Calling
  * {@link #close()} without {@link #finish()} deletes the partial file.
  */
+// @spec F02.R22 — single codec per file
+// @spec F02.R23 — if compressed >= uncompressed, store as NONE
+// @spec F02.R24 — map built during write, serialized after all blocks
+// @spec F02.R32 — intra-block offsets may use int
 public final class TrieSSTableWriter implements SSTableWriter {
 
     private enum State {
@@ -310,12 +314,12 @@ public final class TrieSSTableWriter implements SSTableWriter {
         compressAndWriteBlock(blockBytes, codec);
     }
 
+    // @spec F17.R37 — MemorySegment compress, no byte[] conversion
     /**
      * Compresses a single serialized block with the specified codec and writes it to the channel.
      */
     private void compressAndWriteBlock(byte[] blockBytes, CompressionCodec useCodec)
             throws IOException {
-        // v2/v3/v4: compress the block via native MemorySegment API (F17.R37)
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment blockSeg = arena.allocate(blockBytes.length);
             MemorySegment.copy(blockBytes, 0, blockSeg, ValueLayout.JAVA_BYTE, 0,
@@ -587,6 +591,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeFooterV3(mapOffset, mapLength, indexOffset, indexLength, filterOffset, filterLength);
     }
 
+    // @spec F17.R39e — buffer blocks, sample, train, compress all
+    // @spec F17.R39f — dictionary stored as meta-block
+    // @spec F17.R39g — bounded buffer, fails on exceed
+    // @spec F17.R39h — graceful degradation without native libzstd
     /**
      * Finishes the SSTable with dictionary training. Buffered blocks are either compressed with a
      * trained dictionary (v4 format) or with plain ZSTD (v3 format) depending on block count and

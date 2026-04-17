@@ -59,7 +59,7 @@
     },
     "F02": {
       "latest_file": "domains/serialization/F02-block-compression.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "serialization",
         "storage"
@@ -102,7 +102,7 @@
     },
     "F08": {
       "latest_file": "domains/serialization/F08-streaming-block-decompression.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "serialization",
         "storage"
@@ -139,7 +139,7 @@
     },
     "F13": {
       "latest_file": "domains/engine/F13-jlsm-schema.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "engine"
       ]
@@ -153,7 +153,7 @@
     },
     "F15": {
       "latest_file": "domains/serialization/F15-json-only-simd-jsonl.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "serialization",
         "engine"
@@ -169,7 +169,7 @@
     },
     "F17": {
       "latest_file": "domains/serialization/F17-wal-compression-codec-api.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "serialization",
         "storage"

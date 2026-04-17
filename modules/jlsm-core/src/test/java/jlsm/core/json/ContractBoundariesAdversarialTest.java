@@ -17,7 +17,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -98,45 +97,35 @@ class ContractBoundariesAdversarialTest {
         assertEquals(validInput, p.asNumberText());
     }
 
-    // Finding: F-R1.cb.2.1
-    // Bug: advancePastStructural ignores the `expected` parameter — no cross-validation
-    // between structural index and byte stream. A corrupted Stage 1 index is silently accepted.
-    // Correct behavior: advancePastStructural must verify that input[pos] matches the expected
-    // structural character and throw/assert on mismatch.
-    // Fix location: JsonParser.Materializer.advancePastStructural (lines 492-501)
-    // Regression watch: Normal parsing must still work — only corrupted indexes should fail.
+    // Finding: F-R1.cb.2.1 (updated for F15 v3 iterative parser rewrite)
+    //
+    // Original intent: verify that advancePastStructural's assertion catches a Stage 1 index
+    // that points to the wrong kind of structural character (e.g., '[' where '{' was expected).
+    // Previously this was probed by calling parseObject() directly via reflection. After the
+    // R27 rewrite (single iterative parseValue / stepObject / stepArray), parseObject no
+    // longer exists, so we invoke advancePastStructural directly via reflection instead —
+    // the assertion contract remains and must still fire on mismatched input.
     @Test
     void test_Materializer_contractBoundary_advancePastStructuralValidatesExpectedChar()
             throws Exception {
-        // Construct a Materializer via reflection with a corrupted structural index.
-        // The input bytes are '[ n u l l ]' but the structural positions array is
-        // corrupted: position 0 points to '[' (correct) but we call parseObject()
-        // which expects '{' at position 0. This simulates Stage 1 producing a position
-        // that points to the wrong structural character type.
         byte[] input = "[null]".getBytes(StandardCharsets.UTF_8);
-        // Positions point to real structural chars '[' at 0 and ']' at 5, but they are
-        // the wrong KIND of structural character for parseObject which expects '{' and '}'.
         int[] positions = { 0, 5 };
         int maxDepth = 256;
 
-        // Access the private Materializer inner class
         Class<?> materializerClass = Class.forName("jlsm.core.json.JsonParser$Materializer");
         Constructor<?> ctor = materializerClass.getDeclaredConstructor(byte[].class, int[].class,
                 int.class);
         ctor.setAccessible(true);
         Object materializer = ctor.newInstance(input, positions, maxDepth);
 
-        // Directly invoke parseObject() — it expects '{' at pos 0, but input[0] is '['.
-        // advancePastStructural('{') should detect this mismatch and throw AssertionError.
-        // Without the fix, it silently advances past '[' treating it as '{'.
-        Method parseObject = materializerClass.getDeclaredMethod("parseObject");
-        parseObject.setAccessible(true);
+        // advancePastStructural is package-private and takes a char; invoking with '{' while
+        // input[pos] == '[' must trip the internal assertion.
+        Method advance = materializerClass.getDeclaredMethod("advancePastStructural", char.class);
+        advance.setAccessible(true);
 
-        // The fix adds an assertion: input[pos] == (byte) expected.
-        // With -ea enabled, this throws AssertionError when '[' != '{'.
         var thrown = assertThrows(AssertionError.class, () -> {
             try {
-                parseObject.invoke(materializer);
+                advance.invoke(materializer, '{');
             } catch (java.lang.reflect.InvocationTargetException e) {
                 throw e.getCause();
             }
@@ -282,45 +271,14 @@ class ContractBoundariesAdversarialTest {
                 "close() before stream() must succeed — no BufferedReader to close");
     }
 
-    // Finding: F-R1.cb.4.4
-    // Bug: JsonObject.of() and Builder.put() reject blank keys via key.isBlank(), but empty
-    // string "" and whitespace-only " " are valid JSON member names per RFC 8259 Section 7.
-    // Correct behavior: Only null keys should be rejected. Empty and whitespace-only keys must
-    // be accepted — they are valid JSON strings.
-    // Fix location: JsonObject.of() line 58-60 and Builder.put() line 196-198 — remove isBlank()
-    // guard.
-    // Regression watch: Null keys must still be rejected; duplicate key rejection must still work.
-    @Test
-    void test_JsonObject_contractBoundary_acceptsEmptyStringKey() {
-        // Empty string "" is a valid JSON member name per RFC 8259.
-        var members = new LinkedHashMap<String, JsonValue>();
-        members.put("", JsonNull.INSTANCE);
-        JsonObject obj = assertDoesNotThrow(() -> JsonObject.of(members),
-                "JsonObject.of() must accept empty-string keys — \"\" is a valid JSON member name");
-        assertEquals(1, obj.size());
-        assertEquals(JsonNull.INSTANCE, obj.get(""));
-    }
-
-    @Test
-    void test_JsonObject_contractBoundary_acceptsWhitespaceOnlyKey() {
-        // Whitespace-only " " is a valid JSON member name per RFC 8259.
-        var members = new LinkedHashMap<String, JsonValue>();
-        members.put(" ", JsonPrimitive.ofNumber("1"));
-        JsonObject obj = assertDoesNotThrow(() -> JsonObject.of(members),
-                "JsonObject.of() must accept whitespace-only keys — \" \" is a valid JSON member name");
-        assertEquals(1, obj.size());
-        assertEquals(JsonPrimitive.ofNumber("1"), obj.get(" "));
-    }
-
-    @Test
-    void test_JsonObjectBuilder_contractBoundary_acceptsEmptyStringKey() {
-        // Builder.put() must also accept empty-string keys.
-        JsonObject obj = assertDoesNotThrow(
-                () -> JsonObject.builder().put("", JsonNull.INSTANCE).build(),
-                "Builder.put() must accept empty-string keys — \"\" is a valid JSON member name");
-        assertEquals(1, obj.size());
-        assertEquals(JsonNull.INSTANCE, obj.get(""));
-    }
+    // F-R1.cb.4.4 (superseded by F15 v3 verification, 2026-04-16)
+    //
+    // The prior audit had relaxed blank-key rejection to match RFC 8259, but F15.R15
+    // explicitly requires non-blank keys and F15 v3 verification re-affirmed that choice —
+    // blank-key rejection is now the authoritative behavior (a third stricter-than-RFC
+    // parser property documented in R25). Tests enforcing acceptance have been moved to
+    // JsonObjectTest as `ofRejectsEmptyKey`, `ofRejectsWhitespaceOnlyKey`,
+    // `builderRejectsEmptyKey`, `builderRejectsWhitespaceOnlyKey`.
 
     // Finding: F-R1.cb.3.1
     // Bug: PanamaStage1 cross-block backslash runs not carried — escaped quotes misidentified.

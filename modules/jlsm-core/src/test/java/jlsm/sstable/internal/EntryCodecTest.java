@@ -98,4 +98,23 @@ class EntryCodecTest {
         byte[] encoded = EntryCodec.encode(entry);
         assertEquals(encoded.length, EntryCodec.encodedSize(entry));
     }
+
+    // @spec F02.R40 — data-dependent offset guard must be a runtime check, not assert-only
+    @Test
+    void decodeRejectsOffsetBeyondBufferWithIllegalArgumentException() {
+        byte[] buf = new byte[10];
+        // offset == buf.length is strictly out of range; before the fix the assert fires only
+        // under -ea and the real failure surfaces as ArrayIndexOutOfBoundsException deeper in.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> EntryCodec.decode(buf, buf.length));
+        assertTrue(ex.getMessage() != null && ex.getMessage().contains("offset"),
+                "expected descriptive offset-out-of-range message, got: " + ex.getMessage());
+    }
+
+    // @spec F02.R40 — negative offset must also produce a runtime IllegalArgumentException
+    @Test
+    void decodeRejectsNegativeOffsetWithIllegalArgumentException() {
+        byte[] buf = new byte[10];
+        assertThrows(IllegalArgumentException.class, () -> EntryCodec.decode(buf, -1));
+    }
 }

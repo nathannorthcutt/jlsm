@@ -117,6 +117,7 @@
 .claude/scripts/spec-stats.sh
 .claude/scripts/spec-resolve.sh
 .claude/scripts/spec-obligations-gc.sh
+.claude/scripts/spec-trace.sh
 .claude/scripts/work-lib.sh
 .claude/scripts/work-resolve.sh
 .claude/scripts/work-validate.sh

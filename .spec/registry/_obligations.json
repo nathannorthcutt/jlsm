@@ -6,11 +6,63 @@
       "spec": "F33",
       "description": "Catalog metadata update during migration (R30-R35) depends on catalog-replication (WD-06, not yet specified). Requirements R30-R35 must be revisited when catalog-replication is specified.",
       "blocked_by": "catalog-replication (WD-06)",
-      "affects": ["F33.R30", "F33.R31", "F33.R32", "F33.R33", "F33.R34", "F33.R35"],
+      "affects": [
+        "F33.R30",
+        "F33.R31",
+        "F33.R32",
+        "F33.R33",
+        "F33.R34",
+        "F33.R35"
+      ],
       "status": "resolved",
       "created": "2026-04-14",
       "resolved_by": "F37",
       "resolved_date": "2026-04-14"
+    },
+    {
+      "id": "OBL-F02-R33",
+      "spec": "F02",
+      "target_feature": "F02",
+      "domains": [
+        "serialization",
+        "storage"
+      ],
+      "description": "F02.R33 VIOLATED: readKeyIndexV2 does not validate blockIndex in [0, blockCount) or intraBlockOffset >= 0 at key-index read time. Corrupt values surface as IndexOutOfBoundsException (from CompressionMap.entry) or AssertionError/AIOOBE (from EntryCodec.decode assert), not the descriptive IOException R33 requires. Related to R40 PARTIAL.",
+      "created_by": "spec-verify",
+      "created": "2026-04-16",
+      "status": "resolved",
+      "resolved_by": "spec-verify (F02 v2: code fix added bounds validation in readKeyIndexV2 + replaced assert with runtime check in EntryCodec.decode)",
+      "resolved_date": "2026-04-16"
+    },
+    {
+      "id": "OBL-F02-R39g",
+      "spec": "F02",
+      "target_feature": "F02",
+      "domains": [
+        "serialization",
+        "storage"
+      ],
+      "description": "F02.R39g VIOLATED: when dictionaryMaxBufferBytes is exceeded, TrieSSTableWriter abandons dictionary training and falls back to plain-codec compression (dictBufferAbandoned=true) instead of failing with IOException as the spec requires. Either the writer should throw IOException or R39g should be amended to codify the graceful-fallback behavior.",
+      "created_by": "spec-verify",
+      "created": "2026-04-16",
+      "status": "resolved",
+      "resolved_by": "spec-verify (F02 v2: R39g amended to codify graceful-fallback as the correct behavior)",
+      "resolved_date": "2026-04-16"
+    },
+    {
+      "id": "OBL-F15-R27",
+      "spec": "F15",
+      "target_feature": "F15",
+      "domains": [
+        "serialization",
+        "engine"
+      ],
+      "description": "F15.R27 VIOLATED: JsonParser uses mutual recursion (parseValue → parseObject/parseArray → parseValue) for nested structure traversal, despite the spec requiring \"must not use recursion for depth traversal.\" The code comment at JsonParser.java:153-156 explicitly acknowledges the deviation, accepting bounded recursion (capped by R52 at maxDepth=4096) in exchange for simpler code. Resolution path: either rewrite as an explicit stack-based state machine in Materializer, or amend R27 to permit bounded mutual recursion with an explicit maxDepth cap.",
+      "created_by": "spec-verify",
+      "created": "2026-04-16",
+      "status": "resolved",
+      "resolved_by": "spec-verify (F15 v3: Materializer rewritten to use explicit Deque<Frame> stack; parseObject/parseArray/currentDepth removed)",
+      "resolved_date": "2026-04-16"
     }
   ]
 }

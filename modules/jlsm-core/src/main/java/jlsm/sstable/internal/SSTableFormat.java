@@ -72,6 +72,9 @@ package jlsm.sstable.internal;
  *
  * @see CompressionMap
  */
+// @spec F02.R11 — v2 layout: data blocks, compression map, key index, bloom, footer
+// @spec F02.R12 — 64-byte footer with 8 big-endian long fields
+// @spec F02.R15 — v1 magic 0x4A4C534D53535401, v2 magic ...02
 public final class SSTableFormat {
 
     /** Magic number v1: ASCII "JLSMSST\x01" packed as a big-endian long. */

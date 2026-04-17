@@ -3,7 +3,7 @@
   "id": "F17",
   "version": 1,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["serialization", "storage"],
   "requires": ["F02"],
   "invalidates": [
@@ -178,3 +178,63 @@ Pass 2 identified 10 confirmed gaps. All were accepted and incorporated:
 - R35: consecutive skip threshold prevents silent data loss on systematic failure
 - Various clarifications: frame length calculation, threshold comparison scope,
   heap-segment caveat, post-ADR deviation notes
+
+---
+
+## Verification Notes
+
+### Verified: v1 — 2026-04-16
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `CompressionCodec.java:71` — `compress(src, dst) → MemorySegment` |
+| R2 | SATISFIED | `CompressionCodec.java:92` — `decompress(src, dst, uncompressedLength)`; size-mismatch throws `UncheckedIOException` in each impl (`NoneCodec:99-103`, `DeflateCodec:179-183`, `ZstdCodec:332-335`) |
+| R3 | SATISFIED | no byte[]-based `compress`/`decompress` methods in `CompressionCodec` |
+| R4 | SATISFIED | `CompressionCodec.java:46` `codecId()` and `:111-117` `maxCompressedLength(int)` retained |
+| R5 | SATISFIED | codecs carry no mutable instance state outside immutable dictionary fields (F17.R41); statelessness per class-level javadocs |
+| R6 | SATISFIED | all impls guard with `Objects.requireNonNull(src/dst, ...)` at method entry |
+| R7 | SATISFIED | `NoneCodec:61-63, DeflateCodec:94-97, ZstdCodec:152-154` — empty-src check precedes dst size check |
+| R8 | SATISFIED | `NoneCodec:87-90, DeflateCodec:147-150` — `uncompressedLength==0 && src.byteSize()==0` returns zero-length slice |
+| R9 | SATISFIED | `NoneCodec:92-96, DeflateCodec:152-156` — non-empty src with zero length throws `UncheckedIOException` |
+| R10 | SATISFIED | `NoneCodec:82-85, DeflateCodec:142-145, ZstdCodec:175-178` — IAE on negative `uncompressedLength` |
+| R11 | SATISFIED | `NoneCodec:65-69, DeflateCodec:99-104, ZstdCodec:157-161` — ISE on undersized dst |
+| R12 | SATISFIED | `NoneCodec:71-73` — `MemorySegment.copy` segment→segment, no byte[] intermediary |
+| R13 | SATISFIED | `NoneCodec:98-106` — size check + copy; mismatch throws `UncheckedIOException` |
+| R14 | SATISFIED | `DeflateCodec:107-108` — `src.asByteBuffer()` / `dst.asByteBuffer()`; Deflater fed/drained via those ByteBuffers |
+| R15 | SATISFIED | `DeflateCodec:159-160` — `Inflater.setInput(ByteBuffer)` / `inflate(ByteBuffer)` zero-copy path |
+| R16 | SATISFIED | `DeflateCodec:110-132, 163-190` — `def.end()` / `inf.end()` in `finally` |
+| R17 | SATISFIED | `DeflateCodec:56-61` — level range guard |
+| R18 | SATISFIED | `WalRecord.java:122-125, 246-250, 275-276` — FLAG_COMPRESSED/FLAG_UNCOMPRESSED bit 0 layout |
+| R19 | SATISFIED | `WalRecord.java:246-253` — compressed records write codecId(1) + uncompressedSize(4) after flags |
+| R20 | SATISFIED | `WalRecord.java:272-276` — uncompressed branch writes only flags byte before payload |
+| R21 | SATISFIED | `WalRecord.java:213` computes CRC over uncompressed payload at encode; `:384-390` verifies after decompression on decode |
+| R22 | SATISFIED | `WalRecord.java:237-238, 266-267` — frame length = flags(1) + optional header(5) + payload + CRC(4) |
+| R23 | SATISFIED | `WalRecord.java:39-43` — `INT_BE`/`LONG_BE` use `withOrder(BIG_ENDIAN).withByteAlignment(1)` |
+| R24 | SATISFIED | `WalRecord.java:315-318` — null/empty codecMap delegates to old-format decoder; mechanism prevents misinterpretation when caller config matches WAL vintage. The spec accepts "documentation that old WAL files must be drained before upgrade" — the internal-routing approach is stricter |
+| R25 | SATISFIED | `WalRecord.java:216` — `payloadSize >= minCompressSize` gate; `LocalWriteAheadLog.java:48` / `RemoteWriteAheadLog.java:301` default 64 |
+| R26 | SATISFIED | `WalRecord.java:226-228` — 5-byte header added to compressed-size before comparison |
+| R27 | SATISFIED | `LocalWriteAheadLog.java:576` / `RemoteWriteAheadLog.java:299` — `CompressionCodec.deflate()` default (level 6 per `CompressionCodec.java:133-135`) |
+| R28 | SATISFIED | `Builder.compressionMinSize(int)` in both WALs; default `DEFAULT_COMPRESSION_MIN_SIZE = 64` |
+| R29 | SATISFIED | both `LocalWriteAheadLog.encodeRecord` and `RemoteWriteAheadLog.encodeRecord` call the same `WalRecord.encode(..., codec, minSize, buffer)` — identical wire format |
+| R30 | SATISFIED | `LocalWriteAheadLog.java:664-689` builds codec map including write codec + NONE; duplicate IDs within user-provided recovery set rejected with IAE at `:681-687` |
+| R31 | SATISFIED | `WalRecord.java:335-394` — per-record flags-byte inspection handles mixed compressed/uncompressed records in the same segment |
+| R32 | SATISFIED | `WalRecord.java:352-356` — unknown codec ID throws IOException listing available codecs |
+| R33 | SATISFIED | `LocalWriteAheadLog.java:162-185` / `RemoteWriteAheadLog.java:247-260` — skip-and-advance by frame-length on corrupt records |
+| R34 | SATISFIED | `WalRecord.java:384-390` — decompress first, then CRC over the decompressed payload |
+| R35 | SATISFIED | `LocalWriteAheadLog.java:174-183, 526-535` — `consecutiveSkips > maxConsecutiveSkips` throws IOException; threshold configurable via `Builder.maxConsecutiveSkips(int)`; default 10 |
+| R36 | SATISFIED | `LocalWriteAheadLog.java:280-294` / `RemoteWriteAheadLog.java:127-140` — buffer acquisition failure falls back to uncompressed new-format encoding via `Integer.MAX_VALUE` minSize |
+| R37 | SATISFIED | `TrieSSTableWriter.java:323-331` — Arena-allocated `blockSeg`/`compDst` passed to `useCodec.compress` without byte[] conversion of the source |
+| R38 | SATISFIED | `TrieSSTableReader.java:463-475, 529-541` — compressed bytes copied to Arena segment, decompressed via `codec.decompress(compSeg, decompDst, ...)` |
+| R39 | SATISFIED | `CompressionMap.java:17-40, 49` — v2 17-byte entries and v3 21-byte entries unchanged; F17 does not touch the on-disk format |
+| R40 | UNTESTABLE | behavioral regression claim; requires running `./gradlew :jlsm-core:test` to confirm |
+| R41 | SATISFIED | `ZstdCodec.java:32-36` thread-safety docstring + `:74-80` `final` dictionary fields; compress/decompress carry no mutable instance state |
+| R42 | SATISFIED | `ZstdCodec.java:100-106` — dictionary bytes copied into arena-managed memory at construction; caller's `MemorySegment` is never mutated by the codec |
+
+**Overall: PASS_WITH_NOTES**
+
+Obligations resolved: 0
+Obligations remaining: 0
+Undocumented behavior:
+- `WalRecord.encode(..., codec, minSize, buffer)` uses a two-phase layout: writes the uncompressed payload at `maxHeaderSize=10` first, then either rewrites the final record from offset 0 (if compressing) or memmoves the payload left by 5 bytes (if falling back to uncompressed). The in-place memmove at `:280-282` is a subtle performance optimization worth noting but not spec-mandated.
+- `buildCodecMap` in both WAL builders auto-includes `NoneCodec` and the configured write codec in addition to user-supplied recovery codecs — analogous to the SSTable reader's NONE auto-include (F02.R19) but not explicitly spec'd for the WAL path. Consider an explicit requirement mirroring F02.R19 at the WAL level.
+- The F17.R24 implementation routes decode via codecMap presence rather than a per-segment format marker. This is semantically equivalent to the "drain before upgrade" option in R24 but pushes the format decision onto the builder configuration. Worth calling out explicitly in the Builder javadoc so users know the decoder branch is controlled by `recoveryCodecs(...)` / default codec presence, not by probing the file.

@@ -4,6 +4,7 @@ import jlsm.core.model.Entry;
 import jlsm.core.model.SequenceNumber;
 
 import java.lang.foreign.MemorySegment;
+import java.util.Objects;
 
 /**
  * Encodes and decodes {@link Entry} instances to/from a compact big-endian binary format.
@@ -129,9 +130,15 @@ public final class EntryCodec {
      * @param offset start position within buf
      * @return decoded entry
      */
+    // @spec F02.R40 — offset guard must be a runtime check; asserts are stripped in production
+    // and would leave corrupt on-disk bytes (reachable via TrieSSTableReader's block decode
+    // paths) to surface as ArrayIndexOutOfBoundsException instead of a descriptive error.
     public static Entry decode(byte[] buf, int offset) {
-        assert buf != null : "buf must not be null";
-        assert offset >= 0 && offset < buf.length : "offset out of range";
+        Objects.requireNonNull(buf, "buf must not be null");
+        if (offset < 0 || offset >= buf.length) {
+            throw new IllegalArgumentException(
+                    "offset out of range: offset=%d, buf.length=%d".formatted(offset, buf.length));
+        }
 
         int off = offset;
         byte type = buf[off++];

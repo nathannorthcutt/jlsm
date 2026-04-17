@@ -11,6 +11,9 @@ import java.util.Objects;
  * <p>
  * Values are stored in schema-field order. A {@code null} entry means the field is absent (PATCH
  * semantics). Type validation is performed eagerly at construction.
+ *
+ * @spec F15.R1 — no YAML methods (absent behavior)
+ * @spec F15.R2 — YamlParser/YamlWriter removed (confirmed absent)
  */
 public final class JlsmDocument {
 
@@ -370,7 +373,11 @@ public final class JlsmDocument {
     // JSON serialization / deserialization
     // -------------------------------------------------------------------------
 
-    /** Serializes this document to a compact JSON string. */
+    /**
+     * Serializes this document to a compact JSON string.
+     *
+     * @spec F15.R43 — uses jlsm-core JSON writer internally
+     */
     public String toJson() {
         return jlsm.core.json.JsonWriter
                 .write(jlsm.table.internal.JsonValueAdapter.toJsonValue(this));
@@ -393,6 +400,7 @@ public final class JlsmDocument {
      * @param schema the target schema; must not be null
      * @return a new JlsmDocument
      * @throws IllegalArgumentException if the JSON is malformed or a field type does not match
+     * @spec F15.R42 — uses jlsm-core JSON parser internally
      */
     public static JlsmDocument fromJson(String json, JlsmSchema schema) {
         Objects.requireNonNull(json, "json must not be null");

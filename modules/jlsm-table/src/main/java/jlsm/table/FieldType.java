@@ -14,9 +14,12 @@ import java.util.Objects;
  * <li>{@link ObjectType} — a nested object with its own field definitions</li>
  * </ul>
  */
+// @spec F13.R42 — sealed interface permitting Primitive, ArrayType, ObjectType, VectorType,
+// BoundedString
 public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayType,
         FieldType.ObjectType, FieldType.VectorType, FieldType.BoundedString {
 
+    // @spec F13.R43 — Primitive enum with STRING, INT8..FLOAT64, BOOLEAN, TIMESTAMP
     /** Scalar primitive field types. */
     enum Primitive implements FieldType {
         STRING, INT8, INT16, INT32, INT64, FLOAT16, FLOAT32, FLOAT64, BOOLEAN, TIMESTAMP
@@ -27,6 +30,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      *
      * @param elementType the type of each element in the array; must not be null
      */
+    // @spec F13.R47 — rejects null elementType with NullPointerException
     record ArrayType(FieldType elementType) implements FieldType {
         public ArrayType {
             Objects.requireNonNull(elementType, "elementType must not be null");
@@ -38,6 +42,8 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      *
      * @param fields the field definitions of the nested object; must not be null
      */
+    // @spec F13.R48 — rejects null fields with NullPointerException, defensively copies via
+    // List.copyOf
     record ObjectType(List<FieldDefinition> fields) implements FieldType {
         public ObjectType {
             Objects.requireNonNull(fields, "fields must not be null");
@@ -52,6 +58,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
          * @param version the schema version
          * @return a new JlsmSchema with this ObjectType's fields
          */
+        // @spec F13.R57 — propagates encryption specs for each field
         public JlsmSchema toSchema(String name, int version) {
             Objects.requireNonNull(name, "name must not be null");
             JlsmSchema.Builder builder = JlsmSchema.builder(name, version);
@@ -71,6 +78,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
          * @param maxDepth the maximum nesting depth for the resulting schema
          * @return a new JlsmSchema with this ObjectType's fields and the given maxDepth
          */
+        // @spec F13.R58 — propagates parent maxDepth configuration
         public JlsmSchema toSchema(String name, int version, int maxDepth) {
             Objects.requireNonNull(name, "name must not be null");
             JlsmSchema.Builder builder = JlsmSchema.builder(name, version).maxDepth(maxDepth);
@@ -88,6 +96,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      *
      * @param maxLength the maximum byte length; must be positive
      */
+    // @spec F13.R46 — rejects non-positive maxLength with IllegalArgumentException
     record BoundedString(int maxLength) implements FieldType {
         public BoundedString {
             if (maxLength <= 0) {
@@ -103,6 +112,8 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      *            {@link Primitive#FLOAT32}
      * @param dimensions the fixed number of elements per vector; must be positive
      */
+    // @spec F13.R44 — validates elementType is FLOAT16 or FLOAT32
+    // @spec F13.R45 — validates dimensions > 0
     record VectorType(Primitive elementType, int dimensions) implements FieldType {
         public VectorType {
             Objects.requireNonNull(elementType, "elementType must not be null");
@@ -118,6 +129,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
     }
 
     // --- Static factory shortcuts ---
+    // @spec F13.R49 — static factory methods for all types
 
     /** Returns {@link Primitive#STRING} (unbounded). */
     static FieldType string() {

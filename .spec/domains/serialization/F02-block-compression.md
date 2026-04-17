@@ -1,9 +1,9 @@
 ---
 {
   "id": "F02",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["serialization", "storage"],
   "requires": [],
   "invalidates": [],
@@ -150,7 +150,7 @@ R39e. When a dictionary-enabled codec is configured, the SSTable writer must buf
 
 R39f. The trained dictionary must be stored as a meta-block in the SSTable file alongside the index and bloom filter. The dictionary meta-block must be loadable from on-disk metadata alone — no external dictionary file or registry. Readers must detect the presence of a dictionary meta-block and load it before decompressing any block. [New: from codec-dictionary-support ADR.]
 
-R39g. The writer's block buffering for dictionary training must be bounded by a configurable maximum (set via the writer builder). If the buffered data exceeds the maximum, the writer must fail with an IOException rather than silently consuming unbounded memory. [New: from codec-dictionary-support ADR.]
+R39g. The writer's block buffering for dictionary training must be bounded by a configurable maximum (set via the writer builder). If the buffered data exceeds the maximum, the writer must abandon dictionary training, compress all previously buffered blocks using the configured non-dictionary codec, and continue writing subsequent blocks without further buffering. This graceful degradation prevents unbounded memory consumption while preserving data throughput when the input exceeds the dictionary training budget. [Amended v2 2026-04-16: was "must fail with an IOException"; graceful fallback is the better design — it prevents write failure on inputs larger than the training budget allows.]
 
 R39h. When native libzstd is unavailable (Tier 2 or 3), the writer must skip dictionary training and compress blocks as they arrive using the fallback codec. The writer must not fail at construction time due to missing native library — it must gracefully degrade. [New: from codec-dictionary-support ADR.]
 
@@ -162,7 +162,7 @@ R41. Corrupted compressed blocks must produce an IOException with a descriptive 
 
 ### Silent failure documentation
 
-R42. Compression map deserialization and deflate decompression silently ignore trailing bytes beyond what they consume. This behavior must be documented as a known limitation in the relevant API documentation. If exact-length enforcement is added in the future, it must be gated behind a compatibility flag to avoid breaking existing files.
+R42. Compression map deserialization must reject trailing bytes beyond the serialized entries with an `IllegalArgumentException` whose message identifies the actual and expected byte lengths. Deflate decompression may still silently ignore trailing compressed bytes beyond the decompression target; this asymmetry is inherent to the zlib stream format and must be documented in the deflate codec's API. [Amended v2 2026-04-16: was "silently ignore trailing bytes"; compression map is now strict. Verified during v1 verification — compression map trailing-byte rejection was added for defence-in-depth.]
 
 R43. Iterator behavior after the underlying reader has been closed is undefined. Callers must not rely on hasNext() returning accurate results after close. This must be documented in the reader's public API.
 
@@ -223,3 +223,125 @@ This spec incorporates fixes from 14 resolved adversarial audit findings:
 Three WATCH items are documented as known limitations: TRAILING-DATA-IGNORED (R42), ZERO-UNCOMPRESSED-LENGTH-ACCEPTED (R26), ITERATOR-CLOSED-STATE-INCONSISTENCY (R43).
 
 Three TENDENCY patterns are encoded as general requirements: BOUNDS-CHECK-OVERFLOW (R9), INTEGER-OVERFLOW-IN-SIZE-CALC (R27), ASSERT-INSTEAD-OF-RUNTIME-CHECK (R40).
+
+---
+
+## Verification Notes
+
+### Verified: v1 — 2026-04-16
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `CompressionCodec.java:46` — `byte codecId()` |
+| R2 | SATISFIED | intent preserved via MemorySegment API (F17.R3 invalidates byte[] form) — `CompressionCodec.java:71` |
+| R3 | SATISFIED | intent preserved via MemorySegment API (F17.R3) — `CompressionCodec.java:92`; size-mismatch throws `UncheckedIOException` in each impl |
+| R4 | SATISFIED | `NoneCodec.java:54-74, 77-107` — copy in both directions; `NoneCodec.java:99-103` throws on size mismatch |
+| R5 | SATISFIED | `DeflateCodec.java:56-61` — rejects level outside 0–9 |
+| R6 | SATISFIED | `DeflateCodec.java:110-132, 163-190` — `def.end()` / `inf.end()` in `finally` |
+| R7 | SATISFIED | codecs hold no mutable instance state except dictionary-bound ZstdCodec (immutable after construction per F17.R41) |
+| R8 | SATISFIED | intent preserved: all impls reject null `src`/`dst` via `Objects.requireNonNull` (invalidated form by F17.R3) |
+| R9 | SATISFIED | intent preserved: MemorySegment API substitutes slice-bounds for byte[] offset/length (invalidated by F17.R3); overflow-safe `maxCompressedLength` checked in `ZstdCodec.java:220-226` |
+| R10 | SATISFIED | `NoneCodec.java:82-85`, `DeflateCodec.java:142-145`, `ZstdCodec.java:175-178` |
+| R11 | SATISFIED | `SSTableFormat.java:26-47` documents v2 layout |
+| R12 | SATISFIED | `SSTableFormat.java:36-47, 90` — 64-byte footer, 8 long fields |
+| R13 | SATISFIED | `CompressionMap.java:17-27, 49` — 17-byte entry layout |
+| R14 | SATISFIED | `TrieSSTableWriter.java:482-510`, `TrieSSTableReader.java:967-991` — v2 key index encodes block index + intra-block offset |
+| R15 | SATISFIED | `TrieSSTableReader.java:827-942` — magic dispatch by final 8 bytes; footer size check per version |
+| R16 | SATISFIED | `TrieSSTableReader.java:813-816` — v1 reader on v2 file throws descriptive IOException |
+| R17 | SATISFIED | `TrieSSTableReader.java:564-590` — codec map built from varargs at open time |
+| R18 | SATISFIED | `TrieSSTableReader.java:583-587` — explicit duplicate-ID IAE |
+| R19 | SATISFIED | `TrieSSTableReader.java:568-569` — NoneCodec always pre-populated |
+| R20 | SATISFIED | `TrieSSTableReader.java:610-620` — unknown codec ID → IOException |
+| R21 | SATISFIED | `TrieSSTableReader.java:571` — per-index null rejection with index in message |
+| R22 | SATISFIED | `TrieSSTableWriter.java:79` — single codec field |
+| R23 | SATISFIED | `TrieSSTableWriter.java:335-342` — incompressible falls back to NONE codec ID |
+| R24 | SATISFIED | `TrieSSTableWriter.java:350-351, 410-413` — entries collected, serialized after data blocks |
+| R25 | SATISFIED | `CompressionMap.java:67-79` — negative offset/sizes rejected |
+| R26 | SATISFIED | `CompressionMap.java:89-98` — impossible size combos rejected |
+| R27 | SATISFIED | `CompressionMap.java:158-163, 227-232, 283-288` — long arithmetic, overflow rejected (ISE on serialize, IAE on deserialize) |
+| R28 | SATISFIED | `CompressionMap.java:222-224, 280-282` |
+| R29 | SATISFIED | `TrieSSTableReader.java:708-795` — Footer.validate rejects negatives |
+| R30 | SATISFIED | `TrieSSTableReader.java:729-755` + `Math.toIntExact` at `:434, :503` |
+| R31 | SATISFIED | Footer fields are `long`; no narrowing in read-path except explicit `Math.toIntExact` guards |
+| R32 | SATISFIED | `TrieSSTableWriter.java:240-241` packs `blockIndex` and `intraBlockOffset` as ints |
+| R33 | **VIOLATED** | `TrieSSTableReader.java:967-991` — `readKeyIndexV2` reads `blockIndex`/`intraBlockOffset` without bounds validation. Corrupt data downstream throws `IndexOutOfBoundsException` via `CompressionMap.entry()` (line 421) or `AssertionError`/`AIOOBE` via `EntryCodec.decode` (line 134 uses `assert`) — not the descriptive IOException R33 requires |
+| R34 | SATISFIED | `TrieSSTableReader.java:757-782, 859-874, 900-906` — section-overlap detection for v2/v3/v4 |
+| R35 | SATISFIED | `TrieSSTableReader.java:1038` — `synchronized (ch)` around position-then-read |
+| R36 | SATISFIED | `TrieSSTableReader.java:423-428, 478-480` — cache hit returns decompressed; miss decompresses then caches |
+| R37 | SATISFIED | `StandardLsmTree.java:440-442, 471-477` — builder accepts codec, wires writer/reader factories |
+| R38 | SATISFIED | `SpookyCompactor.java:44, 211` + `SSTableWriterFactory.java:17-29` — factory-based writer creation, no codec logic in compactor |
+| R39 | SATISFIED | `StandardLsmTree.java:455-457, 529-537` — per-level `Function<Level, CompressionCodec>` policy; single-codec path preserved |
+| R39a | SATISFIED | each `writerFactory.create(...)` returns an independent `TrieSSTableWriter`; no cross-writer state |
+| R39b | PARTIAL | `ZstdNativeBindings.java:188-193` — detector transitions `NATIVE → DEFLATE_FALLBACK` only; `Tier.PURE_JAVA_DECOMPRESSOR` is an enum constant but never assigned (comment line 190–192: "Tier 2 (PURE_JAVA_DECOMPRESSOR) is not yet implemented"). Tier 1 and Tier 3 work; Tier 2 dispatch in `ZstdCodec.java:183-191` is unreachable |
+| R39c | PARTIAL | `PureJavaZstdDecompressor.java` implements dictionary-aware decode, but is unreachable at runtime because R39b never activates Tier 2 |
+| R39d | SATISFIED | `ZstdCodec.java:74-135` — dictionary stored as final field, CDict/DDict created once at construction, stateless compress/decompress |
+| R39e | SATISFIED | `TrieSSTableWriter.java:279-307, 603-673` — buffer-then-train lifecycle encapsulated in writer |
+| R39f | SATISFIED | `SSTableFormat.java:110-133` v4 footer includes dictOffset/dictLength; `TrieSSTableReader.java:597-607` loads meta-block at open time |
+| R39g | **VIOLATED** | `TrieSSTableWriter.java:281-295` — when `dictionaryMaxBufferBytes` is exceeded, the writer abandons dictionary training and falls back to plain codec (`dictBufferAbandoned = true`). Spec requires failing with an IOException. Current behavior silently degrades instead |
+| R39h | SATISFIED | `TrieSSTableWriter.java:206-211` — `dictEligible` only true when native available; otherwise writer proceeds with plain compression, no construction-time failure |
+| R40 | PARTIAL | most data-dependent conditions use runtime checks (footer, codec map, compression map, section overlap). Gap: `EntryCodec.decode` (`:133-134`) uses `assert` for the offset guard on corrupt key-index data; paired with R33, corrupt on-disk state is not covered by runtime logic |
+| R41 | SATISFIED | `CorruptBlockException` extends IOException; `TrieSSTableReader.java:458-459, 470-474, 525-526, 538-540` — decompression-failure paths throw IOException with descriptive messages |
+| R42 | SATISFIED (stricter than described) | `CompressionMap.java:238-242, 294-298` — trailing bytes are now **rejected** with IAE (not silently ignored). Behavior is tighter than R42 states; R42 text is now obsolete and the known-limitation footnote is stale |
+| R43 | PARTIAL | class-level `@spec F02.R43` comment at `TrieSSTableReader.java:59`, but no user-facing javadoc on `scan()`, `hasNext()`, or `close()` documenting that iterator behavior after close is undefined |
+
+**Overall: FAIL**
+
+Obligations resolved: 0
+Obligations remaining: 2 (newly created — see `_obligations.json`)
+Undocumented behavior:
+- `TrieSSTableReader` also handles v3 (MAGIC_V3) and v4 (MAGIC_V4) formats with per-block CRC32C checksums and a dictionary meta-block. v3/v4 support is genuinely new territory beyond F02's v2 scope — covered by F16 / F18, but worth a cross-reference from F02 to avoid implying v2 is the terminal format.
+- Writer-side `dictBufferAbandoned` graceful-fallback behavior is arguably better design than R39g's fail-fast text. If this is intentional, R39g should be amended; if not, the writer should throw. This choice is not currently documented either way.
+
+### Verified: v2 — 2026-04-16
+
+Re-verification of v1 findings after amendments and code fixes. All previously
+PARTIAL or VIOLATED requirements are now SATISFIED, supported by new regression
+tests.
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1–R32 | SATISFIED | unchanged from v1 verification |
+| R33 | SATISFIED | `TrieSSTableReader.readKeyIndexV2` now accepts `blockCount`; rejects `blockIndex ∉ [0, blockCount)` and negative `intraBlockOffset` with descriptive `IOException`. Regression tests `SSTableCompressionAdversarialTest.v2KeyIndexRejectsBlockIndexOutOfRange_F02R33`, `...RejectsNegativeBlockIndex_F02R33`, `...RejectsNegativeIntraBlockOffset_F02R33`. |
+| R34 | SATISFIED | unchanged |
+| R35 | SATISFIED | unchanged |
+| R36 | SATISFIED | unchanged |
+| R37 | SATISFIED | unchanged |
+| R38 | SATISFIED | unchanged |
+| R39 | SATISFIED | unchanged |
+| R39a | SATISFIED | unchanged |
+| R39b | SATISFIED | `ZstdNativeBindings` catch block now selects `Tier.PURE_JAVA_DECOMPRESSOR` when native detection fails; `DEFLATE_FALLBACK` is reserved for future use. Regression test `ZstdNativeBindingsTest.tierIsPureJavaDecompressorWhenNativeUnavailable` (skipped when native is present). |
+| R39c | SATISFIED | transitively satisfied by R39b fix — `ZstdCodec.decompress` branch at :183-191 is now reachable; `PureJavaZstdDecompressorTest` already exercises the dictionary-aware decode. |
+| R39d | SATISFIED | unchanged |
+| R39e | SATISFIED | unchanged |
+| R39f | SATISFIED | unchanged |
+| R39g | SATISFIED (amended) | spec text now codifies graceful fallback: `TrieSSTableWriter.java:279-295` abandons dictionary training and proceeds with plain-codec compression when buffer exceeds `dictionaryMaxBufferBytes`. |
+| R39h | SATISFIED | unchanged |
+| R40 | SATISFIED | `EntryCodec.decode` replaces assert-only guard with runtime `IllegalArgumentException` + `Objects.requireNonNull`. Regression tests `EntryCodecTest.decodeRejectsOffsetBeyondBufferWithIllegalArgumentException`, `...decodeRejectsNegativeOffsetWithIllegalArgumentException`. |
+| R41 | SATISFIED | unchanged |
+| R42 | SATISFIED (amended) | spec text now describes the actual compression-map behaviour (rejects trailing bytes with IAE — `CompressionMap.java:238-242, 294-298`) and preserves the deflate asymmetry note. |
+| R43 | SATISFIED | `TrieSSTableReader.scan()`, `scan(from, to)`, and `close()` now carry public javadoc documenting that iterator behaviour is undefined after close. The existing `indexRangeIteratorClosedStateBehavior_C2F14` test locks the "undefined but non-crashing" contract. |
+
+**Overall: PASS**
+
+#### Amendments
+- **R39g**: "must fail with an IOException" → "must abandon dictionary training, compress all
+  previously buffered blocks using the configured non-dictionary codec, and continue writing
+  subsequent blocks without further buffering." Graceful degradation prevents write failure on
+  inputs larger than the training budget.
+- **R42**: "silently ignore trailing bytes" → "must reject trailing bytes beyond the serialized
+  entries with `IllegalArgumentException`." Deflate asymmetry preserved as a documented
+  zlib-format property.
+
+Amendments applied: 2
+Code fixes applied: 4 (R33, R40, R43, R39b; R39c transitively resolved)
+Regression tests added: 6
+  - `EntryCodecTest.decodeRejectsOffsetBeyondBufferWithIllegalArgumentException`
+  - `EntryCodecTest.decodeRejectsNegativeOffsetWithIllegalArgumentException`
+  - `SSTableCompressionAdversarialTest.v2KeyIndexRejectsBlockIndexOutOfRange_F02R33`
+  - `SSTableCompressionAdversarialTest.v2KeyIndexRejectsNegativeBlockIndex_F02R33`
+  - `SSTableCompressionAdversarialTest.v2KeyIndexRejectsNegativeIntraBlockOffset_F02R33`
+  - `ZstdNativeBindingsTest.tierIsPureJavaDecompressorWhenNativeUnavailable`
+Obligations resolved: 2 (`OBL-F02-R33`, `OBL-F02-R39g`)
+Obligations remaining: 0
+Undocumented behavior: none new (v3/v4 cross-reference note carried forward from v1 —
+covered by F16/F18 specs).

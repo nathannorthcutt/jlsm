@@ -55,6 +55,9 @@ import java.util.zip.CRC32C;
  * demand</li>
  * </ul>
  */
+// @spec F02.R35 — lazy reader synchronizes channel reads
+// @spec F02.R43 — iterator after close is undefined (documented)
+// @spec F08.R28 — decompressAllBlocks method removed (absent behavior)
 public final class TrieSSTableReader implements SSTableReader {
 
     private final SSTableMetadata metadata;
@@ -196,6 +199,9 @@ public final class TrieSSTableReader implements SSTableReader {
      * @return a new reader
      * @throws IOException if the file cannot be read or contains an unknown codec ID
      */
+    // @spec F02.R15 — detects v1 by magic, falls back to v1 reading
+    // @spec F02.R16 — v1 reader on v2 file throws descriptive IOException
+    // @spec F02.R17 — self-describing, no external config needed
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
             BlockCache blockCache, CompressionCodec... codecs) throws IOException {
         Objects.requireNonNull(path, "path must not be null");
@@ -226,7 +232,7 @@ public final class TrieSSTableReader implements SSTableReader {
                 }
 
                 validateCodecMap(compressionMap, codecMap);
-                keyIndex = readKeyIndexV2(ch, footer);
+                keyIndex = readKeyIndexV2(ch, footer, compressionMap.blockCount());
                 dataEnd = footer.mapOffset;
                 checksums = footer.version >= 3;
             } else {
@@ -294,7 +300,7 @@ public final class TrieSSTableReader implements SSTableReader {
                 }
 
                 validateCodecMap(compressionMap, codecMap);
-                keyIndex = readKeyIndexV2(ch, footer);
+                keyIndex = readKeyIndexV2(ch, footer, compressionMap.blockCount());
                 dataEnd = footer.mapOffset;
                 checksums = footer.version >= 3;
             } else {
@@ -326,6 +332,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return metadata;
     }
 
+    // @spec F08.R13 — get() uses readAndDecompressBlock (with BlockCache), not streaming path
     @Override
     public Optional<Entry> get(MemorySegment key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
@@ -364,6 +371,21 @@ public final class TrieSSTableReader implements SSTableReader {
         return Optional.of(decoded);
     }
 
+    /**
+     * Returns an iterator over every entry in this SSTable in key order.
+     *
+     * <p>
+     * <b>Iterator-after-close is undefined.</b> The returned iterator becomes invalid once this
+     * reader is {@linkplain #close() closed}; subsequent {@link Iterator#hasNext()} calls may
+     * return {@code true}, {@code false}, or throw an implementation-specific exception. Callers
+     * must not rely on post-close iterator state and should drain or discard iterators before
+     * closing the reader.
+     *
+     * @return an iterator over all entries; valid only until {@link #close()} is called
+     */
+    // @spec F02.R43 — iterator behavior after close is undefined; documented in public API
+    // @spec F08.R1 — v2 scan returns lazy iterator, not upfront decompression
+    // @spec F08.R11 — v1 scan uses existing DataRegionIterator unchanged
     @Override
     public Iterator<Entry> scan() throws IOException {
         checkNotClosed();
@@ -377,6 +399,20 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
+    /**
+     * Returns an iterator over entries with keys in the half-open range {@code [fromKey, toKey)}.
+     *
+     * <p>
+     * <b>Iterator-after-close is undefined.</b> The returned iterator becomes invalid once this
+     * reader is {@linkplain #close() closed}; see {@link #scan()} for the full contract.
+     *
+     * @param fromKey inclusive lower bound of the key range
+     * @param toKey exclusive upper bound of the key range
+     * @return an iterator over entries in the range; valid only until {@link #close()} is called
+     */
+    // @spec F02.R43 — iterator behavior after close is undefined; documented in public API
+    // @spec F08.R12 — v1 uses absolute offsets/readDataAtV1; v2 uses IndexRangeIterator with block
+    // cache
     @Override
     public Iterator<Entry> scan(MemorySegment fromKey, MemorySegment toKey) throws IOException {
         Objects.requireNonNull(fromKey, "fromKey must not be null");
@@ -385,6 +421,19 @@ public final class TrieSSTableReader implements SSTableReader {
         return new IndexRangeIterator(keyIndex.rangeIterator(fromKey, toKey));
     }
 
+    /**
+     * Closes this reader and releases any underlying resources (e.g. lazy channels).
+     *
+     * <p>
+     * Any {@link Iterator}s returned by {@link #scan()} or
+     * {@link #scan(MemorySegment, MemorySegment)} become invalid after {@code close()}. Their
+     * {@code hasNext()} and {@code next()} methods may produce inconsistent results or throw an
+     * implementation-specific exception; callers must not consume them after close.
+     *
+     * <p>
+     * {@code close()} is idempotent — repeated calls are no-ops.
+     */
+    // @spec F02.R43 — iterator behavior after close is undefined; documented in public API
     @Override
     public void close() throws IOException {
         if (!CLOSED.compareAndSet(this, false, true))
@@ -396,6 +445,12 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- v2 compression helpers ----
 
+    // @spec F02.R36 — cache stores decompressed blocks; decompress before cache, cache hit returns
+    // decompressed
+    // @spec F02.R40 — runtime checks for untrusted on-disk data, not assertions
+    // @spec F02.R41 — corrupt blocks produce IOException
+    // @spec F17.R38 — MemorySegment decompress, no byte[] conversion
+    // @spec F17.R39 — compression map format unchanged
     /**
      * Reads and decompresses a single block by index using the compression map.
      */
@@ -467,6 +522,8 @@ public final class TrieSSTableReader implements SSTableReader {
         return decompressed;
     }
 
+    // @spec F08.R10 — same decompression logic as readAndDecompressBlock, no BlockCache get/put
+    // @spec F08.R8,R9 — scan iterators bypass shared BlockCache via this method
     /**
      * Reads and decompresses a single block by index, bypassing the BlockCache. Used by scan
      * iterators to avoid polluting the shared cache with sequential reads.
@@ -525,6 +582,7 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
+    // @spec F02.R42 — trailing bytes in compression map/deflate silently ignored (documented)
     /**
      * Verifies the CRC32C checksum of compressed block bytes.
      *
@@ -540,6 +598,9 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
+    // @spec F02.R18 — explicit duplicate codec ID rejection
+    // @spec F02.R19 — auto-includes NONE codec
+    // @spec F02.R21 — null codec element rejected with index
     private static Map<Byte, CompressionCodec> buildCodecMap(CompressionCodec... codecs) {
         Map<Byte, CompressionCodec> map = new HashMap<>();
         // Always include NoneCodec — the writer falls back to NONE for incompressible blocks,
@@ -585,6 +646,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return Collections.unmodifiableMap(mutableMap);
     }
 
+    // @spec F02.R20 — unknown codec ID throws IOException
     private static void validateCodecMap(CompressionMap compressionMap,
             Map<Byte, CompressionCodec> codecMap) throws IOException {
         for (int i = 0; i < compressionMap.blockCount(); i++) {
@@ -669,6 +731,10 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Footer / index / filter loading ----
 
+    // @spec F02.R29 — non-negative offset/length validation
+    // @spec F02.R30 — long-to-int truncation guarded
+    // @spec F02.R31 — all offsets as long, no int narrowing
+    // @spec F02.R34 — section overlap detection
     private record Footer(int version, long mapOffset, long mapLength, long dictOffset,
             long dictLength, long idxOffset, long idxLength, long fltOffset, long fltLength,
             long entryCount) {
@@ -770,6 +836,8 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
+    // @spec F02.R15 — detects v1 by magic, falls back to v1 reading
+    // @spec F02.R16 — v1 reader on v2 file throws descriptive IOException
     /** Reads a v1-only footer. Throws on v2 magic. */
     private static Footer readFooterV1(SeekableByteChannel ch, long fileSize) throws IOException {
         if (fileSize < SSTableFormat.FOOTER_SIZE) {
@@ -936,8 +1004,18 @@ public final class TrieSSTableReader implements SSTableReader {
         return new KeyIndex(keys, offsets);
     }
 
-    /** Reads v2 key index: [numKeys(4)][per key: keyLen(4) + key + blockIndex(4) + intraOff(4)]. */
-    private static KeyIndex readKeyIndexV2(SeekableByteChannel ch, Footer footer)
+    /**
+     * Reads v2 key index: [numKeys(4)][per key: keyLen(4) + key + blockIndex(4) + intraOff(4)].
+     *
+     * <p>
+     * Each entry's {@code blockIndex} must be in {@code [0, blockCount)} and
+     * {@code intraBlockOffset} must be non-negative; corrupt values from on-disk data are rejected
+     * with {@link IOException} rather than propagating as internal
+     * {@link IndexOutOfBoundsException} downstream.
+     */
+    // @spec F02.R33 — validate blockIndex in [0, blockCount) and intraBlockOffset >= 0 at read
+    // time; spec R40 forbids assert-only guards on data reachable from untrusted on-disk state.
+    private static KeyIndex readKeyIndexV2(SeekableByteChannel ch, Footer footer, int blockCount)
             throws IOException {
         byte[] buf = readBytes(ch, footer.idxOffset, (int) footer.idxLength);
         int numKeys = readInt(buf, 0);
@@ -954,6 +1032,15 @@ public final class TrieSSTableReader implements SSTableReader {
             off += 4;
             int intraBlockOffset = readInt(buf, off);
             off += 4;
+            if (blockIndex < 0 || blockIndex >= blockCount) {
+                throw new IOException("v2 key index entry %d: blockIndex %d out of range [0, %d)"
+                        .formatted(i, blockIndex, blockCount));
+            }
+            if (intraBlockOffset < 0) {
+                throw new IOException(
+                        "v2 key index entry %d: intra-block offset must be non-negative, got %d"
+                                .formatted(i, intraBlockOffset));
+            }
             // Pack into a single long, same encoding as the writer
             long packed = ((long) blockIndex << 32) | (intraBlockOffset & 0xFFFFFFFFL);
             keys.add(MemorySegment.ofArray(keyBytes));
@@ -993,6 +1080,7 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Low-level I/O ----
 
+    // @spec F02.R35 — lazy reader synchronizes channel reads
     /**
      * Reads {@code length} bytes from the channel starting at {@code offset}.
      *
@@ -1091,6 +1179,21 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
+    // @spec F08.R1 — decompresses blocks incrementally as iteration advances
+    // @spec F08.R2 — holds at most one decompressed block in memory
+    // @spec F08.R3 — decompresses blocks in ascending block-index order
+    // @spec F08.R4 — yields entries in same order as DataRegionIterator
+    // @spec F08.R8 — full-scan bypasses shared BlockCache
+    // @spec F08.R14 — reads 4-byte big-endian entry count, decodes exactly that many entries
+    // @spec F08.R16 — hasNext returns false after last entry of last block
+    // @spec F08.R17 — throws NoSuchElementException when no more entries
+    // @spec F08.R18 — wraps IOException in UncheckedIOException
+    // @spec F08.R19 — detects closed reader, throws IllegalStateException
+    // @spec F08.R21 — zero blocks yields immediate hasNext()==false
+    // @spec F08.R22 — single block decompresses, yields entries, then hasNext()==false
+    // @spec F08.R24 — decompression failure propagates as UncheckedIOException, no skip
+    // @spec F08.R26 — independent iterators maintain own block-index position
+    // @spec F08.R29 — v2 iterator throws on close (vs v1 snapshot continuation)
     /**
      * Iterates entries from a v2 compressed SSTable by decompressing one block at a time. Only one
      * decompressed block is held in memory at any point — O(single block uncompressed size).
@@ -1158,9 +1261,14 @@ public final class TrieSSTableReader implements SSTableReader {
             }
         }
 
+        // @spec F08.R19 — signal mid-iteration reader close via hasNext(); silently returning
+        // false would let a for-each loop terminate without the caller noticing the close.
         @Override
         public boolean hasNext() {
-            return !closed && next != null;
+            if (closed) {
+                throw new IllegalStateException("reader is closed");
+            }
+            return next != null;
         }
 
         @Override
@@ -1182,6 +1290,19 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
+    // @spec F08.R5 — caches most recently decompressed block, reuses for same-block entries
+    // @spec F08.R6 — replaces cached block when next entry is in different block
+    // @spec F08.R7 — cached block index initialized to -1 (sentinel, no valid block match)
+    // @spec F08.R9 — range-scan bypasses shared BlockCache
+    // @spec F08.R12 — v1 uses absolute file offsets, v2 uses block cache path
+    // @spec F08.R15 — decodes single entry at intra-block offset in decompressed data
+    // @spec F08.R17 — throws NoSuchElementException when no more entries
+    // @spec F08.R18 — wraps IOException in UncheckedIOException
+    // @spec F08.R20 — detects closed reader, throws IllegalStateException
+    // @spec F08.R23 — single-block range decompresses block exactly once
+    // @spec F08.R25 — decompression failure propagates, cached block not updated
+    // @spec F08.R26 — independent iterators maintain own cached-block state
+    // @spec F08.R27 — channel reads synchronized (via readLazyChannel)
     /**
      * Iterates entries via key index range results, reading each entry at its offset. Handles both
      * v1 (absolute file offset) and v2 (packed blockIndex + intraBlockOffset) formats.

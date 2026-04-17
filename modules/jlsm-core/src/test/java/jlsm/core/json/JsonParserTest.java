@@ -392,6 +392,44 @@ class JsonParserTest {
             assertThrows(JsonParseException.class, () -> JsonParser.parse(sb.toString()));
         }
 
+        // @spec F15.R27 — parser must use an explicit stack, not recursion, for depth
+        // traversal. At the upper bound of R52 (maxDepth=4096), the old mutual-recursion
+        // implementation consumed ~3 stack frames per level (~12k frames), which risks
+        // StackOverflowError on default JVM stack sizes. The explicit-stack implementation
+        // uses a single frame for the parse loop regardless of nesting depth.
+        //
+        // The test runs on a dedicated thread with a small stack size (128 KiB) — that
+        // is well below the mutual-recursion requirement at 4096 levels but is comfortable
+        // for the iterative implementation, so the test discriminates cleanly between
+        // recursive and non-recursive parsers.
+        @Test
+        void deepNestingAtMaxDepthDoesNotOverflowStack() throws Exception {
+            int depth = 4096;
+            StringBuilder sb = new StringBuilder(depth * 2 + 1);
+            for (int i = 0; i < depth; i++)
+                sb.append('[');
+            sb.append('1');
+            for (int i = 0; i < depth; i++)
+                sb.append(']');
+            String input = sb.toString();
+
+            Throwable[] failure = new Throwable[1];
+            Thread worker = new Thread(null, () -> {
+                try {
+                    JsonParser.parse(input, depth);
+                } catch (Throwable t) {
+                    failure[0] = t;
+                }
+            }, "parser-small-stack", 128 * 1024);
+            worker.start();
+            worker.join(30_000);
+            assertFalse(worker.isAlive(), "parser worker did not terminate within 30s");
+            assertNull(failure[0],
+                    "R27: parser must handle depth=4096 on a small-stack thread without "
+                            + "StackOverflowError — mutual recursion would fail here. Got: "
+                            + failure[0]);
+        }
+
         @Test
         void malformedNumber() {
             assertThrows(JsonParseException.class, () -> JsonParser.parse("01"));

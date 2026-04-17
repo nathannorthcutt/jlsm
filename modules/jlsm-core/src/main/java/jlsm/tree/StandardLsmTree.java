@@ -425,6 +425,7 @@ public final class StandardLsmTree implements LsmTree {
             return this;
         }
 
+        // @spec F02.R37 — tree builder accepts codec, propagates to writer/reader
         /**
          * Sets a single compression codec for all levels. Equivalent to
          * {@code compressionPolicy(_ -> codec)}.
@@ -451,6 +452,7 @@ public final class StandardLsmTree implements LsmTree {
          * @param policy function from level to codec; must not be null
          * @return this builder
          */
+        // @spec F02.R39 — per-level compression policy via Function<Level, CompressionCodec>
         public Builder compressionPolicy(Function<Level, CompressionCodec> policy) {
             this.compressionPolicy = Objects.requireNonNull(policy,
                     "compressionPolicy must not be null");

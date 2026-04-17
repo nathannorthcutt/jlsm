@@ -39,8 +39,9 @@ import java.util.Objects;
  * <li>Type mismatches are rejected with descriptive error messages</li>
  * </ul>
  *
- * @spec F15.R42 — bidirectional JsonValue to JlsmDocument conversion
- * @spec F15.R44 — schema-typed validation matching JlsmDocument.of()
+ * @spec F15.R44 — type validation and range checking matching JlsmDocument.of()
+ * @spec F15.R57 — FLOAT64 rejects NaN/Infinity
+ * @spec F15.R58 — distinct overflow vs format error messages
  */
 public final class JsonValueAdapter {
 

@@ -1,9 +1,9 @@
 ---
 {
   "id": "F08",
-  "version": 2,
+  "version": 3,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["serialization", "storage"],
   "requires": ["F02"],
   "invalidates": [],
@@ -137,3 +137,77 @@ Updated by audit finding F-R1.conc.2.7: the v1/v2 close-behavior asymmetry was f
 - ADR: compression-codec-api-design — codec interface and resolution mechanism.
 - KB: algorithms/compression/block-compression-algorithms — codec characteristics and block-level decompression constraints.
 - KB: systems/lsm-index-patterns/index-scan-patterns — scan access patterns and cache pollution analysis.
+
+---
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-16
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `TrieSSTableReader.java:379-381` — v2 `scan()` returns `CompressedBlockIterator`, no upfront decompression |
+| R2 | SATISFIED | `TrieSSTableReader.java:1174-1193` — `decompressed` is a local byte[]; replaced per block; `blockEntries` reassigned via `new ArrayList<>(count)` (prior reference eligible for GC) |
+| R3 | SATISFIED | `TrieSSTableReader.java:1154, 1176` — starts at 0; `currentBlockIndex++` per block; terminates at `compressionMap.blockCount()` |
+| R4 | SATISFIED | blocks iterated in ascending index order; within each block, entries decoded in stored order — matches `DataRegionIterator`'s block-then-entry order |
+| R5 | SATISFIED | `TrieSSTableReader.java:1274-1279` — reuses `cachedBlock` when `blockIndex == cachedBlockIndex` |
+| R6 | SATISFIED | `TrieSSTableReader.java:1276-1279` — replaces `cachedBlockIndex`/`cachedBlock` on miss; prior reference overwritten |
+| R7 | SATISFIED | `TrieSSTableReader.java:1251` — `cachedBlockIndex = -1` sentinel |
+| R8 | SATISFIED | `TrieSSTableReader.java:1175` — calls `readAndDecompressBlockNoCache` only |
+| R9 | SATISFIED | `TrieSSTableReader.java:1277` — calls `readAndDecompressBlockNoCache` only |
+| R10 | SATISFIED | `TrieSSTableReader.java:491-543` — identical decompression pipeline as `readAndDecompressBlock` minus `BlockCache.get/put` |
+| R11 | SATISFIED | `TrieSSTableReader.java:382-385` — v1 `scan()` uses `getAllDataV1()` + `DataRegionIterator` unchanged |
+| R12 | SATISFIED | `TrieSSTableReader.java:1282-1285` — v1 branch uses `readDataAtV1` with absolute offset |
+| R13 | SATISFIED | `TrieSSTableReader.java:357` — `get()` uses cache-aware `readAndDecompressBlock` |
+| R14 | SATISFIED | `TrieSSTableReader.java:1177, 1189-1193` — `readBlockInt` reads 4-byte BE count; loop decodes exactly `count` entries |
+| R15 | SATISFIED | `TrieSSTableReader.java:1281` — `EntryCodec.decode(block, intraBlockOffset)` applied to decompressed bytes |
+| R16 | SATISFIED | `TrieSSTableReader.java:1170-1171, 1206-1208` — returns without setting `next` after last block; `hasNext()` returns `next != null` guard |
+| R17 | SATISFIED | `TrieSSTableReader.java:1216, 1302` — both iterators throw `NoSuchElementException` |
+| R18 | SATISFIED | `TrieSSTableReader.java:1199-1200, 1287-1288` — `IOException` wrapped in `UncheckedIOException` |
+| R19 | PARTIAL | `TrieSSTableReader.java:1162-1164` — `advance()` and `next()` throw `IllegalStateException` after close, satisfying R19's first and second clauses. However, `hasNext()` at `:1206-1208` returns `!closed && next != null` — after close it returns `false` **without** throwing or otherwise signaling the close, which R19's third clause explicitly forbids ("must not... return false from hasNext() without signaling the close"). A for-each loop therefore terminates silently on mid-iteration close |
+| R20 | SATISFIED | `TrieSSTableReader.java:1293-1306` — R20's wording permits `hasNext()` reflecting closed state by returning false; `next()` throws ISE after close. Matches the spec text |
+| R21 | SATISFIED | `TrieSSTableReader.java:1170-1171` — zero-block guard short-circuits before any decompression |
+| R22 | SATISFIED | `TrieSSTableReader.java:1165-1201` — single-block case: decompress once, yield all entries, then `currentBlockIndex >= blockCount()` exits |
+| R23 | SATISFIED | `TrieSSTableReader.java:1274-1280` — same-block cache hit skips re-decompression |
+| R24 | SATISFIED | `TrieSSTableReader.java:1199-1201` — IOException wrapped and thrown; no block-skip in the catch |
+| R25 | SATISFIED | `TrieSSTableReader.java:1277-1280, 1287-1288` — `cachedBlockIndex`/`cachedBlock` are assigned only after successful `readAndDecompressBlockNoCache` returns; a throw propagates before assignment |
+| R26 | SATISFIED | `CompressedBlockIterator` and `IndexRangeIterator` hold per-instance state fields (`currentBlockIndex`/`blockEntries`/`next` and `cachedBlockIndex`/`cachedBlock`/`next`) — no static/shared mutable state |
+| R27 | SATISFIED | `TrieSSTableReader.java:1038` — `readBytes` wraps position+read in `synchronized (ch)`; `readAndDecompressBlockNoCache` reaches this via `readLazyChannel` |
+| R28 | SATISFIED | no `decompressAllBlocks` method in the codebase (only the `@spec F08.R28` absence marker at `TrieSSTableReader.java:60`) |
+| R29 | SATISFIED | `DataRegionIterator` at `:1067-1121` has no `closed` check (snapshot semantics), while `CompressedBlockIterator` checks `closed` in `advance()` and `next()` — divergence matches spec |
+
+**Overall: PASS_WITH_NOTES**
+
+Obligations resolved: 0
+Obligations remaining: 1 (newly created for R19)
+Undocumented behavior:
+- `CompressedBlockIterator.advance()` performs an additional corruption check at `TrieSSTableReader.java:1181-1186`: rejects blocks whose `count` * minimum-encoded-entry-size exceeds block length. This is a defense-in-depth guard beyond F08's requirements (touches F02.R41 territory) — consider noting it in F02 rather than F08.
+- `CompressedBlockIterator` unwraps `CorruptBlockException` via `sneakyThrow` at `:1195-1198` so callers can catch the specific type. This deliberately escapes the R18 `UncheckedIOException` wrapping — a useful escape hatch, but not mentioned in the spec. Worth codifying if CRC failures are expected diagnostics.
+
+### Verified: v3 — 2026-04-16
+
+Re-verification triggered by v2 inconsistency: state was APPROVED despite R19 PARTIAL and no
+matching open obligation. Version bumped to force a clean pass.
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1–R18 | SATISFIED | unchanged from v2 verification |
+| R19 | SATISFIED | `CompressedBlockIterator.hasNext()` at `TrieSSTableReader.java:1267-1270` now throws `IllegalStateException` when the reader is closed; `next()` and `advance()` already threw. For-each loops terminate loudly on mid-iteration close rather than silently short-circuiting. Regression test `StreamingBlockDecompressionTest.testStreamingFullScanHasNextThrowsAfterMidIterationClose`. Two adversarial tests (`SharedStateAdversarialTest.test_CompressedBlockIterator_hasNext_returnsTrueAfterClose_shouldReturnFalse`, `SSTableCompressionAdversarialTest.compressedBlockIteratorClosedStateBehavior_C2F11`) that had encoded the now-wrong "return false" resolution were updated to enforce the correct throw-on-close contract. |
+| R20–R29 | SATISFIED | unchanged |
+
+**Overall: PASS**
+
+Amendments applied: none
+Code fixes applied: 1 (R19: `hasNext()` throws `IllegalStateException` on closed reader)
+Regression tests added: 1 (`testStreamingFullScanHasNextThrowsAfterMidIterationClose`)
+Existing tests updated: 2 — these had captured the pre-fix "return false" assumption as a known-bug resolution path; R19's authoritative signal is throw, so the assertions were flipped from `assertFalse(iter.hasNext())` to `assertThrows(IllegalStateException.class, iter::hasNext)`.
+Obligations resolved: 0 (the v2 note claimed "1 created for R19" but no matching entry existed in `_obligations.json` — see inconsistency flag below).
+Obligations remaining: 0
+Undocumented behavior: none new (defense-in-depth corruption check and sneakyThrow carried from v2; both remain orthogonal to F08's scope).
+
+#### v2 → v3 inconsistency note
+The v2 verification marked R19 as PARTIAL and then flipped state to APPROVED anyway, with a
+claim that an obligation was created. No such obligation existed in `_obligations.json`, so R19
+remained a silent spec violation from 2026-04-16 until this re-verification later the same day.
+The corrective action is this v3 pass — no backdated obligation is needed since the gap is now
+closed.

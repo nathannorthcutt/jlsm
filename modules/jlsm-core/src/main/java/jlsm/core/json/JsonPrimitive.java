@@ -22,10 +22,9 @@ import java.util.Objects;
  * Equality for number primitives uses {@link BigDecimal#compareTo} == 0, so {@code 1.0} and
  * {@code 1.00} are considered equal.
  *
- * @spec F15.R6 — string primitives
- * @spec F15.R7 — number primitives with raw text preservation
- * @spec F15.R8 — boolean primitives
- * @spec F15.R14 — deep equality and immutability
+ * @spec F15.R6 — represents string, number, boolean with type-test methods
+ * @spec F15.R13 — immutable after construction
+ * @spec F15.R14 — number equality via BigDecimal.compareTo
  */
 public final class JsonPrimitive implements JsonValue {
 
@@ -72,6 +71,7 @@ public final class JsonPrimitive implements JsonValue {
      * @return a new number primitive
      * @throws NullPointerException if rawText is null
      * @throws NumberFormatException if rawText is not a valid number
+     * @spec F15.R47 — rejects invalid JSON numbers at construction
      */
     public static JsonPrimitive ofNumber(String rawText) {
         Objects.requireNonNull(rawText, "rawText must not be null");
@@ -113,6 +113,7 @@ public final class JsonPrimitive implements JsonValue {
      *
      * @return the string value
      * @throws IllegalStateException if this primitive is not a string
+     * @spec F15.R7 — returns value or throws IllegalStateException
      */
     public String asString() {
         if (kind != Kind.STRING) {
@@ -126,6 +127,7 @@ public final class JsonPrimitive implements JsonValue {
      *
      * @return the boolean value
      * @throws IllegalStateException if this primitive is not a boolean
+     * @spec F15.R7 — returns value or throws IllegalStateException
      */
     public boolean asBoolean() {
         if (kind != Kind.BOOLEAN) {
@@ -139,6 +141,7 @@ public final class JsonPrimitive implements JsonValue {
      *
      * @return the raw number text
      * @throws IllegalStateException if this primitive is not a number
+     * @spec F15.R8 — stores original text, parses on each call
      */
     public String asNumberText() {
         if (kind != Kind.NUMBER) {

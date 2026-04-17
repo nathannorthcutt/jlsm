@@ -27,6 +27,9 @@ import java.lang.foreign.MemorySegment;
  * @see <a href="../../.decisions/compression-codec-api-design/adr.md">ADR: Compression Codec API
  *      Design</a>
  */
+// @spec F02.R7 — concurrent safe, stateless
+// @spec F17.R3 — byte[] methods removed (clean break, pre-1.0)
+// @spec F17.R5 — all operations safe for concurrent calls
 public interface CompressionCodec {
 
     /**
@@ -38,6 +41,8 @@ public interface CompressionCodec {
      *
      * @return codec identifier byte (e.g. 0x00 for none, 0x02 for deflate)
      */
+    // @spec F02.R1 — unique byte ID, 0x00-0x7F reserved, 0x80-0xFF consumer
+    // @spec F17.R4 — retained unchanged
     byte codecId();
 
     /**
@@ -61,6 +66,8 @@ public interface CompressionCodec {
      *             {@code dst.byteSize() < maxCompressedLength(src.byteSize())}
      * @throws java.io.UncheckedIOException if compression fails
      */
+    // @spec F02.R2 — stateless compression (note: byte[] API removed per F17.R3)
+    // @spec F17.R1 — compress with caller-provided destination
     MemorySegment compress(MemorySegment src, MemorySegment dst);
 
     /**
@@ -80,6 +87,8 @@ public interface CompressionCodec {
      * @throws java.io.UncheckedIOException if decompression fails or output size does not match
      *             {@code uncompressedLength}
      */
+    // @spec F02.R3 — returns exact expected length or throws
+    // @spec F17.R2 — decompress to expected length, throws on mismatch
     MemorySegment decompress(MemorySegment src, MemorySegment dst, int uncompressedLength);
 
     /**
@@ -98,6 +107,7 @@ public interface CompressionCodec {
      * @throws IllegalArgumentException if {@code inputLength < 0}
      * @see <a href="../../.decisions/max-compressed-length/adr.md">ADR: Max Compressed Length</a>
      */
+    // @spec F17.R4 — retained unchanged
     default int maxCompressedLength(int inputLength) {
         if (inputLength < 0) {
             throw new IllegalArgumentException(

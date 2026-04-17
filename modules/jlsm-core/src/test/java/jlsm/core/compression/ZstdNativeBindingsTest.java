@@ -65,6 +65,20 @@ class ZstdNativeBindingsTest {
         assertNotNull(ZstdNativeBindings.trainFromBuffer());
     }
 
+    // @spec F02.R39b — tier detection must select PURE_JAVA_DECOMPRESSOR when native is
+    // unavailable; DEFLATE_FALLBACK is reserved for cases where the pure-Java decoder itself
+    // is not loadable, which cannot happen in this codebase (pure-Java class is always on the
+    // classpath).
+    @Test
+    void tierIsPureJavaDecompressorWhenNativeUnavailable() {
+        if (ZstdNativeBindings.isNativeAvailable()) {
+            return; // skip — Tier 1 active; the fallback-selection path is not exercised
+        }
+        assertEquals(ZstdNativeBindings.Tier.PURE_JAVA_DECOMPRESSOR,
+                ZstdNativeBindings.activeTier(),
+                "when native is unavailable, tier must fall through to pure-Java decompressor, not Deflate");
+    }
+
     @Test
     void methodHandlesThrowWhenNativeUnavailable() {
         if (ZstdNativeBindings.isNativeAvailable()) {
