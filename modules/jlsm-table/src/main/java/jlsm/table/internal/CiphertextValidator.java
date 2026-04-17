@@ -20,8 +20,12 @@ public final class CiphertextValidator {
     /** Minimum ciphertext length for AES-GCM (12-byte IV + 16-byte tag). */
     private static final int AES_GCM_MIN_LENGTH = 28;
 
-    /** Exact ciphertext length for Boldyreva OPE (1-byte length prefix + 8-byte encrypted long). */
-    private static final int OPE_EXACT_LENGTH = 9;
+    /**
+     * Exact ciphertext length for Boldyreva OPE: 1-byte length prefix + 8-byte encrypted long +
+     * 16-byte detached HMAC-SHA256 authentication tag. See F03.R72.
+     */
+    // @spec F03.R39,R72, F41.R22 — 25-byte OPE ciphertext with detached MAC
+    private static final int OPE_EXACT_LENGTH = 25;
 
     private CiphertextValidator() {
         // Utility class
@@ -77,17 +81,18 @@ public final class CiphertextValidator {
             }
 
             case EncryptionSpec.DistancePreserving _ -> {
+                // @spec F03.R73, F41.R22 — DCPE layout = 8B seed + 4N values + 16B MAC
                 if (!( field.type() instanceof FieldType.VectorType vt)) {
                     throw new IllegalArgumentException("Field '" + fieldName
                             + "' (DistancePreserving): field type must be VectorType, got "
                             + field.type());
                 }
-                final int expectedLength = vt.dimensions() * 4;
+                final int expectedLength = 8 + vt.dimensions() * 4 + 16;
                 if (length != expectedLength) {
                     throw new IllegalArgumentException("Field '" + fieldName
                             + "' (DistancePreserving/DCPE): ciphertext length " + length
-                            + " must be exactly " + expectedLength + " bytes (" + vt.dimensions()
-                            + " dimensions * 4)");
+                            + " must be exactly " + expectedLength + " bytes (8B seed + "
+                            + vt.dimensions() + " dimensions * 4 + 16B MAC tag)");
                 }
             }
         }

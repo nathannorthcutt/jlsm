@@ -27,6 +27,7 @@ class PartitionedTableAdversarialTest {
      * Finding PT-1: If the factory throws for partition N, clients 0..N-1 are leaked. KB match:
      * multi-index-atomicity — sequential operations leave inconsistent state on Nth failure.
      */
+    // @spec F11.R74 — factory failure closes previously created clients via deferred pattern
     @Test
     void build_factoryThrowsOnSecondPartition_closesAlreadyCreatedClients() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -55,6 +56,7 @@ class PartitionedTableAdversarialTest {
      * Finding PT-1: Variant with 3 partitions — factory fails on the 3rd. Clients 1 and 2 must both
      * be closed.
      */
+    // @spec F11.R74 — N-way cleanup variant
     @Test
     void build_factoryThrowsOnThirdPartition_closesAllPriorClients() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("h"), "local",
@@ -86,6 +88,7 @@ class PartitionedTableAdversarialTest {
      * the map, leaking the first client. After PC-3 fix, PartitionConfig.of() now rejects duplicate
      * IDs at the config layer, providing defense-in-depth.
      */
+    // @spec F11.R18 — duplicate IDs rejected at PartitionConfig.of()
     @Test
     void build_duplicateDescriptorIds_rejectedAtConfigLayer() {
         // Two descriptors with the same id but different ranges — rejected by PartitionConfig.of()
@@ -105,6 +108,7 @@ class PartitionedTableAdversarialTest {
      * throws RuntimeException, remaining clients are never closed — resource leak. project-rule:
      * coding-guidelines (deferred close pattern must accumulate all exceptions).
      */
+    // @spec F11.R87,R88 — RuntimeException wrapped into IOException; others still closed
     @Test
     void close_clientThrowsRuntimeException_remainingClientsStillClosed() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -142,6 +146,46 @@ class PartitionedTableAdversarialTest {
                 "All clients must be closed even when one throws RuntimeException");
     }
 
+    // --- PT-5: getRange inverted-range check uses UTF-16 instead of byte-lex ---
+
+    /**
+     * Finding PT-5 (spec-verify F11 R98): PartitionedTable.getRange uses String.compareTo (UTF-16
+     * char order) for the inverted-range check. Spec R98 requires unsigned byte-lexicographic
+     * order. These agree on ASCII/BMP but diverge when surrogate pairs (supplementary Unicode code
+     * points U+10000+) appear in keys.
+     *
+     * <p>
+     * Test case: fromKey contains a supplementary character (UTF-16 first char 0xD83D, a high
+     * surrogate), toKey is a BMP character 0xFB00. By UTF-16 order, fromKey < toKey (0xD83D <
+     * 0xFB00), so String.compareTo does NOT flag this as inverted. By UTF-8 byte order, fromKey
+     * starts with 0xF0 and toKey starts with 0xEF, so fromKey > toKey — this IS an inverted range
+     * and must be rejected.
+     */
+    // @spec F11.R98 — inverted-range check must use unsigned byte-lexicographic order
+    @Test
+    void getRange_invertedBySurrogatePair_rejectedWithByteLexCompare() throws IOException {
+        final PartitionDescriptor desc = new PartitionDescriptor(1L, seg(" "), seg("\uFFFF"),
+                "local", 0L);
+        final PartitionConfig config = PartitionConfig.of(List.of(desc));
+
+        final PartitionedTable table = PartitionedTable.builder().partitionConfig(config)
+                .partitionClientFactory(d -> new TrackingStubClient(d, new AtomicInteger(0)))
+                .build();
+
+        // fromKey = "😀" (U+1F600) → UTF-8 starts with 0xF0, UTF-16 first char 0xD83D
+        // toKey = "\uFB00" → UTF-8 starts with 0xEF, UTF-16 char 0xFB00
+        // UTF-16: fromKey < toKey (0xD83D < 0xFB00) — compareTo says valid
+        // UTF-8 byte-lex: fromKey > toKey (0xF0 > 0xEF) — inverted, must throw
+        final String fromKey = "\uD83D\uDE00";
+        final String toKey = "\uFB00";
+
+        assertThrows(IllegalArgumentException.class, () -> table.getRange(fromKey, toKey),
+                "getRange must reject inverted range using unsigned byte-lex order; "
+                        + "UTF-16 String.compareTo gives wrong answer for surrogate pairs");
+
+        table.close();
+    }
+
     // --- PT-4: closeAllClients() swallows close exceptions (Round 2) ---
 
     /**
@@ -150,6 +194,7 @@ class PartitionedTableAdversarialTest {
      * added as suppressed exceptions to the original failure. project-rule: coding-guidelines
      * (deferred close pattern).
      */
+    // @spec F11.R74 — close exceptions during cleanup added as suppressed
     @Test
     void build_factoryFails_closeExceptionsAddedAsSuppressed() {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",

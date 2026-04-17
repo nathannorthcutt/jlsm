@@ -4,6 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
 
+// @spec F10.R30,R31,R32,R33,R34,R35,R36
+//       — covers TableQuery<K> fluent builder: where() null rejection, FieldClause comparison
+//         operators returning TableQuery<K>, and/or chaining into And/Or predicates, predicate()
+//         root exposure (null before any predicate is added).
+// (R37,R38 covered by TableIndicesAdversarialTest / integration — unbound execute() UOE.)
 class TableQueryTest {
 
     /**

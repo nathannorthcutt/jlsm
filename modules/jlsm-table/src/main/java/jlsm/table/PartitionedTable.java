@@ -30,6 +30,7 @@ import java.util.function.Function;
  * Governed by: .decisions/table-partitioning/adr.md — range partitioning with per-partition
  * co-located indices.
  */
+// @spec F11.R67 — public final class in jlsm.table implementing Closeable
 public final class PartitionedTable implements Closeable {
 
     private final PartitionConfig config;
@@ -39,6 +40,8 @@ public final class PartitionedTable implements Closeable {
     private final Map<Long, PartitionClient> clients;
     private volatile boolean closed;
 
+    // @spec F11.R110,R111 — constructor uses runtime null checks on all params (R110); clients map
+    // stored as unmodifiable view to reject post-construction mutation (R111)
     private PartitionedTable(PartitionConfig config, JlsmSchema schema, RangeMap rangeMap,
             Map<Long, PartitionClient> clients) {
         Objects.requireNonNull(config, "config must not be null");
@@ -58,6 +61,7 @@ public final class PartitionedTable implements Closeable {
      *
      * @return a new builder
      */
+    // @spec F11.R68 — builder pattern via static builder() method
     public static Builder builder() {
         return new Builder();
     }
@@ -70,6 +74,9 @@ public final class PartitionedTable implements Closeable {
      * @throws IOException if the write fails
      * @throws DuplicateKeyException if the key already exists
      */
+    // @spec F11.R75,R79,R90,R100,R109 — route via RangeMap.routeKey (R75); UTF-8 encoding (R79);
+    // propagate partition IOException (R90); reject after close (R100); runtime client lookup
+    // check (R109)
     public void create(String key, JlsmDocument doc) throws IOException {
         checkNotClosed();
         Objects.requireNonNull(key, "key must not be null");
@@ -85,6 +92,7 @@ public final class PartitionedTable implements Closeable {
      * @return the document, or empty if not found
      * @throws IOException if the read fails
      */
+    // @spec F11.R76 — route get by key; null key→NPE; reject after close (R100)
     public Optional<JlsmDocument> get(String key) throws IOException {
         checkNotClosed();
         Objects.requireNonNull(key, "key must not be null");
@@ -100,6 +108,7 @@ public final class PartitionedTable implements Closeable {
      * @param mode replace or patch
      * @throws IOException if the write fails
      */
+    // @spec F11.R77 — route update by key; null key/doc/mode→NPE; reject after close (R100)
     public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         checkNotClosed();
         Objects.requireNonNull(key, "key must not be null");
@@ -115,6 +124,7 @@ public final class PartitionedTable implements Closeable {
      * @param key the document key
      * @throws IOException if the write fails
      */
+    // @spec F11.R78 — route delete by key; null key→NPE; reject after close (R100)
     public void delete(String key) throws IOException {
         checkNotClosed();
         Objects.requireNonNull(key, "key must not be null");
@@ -133,17 +143,22 @@ public final class PartitionedTable implements Closeable {
      * @return iterator over matching entries in key order
      * @throws IOException if any partition read fails
      */
+    // @spec F11.R80,R81,R82,R98,R99,R103 — inverted-range rejection uses unsigned byte-lex order
+    // (R98); clip to partition boundaries (R99); close collected iterators on dispatch failure
+    // (R103); merge via ResultMerger.mergeOrdered (R80)
     public Iterator<TableEntry<String>> getRange(String fromKey, String toKey) throws IOException {
         checkNotClosed();
         Objects.requireNonNull(fromKey, "fromKey must not be null");
         Objects.requireNonNull(toKey, "toKey must not be null");
-        if (fromKey.compareTo(toKey) >= 0) {
-            throw new IllegalArgumentException(
-                    "fromKey must be strictly less than toKey: fromKey=\"" + fromKey
-                            + "\", toKey=\"" + toKey + "\"");
-        }
         final MemorySegment fromSeg = toSegment(fromKey);
         final MemorySegment toSeg = toSegment(toKey);
+        // R98: compare in unsigned byte-lexicographic order, NOT String.compareTo (UTF-16).
+        // These diverge for surrogate-pair characters (U+10000+).
+        if (compareSegments(fromSeg, toSeg) >= 0) {
+            throw new IllegalArgumentException(
+                    "fromKey must be strictly less than toKey (unsigned byte-lex order): fromKey=\""
+                            + fromKey + "\", toKey=\"" + toKey + "\"");
+        }
         final List<PartitionDescriptor> overlapping = rangeMap.overlapping(fromSeg, toSeg);
         // overlapping may be empty when query range does not intersect any partition
 
@@ -172,28 +187,34 @@ public final class PartitionedTable implements Closeable {
     }
 
     /**
-     * Executes a query across all relevant partitions and merges results.
+     * Executes a query by scattering it to every partition and merging the per-partition results
+     * into a global top-k via {@link ResultMerger#mergeTopK}.
      *
      * <p>
-     * Per-partition predicate execution is not yet implemented — this method throws
-     * {@link UnsupportedOperationException} until {@code InProcessPartitionClient.query()} is
-     * implemented in a future work unit.
+     * Each partition receives the full {@code limit} value (not {@code limit / P}) so that the
+     * global top-k is correct even when matches are concentrated in a few partitions. The
+     * coordinator performs the final selection across all partition results.
      *
-     * @param predicate the query predicate
-     * @param limit maximum results
-     * @return scored results merged across partitions
+     * @param predicate the query predicate; must not be null
+     * @param limit global result limit; must be positive
+     * @return up to {@code limit} matching entries, sorted by score descending
      * @throws IOException if any partition query fails
-     * @throws UnsupportedOperationException always — per-partition predicate execution is not yet
-     *             implemented
+     * @throws IllegalStateException if this table has been closed
      */
+    // @spec F11.R83,R84,R85,R86,R89 — null-reject predicate (R83), reject non-positive limit
+    // (R84), scatter to all partitions (R85), full limit per partition (R86), propagate partition
+    // IOException (R89); R100 — reject after close()
     public List<ScoredEntry<String>> query(Predicate predicate, int limit) throws IOException {
+        checkNotClosed();
         Objects.requireNonNull(predicate, "predicate must not be null");
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive, got: " + limit);
         }
-        throw new UnsupportedOperationException(
-                "per-partition predicate execution is not yet implemented; "
-                        + "InProcessPartitionClient.query() will be wired in a future work unit");
+        final List<List<ScoredEntry<String>>> partitionResults = new ArrayList<>(clients.size());
+        for (final PartitionClient client : clients.values()) {
+            partitionResults.add(client.query(predicate, limit));
+        }
+        return ResultMerger.mergeTopK(partitionResults, limit);
     }
 
     /**
@@ -210,6 +231,7 @@ public final class PartitionedTable implements Closeable {
      *
      * @return the schema, or empty if no schema was provided to the builder
      */
+    // @spec F11.R106 — schema() accessor returning Optional<JlsmSchema>
     public Optional<JlsmSchema> schema() {
         return Optional.ofNullable(schema);
     }
@@ -221,6 +243,9 @@ public final class PartitionedTable implements Closeable {
      *
      * @throws IOException if any partition client fails to close
      */
+    // @spec F11.R87,R88,R101 — deferred close pattern: close all clients accumulating exceptions
+    // (R87); first IOException thrown directly, other types wrapped in IOException (R88);
+    // idempotent — second call returns immediately (R101)
     @Override
     public void close() throws IOException {
         if (closed) {
@@ -391,6 +416,7 @@ public final class PartitionedTable implements Closeable {
          * @param config the partition layout
          * @return this builder
          */
+        // @spec F11.R69 — builder partitionConfig(config) rejects null with NPE
         public Builder partitionConfig(PartitionConfig config) {
             this.config = Objects.requireNonNull(config, "config must not be null");
             return this;
@@ -413,6 +439,7 @@ public final class PartitionedTable implements Closeable {
          * @param factory function from PartitionDescriptor to PartitionClient
          * @return this builder
          */
+        // @spec F11.R70 — builder partitionClientFactory(factory) rejects null with NPE
         public Builder partitionClientFactory(
                 Function<PartitionDescriptor, PartitionClient> factory) {
             this.factory = Objects.requireNonNull(factory, "factory must not be null");
@@ -431,6 +458,10 @@ public final class PartitionedTable implements Closeable {
          * @throws IOException if any partition client fails to initialize
          * @throws IllegalStateException if partitionConfig or partitionClientFactory is not set
          */
+        // @spec F11.R71,R72,R73,R74,R106 — build() IllegalStateException if config missing (R71)
+        // or factory missing (R72); factory invoked once per descriptor, null rejected with NPE
+        // identifying descriptor ID (R73); factory throwing at partition N: close prior clients
+        // via deferred pattern with suppressed exceptions (R74); builder schema propagated (R106)
         public PartitionedTable build() throws IOException {
             if (config == null) {
                 throw new IllegalStateException(

@@ -153,6 +153,7 @@ public interface CompressionCodec {
      * @return a new {@code ZstdCodec} instance
      * @see ZstdCodec
      */
+    // @spec F18.R1 — zstd() factory
     static CompressionCodec zstd() {
         return new ZstdCodec(3, null);
     }
@@ -164,6 +165,7 @@ public interface CompressionCodec {
      * @return a new {@code ZstdCodec} instance
      * @throws IllegalArgumentException if level is outside the range 1–22
      */
+    // @spec F18.R1,R2 — zstd(level) factory, level validated at construction
     static CompressionCodec zstd(int level) {
         return new ZstdCodec(level, null);
     }
@@ -175,6 +177,7 @@ public interface CompressionCodec {
      * @return a new {@code ZstdCodec} instance
      * @throws NullPointerException if {@code dictionary} is null
      */
+    // @spec F18.R1 — zstd(dictionary) factory
     static CompressionCodec zstd(MemorySegment dictionary) {
         return new ZstdCodec(3, dictionary);
     }
@@ -188,6 +191,7 @@ public interface CompressionCodec {
      * @throws IllegalArgumentException if level is outside the range 1–22
      * @throws NullPointerException if {@code dictionary} is null
      */
+    // @spec F18.R1,R2 — zstd(level, dictionary) factory
     static CompressionCodec zstd(int level, MemorySegment dictionary) {
         return new ZstdCodec(level, dictionary);
     }

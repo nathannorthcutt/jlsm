@@ -1,6 +1,7 @@
 package jlsm.table;
 
 import jlsm.core.io.MemorySerializer;
+import jlsm.encryption.DcpeSapEncryptor;
 import jlsm.encryption.EncryptionKeyHolder;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.internal.CiphertextValidator;
@@ -35,6 +36,18 @@ import java.util.Optional;
  * Contiguous numeric arrays (INT32, INT64, FLOAT32, FLOAT64) use SIMD byte-swap acceleration via
  * {@code jdk.incubator.vector}.
  */
+// @spec F12.R24,R25,R26 — measure VectorType as dimensions*elementBytes, no VarInt prefix
+// @spec F12.R27,R28,R29 — encode VectorType as dimensions consecutive big-endian floats, verify
+// length
+// @spec F12.R30,R31,R32 — decode VectorType using schema-declared dimensions, no length prefix
+// @spec F12.R33,R34 — round-trip preserves FLOAT32/FLOAT16 bit patterns
+// @spec F12.R35,R36 — null VectorType fields marked in bitmask, no payload bytes
+// @spec F12.R37,R38 — use write-time field count from header for forward-compatible evolution
+// @spec F12.R45 — encode-time length check uses runtime check (IAE), not assert
+// @spec F12.R46 — decode-time bounds check throws IAE on truncated vector input
+// @spec F12.R47 — write-time boolean count stored in header and validated on deserialization
+// @spec F12.R48 — field-level encode wraps ClassCastException as IAE with field name and type
+// @spec F12.R50 — rejects schema version > 65535 with IAE at serialization time
 public final class DocumentSerializer {
 
     private DocumentSerializer() {
@@ -216,13 +229,41 @@ public final class DocumentSerializer {
                 if (val == null || isBoolField[i]) {
                     continue;
                 }
+                final FieldDefinition fd = fields.get(i);
                 final FieldEncryptionDispatch.FieldEncryptor enc = encryptionDispatch
                         .encryptorFor(i);
                 if (enc != null) {
                     // Serialize the field value to a temporary buffer, then encrypt
-                    final byte[] plainBytes = serializeFieldToBytes(fields.get(i).type(), val);
+                    final byte[] plainBytes = serializeFieldToBytes(fd.type(), val);
                     encryptedPayloads[i] = enc.encrypt(plainBytes);
                     hasEncryptedFields = true;
+                } else if (fd.encryption() instanceof EncryptionSpec.DistancePreserving) {
+                    // @spec F03.R50,R51,R79 — serializer owns DCPE encryption: encrypt the
+                    // float[] directly and produce a [seed | values | MAC] blob.
+                    final DcpeSapEncryptor dcpe = encryptionDispatch.dcpeEncryptorFor(i);
+                    if (dcpe == null) {
+                        // @spec F03.R53 — refuse to silently store plaintext for a field that
+                        // was declared to require encryption. The serializer was built without
+                        // a key holder, and this document is not pre-encrypted.
+                        throw new IllegalStateException("Cannot serialize field '" + fd.name()
+                                + "' (DistancePreserving): no key holder was provided to the "
+                                + "serializer and the document is not pre-encrypted. Either "
+                                + "construct the serializer with a key holder or pass a "
+                                + "pre-encrypted JlsmDocument.");
+                    }
+                    final byte[] ad = encryptionDispatch.dcpeAssociatedDataFor(i);
+                    final DcpeSapEncryptor.EncryptedVector ev = dcpe.encrypt((float[]) val, ad);
+                    encryptedPayloads[i] = DcpeSapEncryptor.toBlob(ev);
+                    hasEncryptedFields = true;
+                } else if (!(fd.encryption() instanceof EncryptionSpec.None)) {
+                    // @spec F03.R53 — schema declares encryption for this field, we have no
+                    // encryptor (no key holder), and the document is not pre-encrypted.
+                    // Refuse rather than silently store plaintext.
+                    throw new IllegalStateException("Cannot serialize field '" + fd.name() + "' ("
+                            + fd.encryption().getClass().getSimpleName()
+                            + "): no key holder was provided to the serializer and the document "
+                            + "is not pre-encrypted. Either construct the serializer with a key "
+                            + "holder or pass a pre-encrypted JlsmDocument.");
                 }
             }
 
@@ -397,6 +438,7 @@ public final class DocumentSerializer {
                 } else {
                     final FieldEncryptionDispatch.FieldDecryptor dec = encryptionDispatch
                             .decryptorFor(i);
+                    final DcpeSapEncryptor dcpe = encryptionDispatch.dcpeEncryptorFor(i);
                     if (dec != null) {
                         // Read length-prefixed encrypted blob, decrypt, then decode
                         final int encLen = readVarInt(buf, cursor);
@@ -406,6 +448,18 @@ public final class DocumentSerializer {
                         final byte[] plainBytes = dec.decrypt(ciphertext);
                         final Cursor plainCursor = new Cursor(plainBytes, 0);
                         values[i] = decoders[i].decode(plainBytes, plainCursor);
+                    } else if (dcpe != null) {
+                        // @spec F03.R50,R51,R79 — DCPE blob: [seed | values | MAC]
+                        final int blobLen = readVarInt(buf, cursor);
+                        final byte[] blob = new byte[blobLen];
+                        System.arraycopy(buf, cursor.pos, blob, 0, blobLen);
+                        cursor.pos += blobLen;
+                        final int dims = ((FieldType.VectorType) schema.fields().get(i).type())
+                                .dimensions();
+                        final DcpeSapEncryptor.EncryptedVector ev = DcpeSapEncryptor.fromBlob(blob,
+                                dims);
+                        final byte[] ad = encryptionDispatch.dcpeAssociatedDataFor(i);
+                        values[i] = dcpe.decrypt(ev, ad);
                     } else {
                         values[i] = decoders[i].decode(buf, cursor);
                     }

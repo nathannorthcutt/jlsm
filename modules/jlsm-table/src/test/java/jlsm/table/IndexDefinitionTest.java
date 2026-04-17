@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 class IndexDefinitionTest {
 
     @Test
+    // @spec F10.R1,R7,R13 — IndexType arity + IndexDefinition three-component record + 2-arg ctor
     void testIndexDefinitionCreation() {
         var eqDef = new IndexDefinition("name", IndexType.EQUALITY);
         assertEquals("name", eqDef.fieldName());
@@ -33,23 +34,27 @@ class IndexDefinitionTest {
     }
 
     @Test
+    // @spec F10.R8 — reject null fieldName with NPE
     void testIndexDefinitionNullFieldNameThrowsNpe() {
         assertThrows(NullPointerException.class,
                 () -> new IndexDefinition(null, IndexType.EQUALITY));
     }
 
     @Test
+    // @spec F10.R9 — reject blank fieldName with IAE
     void testIndexDefinitionBlankFieldNameThrowsIae() {
         assertThrows(IllegalArgumentException.class,
                 () -> new IndexDefinition("  ", IndexType.EQUALITY));
     }
 
     @Test
+    // @spec F10.R10 — reject null indexType with NPE
     void testIndexDefinitionNullIndexTypeThrowsNpe() {
         assertThrows(NullPointerException.class, () -> new IndexDefinition("name", null));
     }
 
     @Test
+    // @spec F10.R11 — VECTOR with null similarityFunction rejected with NPE
     void testIndexDefinitionVectorMissingSimilarityThrowsNpe() {
         assertThrows(NullPointerException.class,
                 () -> new IndexDefinition("embedding", IndexType.VECTOR, null));

@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Covers spec requirements F18.R23, R24, R25, and F02.R38.
  */
+// @spec F18.R23,R24,R25
 class CompressionPolicyTest {
 
     @TempDir
@@ -111,6 +112,31 @@ class CompressionPolicyTest {
             tree.put(seg("key"), seg("value"));
             Optional<MemorySegment> result = tree.get(seg("key"));
             assertTrue(result.isPresent());
+            assertEquals("value", str(result.get()));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // R25: when neither compression nor sstableWriterFactory is supplied, the
+    // tree must still build and default to CompressionCodec.none()
+    // -----------------------------------------------------------------------
+
+    // @spec F18.R25 — precedence: compressionPolicy > compression > user factories > default none
+    @Test
+    void treeWithNoCompressionAndNoFactoriesDefaultsToNone() throws IOException {
+        // Nothing configured: no compression/compressionPolicy, no sstableWriterFactory,
+        // no sstableReaderFactory. Tree must build with an implicit _ -> none() policy.
+        Path walDir = Files.createDirectory(tempDir.resolve("default-wal"));
+        try (StandardLsmTree tree = StandardLsmTree.builder()
+                .wal(LocalWriteAheadLog.builder().directory(walDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir
+                        .resolve("default-sst-" + id + "-L" + level.index() + ".sst"))
+                .recoverFromWal(false).memTableFlushThresholdBytes(1L).build()) {
+            tree.put(seg("key"), seg("value"));
+            Optional<MemorySegment> result = tree.get(seg("key"));
+            assertTrue(result.isPresent(), "default-configured tree must remain functional");
             assertEquals("value", str(result.get()));
         }
     }

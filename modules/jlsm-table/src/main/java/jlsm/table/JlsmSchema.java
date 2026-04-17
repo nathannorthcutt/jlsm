@@ -226,6 +226,10 @@ public final class JlsmSchema {
 
         // @spec F13.R28 — rejects null name or elementType with NullPointerException
         // @spec F13.R29 — delegates to FieldType.vector for validation
+        // @spec F12.R9 — adds a VectorType field to the schema
+        // @spec F12.R10 — rejects null name with NullPointerException
+        // @spec F12.R11 — rejects null elementType with NullPointerException
+        // @spec F12.R12 — delegates to FieldType.vector, centralizing validation
         /**
          * Adds a vector field with the given element type and fixed dimensions.
          *

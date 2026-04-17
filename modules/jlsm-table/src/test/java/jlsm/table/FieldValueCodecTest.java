@@ -7,6 +7,11 @@ import java.lang.foreign.MemorySegment;
 import jlsm.table.internal.FieldValueCodec;
 import org.junit.jupiter.api.Test;
 
+// @spec F10.R39,R40,R41,R42,R43,R44,R45,R46,R47,R48,R49,R50,R51,R52,R124,R125
+//       — covers FieldValueCodec encode/decode round-trips, sign-bit-flip for signed integers,
+//         IEEE 754 sort-preserving for FLOAT16/32/64, UTF-8 for STRING, BOOLEAN byte values,
+//         TIMESTAMP-as-INT64, NaN sorting above positive infinity, type mismatch rejection,
+//         and schema-driven dispatch rather than runtime-type inference.
 class FieldValueCodecTest {
 
     @Test

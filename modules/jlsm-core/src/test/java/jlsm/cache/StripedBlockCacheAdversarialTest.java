@@ -20,6 +20,7 @@ class StripedBlockCacheAdversarialTest {
     // truncates the remainder. capacity() reports the configured total, but
     // the actual effective capacity is (capacity / stripeCount) * stripeCount.
 
+    // @spec F09.R9
     @Test
     void capacityReportsEffectiveNotConfiguredWhenTruncated() {
         // capacity=7, stripeCount=4 → per-stripe=1, effective=4
@@ -33,6 +34,7 @@ class StripedBlockCacheAdversarialTest {
         }
     }
 
+    // @spec F09.R8,R9
     @Test
     void capacityTruncationDoesNotCausePrematureEviction() {
         // capacity=10, stripeCount=4 → per-stripe=2, effective=8
@@ -57,6 +59,7 @@ class StripedBlockCacheAdversarialTest {
         }
     }
 
+    // @spec F09.R8,R15
     @Test
     void effectiveCapacityMatchesActualMaxEntries() {
         // capacity=5, stripeCount=2 → per-stripe=2, effective=4
@@ -109,6 +112,7 @@ class StripedBlockCacheAdversarialTest {
     // the removeEldestEntry check (size() > cap) can never trigger because
     // size() is int and can never exceed Integer.MAX_VALUE.
 
+    // @spec F09.R43
     @Test
     void lruBlockCacheRejectsCapacityExceedingIntRange() {
         // capacity = Integer.MAX_VALUE + 1L should be rejected since
@@ -119,6 +123,7 @@ class StripedBlockCacheAdversarialTest {
                         + "LinkedHashMap.size() returns int and eviction would never trigger");
     }
 
+    // @spec F09.R22
     @Test
     void stripedBlockCacheRejectsPerStripeCapacityExceedingIntRange() {
         // If capacity / stripeCount > Integer.MAX_VALUE, per-stripe eviction breaks
@@ -128,6 +133,7 @@ class StripedBlockCacheAdversarialTest {
                 "per-stripe capacity exceeding Integer.MAX_VALUE should be rejected");
     }
 
+    // @spec F09.R43
     @Test
     void lruBlockCacheAcceptsMaxIntCapacity() {
         // Integer.MAX_VALUE should be accepted as a valid capacity
@@ -138,6 +144,7 @@ class StripedBlockCacheAdversarialTest {
 
     // --- F1: getOrLoad atomicity — concurrent callers should not duplicate loader ---
 
+    // @spec F09.R37,R47
     // Updated by audit block-cache-hardening: getOrLoad now releases the lock before calling
     // the loader to avoid blocking all cache operations during I/O. This means concurrent callers
     // for the same key may both invoke the loader, but only one result is kept (double-checked
@@ -184,9 +191,15 @@ class StripedBlockCacheAdversarialTest {
             assertNotNull(results[1], "second caller must receive a result");
             assertEquals((byte) 42, results[0].get(ValueLayout.JAVA_BYTE, 0));
             assertEquals((byte) 42, results[1].get(ValueLayout.JAVA_BYTE, 0));
+            // F09.R47: concurrent callers must return the same MemorySegment reference
+            assertSame(results[0], results[1],
+                    "concurrent getOrLoad callers must observe the same cached reference");
+            assertSame(results[0], cache.get(1L, 0L).orElseThrow(),
+                    "the cached value must equal what callers observed");
         }
     }
 
+    // @spec F09.R37,R47
     // Updated by audit block-cache-hardening: same rationale as lruBlockCache test above —
     // getOrLoad releases the lock during loading, so concurrent callers may both invoke the loader.
     @Test
@@ -228,11 +241,17 @@ class StripedBlockCacheAdversarialTest {
             assertNotNull(results[1], "second caller must receive a result");
             assertEquals((byte) 42, results[0].get(ValueLayout.JAVA_BYTE, 0));
             assertEquals((byte) 42, results[1].get(ValueLayout.JAVA_BYTE, 0));
+            // F09.R47: concurrent callers must return the same MemorySegment reference
+            assertSame(results[0], results[1],
+                    "concurrent getOrLoad callers must observe the same cached reference");
+            assertSame(results[0], cache.get(1L, 0L).orElseThrow(),
+                    "the cached value must equal what callers observed");
         }
     }
 
     // --- F2: Builder capacity() should validate eagerly ---
 
+    // @spec F09.R44
     @Test
     void lruBuilderCapacityRejectsNegativeEagerly() {
         // F2: capacity(-1) should throw immediately, not at build()
@@ -240,6 +259,7 @@ class StripedBlockCacheAdversarialTest {
                 "capacity setter should validate eagerly — negative capacity must be rejected immediately");
     }
 
+    // @spec F09.R44
     @Test
     void lruBuilderCapacityRejectsZeroEagerly() {
         // F2: capacity(0) should throw immediately, not at build()
@@ -247,6 +267,7 @@ class StripedBlockCacheAdversarialTest {
                 "capacity setter should validate eagerly — zero capacity must be rejected immediately");
     }
 
+    // @spec F09.R20
     @Test
     void stripedBuilderCapacityRejectsNegativeEagerly() {
         // F2: StripedBlockCache.Builder.capacity(-1) should throw immediately
@@ -254,6 +275,7 @@ class StripedBlockCacheAdversarialTest {
                 "capacity setter should validate eagerly — negative capacity must be rejected immediately");
     }
 
+    // @spec F09.R20
     @Test
     void stripedBuilderCapacityRejectsZeroEagerly() {
         // F2: StripedBlockCache.Builder.capacity(0) should throw immediately
@@ -268,6 +290,7 @@ class StripedBlockCacheAdversarialTest {
 
     // --- F5: Use-after-close detection ---
 
+    // @spec F09.R29
     @Test
     void lruPutAfterCloseThrows() {
         // F5: Operations on a closed cache should fail, not silently succeed
@@ -278,6 +301,7 @@ class StripedBlockCacheAdversarialTest {
                 "put on a closed LruBlockCache should throw IllegalStateException");
     }
 
+    // @spec F09.R28
     @Test
     void lruGetAfterCloseThrows() {
         // F5: get on a closed cache should fail
@@ -287,6 +311,7 @@ class StripedBlockCacheAdversarialTest {
                 "get on a closed LruBlockCache should throw IllegalStateException");
     }
 
+    // @spec F09.R29
     @Test
     void stripedPutAfterCloseThrows() {
         // F5: Operations on a closed StripedBlockCache should fail
@@ -297,6 +322,7 @@ class StripedBlockCacheAdversarialTest {
                 "put on a closed StripedBlockCache should throw IllegalStateException");
     }
 
+    // @spec F09.R28
     @Test
     void stripedGetAfterCloseThrows() {
         // F5: get on a closed StripedBlockCache should fail
@@ -306,6 +332,7 @@ class StripedBlockCacheAdversarialTest {
                 "get on a closed StripedBlockCache should throw IllegalStateException");
     }
 
+    // @spec F09.R30
     @Test
     void lruEvictAfterCloseThrows() {
         // F5: evict on a closed cache should fail
@@ -315,6 +342,7 @@ class StripedBlockCacheAdversarialTest {
                 "evict on a closed LruBlockCache should throw IllegalStateException");
     }
 
+    // @spec F09.R30
     @Test
     void stripedEvictAfterCloseThrows() {
         // F5: evict on a closed StripedBlockCache should fail
@@ -326,6 +354,7 @@ class StripedBlockCacheAdversarialTest {
 
     // --- F7: size() never negative, never exceeds capacity ---
 
+    // @spec F09.R7
     @Test
     void sizeNeverNegativeAfterEvict() {
         // F7: size() should never return negative even after evicting non-existent entries
@@ -336,6 +365,7 @@ class StripedBlockCacheAdversarialTest {
         }
     }
 
+    // @spec F09.R8
     @Test
     void sizeNeverExceedsCapacity() {
         // F7: size() should never exceed capacity(), even transiently
@@ -352,6 +382,7 @@ class StripedBlockCacheAdversarialTest {
 
     // --- F9: stripeCount upper bound ---
 
+    // @spec F09.R18
     @Test
     void excessiveStripeCountRejected() {
         // F9: stripeCount of Integer.MAX_VALUE would allocate billions of objects.
@@ -362,6 +393,7 @@ class StripedBlockCacheAdversarialTest {
                         + "would allocate billions of LruBlockCache instances");
     }
 
+    // @spec F09.R18
     @Test
     void stripeCountAboveMaxLimitRejected() {
         // F9: stripeCount above MAX_STRIPE_COUNT should be rejected.
@@ -371,6 +403,7 @@ class StripedBlockCacheAdversarialTest {
                 "stripeCount exceeding MAX_STRIPE_COUNT should be rejected");
     }
 
+    // @spec F09.R19
     @Test
     void stripeCountAtMaxLimitAccepted() {
         // F9: stripeCount at exactly MAX_STRIPE_COUNT should be accepted.

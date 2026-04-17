@@ -24,6 +24,10 @@ import jlsm.table.Predicate;
  * sorted map where keys are sort-preserving encoded field values (via {@link FieldValueCodec}) and
  * values are lists of primary keys.
  */
+// @spec F10.R63 — final class in jlsm.table.internal implementing SecondaryIndex
+// @spec F10.R65 — sorted map keyed by sort-preserving encoded field values (ByteArrayKey -> PK
+// list)
+// @spec F10.R132 — volatile closed flag exposes closed-state visibility across threads
 public final class FieldIndex implements SecondaryIndex {
 
     private final IndexDefinition definition;
@@ -38,6 +42,7 @@ public final class FieldIndex implements SecondaryIndex {
     public FieldIndex(IndexDefinition definition, FieldType schemaFieldType) throws IOException {
         Objects.requireNonNull(definition, "definition");
         IndexType type = definition.indexType();
+        // @spec F10.R64 — reject non-EQUALITY/RANGE/UNIQUE index types at construction with IAE
         if (type != IndexType.EQUALITY && type != IndexType.RANGE && type != IndexType.UNIQUE) {
             throw new IllegalArgumentException(
                     "FieldIndex only supports EQUALITY, RANGE, or UNIQUE — got " + type);
@@ -82,6 +87,8 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     @Override
+    // @spec F10.R55,R56,R74,R106,R127 — index (pk, value); null value no-op; UNIQUE rejects
+    // duplicates; post-close rejects with ISE
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
         if (closed) {
             throw new IllegalStateException("Index is closed");
@@ -104,6 +111,8 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     @Override
+    // @spec F10.R57,R58,R75,R107,R109,R110,R127 — remove-before-insert; null-asymmetric; UNIQUE
+    // idempotent on same value
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
         if (closed) {
@@ -126,6 +135,8 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     @Override
+    // @spec F10.R59,R60,R108,R127 — remove (pk, value); null value no-op; post-close rejects with
+    // ISE
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
         if (closed) {
             throw new IllegalStateException("Index is closed");
@@ -137,6 +148,8 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     @Override
+    // @spec F10.R61,R68,R69,R70,R71,R72,R127 — per-predicate dispatch using sort-preserving encoded
+    // keys
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
         if (closed) {
             throw new IllegalStateException("Index is closed");
@@ -156,6 +169,7 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     @Override
+    // @spec F10.R62,R66,R67 — match field name + predicate class to index type
     public boolean supports(Predicate predicate) {
         String field = predicateField(predicate);
         if (field == null || !field.equals(definition.fieldName())) {
@@ -172,6 +186,7 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     @Override
+    // @spec F10.R126 — set closed flag and clear internal data structures
     public void close() throws IOException {
         closed = true;
         entries.clear();
@@ -237,6 +252,7 @@ public final class FieldIndex implements SecondaryIndex {
         return flattenValues(entries.headMap(encoded, true));
     }
 
+    // @spec F10.R71,R72 — inclusive [low,high] range; empty iterator when lowKey > highKey
     private Iterator<MemorySegment> lookupBetween(Object low, Object high) {
         FieldType lowType = resolveFieldType(low);
         FieldType highType = resolveFieldType(high);
@@ -297,6 +313,7 @@ public final class FieldIndex implements SecondaryIndex {
      * back to runtime type inference. This is critical for Short values which are ambiguous between
      * INT16 and FLOAT16.
      */
+    // @spec F10.R125 — prefer schema-declared FieldType over runtime inference for encoding
     private FieldType resolveFieldType(Object value) {
         if (schemaFieldType != null) {
             return schemaFieldType;
@@ -327,6 +344,9 @@ public final class FieldIndex implements SecondaryIndex {
     /**
      * Byte array wrapper with unsigned bytewise comparison for use as TreeMap key.
      */
+    // @spec F10.R73,R133 — unsigned byte-wise comparison so sort-preserving encoding orders
+    // correctly
+    // @spec F10.R134 — equals/hashCode derived from array content via java.util.Arrays
     record ByteArrayKey(byte[] data) implements Comparable<ByteArrayKey> {
 
         ByteArrayKey {

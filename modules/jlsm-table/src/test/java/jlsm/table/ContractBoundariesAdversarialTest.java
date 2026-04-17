@@ -442,71 +442,63 @@ class ContractBoundariesAdversarialTest {
     // the field and explaining the pre-encrypted contract
     // Fix location: DocumentSerializer.serializePreEncrypted (DocumentSerializer.java:266-271)
     // Regression watch: Ensure valid byte[] ciphertext in pre-encrypted docs still serializes
-    // Finding: F-R1.cb.2.5
-    // Bug: DistancePreserving pre-encrypted round-trip broken — serializePreEncrypted writes
-    // ciphertext as a length-prefixed blob, but deserialize falls through to the plain
-    // decoder because decryptorFor() returns null for DistancePreserving fields
-    // Correct behavior: deserialize should read back the length-prefixed ciphertext blob for
-    // DistancePreserving fields, producing a byte[] that matches what was written
-    // Fix location: DocumentSerializer.deserialize (deserialization path for DistancePreserving
-    // fields) and/or FieldEncryptionDispatch (DistancePreserving case, lines 117-120)
-    // Regression watch: Non-encrypted vector fields must still round-trip normally; other
-    // encryption types (Deterministic, Opaque, OPE) must not be affected
+    // Finding: F-R1.cb.2.5 — superseded by F03 v2 (2026-04-17)
+    //
+    // Original bug: DistancePreserving pre-encrypted round-trip was broken because
+    // serializePreEncrypted wrote the ciphertext as a length-prefixed blob but deserialize
+    // fell through to the plain decoder (identity-passthrough encryptor in the dispatch).
+    //
+    // Current design (F03.R50/R51 + F41.R22): the serializer itself encrypts DCPE float
+    // arrays and produces a [8B seed | 4N encrypted floats | 16B HMAC tag] blob. The
+    // pre-encrypted path lets the caller supply this same blob shape directly. On
+    // deserialization, both paths go through DcpeSapEncryptor.decrypt which verifies the
+    // MAC before returning the plaintext float[].
+    //
+    // This test now verifies the new contract: a pre-encrypted DCPE document round-trips
+    // through the serializer and the plaintext recovers exactly (byte-equal MAC → valid
+    // decrypt). The caller must produce ciphertext with the same key that the reader will
+    // use, mirroring real client-side-encryption-SDK workflows.
     @Test
     void test_DocumentSerializer_distancePreserving_preEncryptedRoundTrip_preservesCiphertext() {
-        // Schema with a DistancePreserving-encrypted 3-dimension vector field
         JlsmSchema schema = JlsmSchema.builder("dp-test", 1).field("label", FieldType.string())
                 .field("vec", FieldType.vector(FieldType.Primitive.FLOAT32, 3),
                         EncryptionSpec.distancePreserving())
                 .build();
 
-        // Serializer with no key holder — pre-encrypted path doesn't need encryption keys
-        MemorySerializer<JlsmDocument> serializer = DocumentSerializer.forSchema(schema);
+        final byte[] rawKey = new byte[64];
+        java.util.Arrays.fill(rawKey, (byte) 0xBE);
+        try (var keyHolder = jlsm.encryption.EncryptionKeyHolder.of(rawKey);
+                var dcpe = new jlsm.encryption.DcpeSapEncryptor(keyHolder, 3)) {
+            final MemorySerializer<JlsmDocument> serializer = DocumentSerializer.forSchema(schema,
+                    keyHolder);
 
-        // Valid DCPE ciphertext: 3 dimensions * 4 bytes = 12 bytes
-        byte[] ciphertext = new byte[]{ 0x01, 0x02, 0x03, 0x04, // dimension 0 encrypted float
-                0x05, 0x06, 0x07, 0x08, // dimension 1 encrypted float
-                0x09, 0x0A, 0x0B, 0x0C // dimension 2 encrypted float
-        };
+            // Caller produces ciphertext themselves via the same key and the public encryptor.
+            final float[] plaintext = { 1.25f, -0.5f, 3.75f };
+            final byte[] fieldAd = "vec".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            final var ev = dcpe.encrypt(plaintext, fieldAd);
+            final byte[] preEncryptedBlob = jlsm.encryption.DcpeSapEncryptor.toBlob(ev);
+            assertEquals(8 + 3 * 4 + 16, preEncryptedBlob.length,
+                    "pre-encrypted DCPE blob must be 8+4N+16 bytes");
 
-        // Create a pre-encrypted document using the package-private constructor to bypass
-        // JlsmDocument.preEncrypted()'s defensiveCopyIfVector which also has a bug (casts
-        // byte[] to float[] for VectorType fields). The serializer bug is the target here.
-        Object[] values = new Object[]{ "test-vector", ciphertext };
-        JlsmDocument preEncDoc = new JlsmDocument(schema, values, true);
+            final Object[] values = new Object[]{ "test-vector", preEncryptedBlob };
+            final JlsmDocument preEncDoc = new JlsmDocument(schema, values, true);
 
-        // Serialize
-        MemorySegment serialized = serializer.serialize(preEncDoc);
+            final MemorySegment serialized = serializer.serialize(preEncDoc);
+            final JlsmDocument deserialized = serializer.deserialize(serialized);
 
-        // Deserialize — this is where the bug manifests: the plain decoder tries to
-        // interpret the length-prefixed ciphertext as a vector, producing garbage
-        JlsmDocument deserialized = serializer.deserialize(serialized);
-
-        // The deserialized vector field should contain data that represents the original
-        // ciphertext. Since DistancePreserving is meant to preserve distance in the
-        // encrypted domain, the ciphertext IS the usable form — it should round-trip
-        // as a float[] that, when re-encoded to bytes, equals the original ciphertext.
-        // Access the raw value at the vec field's index (package-private access)
-        int vecIdx = schema.fieldIndex("vec");
-        Object vecValue = deserialized.values()[vecIdx];
-        assertNotNull(vecValue, "Deserialized DistancePreserving vector should not be null — "
-                + "ciphertext was written but decoder produced null or threw");
-        assertInstanceOf(float[].class, vecValue,
-                "Deserialized DistancePreserving vector should be float[], got "
-                        + vecValue.getClass().getSimpleName());
-
-        float[] floats = (float[]) vecValue;
-        assertEquals(3, floats.length,
-                "Deserialized vector should have 3 dimensions matching the schema");
-
-        // Verify the float values match the ciphertext bytes interpreted as big-endian floats
-        // (DCPE ciphertext IS float data — each 4 bytes is one encrypted float dimension)
-        for (int d = 0; d < 3; d++) {
-            float expected = Float.intBitsToFloat(((ciphertext[d * 4] & 0xFF) << 24)
-                    | ((ciphertext[d * 4 + 1] & 0xFF) << 16) | ((ciphertext[d * 4 + 2] & 0xFF) << 8)
-                    | (ciphertext[d * 4 + 3] & 0xFF));
-            assertEquals(expected, floats[d], 0.0f,
-                    "Dimension " + d + " should preserve ciphertext bytes as float");
+            final int vecIdx = schema.fieldIndex("vec");
+            final Object vecValue = deserialized.values()[vecIdx];
+            assertNotNull(vecValue,
+                    "Deserialized DCPE vector must not be null — MAC should verify and decrypt"
+                            + " should succeed round-trip");
+            assertInstanceOf(float[].class, vecValue,
+                    "Deserialized DCPE vector must be float[], got "
+                            + vecValue.getClass().getSimpleName());
+            final float[] recovered = (float[]) vecValue;
+            assertEquals(3, recovered.length,
+                    "Deserialized vector should have 3 dimensions matching the schema");
+            assertArrayEquals(plaintext, recovered, 1e-4f,
+                    "DCPE round-trip must recover the original plaintext within float tolerance");
         }
     }
 

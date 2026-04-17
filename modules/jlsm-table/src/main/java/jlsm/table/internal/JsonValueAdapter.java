@@ -160,6 +160,8 @@ public final class JsonValueAdapter {
         return JsonArray.of(list);
     }
 
+    // @spec F12.R49 — operates on pre-validated JlsmDocument; dimension check enforced upstream
+    // by JlsmDocument.validateType at construction time
     private static JsonArray vectorToJson(FieldType.VectorType vt, Object value) {
         final List<JsonValue> list;
         if (vt.elementType() == FieldType.Primitive.FLOAT32) {

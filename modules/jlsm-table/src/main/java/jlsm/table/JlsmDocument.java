@@ -534,6 +534,7 @@ public final class JlsmDocument {
                     }
                 }
             }
+            // @spec F12.R49 — validateType rejects VectorType with array length != dimensions
             case FieldType.VectorType vt -> {
                 if (vt.elementType() == FieldType.Primitive.FLOAT32) {
                     expect(fieldName, value, float[].class, "VECTOR(FLOAT32)");

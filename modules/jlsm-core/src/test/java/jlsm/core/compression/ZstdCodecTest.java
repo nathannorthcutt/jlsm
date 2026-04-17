@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests are designed to work regardless of native libzstd availability. Round-trip tests that
  * require native are guarded by {@link ZstdNativeBindings#isNativeAvailable()}.
  */
+// @spec F18.R1,R2,R3,R3a,R7,R7a,R9,R17a,R17b
 class ZstdCodecTest {
 
     // ---- Helper ----
@@ -35,11 +36,13 @@ class ZstdCodecTest {
 
     // ---- Level validation (R2) ----
 
+    // @spec F18.R2
     @Test
     void constructorRejectsLevelZero() {
         assertThrows(IllegalArgumentException.class, () -> new ZstdCodec(0, null));
     }
 
+    // @spec F18.R2
     @Test
     void constructorRejectsNegativeLevel() {
         assertThrows(IllegalArgumentException.class, () -> new ZstdCodec(-1, null));

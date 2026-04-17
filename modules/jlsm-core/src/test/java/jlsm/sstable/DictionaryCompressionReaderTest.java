@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Most tests require native libzstd to write v4 files with dictionary-compressed blocks. Tests are
  * guarded with {@code assumeTrue(ZstdDictionaryTrainer.isAvailable())}.
  */
+// @spec F18.R19,R19a,R19b,R19c,R20,R20a,R21,R22
 class DictionaryCompressionReaderTest {
 
     private static MemorySegment seg(String s) {
@@ -322,7 +323,73 @@ class DictionaryCompressionReaderTest {
         }
     }
 
-    // ---- Test 9: Round-trip with deletes mixed in ----
+    // ---- Test 9: R20a/R21 — v3 reader must always use plain ZSTD for codec ID 0x03 ----
+
+    // @spec F18.R20a,R21 — regression test: on v3 (no dictionary meta-block) the reader
+    // must use a plain ZSTD codec for ID 0x03 regardless of the caller-supplied codec list.
+    // Before the fix, the reader only honored caller-supplied codecs; opening without a
+    // ZSTD codec threw "unknown compression codec ID 0x03" even though plain ZSTD is the
+    // correct decompressor for v3 ZSTD blocks.
+    @Test
+    void readerInjectsPlainZstdCodecForV3File(@TempDir Path dir) throws IOException {
+        assumeTrue(ZstdDictionaryTrainer.isAvailable(),
+                "requires native libzstd so the writer actually produces codec ID 0x03");
+
+        // Write a v3 SSTable with plain ZSTD — at least one block will have codec ID 0x03.
+        Path path = dir.resolve("v3-plain-zstd.sst");
+        CompressionCodec plainZstd = CompressionCodec.zstd();
+        try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(plainZstd).build()) {
+            for (Entry e : generateEntries(500)) {
+                w.append(e);
+            }
+            w.finish();
+        }
+        assertEquals(SSTableFormat.MAGIC_V3, readMagic(path));
+
+        // Open with NO caller-supplied codecs via the codec-aware varargs overload.
+        // The file has codec ID 0x03 blocks; the reader must inject plain ZSTD per
+        // R20a/R21 so decompression succeeds without the caller providing a ZSTD codec.
+        CompressionCodec[] noCodecs = new CompressionCodec[0];
+        try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                null, noCodecs)) {
+            Iterator<Entry> iter = r.scan();
+            int scanned = 0;
+            while (iter.hasNext()) {
+                iter.next();
+                scanned++;
+            }
+            assertEquals(500, scanned, "reader must inject plain ZSTD for ID 0x03 on v3 files "
+                    + "regardless of caller-supplied codec list");
+        }
+    }
+
+    // @spec F18.R20a,R21 — openLazy path must perform the same injection as open()
+    @Test
+    void lazyReaderInjectsPlainZstdCodecForV3File(@TempDir Path dir) throws IOException {
+        assumeTrue(ZstdDictionaryTrainer.isAvailable(),
+                "requires native libzstd so the writer actually produces codec ID 0x03");
+
+        Path path = dir.resolve("v3-plain-zstd-lazy.sst");
+        CompressionCodec plainZstd = CompressionCodec.zstd();
+        try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(plainZstd).build()) {
+            for (Entry e : generateEntries(500)) {
+                w.append(e);
+            }
+            w.finish();
+        }
+        assertEquals(SSTableFormat.MAGIC_V3, readMagic(path));
+
+        CompressionCodec[] noCodecs = new CompressionCodec[0];
+        try (TrieSSTableReader r = TrieSSTableReader.openLazy(path,
+                BlockedBloomFilter.deserializer(), null, noCodecs)) {
+            Optional<Entry> found = r.get(seg("key-00100"));
+            assertTrue(found.isPresent(), "key-00100 must be readable with injected plain ZSTD");
+        }
+    }
+
+    // ---- Test 11: Round-trip with deletes mixed in ----
 
     @Test
     void roundTripWithDeletesMixed(@TempDir Path dir) throws IOException {

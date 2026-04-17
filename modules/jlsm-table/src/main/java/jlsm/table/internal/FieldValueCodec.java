@@ -44,6 +44,11 @@ public final class FieldValueCodec {
         }
     }
 
+    // @spec F10.R39 — encode returns sort-preserving MemorySegment for non-null value + FieldType
+    // @spec F10.R40 — reject null fieldType with NPE
+    // @spec F10.R41 — reject null value with NPE
+    // @spec F10.R42 — reject non-primitive, non-BoundedString field types with IAE
+    // @spec F10.R125 — encoding dispatches on FieldType parameter, not runtime value type
     public static MemorySegment encode(Object value, FieldType fieldType) {
         Objects.requireNonNull(fieldType, "fieldType");
         final FieldType.Primitive p;
@@ -70,6 +75,7 @@ public final class FieldValueCodec {
         };
     }
 
+    // @spec F10.R50 — decode is inverse of encode for all supported types (round-trip equality)
     public static Object decode(MemorySegment encoded, FieldType fieldType) {
         Objects.requireNonNull(encoded, "encoded");
         Objects.requireNonNull(fieldType, "fieldType");
@@ -98,6 +104,7 @@ public final class FieldValueCodec {
 
     // ── INT8 ────────────────────────────────────────────────────────────
 
+    // @spec F10.R43,R124 — INT8 sign-bit-flip; reject non-Byte values with IAE
     private static MemorySegment encodeInt8(Object value) {
         if (!(value instanceof Byte b)) {
             throw new IllegalArgumentException(
@@ -170,6 +177,8 @@ public final class FieldValueCodec {
 
     // ── FLOAT16 ─────────────────────────────────────────────────────────
 
+    // @spec F10.R46,R124 — FLOAT16 IEEE 754 sort-preserving (invert all bits if sign bit set;
+    // else set sign bit); reject non-Short raw-bits values with IAE
     private static MemorySegment encodeFloat16(Object value) {
         if (!(value instanceof Short s)) {
             throw new IllegalArgumentException(
@@ -199,6 +208,8 @@ public final class FieldValueCodec {
 
     // ── FLOAT32 ─────────────────────────────────────────────────────────
 
+    // @spec F10.R44,R51,R124 — FLOAT32 IEEE 754 sort-preserving; NaN sorts above +Inf; reject
+    // non-Float IAE
     private static MemorySegment encodeFloat32(Object value) {
         if (!(value instanceof Float f)) {
             throw new IllegalArgumentException(
@@ -228,6 +239,8 @@ public final class FieldValueCodec {
 
     // ── FLOAT64 ─────────────────────────────────────────────────────────
 
+    // @spec F10.R45,R52,R124 — FLOAT64 IEEE 754 sort-preserving; NaN sorts above +Inf; reject
+    // non-Double IAE
     private static MemorySegment encodeFloat64(Object value) {
         if (!(value instanceof Double d)) {
             throw new IllegalArgumentException(
@@ -257,6 +270,8 @@ public final class FieldValueCodec {
 
     // ── STRING ──────────────────────────────────────────────────────────
 
+    // @spec F10.R47,R124 — STRING/BoundedString raw UTF-8 bytes (no transformation); reject
+    // non-String IAE
     private static MemorySegment encodeString(Object value) {
         if (!(value instanceof String s)) {
             throw new IllegalArgumentException(
@@ -275,6 +290,7 @@ public final class FieldValueCodec {
 
     // ── BOOLEAN ─────────────────────────────────────────────────────────
 
+    // @spec F10.R48,R124 — BOOLEAN 0x00 false, 0x01 true; reject non-Boolean IAE
     private static MemorySegment encodeBoolean(Object value) {
         if (!(value instanceof Boolean b)) {
             throw new IllegalArgumentException(
@@ -292,6 +308,8 @@ public final class FieldValueCodec {
 
     // ── TIMESTAMP ───────────────────────────────────────────────────────
 
+    // @spec F10.R49,R124 — TIMESTAMP encodes identically to INT64 (sign-bit-flipped big-endian 8
+    // bytes)
     private static MemorySegment encodeTimestamp(Object value) {
         if (!(value instanceof Long l)) {
             throw new IllegalArgumentException(

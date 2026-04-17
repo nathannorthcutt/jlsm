@@ -76,6 +76,7 @@ package jlsm.sstable.internal;
 // @spec F02.R12 — 64-byte footer with 8 big-endian long fields
 // @spec F02.R15 — v1 magic 0x4A4C534D53535401, v2 magic ...02
 // @spec F16.R13,R14,R17 — v3 magic 0x...03, 72-byte footer, named block-size constants
+// @spec F18.R19 — v4 magic 0x...04, 88-byte footer with dictOffset/dictLength fields
 public final class SSTableFormat {
 
     /** Magic number v1: ASCII "JLSMSST\x01" packed as a big-endian long. */

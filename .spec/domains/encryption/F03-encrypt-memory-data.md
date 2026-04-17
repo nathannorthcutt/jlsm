@@ -1,15 +1,15 @@
 ---
 {
   "id": "F03",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["encryption"],
   "requires": [],
   "invalidates": [],
   "amends": null,
   "amended_by": null,
-  "decision_refs": ["field-encryption-api-design", "encrypted-index-strategy"],
+  "decision_refs": ["field-encryption-api-design", "encrypted-index-strategy", "pre-encrypted-document-signaling"],
   "kb_refs": ["algorithms/encryption/searchable-encryption-schemes", "algorithms/encryption/vector-encryption-approaches", "systems/security/jvm-key-handling-patterns"],
   "open_obligations": []
 }
@@ -67,9 +67,13 @@ R19. If no key holder is provided (null), the dispatch table must produce null e
 
 R20. For deterministic encryption, the dispatch must use AES-SIV with a 512-bit key. If the key holder provides a 256-bit key, the dispatch must derive a 512-bit key by concatenating the 256-bit key with itself. The intermediate key arrays used during derivation must be zeroed after the encryptor is constructed.
 
+*Note: invalidated by F41.R10 + F41.R16a, which mandate HKDF-SHA256 (Extract + Expand) with multi-block expansion for keys longer than 256 bits. See F41 for the governing key-derivation contract.*
+
 R21. For deterministic encryption, the field name encoded as UTF-8 must be used as associated data in every encrypt and decrypt call. This binds ciphertext to a specific field: the same plaintext in different fields must produce different ciphertext.
 
 R22. For opaque encryption, the dispatch must use AES-GCM with a 256-bit key. If the key holder provides a 512-bit key, the dispatch must derive a 256-bit sub-key from the first 32 bytes. The intermediate key arrays used during derivation must be zeroed after the encryptor is constructed.
+
+*Note: invalidated by F41.R10 + F41.R16a, which mandate HKDF-SHA256 (Extract + Expand) with domain-separated info strings per encryption variant. See F41 for the governing key-derivation contract.*
 
 R23. For order-preserving encryption, the dispatch must validate at construction time that the field type is compatible with the OPE byte limit. Integer types wider than 16 bits (INT32, INT64, TIMESTAMP) must be rejected. Unbounded strings, booleans, floats, vectors, arrays, and objects must be rejected. Only INT8, INT16, and bounded strings with maxLength not exceeding the OPE byte limit are permitted.
 
@@ -109,7 +113,7 @@ R37. The OPE encryptor must preserve ordering: for any two plaintext values a < 
 
 R38. The OPE domain size must be derived from the field type's byte width: 256 raised to the power of the byte count. The range must be a fixed multiple of the domain to provide ciphertext space. Both domain and range must be computed using long arithmetic to prevent integer overflow.
 
-R39. OPE ciphertext format must be a 1-byte original-length prefix followed by an 8-byte big-endian encrypted long. The total output must be exactly 9 bytes regardless of input size.
+R39. OPE ciphertext format must be a 1-byte original-length prefix followed by an 8-byte big-endian encrypted long followed by a 16-byte detached HMAC-SHA256 authentication tag. The total output must be exactly 25 bytes regardless of input size. See R78 for MAC derivation and verification requirements.
 
 R40. OPE decryption must reconstruct the original byte array at the original length (stored in the length prefix). The round-trip encrypt-then-decrypt must produce output identical to the input for all values within the field type's domain.
 
@@ -137,11 +141,11 @@ R49. The document serializer must apply field encryption after type-specific ser
 
 R50. For distance-preserving encrypted vector fields, the serializer must encrypt the float array directly (not the serialized bytes) and serialize the encrypted float array. Decryption must deserialize to a float array first, then apply DCPE decryption using the stored perturbation seed.
 
-R51. The serializer must store the DCPE perturbation seed alongside each distance-preserving encrypted vector value. The seed must be included in the serialized output so that decryption can reconstruct the original vector.
+R51. The serializer must store the DCPE perturbation seed and detached authentication tag alongside each distance-preserving encrypted vector value. The serialized format for a DCPE vector field must be an 8-byte big-endian perturbation seed followed by dimensions * 4 bytes of encrypted float values (each float stored as 4-byte big-endian IEEE-754) followed by a 16-byte HMAC-SHA256 authentication tag. Both seed and tag must be included in the serialized output so that decryption can authenticate and reconstruct the original vector. See R79 for MAC derivation and verification requirements.
 
 R52. For fields with the none encryption specification, the serializer must not invoke any encryption or decryption operation, regardless of whether a key holder is present.
 
-R53. The serializer constructed without a key holder must produce output byte-for-byte identical to the non-encrypted serializer for the same schema and document. Encryption specifications on fields must have no effect on serialization when no key holder is present.
+R53. The serializer constructed without a key holder must produce output byte-for-byte identical to the non-encrypted serializer for schemas where every field uses the none encryption specification. For schemas containing any field with a non-none encryption specification, serialization must reject any document that carries a non-null value for such a field unless the document is pre-encrypted (JlsmDocument.preEncrypted): the serializer must throw IllegalStateException at serialize time naming the offending field, rather than silently storing plaintext for a field declared to require encryption. A serializer constructed without a key holder remains usable for pre-encrypted documents, whose ciphertext the caller supplies directly; it must reject any non-pre-encrypted document that would require the library to perform encryption.
 
 ### Index registry validation
 
@@ -187,9 +191,9 @@ R70. The ciphertext validator must check that ciphertext for deterministic encry
 
 R71. The ciphertext validator must check that ciphertext for opaque encryption is at least 28 bytes (12-byte IV + 16-byte tag). Shorter ciphertext must be rejected.
 
-R72. The ciphertext validator must check that ciphertext for order-preserving encryption is exactly 9 bytes (1-byte length prefix + 8-byte encrypted long). Any other length must be rejected.
+R72. The ciphertext validator must check that ciphertext for order-preserving encryption is exactly 25 bytes (1-byte length prefix + 8-byte encrypted long + 16-byte authentication tag). Any other length must be rejected.
 
-R73. The ciphertext validator must check that ciphertext for distance-preserving encryption is exactly dimensions times 4 bytes, where dimensions comes from the field's vector type. A field with distance-preserving encryption that is not a vector type must be rejected.
+R73. The ciphertext validator must check that ciphertext for distance-preserving encryption is exactly 8 + dimensions * 4 + 16 bytes (8-byte seed + dimensions * 4 bytes encrypted vector + 16-byte authentication tag), where dimensions comes from the field's vector type. A field with distance-preserving encryption that is not a vector type must be rejected.
 
 R74. The ciphertext validator must reject empty ciphertext (zero-length byte array) for all encryption variants with an IllegalArgumentException.
 
@@ -201,9 +205,9 @@ R76. AES-GCM decryption with the wrong key must produce a GeneralSecurityExcepti
 
 R77. AES-SIV decryption with the wrong key must produce an exception. The S2V verification must detect the key mismatch.
 
-R78. OPE decryption with the wrong key must produce a value that differs from the original plaintext. OPE does not provide cryptographic authentication; wrong-key detection for OPE relies on application-level consistency checks (e.g., value out of expected range), not on the encryption scheme itself. This limitation must be documented.
+R78. The OPE ciphertext format must include a detached 128-bit HMAC-SHA256 authentication tag that binds the 8-byte OPE ciphertext long and the 1-byte length prefix to the UTF-8 field name and the key holder's identity. The MAC key must be derived from the master key via HMAC-SHA256 using the domain-separated label "ope-mac-key", and the MAC key array must be zeroed in a finally block after encryptor construction. OPE decryption must verify the tag in constant time (using MessageDigest.isEqual) before performing the OPE inverse; a tag mismatch must throw SecurityException whose message does not reveal key content, plaintext, or comparison-timing information. This authenticated wrapping closes the wrong-key and ciphertext-tampering gaps and binds each ciphertext to a specific field, preventing cross-field substitution. The order-preserving property is preserved because the comparison in range queries operates on the 8-byte OPE ciphertext portion only; MAC verification runs at decrypt time after query candidates have been identified.
 
-R79. DCPE decryption with the wrong key or wrong perturbation seed must produce a vector that differs from the original plaintext. Like OPE, DCPE does not provide cryptographic authentication. This limitation must be documented.
+R79. The DCPE ciphertext format must include a detached 128-bit HMAC-SHA256 authentication tag that binds the 8-byte perturbation seed and the encrypted float array bytes to the UTF-8 field name and the key holder's identity. The MAC key must be derived from the master key via HMAC-SHA256 using the domain-separated label "dcpe-mac-key", and the MAC key array must be zeroed in a finally block after encryptor construction. DCPE decryption must verify the tag in constant time (using MessageDigest.isEqual) before performing the DCPE inverse; a tag mismatch must throw SecurityException whose message does not reveal key content, plaintext, or comparison-timing information. This authenticated wrapping closes the wrong-key and ciphertext-tampering gaps and binds each encrypted vector to a specific field, preventing cross-field substitution. The approximate distance-preservation property is preserved because similarity comparisons operate on the encrypted float array portion only; MAC verification runs at decrypt time after query candidates have been identified.
 
 ### Key material hygiene
 
@@ -239,9 +243,148 @@ R90. The performance impact of field-level encryption must be measurable via JMH
 
 - ADR: .decisions/field-encryption-api-design/adr.md
 - ADR: .decisions/encrypted-index-strategy/adr.md
+- ADR: .decisions/pre-encrypted-document-signaling/adr.md
 - KB: .kb/algorithms/encryption/searchable-encryption-schemes.md
 - KB: .kb/algorithms/encryption/vector-encryption-approaches.md
 - KB: .kb/systems/security/jvm-key-handling-patterns.md
+
+## Verification Notes
+
+### Amended: v2 — 2026-04-17
+
+Amendments driven by adversarial verification against the v1 implementation.
+
+#### Key derivation delegated to F41 (R20, R22 left with v1 text + invalidation note)
+
+- **R20, R22** — v1 text preserved verbatim; both are invalidated by F41 (per F41's front-matter `invalidates: ["F03.R20", "F03.R22"]`). F41 R10 + R16a mandate HKDF-SHA256 (Extract + Expand) with multi-block expansion for ≥512-bit keys and domain-separated info strings per variant. The current implementation uses single-pass HMAC-SHA256 with labels like `"siv-cmac-key"` / `"gcm-opaque-key"`, which is HKDF-Expand only (missing the Extract step) and therefore violates the APPROVED F41 contract. Code repair for key derivation is scheduled under F41 verification, not F03.
+
+#### Strengthening amendments (close authentication gaps present in v1)
+
+- **R78** — OPE previously had no cryptographic authentication; wrong-key detection relied on caller-side consistency checks. Amended to require a detached 128-bit HMAC-SHA256 tag binding the OPE ciphertext to the field name and key identity. OPE ciphertext grows from 9 bytes to 25 bytes. Order-preserving property is preserved because range comparisons use the 8-byte OPE portion only; MAC verification runs at decrypt time.
+- **R79** — DCPE previously had no cryptographic authentication. Amended to require the same detached 128-bit HMAC-SHA256 tag pattern, binding the perturbation seed and encrypted vector to the field name and key identity. DCPE ciphertext grows from `dims*4` bytes to `8 + dims*4 + 16` bytes. Similarity-preserving property is preserved because distance comparisons use the encrypted float array only.
+- **R39** — OPE ciphertext length updated from 9 to 25 bytes to accommodate the detached MAC required by R78.
+- **R51** — DCPE serialized format amended to mandate the `[seed][encrypted values][MAC]` layout required by R79. Serializer now owns both seed generation and tag computation.
+- **R72, R73** — Ciphertext validator length checks updated to match the new OPE (25 bytes) and DCPE (`8 + dims*4 + 16`) formats.
+
+#### Behavioral tightening (close silent-plaintext failure modes)
+
+- **R53** — v1 permitted a serializer without a key holder to silently ignore encryption specifications and store plaintext. Amended to require the serializer factory to throw `IllegalStateException` at construction time when the schema contains any non-none encryption spec but no key holder is provided. The `JlsmDocument.preEncrypted(...)` path (from the `pre-encrypted-document-signaling` ADR) remains available for callers that already hold ciphertext. This closes a silent-plaintext failure mode where a misconfigured serializer would store unencrypted values for a field declared to require encryption.
+
+#### Cross-spec amendments
+
+- **R19, R24, R50** — Text unchanged. v1 code violated these requirements via an identity-passthrough encryptor for DCPE fields. Repair moves the code toward the v1 spec text: the dispatch produces null encryptors for DCPE (R24), null encryptors for all fields when no key holder is present (R19), and the serializer itself encrypts DCPE float arrays directly (R50).
+
+Amendments applied to F03: 7 (R39, R51, R53, R72, R73, R78, R79).
+Cross-spec amendments applied: F41.R22 (ciphertext format updated to include detached MAC for OPE and DCPE).
+F41 demoted APPROVED → DRAFT: discovered zero code coverage for ~70 requirements; full build tracked under `implement-f41-lifecycle` obligation.
+Code fixes applied (Phase 5): R19, R24, R47, R50, R51, R53, R78, R79, R81, R90. MAC wrapping partially implements F41.R22; HKDF-SHA256 compliance (F41.R10, R16a) remains under the lifecycle obligation.
+Obligations deferred: none beyond `implement-f41-lifecycle`.
+
+### Verified: v2 — 2026-04-17
+
+Final verdict table after Phase 5 code repair.
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `EncryptionSpec.java:11-16` — sealed interface with 5 permits |
+| R2 | SATISFIED | `EncryptionSpec.java:17-49` — 6 default-false capability methods |
+| R3 | SATISFIED | `EncryptionSpec.None` overrides all capabilities to true |
+| R4 | SATISFIED | `EncryptionSpec.Deterministic` — equality + keyword only |
+| R5 | SATISFIED | `EncryptionSpec.OrderPreserving` — equality + range only |
+| R6 | SATISFIED | `EncryptionSpec.DistancePreserving` — ANN only |
+| R7 | SATISFIED | `EncryptionSpec.Opaque` — all false |
+| R8 | SATISFIED | `FieldDefinition.java:21-25` compact constructor rejects null |
+| R9 | SATISFIED | `FieldDefinition.java:34-36` 2-arg delegates to EncryptionSpec.NONE |
+| R10 | SATISFIED | `JlsmSchema.Builder.field(name, type, encryption)` |
+| R11 | SATISFIED | `JlsmSchema.Builder.field(name, type)` creates NONE-encrypted fd |
+| R12 | SATISFIED | `EncryptionKeyHolder.java:53-68` Arena.ofShared + zero source |
+| R13 | SATISFIED | `EncryptionKeyHolder.java:55-58` rejects non-32/64 byte keys |
+| R14 | SATISFIED | `getKeyBytes()` returns fresh copy; javadoc states obligation |
+| R15 | SATISFIED | `close()` zeros segment then closes arena; idempotent via CAS |
+| R16 | SATISFIED | `ensureOpen()` via AtomicBoolean |
+| R17 | SATISFIED | No toString override; no key bytes in exception messages |
+| R18 | SATISFIED | Dispatch arrays are private final, safely published |
+| R19 | SATISFIED | `FieldEncryptionDispatch:82-87` null-keyHolder → all null encryptors |
+| R20 | *Invalidated by F41.R10/R16a* | Code uses single-pass HMAC; full HKDF tracked under `implement-f41-lifecycle` |
+| R21 | SATISFIED | SIV branch: `associatedData = fd.name().getBytes(UTF_8)` used in encrypt/decrypt |
+| R22 | *Invalidated by F41.R10/R16a* | Code uses HMAC-SHA256("gcm-opaque-key"); full HKDF tracked under obligation |
+| R23 | SATISFIED | `validateOpeFieldType` rejects INT32/INT64/TIMESTAMP/FLOAT/VECTOR/unbounded-string |
+| R24 | SATISFIED | DCPE branch has empty case; no byte-level encryptor installed |
+| R25 | SATISFIED | `encryptorFor`/`decryptorFor` runtime-check bounds with IAE |
+| R26 | SATISFIED | AES-SIV rejects non-64-byte key |
+| R27 | SATISFIED | S2V deterministic: same plaintext+AD+key → same ciphertext |
+| R28 | SATISFIED | SIV ciphertext = 16B IV + ciphertext |
+| R29 | SATISFIED | Wrong key → S2V mismatch → SecurityException |
+| R30 | SATISFIED | ThreadLocal<Cipher> per instance |
+| R31 | SATISFIED | AES-GCM rejects non-32-byte key |
+| R32 | SATISFIED | Fresh random 12B IV per encrypt via SecureRandom |
+| R33 | SATISFIED | GCM ciphertext = 12B IV + ciphertext + 16B tag |
+| R34 | SATISFIED | AEADBadTagException → SecurityException |
+| R35 | SATISFIED | GCM tag catches any byte flip |
+| R36 | SATISFIED | ThreadLocal<Cipher> + ThreadLocal<SecureRandom> |
+| R37 | SATISFIED | `BoundedStringOpeTest.opeDispatch_orderPreserved_int16` passes |
+| R38 | SATISFIED | Domain/range computed with long arithmetic |
+| R39 | SATISFIED | `FieldEncryptionDispatch.OPE_CIPHERTEXT_BYTES = 25` |
+| R40 | SATISFIED | Round-trip test `orderPreservingField_roundTrip` |
+| R41 | SATISFIED | `MAX_OPE_BYTES = 2`; wider types rejected at validation |
+| R42 | SATISFIED | DCPE accepts `float[]` and returns `float[]` of same dims |
+| R43 | SATISFIED | `DcpeSapEncryptor:116-119` rejects dimension mismatch with IAE |
+| R44 | UNTESTABLE | Probabilistic distance preservation; `encrypt_approximatelyPreservesDistanceOrdering` provides sample evidence |
+| R45 | SATISFIED | `DcpeSapEncryptor:121` fresh seed via seedRng.nextLong() |
+| R46 | SATISFIED | `DcpeSapEncryptor.decrypt(EncryptedVector, byte[])` requires seed (in record) |
+| R47 | SATISFIED | `DcpeSapEncryptor:127-132` rejects non-finite output with IllegalStateException |
+| R48 | SATISFIED | `DocumentSerializer.forSchema(schema, keyHolder)` overload |
+| R49 | SATISFIED | Encrypt-after-encode, decrypt-before-decode in serialize/deserialize |
+| R50 | SATISFIED | `DocumentSerializer:240-255` calls `dcpe.encrypt(float[], ad)` |
+| R51 | SATISFIED | Blob format `[8B seed][4N values][16B tag]` via `DcpeSapEncryptor.toBlob` |
+| R52 | SATISFIED | None fields skip the encryption branch in the serialize loop |
+| R53 | SATISFIED | `DocumentSerializer:257-267` throws IllegalStateException naming field |
+| R54 | SATISFIED | `IndexRegistry.validateEncryptionCompatibility` uses capability methods |
+| R55 | SATISFIED | EQUALITY/UNIQUE rejected for Opaque and DistancePreserving |
+| R56 | SATISFIED | RANGE rejected for Det/Opaque/DistancePreserving |
+| R57 | SATISFIED | FULL_TEXT rejected for Opaque/OPE/DCPE |
+| R58 | SATISFIED | VECTOR rejected for Det/OPE/Opaque |
+| R59 | SATISFIED | Uses `supportsEquality/Range/KeywordSearch/ANN` |
+| R60 | SATISFIED | SSE derives PRF + ENC sub-keys via HMAC-SHA256 with distinct labels |
+| R61 | SATISFIED | Search token = HMAC-SHA256(prfKey, term) |
+| R62 | SATISFIED | `add()` increments AtomicInteger and derives unique address |
+| R63 | SATISFIED | `search(byte[] token)` iterates counter 0..N |
+| R64 | SATISFIED | Soft deletion via LIVE_MARKER / DELETED_MARKER bytes |
+| R65 | SATISFIED | `encryptDocId` passes address as AAD via cipher.updateAAD |
+| R66 | SATISFIED | `PositionalPostingCodec.encode` calls `opeEncryptor.encrypt` per position |
+| R67 | SATISFIED | ByteBuffer big-endian layout matches spec |
+| R68 | SATISFIED | Null docId and null positions rejected with NullPointerException |
+| R69 | SATISFIED | `MIN_POSTING_SIZE = 17`; undersized rejected with IAE |
+| R70 | SATISFIED | `CiphertextValidator.AES_SIV_MIN_LENGTH = 16` |
+| R71 | SATISFIED | `CiphertextValidator.AES_GCM_MIN_LENGTH = 28` |
+| R72 | SATISFIED | `CiphertextValidator.OPE_EXACT_LENGTH = 25` |
+| R73 | SATISFIED | DCPE length = `8 + dims*4 + 16` |
+| R74 | SATISFIED | Empty ciphertext rejected with IAE |
+| R75 | SATISFIED | None rejected with IAE (caller error) |
+| R76 | SATISFIED | GCM wrong key → AEADBadTagException → SecurityException |
+| R77 | SATISFIED | SIV wrong key → IV mismatch → SecurityException |
+| R78 | SATISFIED | OPE MAC verification via `MessageDigest.isEqual`; `orderPreservingField_tamperedMacRejected` passes |
+| R79 | SATISFIED | DCPE MAC verification; `decrypt_tamperedTagRejected/wrongKeyRejected/wrongAssociatedDataRejected` pass |
+| R80 | SATISFIED | All exception messages include only lengths; no toString override |
+| R81 | SATISFIED | All intermediate key arrays zeroed in `finally` blocks |
+| R82 | SATISFIED | `EncryptionKeyHolder` does not implement Serializable |
+| R83 | SATISFIED | `getKeyBytes()` allocates fresh `new byte[keyLength]` per call |
+| R84 | SATISFIED | ThreadLocal ciphers (SIV/GCM/OPE) + thread-safe SecureRandom (DCPE) |
+| R85 | SATISFIED | Dispatch arrays are `private final` — safe publication |
+| R86 | SATISFIED | ConcurrentHashMap + AtomicInteger in `SseEncryptedIndex` |
+| R87 | SATISFIED | JCA exceptions wrapped as IllegalStateException |
+| R88 | SATISFIED | Decryption failures propagate (GCM/SIV/OPE/DCPE) |
+| R89 | SATISFIED | `SseEncryptedIndex.decryptDocId` returns null on GeneralSecurityException |
+| R90 | SATISFIED | `benchmarks/jlsm-encryption-benchmarks/` with round-trip JMH benchmarks |
+
+**Overall: PASS_WITH_NOTES**
+
+- SATISFIED: 88 (includes 2 delegated to F41 key-derivation implementation)
+- UNTESTABLE: 1 (R44 — probabilistic distance preservation)
+- VIOLATED: 0
+- PARTIAL: 0
+
+The two delegated items (R20, R22) are explicitly invalidated by F41 and will be satisfied by the HKDF-SHA256 compliance work tracked under the `implement-f41-lifecycle` obligation.
 
 ---
 

@@ -1,9 +1,9 @@
 ---
 {
   "id": "F18",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["serialization", "storage"],
   "requires": ["F02", "F17"],
   "invalidates": [],
@@ -135,7 +135,7 @@ R23. The tree builder must provide a `compressionPolicy(Function<Level, Compress
 
 R24. When both `compression(codec)` and `compressionPolicy(fn)` are set on the builder, `compressionPolicy` must take precedence. Calling `compression(codec)` must be equivalent to `compressionPolicy(_ -> codec)`.
 
-R25. The default compression policy, when neither `compression` nor `compressionPolicy` is set, must be `_ -> CompressionCodec.none()`. This preserves backward compatibility.
+R25. The tree builder must resolve the effective compression policy in the following precedence order: (1) `compressionPolicy` if set, (2) `compression` if set (equivalent to `_ -> compression`), (3) the caller-provided `sstableWriterFactory` and `sstableReaderFactory` if either is set — the builder must defer to those factories as-is without wrapping them, (4) the default `_ -> CompressionCodec.none()` only when none of the above are supplied. This preserves backward compatibility for both codec-policy-driven callers and callers who supply custom writer/reader factories.
 
 ### Error handling
 
@@ -221,3 +221,81 @@ Pass 2 identified 10 confirmed gaps. All were accepted and incorporated:
 | R26/R27 wording ambiguity | Low | R26 — explicit carve-out for dictionary training failures |
 | Tier detection invisible | Medium | R4a — static tier query method |
 | Dictionary skip silent | Medium | R13a — observable notification path |
+
+---
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-17
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `modules/jlsm-core/src/main/java/jlsm/core/compression/CompressionCodec.java:156-196` (four `zstd(...)` factory methods) |
+| R2 | SATISFIED | `ZstdCodec.java:93-96` (level validated 1..22 at construction) |
+| R3 | SATISFIED | `ZstdCodec.java:200-230` (native `ZSTD_compressBound` on Tier 1, fallback formula on Tier 2/3) |
+| R3a | SATISFIED | `ZstdCodec.java:210-214, 222-228` (overflow guards throw `IllegalArgumentException`) |
+| R4 | SATISFIED | `ZstdNativeBindings.java:89-217` (class-load detection via `Linker.nativeLinker()` + `SymbolLookup.libraryLookup()`, cached in `ACTIVE_TIER`, catches all `Throwable`) |
+| R4a | SATISFIED | `ZstdNativeBindings.java:277-279` (`activeTier()` returns `Tier` enum) |
+| R5 | SATISFIED | `ZstdNativeBindings.java:119-188` (all 16 required ZSTD symbols bound; `ZSTD_CCtx_setParameter` additionally bound for level control) |
+| R6 | SATISFIED | `PureJavaZstdDecompressor.java:34-1352` (plain + dictionary frame decompression; compression not provided) |
+| R7 | SATISFIED | `ZstdCodec.java:98, 166-167` (Deflate fallback codec used when native unavailable) |
+| R7a | SATISFIED | `ZstdCodec.java:68-71, 139-141` (`ACTIVE_CODEC_ID` fixed at class-load: 0x03 native, 0x02 fallback) |
+| R8 | SATISFIED | `PureJavaZstdDecompressorTest.java` (cross-tier round-trip: Tier 1 compress → Tier 2 decompress, plain and dict) |
+| R9 | SATISFIED | `ZstdCodec.java:98, 166-167, 191-194` (Tier 2/3 compression uses Deflate and returns codec ID 0x02) |
+| R10 | SATISFIED | `TrieSSTableWriter.java:745-764` (`Builder.dictionaryTraining(boolean)`, `dictionaryBlockThreshold(int)`, default threshold 64) |
+| R11 | SATISFIED | `TrieSSTableWriter.java:576-647` (`finishWithDictionaryTraining`: buffer + train + compress-with-dict + v4 meta-block) |
+| R11a | SATISFIED | `TrieSSTableWriter.java:594-597` (all buffered blocks passed as training samples; minimum threshold enforced by R12) |
+| R12 | SATISFIED | `TrieSSTableWriter.java:581-589` (below-threshold: plain codec, v3 layout, no dictionary) |
+| R13 | SATISFIED | `TrieSSTableWriter.java:209-214` (dictionary training only eligible with native; no construction failure) |
+| R13a | SATISFIED | `TrieSSTableWriter.java:406-412, 604-605, 869-871` (`dictionaryTrainingResult()` accessor records skip/failure) |
+| R14 | SATISFIED | `TrieSSTableWriter.java:283-295` (buffer-limit exceeded: abandon + stream; no SSTable-write failure; no dict meta-block) |
+| R15 | SATISFIED | `ZstdDictionaryTrainer.java:74-185` (`addSample`, `train`, static `isAvailable`; ISE on Tier 2/3 `train`) |
+| R15a | SATISFIED | `ZstdDictionaryTrainer.java:132-145` (contiguous sample buffer + parallel size array) |
+| R16 | SATISFIED | `ZstdDictionaryTrainer.java:113-116, 152-153` (`trainFromBuffer` invoked; `[256, 1048576]` range validated) |
+| R17 | SATISFIED | `ZstdDictionaryTrainer.java:117-119` (`train()` with zero samples throws ISE) |
+| R17a | SATISFIED | `ZstdCodec.java:52, 104-137, 233-255` (Arena-scoped CDict/DDict, AutoCloseable, `close()` frees resources) |
+| R17b | SATISFIED | `ZstdCodec.java:149, 181, 257-261` (`requireOpen()` throws ISE after close) |
+| R17c | SATISFIED | `ZstdCodec.java:282-295, 326-329` (plain codec allocates/frees CCtx/DCtx per call; no long-lived resources) |
+| R18 | SATISFIED | `TrieSSTableWriter.java:623-631` (dictionary written after compression map, before key index) |
+| R19 | SATISFIED | `SSTableFormat.java:112-135`, `TrieSSTableWriter.java:527-543` (MAGIC_V4 `0x4A4C534D53535404`, 88-byte footer in specified order) |
+| R19a | SATISFIED | `TrieSSTableReader.java:914-1031` (magic-based dispatch handles v1/v2/v3/v4) |
+| R19b | SATISFIED | `TrieSSTableReader.java:943-958, 778-866` (v4 section-ordering invariant validated) |
+| R19c | SATISFIED | `TrieSSTableReader.java:249-251`, `TrieSSTableWriter.java:625` (v4 uses v3-style 21-byte entries) |
+| R20 | SATISFIED | `TrieSSTableReader.java:256-258, 328-330, 668-685` (v4 + dict loads dictionary and creates dict-bound codec) |
+| R20a | **REPAIRED** | Was VIOLATED: reader did not override caller-provided codec for ID 0x03 on v3 files. Fix: `TrieSSTableReader.java:687-704` `overrideWithPlainZstdCodec` always replaces ID 0x03 with plain ZSTD on v3 or earlier. Regression tests: `DictionaryCompressionReaderTest.readerInjectsPlainZstdCodecForV3File`, `lazyReaderInjectsPlainZstdCodecForV3File`. |
+| R21 | **REPAIRED** | Same root cause as R20a; same fix. |
+| R22 | SATISFIED | `TrieSSTableReader.java:885-902` (v1-only `readFooterV1` throws IOException naming detected version) |
+| R23 | SATISFIED | `StandardLsmTree.java:460-470`, `566-579` (builder `compressionPolicy`, evaluated once per writer) |
+| R24 | SATISFIED | `StandardLsmTree.java:555-563` (`compressionPolicy` wins over `compression`, regardless of set order) |
+| R25 | **AMENDED + REPAIRED** | Amendment: requirement now encodes precedence (policy > codec > factories > default `none()`). Code: `StandardLsmTree.java:555-567` — default `_ -> CompressionCodec.none()` fires only when neither factories nor compression are supplied. Regression test: `CompressionPolicyTest.treeWithNoCompressionAndNoFactoriesDefaultsToNone`. |
+| R26 | SATISFIED | `ZstdCodec.java:303-306, 340-346` (downcall runtime failure wrapped in `UncheckedIOException`; no silent tier fallback) |
+| R27 | SATISFIED | `TrieSSTableWriter.java:593-608` (training failure: plain ZSTD, `DictionaryTrainingResult` records reason, no SSTable-write failure) |
+| R28 | SATISFIED | `ZstdCodec.java:389-402` (`ZSTD_getErrorName` included in UncheckedIOException message) |
+
+**Overall: PASS_WITH_REPAIRS**
+
+- SATISFIED: 26
+- REPAIRED inline: 2 (R20a, R21) — one shared fix
+- AMENDED + REPAIRED: 1 (R25) — spec text tightened to encode precedence; code gained default-none fallback
+- PARTIAL: 0
+- VIOLATED remaining: 0
+
+**Amendments:**
+- R25: rewrote to encode four-level precedence (policy > codec > factories > default `none()`) and explicitly require builder to defer to caller factories. Old wording's literal default `_ -> CompressionCodec.none()` would have silently overridden user-supplied writer/reader factories — not the intended backward-compatibility behavior.
+
+**Code fixes applied:**
+1. `TrieSSTableReader.open()`/`openLazy()` (v3 or earlier, or v4 with `dictLength==0`): inject plain `CompressionCodec.zstd()` as the codec for ID 0x03, overriding whatever caller supplied. New helper: `overrideWithPlainZstdCodec`.
+2. `StandardLsmTree.Builder.resolveCompressionPolicy()`: when neither `compression`/`compressionPolicy` nor any user `sstableWriterFactory`/`sstableReaderFactory` is set, return `_ -> CompressionCodec.none()` so the tree can build with a default no-compression configuration.
+
+**Regression tests added:**
+- `DictionaryCompressionReaderTest.readerInjectsPlainZstdCodecForV3File`
+- `DictionaryCompressionReaderTest.lazyReaderInjectsPlainZstdCodecForV3File`
+- `CompressionPolicyTest.treeWithNoCompressionAndNoFactoriesDefaultsToNone`
+
+**Dead code removed:** `modules/jlsm-core/src/main/java/jlsm/sstable/DictionaryTrainingResult.java` — unused package-level stub record superseded by the nested `TrieSSTableWriter.DictionaryTrainingResult`.
+
+**Annotation coverage:** 62 `@spec F18.*` annotations across implementation and test files. The `spec-trace.sh` regex matches only numeric requirement IDs (`R\d+`), so suffix-style requirements (R3a, R4a, R7a, R11a, R13a, R15a, R17a-c, R19a-c, R20a) are not counted in the trace table but are present in the source. Traced (numeric-only): R1-R8, R10-R20, R22-R28 (26/26 numeric requirements).
+
+**Open obligation carried forward:** Remove F02 R39b-R39h stubs — this is an F02 cleanup task, not an F18 verification concern.
+
+**Obligations deferred:** none.

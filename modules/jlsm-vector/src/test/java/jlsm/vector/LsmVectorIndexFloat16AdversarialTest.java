@@ -84,6 +84,7 @@ class LsmVectorIndexFloat16AdversarialTest {
     // F1: Float16 overflow — values > 65504.0 become infinity after roundtrip
     // =======================================================================
 
+    // @spec F01.R5 — IEEE 754 binary16 conversion via JDK standard, overflow → ±Infinity
     @Test
     void encodeFloat16s_overflowValueBecomesInfinity() {
         // F1: 100000.0f exceeds float16 max (65504.0), should overflow to +Inf
@@ -107,6 +108,7 @@ class LsmVectorIndexFloat16AdversarialTest {
     // F2: Float16 subnormal flush-to-zero
     // =======================================================================
 
+    // @spec F01.R12 — subnormal float32 values that flush to zero in float16 are accepted
     @Test
     void encodeFloat16s_subnormalFlushesToZero() {
         // F2: Float.MIN_VALUE (~1.4e-45) is far below float16 min subnormal (~5.96e-8)
@@ -240,6 +242,8 @@ class LsmVectorIndexFloat16AdversarialTest {
     // F8: IvfFlat float16 storage size verification
     // =======================================================================
 
+    // @spec F01.R7 — encoding dispatches by precision (FLOAT16 → dim*2, FLOAT32 → dim*4)
+    // @spec F01.R18 — float16 encoding uses exactly dim*2 bytes per vector
     @Test
     void encodeVector_float16_outputLengthIsDimTimes2() {
         // F8: Verify float16 encoding produces dim*2 bytes (50% of float32)

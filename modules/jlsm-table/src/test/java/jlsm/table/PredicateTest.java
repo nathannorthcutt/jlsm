@@ -7,6 +7,10 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+// @spec F10.R14,R15,R16,R17,R18,R19,R20,R21,R22,R23,R24,R25,R26,R27,R28,R29
+//       — covers Predicate sealed-hierarchy invariants: field/value/queryVector null rejection,
+//         range-predicate Comparable<?> typing, Between low/high typing, VectorNearest topK
+//         positivity + defensive copy, And/Or minimum-child and immutable-copy semantics.
 class PredicateTest {
 
     // ── Eq ───────────────────────────────────────────────────────────────

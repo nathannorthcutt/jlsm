@@ -2,6 +2,7 @@ package jlsm.table;
 
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.List;
@@ -13,6 +14,7 @@ import javax.crypto.spec.SecretKeySpec;
 import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
+import jlsm.encryption.DcpeSapEncryptor;
 import jlsm.encryption.EncryptionKeyHolder;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldDefinition;
@@ -34,6 +36,16 @@ public final class FieldEncryptionDispatch {
 
     private final FieldEncryptor[] encryptors;
     private final FieldDecryptor[] decryptors;
+    /**
+     * Per-DCPE-field encryptor. DCPE operates on {@code float[]}, not {@code byte[]}, so it does
+     * not fit the generic {@link FieldEncryptor} byte-in/byte-out interface. The serializer reads
+     * this array directly and invokes {@link DcpeSapEncryptor#encrypt} inline during vector
+     * encode/decode. {@code null} for non-DCPE fields and for any field when no key holder is
+     * provided.
+     */
+    // @spec F03.R24, R50 — DCPE handled by serializer directly, not byte-level dispatch
+    private final DcpeSapEncryptor[] dcpeEncryptors;
+    private final byte[][] dcpeAssociatedData;
 
     /**
      * Encrypts a byte array field value.
@@ -64,21 +76,35 @@ public final class FieldEncryptionDispatch {
         final int fieldCount = fields.size();
         this.encryptors = new FieldEncryptor[fieldCount];
         this.decryptors = new FieldDecryptor[fieldCount];
-
-        // DistancePreserving fields always need identity passthrough encryptors/decryptors
-        // so that the serializer uses length-prefixed blob format consistently — this ensures
-        // pre-encrypted round-trip works even without a keyHolder. Other encryption types
-        // require a keyHolder to derive actual encryption keys.
-        for (int i = 0; i < fieldCount; i++) {
-            if (fields.get(i).encryption() instanceof EncryptionSpec.DistancePreserving) {
-                encryptors[i] = plaintext -> plaintext;
-                decryptors[i] = ciphertext -> ciphertext;
-            }
-        }
+        this.dcpeEncryptors = new DcpeSapEncryptor[fieldCount];
+        this.dcpeAssociatedData = new byte[fieldCount][];
 
         if (keyHolder == null) {
-            // No key material — only DistancePreserving passthrough (set above) is active
+            // @spec F03.R19 — without a key holder, no field receives an encryptor/decryptor.
+            // A DCPE field in this configuration cannot be serialized by the library — the
+            // DocumentSerializer rejects such writes per F03.R53.
             return;
+        }
+
+        // Build DCPE encryptors up front for any DistancePreserving field.
+        // @spec F03.R24, R50 — DCPE does not use the byte-level FieldEncryptor interface;
+        // encryption happens inline in DocumentSerializer using these instances.
+        for (int i = 0; i < fieldCount; i++) {
+            final FieldDefinition fd = fields.get(i);
+            if (fd.encryption() instanceof EncryptionSpec.DistancePreserving) {
+                if (!(fd.type() instanceof FieldType.VectorType vt)) {
+                    throw new IllegalArgumentException(
+                            "DistancePreserving encryption requires a VectorType field, got "
+                                    + fd.type() + " for field '" + fd.name() + "'");
+                }
+                if (vt.elementType() != FieldType.Primitive.FLOAT32) {
+                    throw new IllegalArgumentException(
+                            "DistancePreserving encryption requires FLOAT32 vector elements, got "
+                                    + vt.elementType() + " for field '" + fd.name() + "'");
+                }
+                dcpeEncryptors[i] = new DcpeSapEncryptor(keyHolder, vt.dimensions());
+                dcpeAssociatedData[i] = fd.name().getBytes(StandardCharsets.UTF_8);
+            }
         }
 
         for (int i = 0; i < fieldCount; i++) {
@@ -90,26 +116,47 @@ public final class FieldEncryptionDispatch {
                     // No encryption for this field
                 }
                 case EncryptionSpec.DistancePreserving _ -> {
-                    // Already set above (identity passthrough)
+                    // @spec F03.R24 — serializer invokes DcpeSapEncryptor from dcpeEncryptors[i]
+                    // directly. No byte-level encryptor/decryptor installed.
                 }
                 case EncryptionSpec.Deterministic _ -> {
                     // AES-SIV requires a 64-byte key split into independent CMAC and CTR
                     // sub-keys. If the table key is 32 bytes, derive two independent
                     // 32-byte sub-keys via HMAC-SHA256 with domain-separated info strings.
+                    // @spec F03.R81, F41.R16 — zero intermediates in finally, even on exception
                     final AesSivEncryptor siv;
                     if (keyHolder.keyLength() == 32) {
-                        final byte[] masterKey = keyHolder.getKeyBytes();
-                        final byte[] cmacHalf = hmacSha256(masterKey, "siv-cmac-key");
-                        final byte[] ctrHalf = hmacSha256(masterKey, "siv-ctr-key");
-                        Arrays.fill(masterKey, (byte) 0);
-                        final byte[] sivKey = new byte[64];
-                        System.arraycopy(cmacHalf, 0, sivKey, 0, 32);
-                        System.arraycopy(ctrHalf, 0, sivKey, 32, 32);
-                        Arrays.fill(cmacHalf, (byte) 0);
-                        Arrays.fill(ctrHalf, (byte) 0);
-                        final EncryptionKeyHolder sivKeyHolder = EncryptionKeyHolder.of(sivKey);
-                        siv = new AesSivEncryptor(sivKeyHolder);
-                        sivKeyHolder.close(); // encryptor copied key material at construction
+                        byte[] masterKey = null;
+                        byte[] cmacHalf = null;
+                        byte[] ctrHalf = null;
+                        byte[] sivKey = null;
+                        EncryptionKeyHolder sivKeyHolder = null;
+                        try {
+                            masterKey = keyHolder.getKeyBytes();
+                            cmacHalf = hmacSha256(masterKey, "siv-cmac-key");
+                            ctrHalf = hmacSha256(masterKey, "siv-ctr-key");
+                            sivKey = new byte[64];
+                            System.arraycopy(cmacHalf, 0, sivKey, 0, 32);
+                            System.arraycopy(ctrHalf, 0, sivKey, 32, 32);
+                            sivKeyHolder = EncryptionKeyHolder.of(sivKey);
+                            siv = new AesSivEncryptor(sivKeyHolder);
+                        } finally {
+                            if (masterKey != null) {
+                                Arrays.fill(masterKey, (byte) 0);
+                            }
+                            if (cmacHalf != null) {
+                                Arrays.fill(cmacHalf, (byte) 0);
+                            }
+                            if (ctrHalf != null) {
+                                Arrays.fill(ctrHalf, (byte) 0);
+                            }
+                            if (sivKey != null) {
+                                Arrays.fill(sivKey, (byte) 0);
+                            }
+                            if (sivKeyHolder != null) {
+                                sivKeyHolder.close();
+                            }
+                        }
                     } else {
                         siv = new AesSivEncryptor(keyHolder);
                     }
@@ -125,22 +172,52 @@ public final class FieldEncryptionDispatch {
                     final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder,
                             bounds[0], bounds[1]);
                     final int maxBytes = opeMaxBytes(fd.type());
-                    encryptors[i] = plaintext -> opeEncryptTyped(ope, plaintext, maxBytes);
-                    decryptors[i] = ciphertext -> opeDecryptTyped(ope, ciphertext, maxBytes);
+                    // @spec F03.R78, F41.R22 — derive per-field MAC key and bind MAC to field name
+                    final byte[] masterKey = keyHolder.getKeyBytes();
+                    final SecretKeySpec macKeySpec;
+                    try {
+                        final byte[] opeMacKey = hmacSha256(masterKey, "ope-mac-key");
+                        try {
+                            macKeySpec = new SecretKeySpec(opeMacKey, "HmacSHA256");
+                        } finally {
+                            Arrays.fill(opeMacKey, (byte) 0);
+                        }
+                    } finally {
+                        Arrays.fill(masterKey, (byte) 0);
+                    }
+                    final byte[] associatedData = fd.name().getBytes(StandardCharsets.UTF_8);
+                    encryptors[i] = plaintext -> opeEncryptTyped(ope, plaintext, maxBytes,
+                            macKeySpec, associatedData);
+                    decryptors[i] = ciphertext -> opeDecryptTyped(ope, ciphertext, maxBytes,
+                            macKeySpec, associatedData);
                 }
                 case EncryptionSpec.Opaque _ -> {
                     // AES-GCM requires a 32-byte key. If the table key is 64 bytes,
                     // derive an independent 32-byte sub-key via HMAC-SHA256 with a
                     // domain-separated info string. Plain truncation would make the
                     // GCM key equal to the SIV CMAC sub-key, violating key independence.
+                    // @spec F03.R81, F41.R16 — zero intermediates in finally, even on exception
                     final AesGcmEncryptor gcm;
                     if (keyHolder.keyLength() == 64) {
-                        final byte[] fullKey = keyHolder.getKeyBytes();
-                        final byte[] gcmKey = hmacSha256(fullKey, "gcm-opaque-key");
-                        Arrays.fill(fullKey, (byte) 0);
-                        final EncryptionKeyHolder gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
-                        gcm = new AesGcmEncryptor(gcmKeyHolder);
-                        gcmKeyHolder.close(); // encryptor copied key material at construction
+                        byte[] fullKey = null;
+                        byte[] gcmKey = null;
+                        EncryptionKeyHolder gcmKeyHolder = null;
+                        try {
+                            fullKey = keyHolder.getKeyBytes();
+                            gcmKey = hmacSha256(fullKey, "gcm-opaque-key");
+                            gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
+                            gcm = new AesGcmEncryptor(gcmKeyHolder);
+                        } finally {
+                            if (fullKey != null) {
+                                Arrays.fill(fullKey, (byte) 0);
+                            }
+                            if (gcmKey != null) {
+                                Arrays.fill(gcmKey, (byte) 0);
+                            }
+                            if (gcmKeyHolder != null) {
+                                gcmKeyHolder.close();
+                            }
+                        }
                     } else {
                         gcm = new AesGcmEncryptor(keyHolder);
                     }
@@ -180,6 +257,33 @@ public final class FieldEncryptionDispatch {
     }
 
     /**
+     * Returns the DCPE encryptor for the field at the given index, or {@code null} if the field is
+     * not DistancePreserving or no key holder was provided. Used by {@link DocumentSerializer} to
+     * encrypt vector values inline during serialization.
+     *
+     * @param fieldIndex the zero-based field index
+     * @return the DCPE encryptor, or null
+     */
+    // @spec F03.R24, R50 — serializer reads DCPE encryptors directly
+    public DcpeSapEncryptor dcpeEncryptorFor(int fieldIndex) {
+        if (fieldIndex < 0 || fieldIndex >= dcpeEncryptors.length) {
+            throw new IllegalArgumentException("fieldIndex out of bounds: " + fieldIndex);
+        }
+        return dcpeEncryptors[fieldIndex];
+    }
+
+    /**
+     * Returns the DCPE associated data (UTF-8 field name) for the field at the given index, or
+     * {@code null} if the field is not DistancePreserving.
+     */
+    public byte[] dcpeAssociatedDataFor(int fieldIndex) {
+        if (fieldIndex < 0 || fieldIndex >= dcpeAssociatedData.length) {
+            throw new IllegalArgumentException("fieldIndex out of bounds: " + fieldIndex);
+        }
+        return dcpeAssociatedData[fieldIndex];
+    }
+
+    /**
      * Validates that the field type is narrow enough for lossless OPE round-trip. OPE is capped at
      * {@code MAX_OPE_BYTES=2}, so types wider than 2 bytes would suffer silent data truncation.
      */
@@ -212,17 +316,30 @@ public final class FieldEncryptionDispatch {
 
     // -- OPE type-aware helpers -----------------------------------------------
 
+    /** Detached MAC tag length (bytes) appended to OPE and DCPE ciphertext. */
+    static final int MAC_TAG_BYTES = 16;
+
+    /** Inner (pre-MAC) OPE ciphertext size: 1-byte length prefix + 8-byte encrypted long. */
+    private static final int OPE_INNER_BYTES = 9;
+
+    /** OPE ciphertext total size: inner ciphertext + detached MAC tag. */
+    static final int OPE_CIPHERTEXT_BYTES = OPE_INNER_BYTES + MAC_TAG_BYTES;
+
     /**
-     * Type-aware OPE encryption. Encodes the plaintext bytes as a positive long in the natural
-     * domain of the field type (e.g., [1..256] for INT8), encrypts with OPE, and returns the
-     * ciphertext.
+     * Type-aware OPE encryption with detached MAC. Encodes the plaintext bytes as a positive long
+     * in the natural domain of the field type (e.g., [1..256] for INT8), encrypts with OPE, and
+     * wraps with a detached HMAC-SHA256 tag bound to the field name.
      *
      * <p>
-     * The ciphertext format is: {@code [1-byte original-length][8-byte encrypted-long]}. The
-     * original length byte enables exact round-trip for variable-length types (strings).
+     * The ciphertext format is: {@code [1-byte original-length][8-byte encrypted-long]
+     * [16-byte HMAC-SHA256 tag]} — 25 bytes total. The MAC covers the first 9 bytes plus the UTF-8
+     * field name (associated data).
+     *
+     * @see #opeDecryptTyped
      */
-    private static byte[] opeEncryptTyped(BoldyrevaOpeEncryptor ope, byte[] plaintext,
-            int maxBytes) {
+    // @spec F03.R39,R78, F41.R22 — 25-byte OPE format with detached MAC
+    private static byte[] opeEncryptTyped(BoldyrevaOpeEncryptor ope, byte[] plaintext, int maxBytes,
+            SecretKeySpec macKeySpec, byte[] associatedData) {
         if (plaintext == null) {
             throw new IllegalArgumentException("OPE plaintext must not be null");
         }
@@ -233,23 +350,38 @@ public final class FieldEncryptionDispatch {
         final int useBytes = Math.min(plaintext.length, maxBytes);
         final long value = bytesToUnsignedBE(plaintext, useBytes) + 1; // +1: OPE domain starts at 1
         final long encrypted = ope.encrypt(value);
-        final byte[] result = new byte[9]; // 1 byte length + 8 bytes encrypted long
+        final byte[] result = new byte[OPE_CIPHERTEXT_BYTES];
         result[0] = (byte) plaintext.length;
         for (int i = 0; i < 8; i++) {
             result[1 + i] = (byte) (encrypted >>> (56 - i * 8));
         }
+        final byte[] tag = computeMacTag(macKeySpec, result, 0, OPE_INNER_BYTES, associatedData);
+        System.arraycopy(tag, 0, result, OPE_INNER_BYTES, MAC_TAG_BYTES);
         return result;
     }
 
     /**
-     * Type-aware OPE decryption. Reads the original length from byte 0, decrypts the 8-byte
-     * encrypted long, and converts back to a byte array of the original length.
+     * Type-aware OPE decryption with detached-MAC verification. Verifies the 16-byte MAC tag in
+     * constant time before performing the OPE inverse. A tag mismatch throws
+     * {@link SecurityException} with a message that does not reveal key or plaintext content.
+     *
+     * @see #opeEncryptTyped
      */
+    // @spec F03.R39,R78, F41.R22 — verify MAC in constant time, then OPE inverse
     private static byte[] opeDecryptTyped(BoldyrevaOpeEncryptor ope, byte[] ciphertext,
-            int maxBytes) {
-        if (ciphertext == null || ciphertext.length != 9) {
-            throw new IllegalArgumentException("OPE ciphertext must be exactly 9 bytes, got "
-                    + (ciphertext == null ? "null" : ciphertext.length));
+            int maxBytes, SecretKeySpec macKeySpec, byte[] associatedData) {
+        if (ciphertext == null || ciphertext.length != OPE_CIPHERTEXT_BYTES) {
+            throw new IllegalArgumentException(
+                    "OPE ciphertext must be exactly " + OPE_CIPHERTEXT_BYTES + " bytes, got "
+                            + (ciphertext == null ? "null" : ciphertext.length));
+        }
+        final byte[] expectedTag = computeMacTag(macKeySpec, ciphertext, 0, OPE_INNER_BYTES,
+                associatedData);
+        final byte[] actualTag = Arrays.copyOfRange(ciphertext, OPE_INNER_BYTES,
+                OPE_CIPHERTEXT_BYTES);
+        if (!MessageDigest.isEqual(expectedTag, actualTag)) {
+            throw new SecurityException("OPE MAC verification failed: wrong key, tampered "
+                    + "ciphertext, or cross-field substitution");
         }
         final int originalLen = ciphertext[0] & 0xFF;
         long encValue = 0;
@@ -265,6 +397,28 @@ public final class FieldEncryptionDispatch {
             decrypted >>>= 8;
         }
         return result;
+    }
+
+    /**
+     * Computes a truncated HMAC-SHA256 MAC tag over {@code [inner || associatedData]}. The MAC
+     * covers the inner ciphertext byte range {@code [innerOffset, innerOffset + innerLen)} and the
+     * UTF-8 field name (associated data). Returns the first {@link #MAC_TAG_BYTES} bytes.
+     */
+    // @spec F03.R78, R79 — detached HMAC-SHA256 tag bound to ciphertext + field name
+    static byte[] computeMacTag(SecretKeySpec macKeySpec, byte[] inner, int innerOffset,
+            int innerLen, byte[] associatedData) {
+        try {
+            final Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(macKeySpec);
+            mac.update(inner, innerOffset, innerLen);
+            if (associatedData != null && associatedData.length > 0) {
+                mac.update(associatedData);
+            }
+            final byte[] full = mac.doFinal();
+            return Arrays.copyOf(full, MAC_TAG_BYTES);
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new IllegalStateException("HMAC-SHA256 tag computation failed", e);
+        }
     }
 
     /**

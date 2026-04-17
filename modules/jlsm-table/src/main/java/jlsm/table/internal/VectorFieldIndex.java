@@ -28,6 +28,10 @@ import jlsm.table.Predicate;
  * IndexRegistry validation can complete, but all mutation and query operations throw
  * {@link UnsupportedOperationException}.
  */
+// @spec F10.R85 — final class in jlsm.table.internal implementing SecondaryIndex
+// @spec F10.R6,R86,R87,R88,R89,R90 — STUB: mutation is no-op, supports() false, lookup() throws
+// UOE;
+// deferred to OBL-F10-vector (LsmVectorIndex wiring)
 public final class VectorFieldIndex implements SecondaryIndex {
 
     private final IndexDefinition definition;

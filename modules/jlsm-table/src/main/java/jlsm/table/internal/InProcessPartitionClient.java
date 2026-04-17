@@ -10,6 +10,10 @@ import jlsm.table.TableEntry;
 import jlsm.table.UpdateMode;
 
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -30,6 +34,7 @@ import java.util.Optional;
  * Governed by: .decisions/table-partitioning/adr.md — in-process execution, remote-capable
  * interface.
  */
+// @spec F11.R48 — final class in jlsm.table.internal implementing PartitionClient
 public final class InProcessPartitionClient implements PartitionClient {
 
     private final PartitionDescriptor descriptor;
@@ -50,6 +55,7 @@ public final class InProcessPartitionClient implements PartitionClient {
      * @param descriptor the partition descriptor; must not be null
      * @param table the backing table for this partition; must not be null
      */
+    // @spec F11.R49 — accepts descriptor + table, rejects null for either with NPE
     public InProcessPartitionClient(PartitionDescriptor descriptor, JlsmTable.StringKeyed table) {
         Objects.requireNonNull(descriptor, "descriptor must not be null");
         Objects.requireNonNull(table, "table must not be null");
@@ -62,6 +68,7 @@ public final class InProcessPartitionClient implements PartitionClient {
         return descriptor;
     }
 
+    // @spec F11.R50 — doCreate delegates to wrapped JlsmTable.StringKeyed
     @Override
     public void doCreate(String key, JlsmDocument doc) throws IOException {
         assert key != null : "key must not be null";
@@ -90,6 +97,7 @@ public final class InProcessPartitionClient implements PartitionClient {
     }
 
     @Override
+    // @spec F11.R51 — getRange delegates to wrapped table's getAllInRange
     public Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey)
             throws IOException {
         assert fromKey != null : "fromKey must not be null";
@@ -103,22 +111,44 @@ public final class InProcessPartitionClient implements PartitionClient {
     }
 
     /**
-     * Not yet implemented — query execution through predicates requires QueryExecutor integration
-     * which is handled by the coordinator in WU-3.
+     * Scans the partition's key range and returns matching entries, up to {@code limit}, with a
+     * uniform relevance score of {@code 1.0} for each match. Vector and full-text predicates throw
+     * {@link UnsupportedOperationException} — those query kinds require per-partition indices that
+     * are not wired through the in-process client's {@link JlsmTable.StringKeyed} reference.
      *
-     * @throws UnsupportedOperationException always
+     * @param predicate the query predicate; must not be null
+     * @param limit maximum matches to return; must be positive
+     * @return matching entries with score 1.0, in scan order
+     * @throws UnsupportedOperationException if the predicate contains a FullTextMatch or
+     *             VectorNearest leaf
+     * @throws IOException on scan failure
      */
+    // @spec F11.R46 — PartitionClient.query returns List<ScoredEntry<String>> of at most limit
+    // @spec F11.R48 — scan-and-filter via wrapped JlsmTable.StringKeyed within partition range
     @Override
     public List<ScoredEntry<String>> doQuery(Predicate predicate, int limit) throws IOException {
+        assert predicate != null : "predicate must not be null";
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive, got: " + limit);
         }
-        assert predicate != null : "predicate must not be null";
-        throw new UnsupportedOperationException(
-                "query execution is not implemented in InProcessPartitionClient; "
-                        + "use the PartitionedTable coordinator (WU-3)");
+        final String fromKey = decodeKey(descriptor.lowKey());
+        final String toKey = decodeKey(descriptor.highKey());
+        final List<ScoredEntry<String>> matches = new ArrayList<>();
+        final Iterator<TableEntry<String>> scan = table.getAllInRange(fromKey, toKey);
+        while (scan.hasNext() && matches.size() < limit) {
+            final TableEntry<String> entry = scan.next();
+            if (PartitionPredicateEvaluator.matches(entry.document(), predicate)) {
+                matches.add(new ScoredEntry<>(entry.key(), entry.document(), 1.0));
+            }
+        }
+        return matches;
     }
 
+    private static String decodeKey(MemorySegment seg) {
+        return new String(seg.toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
+    }
+
+    // @spec F11.R52,R102 — close() closes wrapped table (R52) and is idempotent (R102)
     @Override
     public void close() throws IOException {
         if (closed) {

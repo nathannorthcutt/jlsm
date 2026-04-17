@@ -35,7 +35,9 @@ import java.util.Optional;
  * @see <a href="../../../../.spec/domains/serialization/F18-zstd-dictionary-compression.md">F18 R4,
  *      R4a, R5</a>
  */
-// @spec F17.R39b — one-time class-load detection, catches all exceptions
+// @spec F18.R4 — class-load detection via Panama FFM, catches all Throwable, cached
+// @spec F18.R4a — activeTier() exposes Tier enum for operator visibility
+// @spec F18.R5 — binds all required ZSTD downcall handles; fall through to Tier 2 on failure
 final class ZstdNativeBindings {
 
     /**

@@ -428,6 +428,7 @@ public final class StandardLsmTree implements LsmTree {
         }
 
         // @spec F02.R37 — tree builder accepts codec, propagates to writer/reader
+        // @spec F18.R23 — tree-builder compression() is single-codec equivalent of R23 policy
         /**
          * Sets a single compression codec for all levels. Equivalent to
          * {@code compressionPolicy(_ -> codec)}.
@@ -455,6 +456,7 @@ public final class StandardLsmTree implements LsmTree {
          * @return this builder
          */
         // @spec F02.R39 — per-level compression policy via Function<Level, CompressionCodec>
+        // @spec F18.R23 — compressionPolicy(fn) evaluated once per writer creation
         public Builder compressionPolicy(Function<Level, CompressionCodec> policy) {
             this.compressionPolicy = Objects.requireNonNull(policy,
                     "compressionPolicy must not be null");
@@ -536,18 +538,30 @@ public final class StandardLsmTree implements LsmTree {
         }
 
         /**
-         * Resolves the effective compression policy. Returns null if neither compression nor
-         * compressionPolicy was set (backward compatible: use the explicit writerFactory).
+         * Resolves the effective compression policy.
          *
          * <p>
-         * R24: compressionPolicy takes precedence over compression, regardless of set order.
+         * Precedence (R24, R25):
+         * <ol>
+         * <li>{@code compressionPolicy} if set</li>
+         * <li>{@code compression} if set — equivalent to {@code _ -> compression}</li>
+         * <li>explicit {@code sstableWriterFactory}/{@code sstableReaderFactory} if either is set —
+         * return {@code null} so caller factories are used as-is</li>
+         * <li>default {@code _ -> CompressionCodec.none()} — applies when no factories and no
+         * compression configuration are supplied (R25)</li>
+         * </ol>
          */
+        // @spec F18.R24 — policy beats single codec, regardless of set order
+        // @spec F18.R25 — default none() policy only when caller provided no factories either
         private Function<Level, CompressionCodec> resolveCompressionPolicy() {
             if (compressionPolicy != null) {
                 return compressionPolicy;
             }
             if (singleCodec != null) {
                 return _ -> singleCodec;
+            }
+            if (writerFactory == null && readerFactory == null) {
+                return _ -> CompressionCodec.none();
             }
             return null;
         }

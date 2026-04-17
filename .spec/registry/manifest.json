@@ -51,7 +51,7 @@
   "features": {
     "F01": {
       "latest_file": "domains/vector-indexing/F01-float16-vector-support.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "vector-indexing",
         "serialization"
@@ -67,7 +67,7 @@
     },
     "F03": {
       "latest_file": "domains/encryption/F03-encrypt-memory-data.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "encryption"
       ]
@@ -110,10 +110,11 @@
     },
     "F09": {
       "latest_file": "domains/storage/F09-striped-block-cache.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "storage"
-      ]
+      ],
+      "version": 2
     },
     "F10": {
       "latest_file": "domains/query/F10-table-indices-and-queries.md",
@@ -125,14 +126,14 @@
     },
     "F11": {
       "latest_file": "domains/engine/F11-table-partitioning.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "engine"
       ]
     },
     "F12": {
       "latest_file": "domains/vector-indexing/F12-vector-field-type.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "vector-indexing"
       ]
@@ -177,7 +178,7 @@
     },
     "F18": {
       "latest_file": "domains/serialization/F18-zstd-dictionary-compression.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "serialization",
         "storage"
@@ -340,7 +341,7 @@
     },
     "F41": {
       "latest_file": "domains/encryption/F41-encryption-lifecycle.md",
-      "state": "APPROVED",
+      "state": "DRAFT",
       "domains": [
         "encryption",
         "engine"

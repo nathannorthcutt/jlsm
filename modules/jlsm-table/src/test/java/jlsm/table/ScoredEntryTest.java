@@ -20,12 +20,14 @@ class ScoredEntryTest {
         assertEquals(0.95, entry.score());
     }
 
+    // @spec F11.R23
     @Test
     void rejectsNullKey() {
         var doc = minimalDoc();
         assertThrows(NullPointerException.class, () -> new ScoredEntry<>(null, doc, 1.0));
     }
 
+    // @spec F11.R24
     @Test
     void rejectsNullDocument() {
         assertThrows(NullPointerException.class, () -> new ScoredEntry<>("key", null, 1.0));

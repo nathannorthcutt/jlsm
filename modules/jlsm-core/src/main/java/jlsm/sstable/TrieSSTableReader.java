@@ -58,6 +58,10 @@ import java.util.zip.CRC32C;
 // @spec F02.R35 — lazy reader synchronizes channel reads
 // @spec F02.R43 — iterator after close is undefined (documented)
 // @spec F08.R28 — decompressAllBlocks method removed (absent behavior)
+// @spec F18.R19a — v4-capable reader also reads v1, v2, v3 via magic dispatch
+// @spec F18.R19b,R19c — v4 section-ordering invariants + v3-style compression map
+// @spec F18.R20,R20a,R21 — on-disk metadata determines codec for ID 0x03 (see override methods)
+// @spec F18.R22 — v1-only reader on v4/v3/v2 file throws descriptive IOException
 public final class TrieSSTableReader implements SSTableReader {
 
     private final SSTableMetadata metadata;
@@ -250,9 +254,14 @@ public final class TrieSSTableReader implements SSTableReader {
                 compressionMap = CompressionMap.deserialize(mapBytes, mapVersion);
                 codecMap = buildCodecMap(codecs);
 
-                // R20a: v4 — load embedded dictionary and override caller's ZSTD codec
+                // @spec F18.R20a,R21 — file on-disk metadata determines ZSTD decompression
+                // configuration for codec ID 0x03, not the caller-provided codec list.
+                // v4 with dictionary: replace with dictionary-bound codec from meta-block.
+                // v3 or earlier (no dictionary): inject plain ZSTD codec.
                 if (footer.version >= 4 && footer.dictLength > 0) {
                     codecMap = overrideWithDictionaryCodec(ch, footer, codecMap);
+                } else {
+                    codecMap = overrideWithPlainZstdCodec(codecMap);
                 }
 
                 validateCodecMap(compressionMap, codecMap);
@@ -318,9 +327,12 @@ public final class TrieSSTableReader implements SSTableReader {
                 compressionMap = CompressionMap.deserialize(mapBytes, mapVersion);
                 codecMap = buildCodecMap(codecs);
 
-                // R20a: v4 — load embedded dictionary and override caller's ZSTD codec
+                // @spec F18.R20a,R21 — file metadata wins for codec ID 0x03: dict-bound
+                // for v4+dict, plain ZSTD for v3 or earlier. Caller's codec for 0x03 is ignored.
                 if (footer.version >= 4 && footer.dictLength > 0) {
                     codecMap = overrideWithDictionaryCodec(ch, footer, codecMap);
+                } else {
+                    codecMap = overrideWithPlainZstdCodec(codecMap);
                 }
 
                 validateCodecMap(compressionMap, codecMap);
@@ -662,6 +674,8 @@ public final class TrieSSTableReader implements SSTableReader {
      * codec (ID 0x03) with a dictionary-bound codec. Returns a new mutable codec map with the
      * override applied.
      */
+    // @spec F18.R20,R20a — v4 with dictLength > 0: replace caller's codec for ID 0x03 with
+    // a codec bound to the file's embedded dictionary
     private static Map<Byte, CompressionCodec> overrideWithDictionaryCodec(SeekableByteChannel ch,
             Footer footer, Map<Byte, CompressionCodec> originalMap) throws IOException {
         byte[] dictBytes = readBytes(ch, footer.dictOffset, (int) footer.dictLength);
@@ -671,6 +685,22 @@ public final class TrieSSTableReader implements SSTableReader {
         // Create a mutable copy and override codec ID 0x03
         Map<Byte, CompressionCodec> mutableMap = new HashMap<>(originalMap);
         mutableMap.put((byte) 0x03, dictCodec);
+        return Collections.unmodifiableMap(mutableMap);
+    }
+
+    /**
+     * Replaces any entry for codec ID 0x03 in the codec map with a fresh plain (no-dictionary) ZSTD
+     * codec. Called for v3 or earlier SSTables (no dictionary meta-block) so that the on-disk file
+     * metadata, not the caller's codec list, determines how ID 0x03 blocks are decompressed. On
+     * Tier 2/3 (native libzstd unavailable), writers never emit codec ID 0x03 in the first place,
+     * but the override is harmless — the injected codec is only used if the file's compression map
+     * references ID 0x03.
+     */
+    // @spec F18.R20a,R21 — v3 or earlier: reader always uses plain ZSTD for ID 0x03
+    private static Map<Byte, CompressionCodec> overrideWithPlainZstdCodec(
+            Map<Byte, CompressionCodec> originalMap) {
+        Map<Byte, CompressionCodec> mutableMap = new HashMap<>(originalMap);
+        mutableMap.put((byte) 0x03, CompressionCodec.zstd());
         return Collections.unmodifiableMap(mutableMap);
     }
 

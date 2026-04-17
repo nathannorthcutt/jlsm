@@ -19,6 +19,8 @@ import java.util.Objects;
  * Governed by: .decisions/table-partitioning/adr.md — range map with O(log P) routing. KB
  * reference: .kb/distributed-systems/data-partitioning/partitioning-strategies.md#routing
  */
+// @spec F11.R26,R96 — final class in jlsm.table.internal; immutable after construction, safe for
+// multi-threaded use without synchronization
 public final class RangeMap {
 
     // Ordered list of partition descriptors (key order guaranteed by PartitionConfig validation)
@@ -37,6 +39,7 @@ public final class RangeMap {
      *
      * @param config the partition configuration
      */
+    // @spec F11.R27 — null config→NPE
     public RangeMap(PartitionConfig config) {
         Objects.requireNonNull(config, "config must not be null");
         this.descriptors = config.descriptors(); // already unmodifiable via PartitionConfig
@@ -61,6 +64,8 @@ public final class RangeMap {
      * @param key the key to route
      * @return the owning partition descriptor
      */
+    // @spec F11.R28,R29,R30,R31,R32 — O(log P) binary search (R28); null key→NPE (R29);
+    // below first→IAE (R30); at/above last highKey→IAE (R31); boundary routes to N+1 (R32)
     public PartitionDescriptor routeKey(MemorySegment key) {
         Objects.requireNonNull(key, "key must not be null");
         // Binary search: find the last partition whose lowKey <= key
@@ -110,6 +115,9 @@ public final class RangeMap {
      * @param toKey exclusive upper bound
      * @return overlapping partition descriptors
      */
+    // @spec F11.R33,R34,R35,R36,R38 — overlapping descriptors in key order (R33); empty/inverted
+    // range→empty list (R34); no intersection→empty (R35); null from/to→NPE (R36); pLow < to AND
+    // pHigh > from (R38)
     public List<PartitionDescriptor> overlapping(MemorySegment fromKey, MemorySegment toKey) {
         Objects.requireNonNull(fromKey, "fromKey must not be null");
         Objects.requireNonNull(toKey, "toKey must not be null");
@@ -139,6 +147,7 @@ public final class RangeMap {
      *
      * @return all descriptors in key order
      */
+    // @spec F11.R37 — returns all descriptors in key order
     public List<PartitionDescriptor> all() {
         return descriptors;
     }
@@ -150,6 +159,8 @@ public final class RangeMap {
      * @param b second key segment
      * @return negative if a &lt; b, 0 if equal, positive if a &gt; b
      */
+    // @spec F11.R11,R12,R13 — unsigned byte-lex compare (R11) via MemorySegment.mismatch (R12);
+    // prefix rule: mismatch == lenA → a < b (R13)
     private static int compareKeys(MemorySegment a, MemorySegment b) {
         assert a != null : "a must not be null";
         assert b != null : "b must not be null";

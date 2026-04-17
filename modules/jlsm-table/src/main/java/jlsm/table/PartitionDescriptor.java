@@ -21,9 +21,12 @@ import java.util.Objects;
  * @param nodeId location identifier — local ID for in-process, URI for remote (future)
  * @param epoch logical clock incremented on partition config changes (split, merge, reassign)
  */
+// @spec F11.R1 — public record in jlsm.table with the five documented components
 public record PartitionDescriptor(long id, MemorySegment lowKey, MemorySegment highKey,
         String nodeId, long epoch) {
 
+    // @spec F11.R2,R3,R4,R5,R6,R7,R8 — null-reject (R2-R4), epoch >= 0 (R5), defensive copy (R6),
+    // read-only segments (R7), lowKey < highKey in unsigned byte-lex order (R8,R11)
     public PartitionDescriptor {
         Objects.requireNonNull(lowKey, "lowKey must not be null");
         Objects.requireNonNull(highKey, "highKey must not be null");
@@ -83,6 +86,7 @@ public record PartitionDescriptor(long id, MemorySegment lowKey, MemorySegment h
      * Content-based equality: two descriptors are equal if all their fields contain the same
      * values. MemorySegment fields are compared by byte content, not by address identity.
      */
+    // @spec F11.R9,R10 — content-based equals (R9); hashCode consistent below (R10)
     @Override
     public boolean equals(Object obj) {
         if (this == obj) {

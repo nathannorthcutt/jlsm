@@ -13,6 +13,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 
+// @spec F10.R91,R92,R93,R94,R95,R96,R97,R98,R99,R100,R101,R102,R103,R104,R105,R128,R131,R135,R136,R137,R138,R139
+//       — covers IndexRegistry lifecycle + validation: schema-check per field-type/index-type pair
+//         (including EQUALITY-on-BOOLEAN rejection and VECTOR/VectorType match), routing of
+//         insert/update/delete to all indices, two-phase unique-check with rollback, close with
+//         deferred exceptions, read-lock-guarded read methods, documentStore in rollback scope,
+//         defensive vector-array copies from extractFieldValue.
 class IndexRegistryTest {
 
     @TempDir

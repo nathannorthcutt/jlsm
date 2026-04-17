@@ -12,6 +12,11 @@ import java.util.List;
 import jlsm.table.internal.FieldIndex;
 import org.junit.jupiter.api.Test;
 
+// @spec F10.R63,R64,R65,R66,R67,R68,R69,R70,R71,R72,R73,R74,R75,R106,R107,R108,R109,R110,R126,R127,R132,R133,R134
+//       — covers FieldIndex lifecycle + lookup semantics: EQUALITY-only Eq/Ne support, RANGE/UNIQUE
+//         full comparator set, sort-preserving encoded keys via ByteArrayKey, UNIQUE constraint
+//         enforcement (onInsert + onUpdate), null field no-op on insert/update/delete, remove-then-
+//         insert on update, close behavior + post-close rejection.
 class FieldIndexTest {
 
     private MemorySegment stringKey(String key) {

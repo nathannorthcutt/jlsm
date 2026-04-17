@@ -51,6 +51,8 @@ import java.util.zip.CRC32C;
 // @spec F02.R23 — if compressed >= uncompressed, store as NONE
 // @spec F02.R24 — map built during write, serialized after all blocks
 // @spec F02.R32 — intra-block offsets may use int
+// @spec F18.R10,R11,R12,R13,R13a,R14,R18,R19,R27 — dictionary-aware writer lifecycle:
+// buffer → train → compress-with-dict → v4 meta-block; graceful degradation paths
 public final class TrieSSTableWriter implements SSTableWriter {
 
     private enum State {
@@ -281,7 +283,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
             // Dictionary training mode: buffer the raw block for later compression
             long newTotal = dictBufferedBytes + blockBytes.length;
             if (newTotal > dictionaryMaxBufferBytes) {
-                // R14: buffer limit exceeded — abandon dictionary training
+                // @spec F18.R14 — buffer limit exceeded: abandon training, continue streaming
                 dictBufferAbandoned = true;
                 // Compress and write all previously buffered blocks with plain codec
                 for (byte[] buffered : dictBufferedBlocks) {
@@ -562,10 +564,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeFooterV3(mapOffset, mapLength, indexOffset, indexLength, filterOffset, filterLength);
     }
 
-    // @spec F17.R39e — buffer blocks, sample, train, compress all
-    // @spec F17.R39f — dictionary stored as meta-block
-    // @spec F17.R39g — bounded buffer, fails on exceed
-    // @spec F17.R39h — graceful degradation without native libzstd
+    // @spec F18.R11,R11a — train on all buffered blocks, emit v4 with dictionary meta-block
+    // @spec F18.R12 — below-threshold: plain codec, v3, no dictionary stored
+    // @spec F18.R18 — dictionary written after compression map, before key index
+    // @spec F18.R27 — training failure: fall back to plain ZSTD, no SSTable-write failure
     /**
      * Finishes the SSTable with dictionary training. Buffered blocks are either compressed with a
      * trained dictionary (v4 format) or with plain ZSTD (v3 format) depending on block count and
@@ -864,6 +866,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
      *
      * @return the training result, or {@code null}
      */
+    // @spec F18.R13a — observable notification path for training skip/failure events
     public DictionaryTrainingResult dictionaryTrainingResult() {
         return trainingResult;
     }

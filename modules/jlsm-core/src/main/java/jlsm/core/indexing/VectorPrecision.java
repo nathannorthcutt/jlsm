@@ -13,6 +13,7 @@ package jlsm.core.indexing;
  * <li>{@link #FLOAT16} — IEEE 754 binary16, 2 bytes per component (~50% storage reduction).</li>
  * </ul>
  */
+// @spec F01.R1 — exactly two precisions: FLOAT32 (4 bytes) and FLOAT16 (2 bytes)
 public enum VectorPrecision {
 
     /** IEEE 754 binary32 — 4 bytes per vector component. */

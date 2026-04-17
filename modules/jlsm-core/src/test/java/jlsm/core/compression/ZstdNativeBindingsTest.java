@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * actually present in the test environment. The tier must be a valid enum value and detection must
  * be deterministic (cached at class-load time).
  */
+// @spec F18.R4,R4a,R5
 class ZstdNativeBindingsTest {
 
     @Test

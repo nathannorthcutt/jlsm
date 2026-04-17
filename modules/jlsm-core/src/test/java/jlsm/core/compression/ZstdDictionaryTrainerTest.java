@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests are designed to work regardless of native libzstd availability. Training tests that require
  * native are guarded by {@link ZstdDictionaryTrainer#isAvailable()}.
  */
+// @spec F18.R15,R15a,R16,R17
 class ZstdDictionaryTrainerTest {
 
     // ---- isAvailable matches tier ----

@@ -131,6 +131,8 @@ class VectorFieldTypeAdversarialTest {
     /**
      * VFT-6: Creating an EQUALITY index with a non-null similarityFunction should be rejected since
      * the parameter is meaningless and misleading.
+     *
+     * @spec F12.R17 — non-null similarityFunction rejected when indexType is not VECTOR
      */
     @Test
     void vft6_nonVectorIndexWithSimilarityFunctionRejected() {
@@ -169,6 +171,8 @@ class VectorFieldTypeAdversarialTest {
     /**
      * VFT-8: Binary serializer must round-trip boundary float values correctly (negative zero,
      * max/min finite, subnormal).
+     *
+     * @spec F12.R27,R30,R33 — encode/decode FLOAT32 preserves bit patterns across boundary values
      */
     @Test
     void vft8_binaryRoundTripBoundaryFloat32Values() {
@@ -189,6 +193,8 @@ class VectorFieldTypeAdversarialTest {
 
     /**
      * VFT-8: Binary serializer must round-trip boundary FLOAT16 values correctly.
+     *
+     * @spec F12.R28,R31,R34 — encode/decode FLOAT16 preserves bit patterns across boundary values
      */
     @Test
     void vft8_binaryRoundTripBoundaryFloat16Values() {

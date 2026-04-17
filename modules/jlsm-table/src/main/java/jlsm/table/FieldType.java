@@ -16,6 +16,7 @@ import java.util.Objects;
  */
 // @spec F13.R42 — sealed interface permitting Primitive, ArrayType, ObjectType, VectorType,
 // BoundedString
+// @spec F12.R2 — VectorType listed as permitted implementation
 public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayType,
         FieldType.ObjectType, FieldType.VectorType, FieldType.BoundedString {
 
@@ -114,6 +115,12 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      */
     // @spec F13.R44 — validates elementType is FLOAT16 or FLOAT32
     // @spec F13.R45 — validates dimensions > 0
+    // @spec F12.R1 — record with elementType and dimensions
+    // @spec F12.R3 — null elementType rejected with NullPointerException
+    // @spec F12.R4 — non-FLOAT16/FLOAT32 elementType rejected with IllegalArgumentException
+    // @spec F12.R5 — non-positive dimensions rejected with IllegalArgumentException
+    // @spec F12.R6 — any positive dimensions accepted (no upper bound)
+    // @spec F12.R39,R40,R41 — record auto-generated equals/hashCode by (elementType, dimensions)
     record VectorType(Primitive elementType, int dimensions) implements FieldType {
         public VectorType {
             Objects.requireNonNull(elementType, "elementType must not be null");
@@ -183,6 +190,8 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      * @param dimensions the fixed number of elements per vector; must be positive
      * @return a new VectorType
      */
+    // @spec F12.R7 — factory returns new VectorType with given elementType and dimensions
+    // @spec F12.R8 — propagates VectorType constructor validation exceptions
     static FieldType vector(Primitive elementType, int dimensions) {
         return new VectorType(elementType, dimensions);
     }
@@ -193,6 +202,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      * @param elementType the element type; must not be null
      * @return a new ArrayType
      */
+    // @spec F12.R44 — rejects null via Objects.requireNonNull, not assert alone
     static FieldType arrayOf(FieldType elementType) {
         Objects.requireNonNull(elementType, "elementType must not be null");
         return new ArrayType(elementType);
@@ -204,6 +214,7 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      * @param fields the field definitions; must not be null
      * @return a new ObjectType
      */
+    // @spec F12.R44 — rejects null via Objects.requireNonNull, not assert alone
     static FieldType objectOf(List<FieldDefinition> fields) {
         Objects.requireNonNull(fields, "fields must not be null");
         return new ObjectType(fields);
