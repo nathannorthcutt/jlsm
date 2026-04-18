@@ -27,6 +27,8 @@ import jlsm.table.Predicate;
  * @param offset OFFSET value, empty if not specified
  * @param vectorDistance vector distance ordering info, empty if no VECTOR_DISTANCE in ORDER BY
  */
+// @spec F07.R79,R80,R81,R82 — immutable record; null-reject all components; defensively copy lists;
+// project/alias size check
 public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
         List<String> aliases, List<OrderBy> orderBy, OptionalInt limit, OptionalInt offset,
         Optional<VectorDistanceOrder> vectorDistance) {
@@ -67,6 +69,7 @@ public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
      *
      * @param index the zero-based parameter index
      */
+    // @spec F07.R83 — BindMarker implements Comparable<BindMarker> comparing index values
     public record BindMarker(int index) implements Comparable<BindMarker> {
         public BindMarker {
             if (index < 0) {
@@ -88,6 +91,7 @@ public record SqlQuery(Optional<Predicate> predicate, List<String> projections,
      * @param metric the distance metric string (e.g. "cosine", "euclidean", "dot")
      * @param ascending true for ASC (default), false for DESC
      */
+    // @spec F07.R84 — stores field, parameterIndex, metric, ascending (ORDER BY direction)
     public record VectorDistanceOrder(String field, int parameterIndex, String metric,
             boolean ascending) {
         public VectorDistanceOrder {

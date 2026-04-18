@@ -46,6 +46,7 @@ import jlsm.table.Predicate;
  * Governed by: domains.md — Vector Similarity SQL Syntax section,
  * .kb/algorithms/sql-extensions/vector-similarity-sql-syntax.md
  */
+// @spec F07.R98 — SqlTranslator holds no mutable state; each translate() call is independent
 public final class SqlTranslator {
 
     /** Known distance metrics accepted by VECTOR_DISTANCE. */
@@ -59,6 +60,8 @@ public final class SqlTranslator {
      * @return the translated query
      * @throws SqlParseException if the AST references invalid fields or has type mismatches
      */
+    // @spec F07.R54,R55,R56,R59,R69,R95 — non-null args; ORDER BY field validation; VECTOR_DISTANCE
+    // routing; reject other forms
     public SqlQuery translate(SqlAst.SelectStatement statement, JlsmSchema schema)
             throws SqlParseException {
         Objects.requireNonNull(statement, "statement");
@@ -101,6 +104,8 @@ public final class SqlTranslator {
 
     // ── Column translation ───────────────────────────────────────
 
+    // @spec F07.R57,R75 — validate each SELECT column against schema; SELECT * yields empty
+    // projections list
     private List<String> translateColumns(List<SqlAst.Column> columns, JlsmSchema schema)
             throws SqlParseException {
         if (columns.size() == 1 && columns.getFirst() instanceof SqlAst.Column.Wildcard) {
@@ -117,6 +122,7 @@ public final class SqlTranslator {
         return names;
     }
 
+    // @spec F07.R76 — aliases list parallel to projections; empty string when no AS clause
     private List<String> translateAliases(List<SqlAst.Column> columns) {
         if (columns.size() == 1 && columns.getFirst() instanceof SqlAst.Column.Wildcard) {
             return List.of();
@@ -133,6 +139,8 @@ public final class SqlTranslator {
 
     // ── Expression translation ───────────────────────────────────
 
+    // @spec F07.R58,R92,R93 — WHERE expressions dispatched; NOT / IS NULL explicitly rejected as
+    // unsupported
     private Predicate translateExpression(SqlAst.Expression expr, JlsmSchema schema)
             throws SqlParseException {
         return switch (expr) {
@@ -158,6 +166,8 @@ public final class SqlTranslator {
         };
     }
 
+    // @spec F07.R58,R60,R61,R62,R74 — column/type validation; reversed (value,column) swap+flip;
+    // predicate mapping
     private Predicate translateComparison(SqlAst.Expression.Comparison cmp, JlsmSchema schema)
             throws SqlParseException {
         // Support both "field op value" and "value op field" (reversed) comparisons
@@ -214,6 +224,7 @@ public final class SqlTranslator {
      * Flips a comparison operator for reversed comparisons (e.g., {@code 5 < age} →
      * {@code age > 5}).
      */
+    // @spec F07.R74 — GT↔LT, GTE↔LTE flipped; EQ/NE unchanged
     private SqlAst.ComparisonOp flipOp(SqlAst.ComparisonOp op) {
         return switch (op) {
             case EQ -> SqlAst.ComparisonOp.EQ;
@@ -225,6 +236,7 @@ public final class SqlTranslator {
         };
     }
 
+    // @spec F07.R64 — AND → Predicate.And; OR → Predicate.Or; both with two-element child lists
     private Predicate translateLogical(SqlAst.Expression.Logical log, JlsmSchema schema)
             throws SqlParseException {
         final Predicate left = translateExpression(log.left(), schema);
@@ -236,6 +248,7 @@ public final class SqlTranslator {
         };
     }
 
+    // @spec F07.R63 — BETWEEN translates to Predicate.Between after type-checked bounds
     private Predicate translateBetween(SqlAst.Expression.Between bet, JlsmSchema schema)
             throws SqlParseException {
         final String field = extractFieldName(bet.field());
@@ -258,6 +271,8 @@ public final class SqlTranslator {
         return new Predicate.Between(field, low, high);
     }
 
+    // @spec F07.R65,R66,R67,R68,R94 — MATCH → FullTextMatch, arity/field/type checks; unknown
+    // function rejected
     private Predicate translateFunctionCall(SqlAst.Expression.FunctionCall fn, JlsmSchema schema)
             throws SqlParseException {
         return switch (fn.name()) {
@@ -285,6 +300,8 @@ public final class SqlTranslator {
 
     // ── VECTOR_DISTANCE translation ──────────────────────────────
 
+    // @spec F07.R69,R70,R71,R72,R73 — VECTOR_DISTANCE arity=3, field type, bind-param vector,
+    // string metric
     private SqlQuery.VectorDistanceOrder translateVectorDistance(SqlAst.Expression.FunctionCall fn,
             JlsmSchema schema, boolean ascending) throws SqlParseException {
         if (fn.arguments().size() != 3) {
@@ -340,11 +357,16 @@ public final class SqlTranslator {
         };
     }
 
+    // @spec F07.R77,R78 — integer widening Int→Long→fail; decimal overflow must throw, not Infinity
     private Number parseNumber(String text) throws SqlParseException {
         assert text != null : "numeric text must not be null";
         try {
-            if (text.contains(".")) {
-                return Double.parseDouble(text);
+            if (text.contains(".") || text.contains("e") || text.contains("E")) {
+                final double d = Double.parseDouble(text);
+                if (Double.isInfinite(d) || Double.isNaN(d)) {
+                    throw new SqlParseException("Numeric literal out of range: '" + text + "'", -1);
+                }
+                return d;
             }
             try {
                 return Integer.parseInt(text);
@@ -364,6 +386,7 @@ public final class SqlTranslator {
                 -1);
     }
 
+    // @spec F07.R57,R58,R59 — unknown field surfaced as SqlParseException naming field and schema
     private void validateField(String fieldName, JlsmSchema schema) throws SqlParseException {
         assert fieldName != null : "fieldName must not be null";
         if (schema.fieldIndex(fieldName) < 0) {
@@ -378,6 +401,8 @@ public final class SqlTranslator {
         return schema.fields().get(idx).type();
     }
 
+    // @spec F07.R60,R61,R88,R89,R90,R91 — literal type compatibility table; bind markers skip type
+    // checking
     private void validateValueType(String fieldName, Object value, JlsmSchema schema)
             throws SqlParseException {
         // Bind markers are resolved at execution time — skip type checking
@@ -423,6 +448,7 @@ public final class SqlTranslator {
                 || type == FieldType.Primitive.INT32;
     }
 
+    // @spec F07.R67 — MATCH target must be STRING or BoundedString
     private void validateFieldIsString(String fieldName, JlsmSchema schema)
             throws SqlParseException {
         final FieldType type = resolveFieldType(fieldName, schema);
@@ -432,6 +458,7 @@ public final class SqlTranslator {
         }
     }
 
+    // @spec F07.R71 — VECTOR_DISTANCE target must be VectorType or ArrayType of FLOAT16/FLOAT32
     private void validateFieldIsVector(String fieldName, JlsmSchema schema)
             throws SqlParseException {
         final FieldType type = resolveFieldType(fieldName, schema);

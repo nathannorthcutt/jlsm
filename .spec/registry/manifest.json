@@ -95,7 +95,7 @@
     },
     "F07": {
       "latest_file": "domains/query/F07-sql-query-support.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "domains": [
         "query"
       ]
