@@ -412,7 +412,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-01: MonotonicClock wrapping System.nanoTime() with fixed Instant epoch; GracePeriodManager default constructor now uses MonotonicClock",
+      "resolved_date": "2026-04-19"
     },
     {
       "id": "OBL-F04-R20-phi-init",
@@ -460,7 +462,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-01: ListenerDispatcher<L> with bounded single-thread executor, drop-oldest overflow, per-listener exception isolation; RapidMembership.notify* routed through dispatcher",
+      "resolved_date": "2026-04-19"
     },
     {
       "id": "OBL-F05-R37",
