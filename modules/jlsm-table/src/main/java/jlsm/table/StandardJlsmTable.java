@@ -1,6 +1,7 @@
 package jlsm.table;
 
 import jlsm.core.indexing.FullTextIndex;
+import jlsm.core.indexing.VectorIndex;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.tree.TypedLsmTree;
 import jlsm.table.internal.IndexRegistry;
@@ -56,6 +57,7 @@ public final class StandardJlsmTable {
         private JlsmSchema schema;
         private final List<IndexDefinition> indexDefinitions = new ArrayList<>();
         private FullTextIndex.Factory fullTextFactory;
+        private VectorIndex.Factory vectorFactory;
 
         private StringKeyedBuilder() {
         }
@@ -85,7 +87,9 @@ public final class StandardJlsmTable {
         /**
          * Adds a secondary index definition. May be called multiple times. When any definition has
          * {@link IndexType#FULL_TEXT}, a {@link FullTextIndex.Factory} must also be supplied via
-         * {@link #fullTextFactory(FullTextIndex.Factory)}.
+         * {@link #fullTextFactory(FullTextIndex.Factory)}. When any definition has
+         * {@link IndexType#VECTOR}, a {@link VectorIndex.Factory} must also be supplied via
+         * {@link #vectorFactory(VectorIndex.Factory)}.
          *
          * @param definition the index definition; must not be null
          * @return this builder
@@ -109,6 +113,19 @@ public final class StandardJlsmTable {
             return this;
         }
 
+        /**
+         * Sets the vector index factory used to materialise {@link IndexType#VECTOR} indices.
+         * Required when any registered definition has type VECTOR; ignored otherwise.
+         *
+         * @param vectorFactory the factory; must not be null
+         * @return this builder
+         */
+        public StringKeyedBuilder vectorFactory(VectorIndex.Factory vectorFactory) {
+            this.vectorFactory = Objects.requireNonNull(vectorFactory,
+                    "vectorFactory must not be null");
+            return this;
+        }
+
         @Override
         public JlsmTable.StringKeyed build() {
             Objects.requireNonNull(tree, "tree must not be null");
@@ -129,7 +146,7 @@ public final class StandardJlsmTable {
             if (schema != null) {
                 try {
                     registry = new IndexRegistry(schema, List.copyOf(indexDefinitions),
-                            fullTextFactory);
+                            fullTextFactory, vectorFactory);
                 } catch (IOException e) {
                     // Wrap in UncheckedIOException so the builder signature stays unchanged.
                     throw new UncheckedIOException("Failed to create secondary index registry", e);

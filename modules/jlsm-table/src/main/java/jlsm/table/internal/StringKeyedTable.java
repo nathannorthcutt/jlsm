@@ -173,8 +173,8 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
     }
 
     /**
-     * Returns the index registry, or {@code null} if none is configured. Package-private for
-     * {@link jlsm.table.TableQuery} to access during execute() wiring in a later WD.
+     * Returns the index registry, or {@code null} if none is configured. Package-accessible for
+     * {@link jlsm.table.TableQuery} to access during {@code execute()} wiring.
      */
     public IndexRegistry indexRegistry() {
         return indexRegistry;

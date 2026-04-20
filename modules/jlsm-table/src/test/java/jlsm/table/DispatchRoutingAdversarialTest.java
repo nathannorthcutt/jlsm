@@ -62,25 +62,51 @@ class DispatchRoutingAdversarialTest {
         index.close();
     }
 
-    // Finding: F-R1.dispatch_routing.1.3
-    // Bug: VectorFieldIndex.supports() returns true for VectorNearest but lookup() throws
-    // UnsupportedOperationException — broken supports/lookup contract
-    // Correct behavior: supports() must return false while lookup() is unimplemented,
-    // so QueryExecutor falls back to scan-and-filter instead of crashing
-    // Fix location: VectorFieldIndex.java:75-78 — supports() method
-    // Regression watch: When lookup() is implemented, supports() must be updated to return true
+    // Finding: F-R1.dispatch_routing.1.3 (resolved by WD-02)
+    // Historical bug: VectorFieldIndex.supports() returned true for VectorNearest but lookup()
+    // threw UnsupportedOperationException — broken supports/lookup contract.
+    // Post-WD-02 behavior: lookup() is wired to a real backing VectorIndex, so supports() now
+    // correctly returns true for VectorNearest on the index's field. This regression watch
+    // asserts the contract end-to-end: supports/lookup must agree.
     @Test
-    void test_VectorFieldIndex_supports_returnsFalseWhileLookupUnimplemented() throws IOException {
+    void test_VectorFieldIndex_supportsAndLookup_agreePostWd02() throws IOException {
         var def = new IndexDefinition("embedding", IndexType.VECTOR,
                 jlsm.core.indexing.SimilarityFunction.COSINE);
-        var index = new VectorFieldIndex(def);
+        // Fake backing to exercise supports/lookup without the full LSM stack.
+        jlsm.core.indexing.VectorIndex<MemorySegment> fake = new jlsm.core.indexing.VectorIndex.IvfFlat<>() {
+
+            @Override
+            public void index(MemorySegment docId, float[] vector) {
+            }
+
+            @Override
+            public void remove(MemorySegment docId) {
+            }
+
+            @Override
+            public List<jlsm.core.indexing.VectorIndex.SearchResult<MemorySegment>> search(
+                    float[] query, int topK) {
+                return List.of();
+            }
+
+            @Override
+            public jlsm.core.indexing.VectorPrecision precision() {
+                return jlsm.core.indexing.VectorPrecision.FLOAT32;
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        var index = new VectorFieldIndex(def, fake);
 
         var predicate = new Predicate.VectorNearest("embedding", new float[]{ 1.0f, 2.0f }, 5);
 
-        // supports() must return false because lookup() throws UnsupportedOperationException.
-        // If supports() returns true, QueryExecutor.executeLeaf() will call lookup() and crash.
-        assertFalse(index.supports(predicate),
-                "supports() must return false while lookup() is not implemented");
+        // Post-WD-02: supports() must return true for VectorNearest on the index's field,
+        // and lookup() must not throw — both sides of the contract now agree.
+        assertTrue(index.supports(predicate),
+                "supports() must be true now that lookup() is wired to a real backing index");
+        assertNotNull(index.lookup(predicate), "lookup() must not throw post-WD-02");
 
         index.close();
     }

@@ -2,6 +2,10 @@ plugins { id 'java-library' }
 
 dependencies {
     api project(':modules:jlsm-core')
+    // Integration tests only — jlsm-vector's production code does not depend on jlsm-table.
+    // This dep supports WD-02 end-to-end tests that wire LsmVectorIndexFactory into
+    // StandardJlsmTable + StringKeyedTable + IndexRegistry through the jlsm-core factory SPI.
+    testImplementation project(':modules:jlsm-table')
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -10,6 +14,7 @@ tasks.withType(JavaCompile).configureEach {
 
 test {
     jvmArgs '--add-modules', 'jdk.incubator.vector'
+    jvmArgs '--add-exports', 'jlsm.table/jlsm.table.internal=ALL-UNNAMED'
     jvmArgs '-ea'
 }
 

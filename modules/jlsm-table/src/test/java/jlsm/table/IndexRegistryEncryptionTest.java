@@ -102,7 +102,8 @@ class IndexRegistryEncryptionTest {
 
         var defs = List
                 .of(new IndexDefinition("embedding", IndexType.VECTOR, SimilarityFunction.COSINE));
-        var registry = new IndexRegistry(schema, defs);
+        var registry = new IndexRegistry(schema, defs, null,
+                jlsm.table.internal.InMemoryVectorFactories.ivfFlatFake());
         assertFalse(registry.isEmpty());
         registry.close();
     }

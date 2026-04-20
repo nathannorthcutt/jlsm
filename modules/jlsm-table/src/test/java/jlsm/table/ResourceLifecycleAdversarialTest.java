@@ -109,13 +109,17 @@ class ResourceLifecycleAdversarialTest {
                 new IndexDefinition("embedding", IndexType.VECTOR, SimilarityFunction.COSINE),
                 new IndexDefinition("age", IndexType.EQUALITY));
 
-        try (IndexRegistry registry = new IndexRegistry(schema, definitions)) {
+        try (IndexRegistry registry = new IndexRegistry(schema, definitions, null,
+                jlsm.table.internal.InMemoryVectorFactories.ivfFlatFake())) {
             MemorySegment pk = stringKey("pk-1");
             JlsmDocument doc = JlsmDocument.of(schema, "name", "Alice", "age", 30);
 
-            // VectorFieldIndex.onInsert is now a no-op — insert should succeed
+            // Post-WD-02: VectorFieldIndex.onInsert delegates to a real backing — insert must
+            // still succeed even when the vector field is null on the document (treated as
+            // no-op per R56). The "must-not-throw" invariant remains.
             assertDoesNotThrow(() -> registry.onInsert(pk, doc),
-                    "onInsert should succeed when VectorFieldIndex.onInsert is a no-op stub");
+                    "onInsert should succeed when VectorFieldIndex routes the mutation to its "
+                            + "backing vector index (null vector field is a no-op)");
 
             // After successful insert, FieldIndex "name" should contain the entry
             SecondaryIndex nameIndex = registry.findIndex(new Predicate.Eq("name", "Alice"));

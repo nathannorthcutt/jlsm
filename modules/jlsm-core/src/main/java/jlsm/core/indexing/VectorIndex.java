@@ -2,6 +2,7 @@ package jlsm.core.indexing;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.util.List;
 import java.util.Objects;
 
@@ -25,6 +26,45 @@ import java.util.Objects;
  */
 public sealed interface VectorIndex<D> extends Closeable
         permits VectorIndex.IvfFlat, VectorIndex.Hnsw {
+
+    /**
+     * SPI for producing {@link VectorIndex} instances keyed by {@code (tableName, fieldName)}.
+     *
+     * <p>
+     * The factory is the module-boundary contract that lets higher-level modules (e.g.
+     * {@code jlsm-table}) obtain a vector index implementation without a static dependency on the
+     * module that owns the concrete implementation (e.g. {@code jlsm-vector}). Each call to
+     * {@link #create} returns a fresh index that the caller owns and must close.
+     *
+     * <p>
+     * The factory picks the algorithm (e.g. IvfFlat vs Hnsw) as part of its construction —
+     * different factory instances can produce different algorithm flavours. The
+     * {@code (dimensions, elementPrecision, similarityFunction)} triple comes from the table schema
+     * and index definition and must be respected by the implementation.
+     *
+     * <p>
+     * Implementations should isolate each {@code (tableName, fieldName)} pair on its own backing
+     * storage so multiple indices on the same root directory do not share state.
+     */
+    // @spec F10.R85,R86,R87,R88,R89,R90 — factory SPI that bridges jlsm-core and jlsm-vector
+    // without a static jlsm-table -> jlsm-vector dependency; resolves OBL-F10-vector.
+    interface Factory {
+
+        /**
+         * Creates a vector index for the given table and field.
+         *
+         * @param tableName the name of the table owning the index; must not be null or blank
+         * @param fieldName the name of the field being indexed; must not be null or blank
+         * @param dimensions the fixed number of components per vector; must be positive
+         * @param precision the component precision (FLOAT32 or FLOAT16); must not be null
+         * @param similarityFunction the similarity function; must not be null
+         * @return a new {@link VectorIndex} instance keyed by primary-key bytes
+         * @throws IOException if the backing storage cannot be created
+         */
+        VectorIndex<MemorySegment> create(String tableName, String fieldName, int dimensions,
+                VectorPrecision precision, SimilarityFunction similarityFunction)
+                throws IOException;
+    }
 
     /**
      * Indexes {@code vector} under {@code docId}. If {@code docId} was previously indexed, the old

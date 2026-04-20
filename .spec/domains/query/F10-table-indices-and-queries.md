@@ -1,7 +1,7 @@
 ---
 {
   "id": "F10",
-  "version": 3,
+  "version": 4,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["query", "engine"],
@@ -11,7 +11,7 @@
   "amended_by": null,
   "decision_refs": [],
   "kb_refs": [],
-  "open_obligations": ["OBL-F10-vector"]
+  "open_obligations": []
 }
 ---
 
@@ -211,13 +211,13 @@ R85. `VectorFieldIndex` must implement `SecondaryIndex` and must be a final clas
 
 R86. `VectorFieldIndex.supports` must return true only for `VectorNearest` predicates whose field matches the index's field.
 
-R87. `VectorFieldIndex.onInsert` must extract the vector from the field value and insert it into the backing vector index keyed by primary key.
+R87. `VectorFieldIndex.onInsert` must extract the vector from the field value and insert it into the backing vector index keyed by primary key. The backing implementation is obtained via `VectorIndex.Factory.create(tableName, fieldName, dimensions, precision, similarityFunction)`; when a table registers a `VECTOR` index without a configured factory, `build()` must fail with `IllegalArgumentException` rather than silently accepting unindexed writes.
 
-R88. `VectorFieldIndex.onUpdate` must remove the old vector and insert the new vector for the given primary key.
+R88. `VectorFieldIndex.onUpdate` must remove the old vector and insert the new vector for the given primary key. When the old vector is absent (field previously unset), the removal step is a no-op and the insert still proceeds.
 
 R89. `VectorFieldIndex.onDelete` must remove the vector associated with the given primary key from the backing index.
 
-R90. `VectorFieldIndex.lookup` for `VectorNearest` must return the `topK` closest primary keys to the query vector according to the configured similarity function.
+R90. `VectorFieldIndex.lookup` for `VectorNearest` must return the `topK` closest primary keys to the query vector according to the configured similarity function, using the backing implementation's `search(queryVector, topK)` call.
 
 ### IndexRegistry — index lifecycle management
 
@@ -432,19 +432,34 @@ Enable secondary index support and a fluent query API for `JlsmTable`. Users def
 
 **Code fixes applied:** none.
 
-#### Amendments (v2 → v3)
+#### Amendments (v2 → v4)
 
-Landed under `cross-module-integration/WD-01` (2026-04-20); resolves `OBL-F10-fulltext`.
+Two parallel cross-module-integration work definitions closed the remaining F10 integration obligations. WD-01 (`OBL-F10-fulltext`) merged first and bumped v2 → v3. WD-02 (`OBL-F10-vector`) merges next and bumps v3 → v4, emptying `open_obligations`.
 
+**WD-01 (2026-04-20) — `OBL-F10-fulltext` resolved:**
 - **R5 (PARTIAL → SATISFIED):** amended to codify that the FULL_TEXT integration path delegates to a `FullTextIndex<MemorySegment>` supplied by a `FullTextIndex.Factory` SPI. This keeps the one-way dependency arrow from `jlsm-table` → `jlsm-core` intact — `jlsm-table` never imports `jlsm-indexing`.
 - **R79 (VIOLATED → SATISFIED):** amended to require constructor injection of the backing `FullTextIndex<MemorySegment>` and to reject non-FULL_TEXT index types with `IllegalArgumentException`. The prior stub that threw `UnsupportedOperationException` on every method is replaced by a real adapter.
 - **R80 (VIOLATED → SATISFIED):** amended to explicitly require `supports` to return false for all non-FullTextMatch predicates and after close.
 - **R81, R82, R83 (VIOLATED → SATISFIED):** amended to describe the mutation-routing contract in terms of the `FullTextIndex.index` / `FullTextIndex.remove` batch API rather than lower-level term tokenisation (tokenisation lives inside the backing implementation).
 - **R84 (VIOLATED → SATISFIED):** amended to describe the `FullTextMatch → Query.TermQuery` translation path, to reject non-FullTextMatch predicates with `UnsupportedOperationException`, and to require idempotent `close()`.
 
-Supporting artefacts:
+Supporting artefacts (WD-01):
 - `jlsm.core.indexing.FullTextIndex.Factory` — factory SPI in `jlsm-core`.
 - `jlsm.indexing.LsmFullTextIndexFactory` — concrete factory in `jlsm-indexing` producing LSM-backed indices keyed by `(tableName, fieldName)`.
 - `StandardJlsmTable.StringKeyedBuilder.addIndex(...)` + `.fullTextFactory(...)` — table-builder surface for registering FULL_TEXT indices. The builder rejects FULL_TEXT definitions with no factory at `build()` time (fail-fast at table creation, not on first write).
 
-Open obligation after WD-01: `OBL-F10-vector` remains (VectorFieldIndex wiring — scope of WD-02).
+**WD-02 (2026-04-20) — `OBL-F10-vector` resolved:**
+- **R6 (PARTIAL → SATISFIED):** The validation half (reject VECTOR on non-VectorType) already shipped; the runtime half — writes actually reach the index — now ships via the factory SPI described in R87.
+- **R87 (extended):** references `VectorIndex.Factory.create(tableName, fieldName, dimensions, precision, similarityFunction)` and codifies fail-fast behaviour when no factory is configured (prior wording allowed silent stub no-ops).
+- **R88 (extended):** covers the "old vector absent" edge case explicitly — removal is a no-op; the insert still proceeds.
+- **R90 (extended):** names `search(queryVector, topK)` as the backing call.
+- **VectorIndex.Factory SPI** (new in jlsm-core, `jlsm.core.indexing.VectorIndex.Factory`): bridges the `jlsm-table → jlsm-vector` module-boundary invariant without a static dependency. Factory instances pick the algorithm (IvfFlat vs Hnsw) so table builders can configure the runtime flavour without changing the table API.
+
+Supporting artefacts (WD-02):
+- `jlsm-core`: new nested interface `VectorIndex.Factory` (public).
+- `jlsm-vector`: new public class `LsmVectorIndexFactory` producing `LsmVectorIndex` (IvfFlat/Hnsw) instances under a per-(table, field) subdirectory.
+- `jlsm-table`: `StandardJlsmTable.stringKeyedBuilder()` gained `vectorFactory(VectorIndex.Factory)`. Tables registering a `VECTOR` index without a factory now fail at `build()` with `IllegalArgumentException` instead of silently dropping writes.
+
+**Combined IndexRegistry surface:** the four-arg constructor `IndexRegistry(schema, definitions, fullTextFactory, vectorFactory)` accepts both factories together; the three-arg overload passing `null` for `vectorFactory` is retained for call-sites that do not register VECTOR indices.
+
+**Obligations resolved:** `open_obligations` is now empty.
