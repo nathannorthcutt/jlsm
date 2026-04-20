@@ -777,23 +777,51 @@ final class ConcurrencyAdversarialTest {
             ownership.assignOwner("partition-" + i, view);
         }
 
-        // Read the cache via reflection to check its size
+        // @spec F04.R93 — per-epoch cache must be bounded by maxEntriesPerEpoch, evicting the
+        // oldest entry when the bound is reached. Inspect the cache via reflection through the
+        // EpochCache.size() method.
         Field cacheField = RendezvousOwnership.class.getDeclaredField("cache");
         cacheField.setAccessible(true);
-        ConcurrentHashMap<Long, ConcurrentHashMap<String, NodeAddress>> cache = (ConcurrentHashMap<Long, ConcurrentHashMap<String, NodeAddress>>) cacheField
+        ConcurrentHashMap<Long, Object> cache = (ConcurrentHashMap<Long, Object>) cacheField
                 .get(ownership);
 
-        ConcurrentHashMap<String, NodeAddress> epochCache = cache.get(1L);
+        Object epochCache = cache.get(1L);
         assertNotNull(epochCache, "Epoch cache should exist for epoch 1");
 
-        // The per-epoch cache must be bounded. A reasonable upper bound is much less than
-        // the number of unique IDs we inserted. We assert it is capped at some maximum
-        // (the exact value is implementation-defined, but must be << 100_000).
-        assertTrue(epochCache.size() <= 10_000,
-                "Per-epoch cache must be bounded to prevent unbounded heap growth — " + "found "
-                        + epochCache.size() + " entries for " + uniqueIds
-                        + " unique IDs. The cache should cap at a maximum size and evict or "
-                        + "bypass entries beyond the limit.");
+        final java.lang.reflect.Method sizeMethod = epochCache.getClass().getDeclaredMethod("size");
+        sizeMethod.setAccessible(true);
+        final int size = (int) sizeMethod.invoke(epochCache);
+        assertTrue(size <= ownership.maxEntriesPerEpoch(),
+                "Per-epoch cache must be bounded by maxEntriesPerEpoch — found " + size
+                        + " entries for " + uniqueIds + " unique IDs with bound "
+                        + ownership.maxEntriesPerEpoch() + ".");
+    }
+
+    // @spec F04.R93 — the cache bound must be configurable and a smaller bound must cap the cache
+    // strictly at that value, evicting the oldest entry when a new key arrives at the limit.
+    @Test
+    @Timeout(10)
+    @SuppressWarnings("unchecked")
+    void test_RendezvousOwnership_cache_configurableBoundAndLruEviction() throws Exception {
+        final var ownership = new RendezvousOwnership(5);
+        final var member = new Member(NODE_A, MemberState.ALIVE, 1);
+        final var view = new MembershipView(1, Set.of(member),
+                Instant.parse("2026-03-20T00:00:00Z"));
+
+        for (int i = 0; i < 20; i++) {
+            ownership.assignOwner("partition-" + i, view);
+        }
+
+        Field cacheField = RendezvousOwnership.class.getDeclaredField("cache");
+        cacheField.setAccessible(true);
+        ConcurrentHashMap<Long, Object> cache = (ConcurrentHashMap<Long, Object>) cacheField
+                .get(ownership);
+        Object epochCache = cache.get(1L);
+        final java.lang.reflect.Method sizeMethod = epochCache.getClass().getDeclaredMethod("size");
+        sizeMethod.setAccessible(true);
+        final int size = (int) sizeMethod.invoke(epochCache);
+        assertEquals(5, size,
+                "Cache must be capped at configured maxEntriesPerEpoch with LRU eviction");
     }
 
     // ---- Shared stubs for ClusteredEngine tests ----

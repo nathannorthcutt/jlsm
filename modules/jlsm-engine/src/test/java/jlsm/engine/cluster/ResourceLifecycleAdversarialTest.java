@@ -292,6 +292,57 @@ final class ResourceLifecycleAdversarialTest {
                         + "scheduler and discovery registration leaked");
     }
 
+    // @spec F04.R83 — RapidMembership must wire failureDetector.remove when a member departs so
+    // the detector does not retain heartbeat history for nodes that have left the view. Without
+    // this wiring, the remove() method exists but the membership protocol never calls it.
+    @Test
+    @Timeout(10)
+    void test_RapidMembership_handleLeaveNotification_evictsFailureDetectorHistory()
+            throws Exception {
+        final var local = new NodeAddress("local", "localhost", 9101);
+        final var peer = new NodeAddress("peer", "localhost", 9102);
+        final var transport = new InJvmTransport(local);
+        final var peerTransport = new InJvmTransport(peer);
+        final var discovery = new InJvmDiscoveryProvider();
+        final var config = ClusterConfig.builder().build();
+        final var detector = new PhiAccrualFailureDetector(10);
+
+        // Seed heartbeats for peer so it has phi history.
+        long t0 = 1_000_000_000L;
+        detector.recordHeartbeat(peer, t0);
+        detector.recordHeartbeat(peer, t0 + 50_000_000L);
+        assertTrue(detector.phi(peer, t0 + 100_000_000L) > 0.0,
+                "precondition: peer must have positive phi before departure");
+
+        final var rapid = new RapidMembership(local, transport, discovery, config, detector);
+        try {
+            rapid.start(List.of());
+
+            // Force peer into the view so handleLeaveNotification recognises it.
+            final var cvField = RapidMembership.class.getDeclaredField("currentView");
+            cvField.setAccessible(true);
+            cvField.set(rapid, new MembershipView(1, Set.of(new Member(local, MemberState.ALIVE, 0),
+                    new Member(peer, MemberState.ALIVE, 0)), Instant.now()));
+
+            // Send a LEAVE from peer to local — handleViewChange dispatches to
+            // handleLeaveNotification.
+            final byte[] leavePayload = new byte[]{ 0x03 }; // MSG_LEAVE
+            peerTransport
+                    .request(local, new Message(MessageType.VIEW_CHANGE, peer, 1, leavePayload))
+                    .get(5, java.util.concurrent.TimeUnit.SECONDS);
+
+            // R83: detector history for peer must be evicted on transition to DEAD.
+            assertEquals(0.0, detector.phi(peer, t0 + 200_000_000L),
+                    "failureDetector must no longer report phi for a departed member — "
+                            + "RapidMembership.handleLeaveNotification must call "
+                            + "failureDetector.remove(leavingNode)");
+        } finally {
+            rapid.close();
+            transport.close();
+            peerTransport.close();
+        }
+    }
+
     // Finding: F-R1.resource_lifecycle.1.5
     // Bug: PhiAccrualFailureDetector.heartbeatHistory grows unbounded — no eviction for departed
     // nodes

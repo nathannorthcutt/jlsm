@@ -76,14 +76,11 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public Table createTable(String name, JlsmSchema schema) throws IOException {
-        if (name == null) {
-            throw new IllegalArgumentException("name must not be null");
-        }
+        // @spec F04.R78 — null arguments must be rejected with NullPointerException
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(schema, "schema must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
-        }
-        if (schema == null) {
-            throw new IllegalArgumentException("schema must not be null");
         }
         checkNotClosed();
 
@@ -133,9 +130,8 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public Table getTable(String name) throws IOException {
-        if (name == null) {
-            throw new IllegalArgumentException("name must not be null");
-        }
+        // @spec F04.R78 — null arguments must be rejected with NullPointerException
+        Objects.requireNonNull(name, "name must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
         }
@@ -147,9 +143,8 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public void dropTable(String name) throws IOException {
-        if (name == null) {
-            throw new IllegalArgumentException("name must not be null");
-        }
+        // @spec F04.R78 — null arguments must be rejected with NullPointerException
+        Objects.requireNonNull(name, "name must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
         }

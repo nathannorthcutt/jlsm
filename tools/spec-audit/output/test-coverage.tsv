@@ -1,0 +1,49 @@
+spec_id	total_reqs	reqs_with_test_signal	coverage_pct	test_file_count	test_files
+F01	40	0	0	1	modules/jlsm-vector/src/test/java/jlsm/vector/LsmVectorIndexFloat16AdversarialRound2Test.java
+F02	51	43	84	1	modules/jlsm-core/src/test/java/jlsm/tree/CompressionPolicyTest.java
+F03	90	8	8	0	
+F04	101	81	80	0	
+F05	91	79	86	0	
+F06	24	6	25	0	
+F07	103	18	17	0	
+F08	29	29	100	1	modules/jlsm-core/src/test/java/jlsm/sstable/ConcurrencyAdversarialTest.java
+F09	44	23	52	0	
+F10	139	39	28	0	
+F11	111	88	79	1	modules/jlsm-core/src/test/java/jlsm/sstable/SSTableCompressionAdversarialTest.java
+F12	50	0	0	1	modules/jlsm-vector/src/test/java/jlsm/vector/LsmVectorIndexFloat16AdversarialTest.java
+F13	59	52	88	1	modules/jlsm-vector/src/test/java/jlsm/vector/LsmVectorIndexFloat16AdversarialRound2Test.java
+F14	69	7	10	2	modules/jlsm-core/src/test/java/jlsm/sstable/SSTableCompressionAdversarialTest.java,modules/jlsm-vector/src/test/java/jlsm/vector/LsmVectorIndexFloat16AdversarialRound2Test.java
+F15	59	49	83	1	modules/jlsm-vector/src/test/java/jlsm/vector/LsmVectorIndexFloat16AdversarialRound2Test.java
+F16	24	0	0	1	modules/jlsm-vector/src/test/java/jlsm/vector/LsmVectorIndexFloat16AdversarialRound3Test.java
+F17	42	36	85	8	modules/jlsm-core/src/test/java/jlsm/wal/local/LocalWriteAheadLogCompressionTest.java,modules/jlsm-core/src/test/java/jlsm/wal/internal/CompressedWalRecordTest.java,modules/jlsm-core/src/test/java/jlsm/wal/remote/RemoteWriteAheadLogCompressionTest.java,modules/jlsm-core/src/test/java/jlsm/core/compression/CompressionCodecAdversarialTest.java,modules/jlsm-core/src/test/java/jlsm/core/compression/MemorySegmentCompressionCodecTest.java,+3more
+F18	41	4	9	4	modules/jlsm-core/src/test/java/jlsm/sstable/SSTableCompressionAdversarialTest.java,modules/jlsm-core/src/test/java/jlsm/core/compression/PureJavaZstdDecompressorTest.java,modules/jlsm-core/src/test/java/jlsm/tree/CompressionPolicyTest.java,modules/jlsm-vector/src/test/java/jlsm/vector/LsmVectorIndexFloat16AdversarialRound3Test.java
+F19	62	0	0	1	modules/jlsm-vector/src/test/java/jlsm/vector/LsmVectorIndexFloat16AdversarialRound3Test.java
+F20	32	0	0	1	modules/jlsm-core/src/test/java/jlsm/core/indexing/VectorIndexAdversarialTest.java
+F21	35	0	0	0	
+F22	28	0	0	0	
+F23	46	0	0	0	
+F24	16	0	0	0	
+F25	28	0	0	0	
+F26	37	0	0	0	
+F27	44	0	0	0	
+F28	53	0	0	0	
+F29	45	0	0	0	
+F30	63	0	0	0	
+F31	52	0	0	0	
+F32	100	0	0	0	
+F33	73	0	0	0	
+F34	80	0	0	0	
+F35	80	0	0	0	
+F36	96	0	0	0	
+F37	93	0	0	0	
+F38	68	0	0	0	
+F39	57	0	0	0	
+F40	56	0	0	0	
+F41	98	0	0	0	
+F42	77	0	0	0	
+F43	36	0	0	0	
+F44	48	0	0	0	
+F45	50	0	0	0	
+F46	33	0	0	0	
+F47	33	0	0	0	
+F48	46	0	0	0	

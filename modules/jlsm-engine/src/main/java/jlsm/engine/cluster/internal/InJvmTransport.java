@@ -7,9 +7,12 @@ import jlsm.engine.cluster.MessageType;
 import jlsm.engine.cluster.NodeAddress;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -32,7 +35,11 @@ public final class InJvmTransport implements ClusterTransport {
 
     private final NodeAddress localAddress;
     private final ConcurrentHashMap<MessageType, MessageHandler> handlers = new ConcurrentHashMap<>();
+    private final CopyOnWriteArraySet<CompletableFuture<Message>> inFlightFutures = new CopyOnWriteArraySet<>();
     private final AtomicBoolean closed = new AtomicBoolean();
+    // @spec F04.R32 — fault-injection knobs default to zero delay / zero loss.
+    private volatile Duration deliveryDelay = Duration.ZERO;
+    private volatile double messageLossRate = 0.0;
 
     /**
      * Creates and registers a new in-JVM transport for the given local address.
@@ -49,20 +56,58 @@ public final class InJvmTransport implements ClusterTransport {
         }
     }
 
+    // @spec F04.R32 — configure the per-send delivery delay for fault-injection testing.
+    /**
+     * Sets the simulated per-delivery delay. The default is {@link Duration#ZERO}. Must not be
+     * negative.
+     *
+     * @param delay the simulated delay; must not be null or negative
+     */
+    public void setDeliveryDelay(Duration delay) {
+        Objects.requireNonNull(delay, "delay must not be null");
+        if (delay.isNegative()) {
+            throw new IllegalArgumentException("delay must not be negative, got: " + delay);
+        }
+        this.deliveryDelay = delay;
+    }
+
+    // @spec F04.R32 — configure the simulated message loss rate for fault-injection testing.
+    /**
+     * Sets the simulated per-send message loss probability. Must be in [0.0, 1.0]. The default is
+     * {@code 0.0} (no loss).
+     *
+     * @param rate the simulated loss rate in [0.0, 1.0]
+     */
+    public void setMessageLossRate(double rate) {
+        if (!(rate >= 0.0) || !(rate <= 1.0)) {
+            throw new IllegalArgumentException("rate must be in [0.0, 1.0], got: " + rate);
+        }
+        this.messageLossRate = rate;
+    }
+
     @Override
     public void send(NodeAddress target, Message msg) throws IOException {
         Objects.requireNonNull(target, "target must not be null");
         Objects.requireNonNull(msg, "msg must not be null");
+        // @spec F04.R81 — closed transport rejects send with IllegalStateException (not
+        // IOException)
         if (closed.get()) {
-            throw new IOException("Transport is closed");
+            throw new IllegalStateException("Transport is closed");
         }
+        // @spec F04.R32 — simulate message loss by silently dropping a fraction of sends.
+        if (messageLossRate > 0.0 && ThreadLocalRandom.current().nextDouble() < messageLossRate) {
+            return;
+        }
+        applyDeliveryDelay();
         final var targetTransport = REGISTRY.get(target);
+        // @spec F04.R28 — delivery failures (unreachable target or handler) are silently absorbed;
+        // the failure detector is the mechanism for detecting unreachable nodes.
         if (targetTransport == null) {
-            throw new IOException("No transport registered for target: " + target);
+            return;
         }
         final var handler = targetTransport.handlers.get(msg.type());
         if (handler == null) {
-            throw new IOException("No handler registered for type: " + msg.type());
+            return;
         }
         try {
             handler.handle(localAddress, msg);
@@ -75,9 +120,16 @@ public final class InJvmTransport implements ClusterTransport {
     public CompletableFuture<Message> request(NodeAddress target, Message msg) {
         Objects.requireNonNull(target, "target must not be null");
         Objects.requireNonNull(msg, "msg must not be null");
+        // @spec F04.R81 — closed transport rejects request with IllegalStateException
         if (closed.get()) {
-            return CompletableFuture.failedFuture(new IOException("Transport is closed"));
+            return CompletableFuture.failedFuture(new IllegalStateException("Transport is closed"));
         }
+        // @spec F04.R32 — simulate message loss on requests by completing with unreachable.
+        if (messageLossRate > 0.0 && ThreadLocalRandom.current().nextDouble() < messageLossRate) {
+            return CompletableFuture
+                    .failedFuture(new IOException("Simulated message loss to: " + target));
+        }
+        applyDeliveryDelay();
         final var targetTransport = REGISTRY.get(target);
         if (targetTransport == null) {
             return CompletableFuture
@@ -88,7 +140,18 @@ public final class InJvmTransport implements ClusterTransport {
             return CompletableFuture
                     .failedFuture(new IOException("No handler registered for type: " + msg.type()));
         }
-        return handler.handle(localAddress, msg);
+        final CompletableFuture<Message> result = handler.handle(localAddress, msg);
+        // @spec F04.R81 — track in-flight futures so close() can complete them exceptionally.
+        if (!result.isDone()) {
+            inFlightFutures.add(result);
+            result.whenComplete((_, _) -> inFlightFutures.remove(result));
+            // Re-check close: if close() ran between the isDone() check and the add, the future
+            // may still be pending — complete it ourselves to match R81.
+            if (closed.get() && !result.isDone()) {
+                result.completeExceptionally(new IllegalStateException("Transport is closed"));
+            }
+        }
+        return result;
     }
 
     @Override
@@ -114,6 +177,25 @@ public final class InJvmTransport implements ClusterTransport {
         }
         REGISTRY.remove(localAddress);
         handlers.clear();
+        // @spec F04.R81 — complete any in-flight response futures exceptionally on close.
+        for (final CompletableFuture<Message> f : inFlightFutures) {
+            if (!f.isDone()) {
+                f.completeExceptionally(new IllegalStateException("Transport closed"));
+            }
+        }
+        inFlightFutures.clear();
+    }
+
+    private void applyDeliveryDelay() {
+        final Duration d = deliveryDelay;
+        if (d.isZero()) {
+            return;
+        }
+        try {
+            Thread.sleep(d.toMillis(), (int) (d.toNanosPart() % 1_000_000L));
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

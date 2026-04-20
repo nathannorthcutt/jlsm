@@ -81,13 +81,37 @@ public final class MembershipView implements Comparable<MembershipView> {
         return count;
     }
 
+    // @spec F04.R17,R82 — current member = ALIVE or SUSPECTED; DEAD is a departed non-member
     /**
-     * Returns whether the given address is a member of this view (in any state).
+     * Returns whether the given address is a current member (ALIVE or SUSPECTED) of this view.
+     *
+     * <p>
+     * DEAD members are treated as departed and are not reported as current. Use
+     * {@link #isKnown(NodeAddress)} to check whether the view has any record of the address in any
+     * state (including DEAD).
      *
      * @param address the node address to check; must not be null
-     * @return {@code true} if the address is present in this view
+     * @return {@code true} if the address is present and in ALIVE or SUSPECTED state
      */
     public boolean isMember(NodeAddress address) {
+        Objects.requireNonNull(address, "address must not be null");
+        for (Member m : members) {
+            if (m.address().equals(address) && m.state() != MemberState.DEAD) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns whether the given address is known to this view in any state, including DEAD. This is
+     * distinct from {@link #isMember(NodeAddress)}: a DEAD record signals a departed node that has
+     * not yet been reaped from the view.
+     *
+     * @param address the node address to check; must not be null
+     * @return {@code true} if the address appears in any member record
+     */
+    public boolean isKnown(NodeAddress address) {
         Objects.requireNonNull(address, "address must not be null");
         for (Member m : members) {
             if (m.address().equals(address)) {
@@ -97,8 +121,14 @@ public final class MembershipView implements Comparable<MembershipView> {
         return false;
     }
 
+    // @spec F04.R16 — quorum excludes DEAD from the denominator (count ALIVE + SUSPECTED only)
     /**
      * Returns whether the live members form a quorum at the given percentage threshold.
+     *
+     * <p>
+     * Quorum is computed as live (ALIVE) members against total known members (ALIVE plus
+     * SUSPECTED). DEAD members are excluded from the denominator because they represent confirmed
+     * departures that must not keep the cluster in a minority state.
      *
      * @param quorumPercent the required percentage of live members; must be in [1, 100]
      * @return {@code true} if the live member count meets or exceeds the quorum threshold
@@ -108,11 +138,20 @@ public final class MembershipView implements Comparable<MembershipView> {
             throw new IllegalArgumentException(
                     "quorumPercent must be in [1, 100], got: " + quorumPercent);
         }
-        if (members.isEmpty()) {
+        int liveCount = 0;
+        int totalCount = 0;
+        for (Member m : members) {
+            if (m.state() == MemberState.DEAD) {
+                continue;
+            }
+            totalCount++;
+            if (m.state() == MemberState.ALIVE) {
+                liveCount++;
+            }
+        }
+        if (totalCount == 0) {
             return false;
         }
-        final int liveCount = liveMemberCount();
-        final int totalCount = members.size();
         return (liveCount * 100) >= (quorumPercent * totalCount);
     }
 

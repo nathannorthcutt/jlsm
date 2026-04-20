@@ -447,6 +447,11 @@ public final class RapidMembership implements MembershipProtocol {
 
         // Notify listeners outside viewLock — callbacks must not block view mutations
         if (oldViewForNotify != null) {
+            // @spec F04.R83 — evict heartbeat history for the departed node so the failure
+            // detector does not accumulate records for members that have left the view.
+            if (leftMember != null) {
+                failureDetector.remove(leftMember.address());
+            }
             notifyViewChanged(oldViewForNotify, newViewForNotify);
             if (leftMember != null) {
                 notifyMemberLeft(leftMember);
@@ -469,14 +474,15 @@ public final class RapidMembership implements MembershipProtocol {
             final MembershipView oldView = currentView;
             assert oldView != null : "view should not be null";
 
-            // Accept the proposed view if it has a higher epoch AND it does not
-            // drop any ALIVE members — a proposal that removes ALIVE members without
-            // a prior DEAD/SUSPECTED transition is rejected to prevent arbitrary ejection.
+            // @spec F04.R90 — reject proposals that drop ALIVE members from the membership set.
+            // A member present in the proposed view with state DEAD is not "dropped" — it is
+            // still known (isKnown=true) and carries the required DEAD record. Using isKnown
+            // here rather than isMember preserves R90 intent now that isMember excludes DEAD.
             if (proposedView.epoch() > oldView.epoch()) {
                 boolean dropsAlive = false;
                 for (Member existing : oldView.members()) {
                     if (existing.state() == MemberState.ALIVE
-                            && !proposedView.isMember(existing.address())) {
+                            && !proposedView.isKnown(existing.address())) {
                         dropsAlive = true;
                         break;
                     }
@@ -496,38 +502,26 @@ public final class RapidMembership implements MembershipProtocol {
             notifyViewChanged(oldViewForNotify, proposedView);
 
             for (Member newMember : proposedView.members()) {
-                if (newMember.state() == MemberState.ALIVE) {
-                    // Notify if the member is entirely new OR was DEAD in the old view
-                    // (DEAD→ALIVE transition = rejoin). isMember returns true for DEAD
-                    // members, so we must check the old state explicitly.
-                    boolean wasAbsent = !oldViewForNotify.isMember(newMember.address());
-                    boolean wasDead = false;
-                    if (!wasAbsent) {
-                        for (Member old : oldViewForNotify.members()) {
-                            if (old.address().equals(newMember.address())
-                                    && old.state() == MemberState.DEAD) {
-                                wasDead = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (wasAbsent || wasDead) {
-                        notifyMemberJoined(newMember);
-                    }
+                if (newMember.state() == MemberState.ALIVE
+                        && !oldViewForNotify.isMember(newMember.address())) {
+                    // isMember now excludes DEAD, so an absent-or-DEAD old record both
+                    // resolve to the same "was not a current member" branch — rejoin and
+                    // first-time-join converge here.
+                    notifyMemberJoined(newMember);
                 }
             }
             for (Member oldMember : oldViewForNotify.members()) {
+                if (oldMember.state() == MemberState.DEAD) {
+                    // Already-departed members must not re-fire notifyMemberLeft — they
+                    // were announced when first marked DEAD.
+                    continue;
+                }
                 if (!proposedView.isMember(oldMember.address())) {
+                    // Previously ALIVE or SUSPECTED, now absent or DEAD in proposed view —
+                    // this is a departure transition.
+                    // @spec F04.R83 — evict heartbeat history on ALIVE/SUSPECTED → DEAD.
+                    failureDetector.remove(oldMember.address());
                     notifyMemberLeft(oldMember);
-                } else if (oldMember.state() != MemberState.DEAD) {
-                    // Detect ALIVE/SUSPECTED → DEAD transitions within the proposed view
-                    for (Member proposed : proposedView.members()) {
-                        if (proposed.address().equals(oldMember.address())
-                                && proposed.state() == MemberState.DEAD) {
-                            notifyMemberLeft(oldMember);
-                            break;
-                        }
-                    }
                 }
             }
         }

@@ -344,6 +344,10 @@ public final class RemotePartitionClient implements PartitionClient {
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
+            // @spec F04.R70 — cancel the future on timeout so the transport releases any
+            // resources associated with the pending response and the partition is reported as
+            // unavailable rather than leaked as an indefinitely-pending future.
+            future.cancel(true);
             throw new IOException("Request timed out after " + timeoutMs + "ms to " + owner, e);
         } catch (ExecutionException e) {
             final Throwable cause = e.getCause();
