@@ -9,19 +9,19 @@
 
 | WD | Title | Status | Domains | Deps | Produces |
 |----|-------|--------|---------|------|----------|
-| WD-01 | Schema & Field Types | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr: |
-| WD-02 | Storage & Compression | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
-| WD-03 | Cache | SPECIFIED | decisions | 0 | adr:, adr: |
-| WD-04 | Vector | SPECIFIED | decisions | 0 | adr:, adr: |
-| WD-05 | Cluster Networking & Discovery | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
-| WD-06 | Engine API & Catalog | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr: |
-| WD-07 | Partitioning & Rebalancing | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
-| WD-08 | Query Execution | SPECIFIED | decisions | 0 | adr:, adr:, adr: |
-| WD-09 | Encryption & Security | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
-| WD-10 | Rebalancing Safety & Recovery | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr:, adr: |
-| WD-11 | Partition Optimization | SPECIFIED | decisions | 0 | adr:, adr:, adr: |
-| WD-12 | Encrypted Query Capabilities | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr: |
-| WD-13 | Catalog & Scan Lifecycle | SPECIFIED | decisions | 0 | adr:, adr:, adr:, adr: |
+| WD-01 | Schema & Field Types | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr: |
+| WD-02 | Storage & Compression | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-03 | Cache | COMPLETE | decisions | 0 | adr:, adr: |
+| WD-04 | Vector | COMPLETE | decisions | 0 | adr:, adr: |
+| WD-05 | Cluster Networking & Discovery | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-06 | Engine API & Catalog | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-07 | Partitioning & Rebalancing | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-08 | Query Execution | COMPLETE | decisions | 0 | adr:, adr:, adr: |
+| WD-09 | Encryption & Security | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr:, adr: |
+| WD-10 | Rebalancing Safety & Recovery | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr:, adr: |
+| WD-11 | Partition Optimization | COMPLETE | decisions | 0 | adr:, adr:, adr: |
+| WD-12 | Encrypted Query Capabilities | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr: |
+| WD-13 | Catalog & Scan Lifecycle | COMPLETE | decisions | 0 | adr:, adr:, adr:, adr: |
 
 **Total:** 81 decisions (11 gap-fill, 35 minor, 19 full + 16 newly unblocked)
 
