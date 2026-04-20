@@ -48,6 +48,7 @@ public final class ClusteredEngine implements Engine {
     private final ClusterTransport transport;
     private final ClusterConfig config;
     private final NodeAddress localAddress;
+    private final DiscoveryProvider discovery;
     private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -60,6 +61,8 @@ public final class ClusteredEngine implements Engine {
         this.transport = Objects.requireNonNull(builder.transport, "transport");
         this.config = Objects.requireNonNull(builder.config, "config");
         this.localAddress = Objects.requireNonNull(builder.localAddress, "localAddress");
+        // @spec F04.R56,R79 — discovery is a mandatory builder parameter rejected at build time.
+        this.discovery = Objects.requireNonNull(builder.discovery, "discovery");
 
         // Register as a membership listener to trigger rebalancing on view changes
         membership.addListener(new ClusterMembershipListener());
@@ -92,8 +95,10 @@ public final class ClusteredEngine implements Engine {
         final ClusteredTable clustered;
         try {
             final TableMetadata metadata = localTable.metadata();
-            clustered = new ClusteredTable(metadata, transport, membership, localAddress,
-                    ownership);
+            // @spec F04.R60 — supply the local engine so ClusteredTable can short-circuit
+            // locally-owned partitions.
+            clustered = new ClusteredTable(metadata, transport, membership, localAddress, ownership,
+                    localEngine);
             final ClusteredTable previous = clusteredTables.put(name, clustered);
             if (previous != null) {
                 previous.close();
@@ -178,6 +183,53 @@ public final class ClusteredEngine implements Engine {
         return localEngine.metrics();
     }
 
+    /**
+     * Joins the cluster by registering this node with the discovery provider and starting the
+     * membership protocol with the supplied seeds.
+     *
+     * <p>
+     *
+     * @spec F04.R57 — the join orchestration registers with discovery first and then starts
+     *       membership. If {@code membership.start(seeds)} throws, the completed discovery
+     *       registration is rolled back via {@code discovery.deregister(localAddress)} and the
+     *       original failure is rethrown. Any exception thrown by the rollback deregister is
+     *       attached via {@link Throwable#addSuppressed(Throwable)} on the original failure.
+     *
+     *       <p>
+     * @spec F04.R78 — null {@code seeds} is rejected with {@link NullPointerException}; seeds
+     *       containing a null element are rejected with {@link IllegalArgumentException}.
+     *
+     * @param seeds the seed addresses forwarded to the membership protocol; must not be null,
+     *            elements must not be null
+     * @throws IOException if the engine is closed, if membership start fails, or if discovery
+     *             registration surfaces an I/O error
+     */
+    public void join(List<NodeAddress> seeds) throws IOException {
+        // @spec F04.R78 — eager argument validation before any side effects.
+        Objects.requireNonNull(seeds, "seeds must not be null");
+        for (final NodeAddress seed : seeds) {
+            if (seed == null) {
+                throw new IllegalArgumentException("seeds must not contain null elements");
+            }
+        }
+        checkNotClosed();
+
+        // Register with discovery first — if this throws, there is nothing to roll back.
+        discovery.register(localAddress);
+
+        // Start membership. On any failure, roll back the discovery registration.
+        try {
+            membership.start(seeds);
+        } catch (IOException | RuntimeException failure) {
+            try {
+                discovery.deregister(localAddress);
+            } catch (RuntimeException deregisterFailure) {
+                failure.addSuppressed(deregisterFailure);
+            }
+            throw failure;
+        }
+    }
+
     @Override
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) {
@@ -215,6 +267,19 @@ public final class ClusteredEngine implements Engine {
                 errors.add(ioe);
             } else {
                 errors.add(new IOException("Failed to close membership protocol", e));
+            }
+        }
+
+        // @spec F04.R58 — deregister from discovery symmetrically with register during join.
+        // Deregister errors are accumulated into the deferred-exception pattern so the remaining
+        // resources still close.
+        try {
+            discovery.deregister(localAddress);
+        } catch (Exception e) {
+            if (e instanceof IOException ioe) {
+                errors.add(ioe);
+            } else {
+                errors.add(new IOException("Failed to deregister from discovery", e));
             }
         }
 
@@ -338,6 +403,7 @@ public final class ClusteredEngine implements Engine {
         private ClusterTransport transport;
         private ClusterConfig config;
         private NodeAddress localAddress;
+        private DiscoveryProvider discovery;
 
         private Builder() {
         }
@@ -376,6 +442,22 @@ public final class ClusteredEngine implements Engine {
         public Builder localAddress(NodeAddress localAddress) {
             this.localAddress = Objects.requireNonNull(localAddress,
                     "localAddress must not be null");
+            return this;
+        }
+
+        /**
+         * Sets the discovery provider used for cluster bootstrap.
+         *
+         * <p>
+         *
+         * @spec F04.R56,R79 — discovery is a mandatory builder parameter; both the setter and
+         *       {@link #build()} reject a missing/null discovery with {@link NullPointerException}.
+         *
+         * @param discovery the discovery provider; must not be null
+         * @return this builder
+         */
+        public Builder discovery(DiscoveryProvider discovery) {
+            this.discovery = Objects.requireNonNull(discovery, "discovery must not be null");
             return this;
         }
 

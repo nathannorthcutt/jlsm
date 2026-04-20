@@ -556,7 +556,7 @@ final class ResourceLifecycleAdversarialTest {
                 .gracePeriodManager(new jlsm.engine.cluster.internal.GracePeriodManager(
                         java.time.Duration.ofMinutes(5)))
                 .transport(spyTransport).config(ClusterConfig.builder().build())
-                .localAddress(NODE_A).build();
+                .localAddress(NODE_A).discovery(new InJvmDiscoveryProvider()).build();
 
         // Close the engine
         engine.close();
@@ -910,7 +910,7 @@ final class ResourceLifecycleAdversarialTest {
                 .gracePeriodManager(
                         new jlsm.engine.cluster.internal.GracePeriodManager(Duration.ofMinutes(5)))
                 .transport(stubTransport).config(ClusterConfig.builder().build())
-                .localAddress(NODE_A).build();
+                .localAddress(NODE_A).discovery(new InJvmDiscoveryProvider()).build();
 
         final var schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
                 .build();

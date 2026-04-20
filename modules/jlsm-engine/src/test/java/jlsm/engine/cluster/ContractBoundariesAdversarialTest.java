@@ -406,7 +406,7 @@ final class ContractBoundariesAdversarialTest {
                 .membership(membership).ownership(new RendezvousOwnership())
                 .gracePeriodManager(new GracePeriodManager(Duration.ofMinutes(2)))
                 .transport(localTransport).config(ClusterConfig.builder().build())
-                .localAddress(LOCAL).build();
+                .localAddress(LOCAL).discovery(new InJvmDiscoveryProvider()).build();
         try {
             // First createTable — stores a ClusteredTable proxy
             engine.createTable("t1", SCHEMA);
@@ -466,7 +466,7 @@ final class ContractBoundariesAdversarialTest {
                 .membership(membership).ownership(new RendezvousOwnership())
                 .gracePeriodManager(new GracePeriodManager(Duration.ofMinutes(2)))
                 .transport(localTransport).config(ClusterConfig.builder().build())
-                .localAddress(LOCAL).build();
+                .localAddress(LOCAL).discovery(new InJvmDiscoveryProvider()).build();
 
         // Create two tables so two proxies exist
         engine.createTable("t1", SCHEMA);
@@ -526,7 +526,7 @@ final class ContractBoundariesAdversarialTest {
                 .membership(membership).ownership(new RendezvousOwnership())
                 .gracePeriodManager(new GracePeriodManager(Duration.ofMinutes(2)))
                 .transport(localTransport).config(ClusterConfig.builder().build())
-                .localAddress(LOCAL).build();
+                .localAddress(LOCAL).discovery(new InJvmDiscoveryProvider()).build();
         try {
             final Table returned = engine.createTable("t1", SCHEMA);
 
@@ -570,7 +570,7 @@ final class ContractBoundariesAdversarialTest {
                 .localEngine(new PermissiveStubEngine()).membership(capturingMembership)
                 .ownership(new RendezvousOwnership()).gracePeriodManager(gpm)
                 .transport(localTransport).config(ClusterConfig.builder().build())
-                .localAddress(LOCAL).build();
+                .localAddress(LOCAL).discovery(new InJvmDiscoveryProvider()).build();
         try {
             assertNotNull(capturingMembership.listener,
                     "ClusteredEngine must register a MembershipListener");
@@ -648,7 +648,7 @@ final class ContractBoundariesAdversarialTest {
                 .ownership(new RendezvousOwnership())
                 .gracePeriodManager(new GracePeriodManager(Duration.ofMinutes(2)))
                 .transport(localTransport).config(ClusterConfig.builder().build())
-                .localAddress(LOCAL).build();
+                .localAddress(LOCAL).discovery(new InJvmDiscoveryProvider()).build();
         try {
             assertNotNull(capturingMembership.listener,
                     "ClusteredEngine must register a MembershipListener");

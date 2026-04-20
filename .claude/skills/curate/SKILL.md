@@ -197,6 +197,16 @@ From "Spec Coverage Gaps" in the scan summary (if present):
    obligations are resolved
 3. Higher obligation count = more blocking
 
+**Obligation registry (from _obligations.json):**
+1. Open obligations from the centralized registry — spec requirements where the
+   code does not match the spec. These are the gap between what was specified
+   and what was built.
+2. Group by spec for display. Show affected requirement count and blocked_by.
+3. Route to `/work-decompose "<group>" --from-obligations` to convert
+   obligations into a work group with proper WD ordering. This is the primary
+   action — obligations without a work group have no implementation path.
+4. Higher affected-requirement count = larger implementation gap.
+
 **Spec-code drift:**
 1. Specs whose domain files have been committed since the spec was created
 2. Higher commit count = more likely the spec no longer matches reality
@@ -585,6 +595,21 @@ are: <list>."
 Use AskUserQuestion:
   - "Resolve via /spec-resolve"
   - "Skip"
+
+**Obligation registry:** Present the obligations grouped by spec: "Spec <ID>
+has <N> open obligations affecting <M> requirements. Blocked by: <blockers>."
+
+Use AskUserQuestion:
+  - "Create work group from obligations" (description: "Run /work-decompose
+    with --from-obligations to convert these into actionable work definitions")
+  - "View obligation details" (description: "Read the full obligation
+    descriptions from _obligations.json")
+  - "Skip"
+
+When "Create work group": guide the user to create a work group with `/work`
+for the affected spec(s), then run `/work-decompose "<group>" --from-obligations`.
+When "View details": read and display the full obligation entries from
+_obligations.json for the selected spec.
 
 **Spec-code drift:** Present the commit count and affected domains: "This spec
 was written on <date> and <N> commits have touched its domain files since."

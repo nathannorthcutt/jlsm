@@ -150,7 +150,8 @@ final class EngineClusteringAdversarialTest {
 
         final ClusteredEngine engine = ClusteredEngine.builder().localEngine(new StubEngine())
                 .membership(stubMembership).ownership(ownership).gracePeriodManager(gracePeriod)
-                .transport(transport).config(config).localAddress(NODE_A).build();
+                .transport(transport).config(config).localAddress(NODE_A)
+                .discovery(new InJvmDiscoveryProvider()).build();
 
         // Initial view: A and B both ALIVE
         final MembershipView viewBefore = new MembershipView(1,
@@ -188,7 +189,8 @@ final class EngineClusteringAdversarialTest {
 
         final ClusteredEngine engine = ClusteredEngine.builder().localEngine(new StubEngine())
                 .membership(stubMembership).ownership(ownership).gracePeriodManager(gracePeriod)
-                .transport(transport).config(config).localAddress(NODE_A).build();
+                .transport(transport).config(config).localAddress(NODE_A)
+                .discovery(new InJvmDiscoveryProvider()).build();
 
         // Initial view: A and B both ALIVE
         final MembershipView viewBefore = new MembershipView(1,

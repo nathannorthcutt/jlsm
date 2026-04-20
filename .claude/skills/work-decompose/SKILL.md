@@ -1,15 +1,24 @@
 ---
 description: "Decompose a work group into work definitions with dependency graph"
-argument-hint: "<group-slug>"
+argument-hint: "<group-slug> [--from-obligations [--spec FXX] [--domain <domain>]]"
 ---
 
-# /work-decompose "<group-slug>"
+# /work-decompose "<group-slug>" [--from-obligations [--spec FXX] [--domain <domain>]]
 
 Decomposes a work group into individual work definitions. Identifies natural
 boundaries, artifact dependencies, shared interface contracts, and the
 ordering graph.
 
 Run after `/work "<goal>"` has created the work group.
+
+**Modes:**
+- **Default:** Analyze the work group scope and decompose by identified
+  boundaries.
+- **`--from-obligations`:** Ingest open obligations from
+  `.spec/registry/_obligations.json` and synthesize WDs from them. Filters
+  by `--spec` (spec ID) or `--domain` (domain name) if provided. This mode
+  creates SPECIFIED WDs (specs already exist) that go directly to
+  `/work-start`.
 
 ---
 
@@ -46,6 +55,71 @@ Display opening header:
 🔧 DECOMPOSE · <group-slug>
 ───────────────────────────────────────────────
 ```
+
+---
+
+## Obligation intake mode (--from-obligations)
+
+If `--from-obligations` is present, skip Steps 1-4 and use this flow instead.
+
+### OB-1 — Read and filter obligations
+
+Read `.spec/registry/_obligations.json`. Filter to open obligations only
+(`status == "open"`).
+
+Apply filters if provided:
+- `--spec FXX` → only obligations where `spec` matches
+- `--domain <domain>` → only obligations where `domains` array contains the value
+
+If no open obligations match the filters:
+```
+No open obligations found matching the filters.
+```
+Stop.
+
+Display:
+```
+Found <N> open obligations:
+
+| # | ID | Spec | Affected Reqs | Blocked By |
+|---|-----|------|---------------|------------|
+| 1 | <id> | <spec> | <count> | <blocked_by> |
+...
+```
+
+### OB-2 — Group obligations into WDs
+
+Analyze the obligations and group them by natural boundaries:
+
+1. **Same blocked_by** → obligations sharing a blocker should be in the same
+   WD (they need the same prerequisite work)
+2. **Code locality** — obligations affecting the same class/module should be
+   together
+3. **Dependency ordering** — if obligation A's fix is a prerequisite for
+   obligation B's fix, A's WD must come first (use `type: wd` deps)
+4. **Size** — keep each WD at a manageable scope. Split obligations that
+   represent multi-week efforts into separate WDs.
+
+For each proposed WD, determine:
+- **status: SPECIFIED** — specs already exist, these are implementation-only
+- **artifact_deps** — add `type: wd` deps for ordering constraints between WDs
+- **Acceptance criteria** — map from the obligation's `affects` list:
+  each affected requirement becomes a testable criterion
+- **Summary** — synthesize from the obligation `description` field
+- **Implementation notes** — include `blocked_by` context and any
+  implementation hints from the description
+
+### OB-3 — Present decomposition
+
+Present the proposed WDs using the same table format as Step 3 (below).
+Include the dependency graph and note which obligations map to which WD.
+
+Proceed to Step 4 (confirm with user), then Step 5 (write WDs), Step 6
+(update manifest), and Step 7 (summary).
+
+**Key difference from default mode:** all WDs are written with
+`status: SPECIFIED` (not DRAFT) because the specification work is already
+done — the specs exist and the obligations describe the gap.
 
 ---
 
@@ -174,7 +248,11 @@ produces:
 - `type: spec` — path is relative to `.spec/domains/`, must include domain prefix
 - `type: adr` — slug matches `.decisions/<slug>/adr.md`
 - `type: kb` — path matches `.kb/<path>.md`
-- spec and adr deps must include `required_state` or `required_status`
+- `type: wd` — ref is a WD ID in the same group (e.g., "WD-01"). Use for
+  code-level dependencies where one WD's implementation must complete before
+  another can start. Unlike artifact deps, wd deps express ordering constraints
+  that aren't mediated by a spec or ADR artifact.
+- spec, adr, and wd deps must include `required_state` or `required_status`
 - kb deps are existence-only (no state check)
 
 **produces rules:**

@@ -425,11 +425,13 @@ If this feature is work-group-sourced:
    whose id matches the `work_definition` field in status.md (or derive from
    the slug's WD portion).
 
-3. **Update WD status to COMPLETE:**
-   - Edit the WD file's front matter: set `status: COMPLETE`
+3. **Update WD status to COMPLETE (idempotent):**
+   - Read the WD file's front matter. If `status` is already `COMPLETE`,
+     skip — feature-refactor Step 6b already handled this.
+   - If not COMPLETE: edit the WD file's front matter: set `status: COMPLETE`
 
-4. **Update the manifest:** Edit `.work/<group>/manifest.md` — update the WD's
-   status in the Work Definitions table.
+4. **Update the manifest:** The manifest table is automatically synced by
+   `work-resolve.sh` in step 5 below — do not update it manually.
 
 5. **Check readiness cascade:**
    ```bash

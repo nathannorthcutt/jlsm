@@ -107,7 +107,7 @@ If this is a work-group-sourced feature:
 
 1. Determine the work group slug (from status.md `work_group` field or slug prefix)
 2. Verify the WD frontmatter has `status: COMPLETE` (should already be set
-   by the retro step)
+   by feature-refactor Step 6b). If not COMPLETE, set it now as a fallback.
 3. Update `.work/CLAUDE.md` — increment the Complete count for this group
 
 The manifest table is automatically synced by `work-resolve.sh` — do not

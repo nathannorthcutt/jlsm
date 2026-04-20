@@ -630,7 +630,8 @@ final class ConcurrencyAdversarialTest {
 
         final ClusteredEngine engine = ClusteredEngine.builder().localEngine(blockingEngine)
                 .membership(membership).ownership(ownership).gracePeriodManager(gracePeriod)
-                .transport(transport).config(config).localAddress(NODE_A).build();
+                .transport(transport).config(config).localAddress(NODE_A)
+                .discovery(new InJvmDiscoveryProvider()).build();
 
         final var createError = new AtomicReference<Throwable>();
 

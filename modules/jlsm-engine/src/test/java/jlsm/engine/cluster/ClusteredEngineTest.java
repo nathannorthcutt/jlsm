@@ -75,7 +75,7 @@ final class ClusteredEngineTest {
         assertThrows(NullPointerException.class,
                 () -> ClusteredEngine.builder().membership(membershipA).ownership(ownership)
                         .gracePeriodManager(gracePeriod).transport(transportA).config(config)
-                        .localAddress(NODE_A).build());
+                        .localAddress(NODE_A).discovery(new InJvmDiscoveryProvider()).build());
     }
 
     @Test
@@ -83,14 +83,24 @@ final class ClusteredEngineTest {
         assertThrows(NullPointerException.class,
                 () -> ClusteredEngine.builder().localEngine(stubEngine()).ownership(ownership)
                         .gracePeriodManager(gracePeriod).transport(transportA).config(config)
-                        .localAddress(NODE_A).build());
+                        .localAddress(NODE_A).discovery(new InJvmDiscoveryProvider()).build());
+    }
+
+    // @spec F04.R56, F04.R79 — discovery is a mandatory builder parameter
+    @Test
+    void builder_missingDiscovery_throwsNPE() {
+        assertThrows(NullPointerException.class,
+                () -> ClusteredEngine.builder().localEngine(stubEngine()).membership(membershipA)
+                        .ownership(ownership).gracePeriodManager(gracePeriod).transport(transportA)
+                        .config(config).localAddress(NODE_A).build());
     }
 
     @Test
     void builder_allFieldsSet_builds() {
         final ClusteredEngine engine = ClusteredEngine.builder().localEngine(stubEngine())
                 .membership(membershipA).ownership(ownership).gracePeriodManager(gracePeriod)
-                .transport(transportA).config(config).localAddress(NODE_A).build();
+                .transport(transportA).config(config).localAddress(NODE_A)
+                .discovery(new InJvmDiscoveryProvider()).build();
         assertNotNull(engine);
     }
 
@@ -223,7 +233,8 @@ final class ClusteredEngineTest {
     private ClusteredEngine buildEngine(Engine localEngine) {
         return ClusteredEngine.builder().localEngine(localEngine).membership(membershipA)
                 .ownership(ownership).gracePeriodManager(gracePeriod).transport(transportA)
-                .config(config).localAddress(NODE_A).build();
+                .config(config).localAddress(NODE_A).discovery(new InJvmDiscoveryProvider())
+                .build();
     }
 
     private static StubEngine stubEngine() {
