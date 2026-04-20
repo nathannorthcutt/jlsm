@@ -589,43 +589,21 @@ Update `.feature/CLAUDE.md`.
 
 ### Step 6b — Work group finalization
 
-**Skip this step if status.md does not have a `work_group` field and the
-feature slug does not contain `--` (double-dash convention).**
+Run the finalization script. This is a **script call, not an LLM task** —
+the script handles WD status, obligation resolution, and spec frontmatter
+updates mechanically.
 
-If this feature is work-group-sourced, finalize the work group state so
-the changes are committed with the feature (not deferred to retro/complete):
+```bash
+bash .claude/scripts/work-finalize.sh "<slug>"
+```
 
-1. **Set WD status to COMPLETE:**
-   - Determine the work group and WD from status.md `work_group` /
-     `work_definition` fields, or from the slug `<group>--<wd>` convention
-   - Edit `.work/<group>/WD-<nn>.md` front matter: set `status: COMPLETE`
+The script:
+1. Sets the WD status to COMPLETE
+2. Resolves obligations referenced in brief.md (`_obligations.json`)
+3. Removes resolved IDs from spec `open_obligations` frontmatter
 
-2. **Resolve obligations in `_obligations.json`:**
-   - Read the brief.md and WD acceptance criteria for obligation IDs
-     (pattern: `OBL-*` or obligation IDs mentioned in the brief)
-   - If `.spec/registry/_obligations.json` exists, for each obligation ID
-     found in the brief:
-     - Set `"status": "resolved"`
-     - Set `"resolved_by"` to a one-line summary of how it was resolved
-       (from the cycle-log.md final entry or the work-plan contracts)
-     - Set `"resolved_date"` to today's date (YYYY-MM-DD)
-   - If no `_obligations.json` exists or no obligation IDs are found in the
-     brief, skip silently.
-
-3. **Update spec `open_obligations` frontmatter:**
-   - For each resolved obligation, find the spec file it belongs to (the
-     obligation's `spec` field maps to a spec ID in the manifest)
-   - Remove the resolved obligation ID from the spec's `open_obligations`
-     array in its frontmatter
-   - If the array becomes empty, set it to `[]`
-
-4. **Report:**
-   ```
-   ── Work group finalization ──────────────────
-   WD-<nn> → COMPLETE
-   Obligations resolved: <list of IDs>
-   Spec <ID> open_obligations updated: <removed IDs>
-   ```
+It is idempotent and exits cleanly if the feature is not work-group-sourced.
+Display the script output to the user.
 
 These changes are committed with the feature so the PR includes the
 updated obligation and work group state.
