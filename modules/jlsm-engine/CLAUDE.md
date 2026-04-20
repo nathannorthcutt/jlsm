@@ -15,6 +15,8 @@ concurrent callers.
 - `jlsm.engine` — public API: `Engine`, `Table`, `TableMetadata`, `EngineMetrics`,
   `AllocationTracking`, `HandleEvictedException`
 - `jlsm.engine.cluster` — clustering API: `ClusteredEngine`, `ClusteredTable`,
+  `ClusterOperationalMode`, `QuorumLostException`,
+  `PartitionKeySpace`, `SinglePartitionKeySpace`, `LexicographicPartitionKeySpace`,
   `NodeAddress`, `ClusterConfig`, `Message`, `MessageType`, `Member`, `MemberState`,
   `MembershipView`, `PartialResultMetadata`, `ClusterTransport`, `MessageHandler`,
   `DiscoveryProvider`, `MembershipProtocol`, `MembershipListener`
@@ -27,7 +29,8 @@ Not exported in `module-info.java` and must not be made public:
   `HandleRegistration`, `TableCatalog`
 - `jlsm.engine.cluster.internal` — `InJvmTransport`, `InJvmDiscoveryProvider`,
   `PhiAccrualFailureDetector`, `RapidMembership`, `RendezvousOwnership`,
-  `GracePeriodManager`, `RemotePartitionClient`
+  `GracePeriodManager`, `RemotePartitionClient`,
+  `ViewReconciler`, `SeedRetryTask`, `GraceGatedRebalancer`
 
 ## Key Design Decisions
 

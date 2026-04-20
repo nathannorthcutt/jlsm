@@ -32,6 +32,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Partition-aware proxy table that scatters queries across remote partition owners.
@@ -81,6 +82,20 @@ public final class ClusteredTable implements Table {
     private final RendezvousOwnership ownership;
     /** Nullable local engine handle used for in-process short-circuit routing. */
     private final Engine localEngine;
+    /**
+     * The partition keyspace used for scan pruning (@spec F04.R63). Defaults to
+     * {@link SinglePartitionKeySpace} for backward compatibility when no keyspace is supplied —
+     * scans then preserve the historical "fan out to every HRW owner of the sole partition"
+     * behavior.
+     */
+    private final PartitionKeySpace keySpace;
+    /**
+     * Supplies the engine's current operational mode (@spec F04.R41). When the supplier returns
+     * {@link ClusterOperationalMode#READ_ONLY}, mutation methods throw {@link QuorumLostException}.
+     * Defaults to a constant supplier returning {@link ClusterOperationalMode#NORMAL} so existing
+     * call sites preserve prior behavior.
+     */
+    private final Supplier<ClusterOperationalMode> modeSupplier;
     /**
      * Per-caller-thread partial-result metadata produced by the most recent {@code scan()}
      * invocation on that thread. Stored thread-locally so concurrent scans by different callers do
@@ -133,6 +148,57 @@ public final class ClusteredTable implements Table {
     public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
             Engine localEngine) {
+        this(tableMetadata, transport, membership, localAddress, ownership, localEngine,
+                new SinglePartitionKeySpace("default"));
+    }
+
+    /**
+     * Creates a new clustered table proxy with a shared ownership instance, an optional
+     * local-engine short-circuit, and an explicit {@link PartitionKeySpace} used to prune
+     * {@code scan(fromKey, toKey)} fanout to owners of overlapping partitions (@spec F04.R63).
+     *
+     * @param tableMetadata the metadata for this table; must not be null
+     * @param transport the cluster transport for remote communication; must not be null
+     * @param membership the membership protocol for resolving partition owners; must not be null
+     * @param localAddress the address of the local node; must not be null
+     * @param ownership the shared ownership resolver; must not be null
+     * @param localEngine the local engine used to short-circuit locally-owned operations; may be
+     *            null to disable short-circuit routing
+     * @param keySpace the partition keyspace used for scan pruning; must not be null. Pass
+     *            {@link SinglePartitionKeySpace} to preserve pre-R63 backward-compatible
+     *            (no-pruning) behavior. This constructor overload is chosen when the caller
+     *            supplies a {@link PartitionKeySpace}; callers wiring a mode supplier instead of a
+     *            keyspace must use the sibling overload that takes
+     *            {@code Supplier<ClusterOperationalMode>} at the same arity.
+     */
+    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+            MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
+            Engine localEngine, PartitionKeySpace keySpace) {
+        this(tableMetadata, transport, membership, localAddress, ownership, localEngine, keySpace,
+                () -> ClusterOperationalMode.NORMAL);
+    }
+
+    /**
+     * Creates a new clustered table proxy with an explicit {@link PartitionKeySpace} and a
+     * {@link ClusterOperationalMode} supplier used to gate mutating operations. This is the
+     * canonical full-surface constructor; the other constructors default the missing parameters.
+     *
+     * @param tableMetadata the metadata for this table; must not be null
+     * @param transport the cluster transport for remote communication; must not be null
+     * @param membership the membership protocol for resolving partition owners; must not be null
+     * @param localAddress the address of the local node; must not be null
+     * @param ownership the shared ownership resolver; must not be null
+     * @param localEngine the local engine used to short-circuit locally-owned operations; may be
+     *            null to disable short-circuit routing
+     * @param keySpace the partition keyspace used for scan pruning; must not be null
+     * @param modeSupplier supplies the engine's operational mode; must not be null. When it returns
+     *            {@link ClusterOperationalMode#READ_ONLY}, {@code create}/{@code update}/
+     *            {@code delete}/{@code insert} throw {@link QuorumLostException} (@spec F04.R41).
+     */
+    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+            MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
+            Engine localEngine, PartitionKeySpace keySpace,
+            Supplier<ClusterOperationalMode> modeSupplier) {
         this.tableMetadata = Objects.requireNonNull(tableMetadata,
                 "tableMetadata must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
@@ -140,6 +206,31 @@ public final class ClusteredTable implements Table {
         this.localAddress = Objects.requireNonNull(localAddress, "localAddress must not be null");
         this.ownership = Objects.requireNonNull(ownership, "ownership must not be null");
         this.localEngine = localEngine;
+        this.keySpace = Objects.requireNonNull(keySpace, "keySpace must not be null");
+        this.modeSupplier = Objects.requireNonNull(modeSupplier, "modeSupplier must not be null");
+    }
+
+    /**
+     * Creates a new clustered table proxy with a {@link ClusterOperationalMode} supplier wired into
+     * the write-path gate (@spec F04.R41). Uses the default single-partition keyspace for scan
+     * pruning. When {@code operationalModeSupplier.get()} returns
+     * {@link ClusterOperationalMode#READ_ONLY}, mutation methods throw {@link QuorumLostException};
+     * reads remain unaffected.
+     *
+     * @param tableMetadata the metadata for this table; must not be null
+     * @param transport the cluster transport for remote communication; must not be null
+     * @param membership the membership protocol for resolving partition owners; must not be null
+     * @param localAddress the address of the local node; must not be null
+     * @param ownership the shared ownership resolver; must not be null
+     * @param localEngine the local engine used to short-circuit locally-owned operations; may be
+     *            null to disable short-circuit routing
+     * @param operationalModeSupplier supplier of the engine's operational mode; must not be null
+     */
+    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+            MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
+            Engine localEngine, Supplier<ClusterOperationalMode> operationalModeSupplier) {
+        this(tableMetadata, transport, membership, localAddress, ownership, localEngine,
+                new SinglePartitionKeySpace("default"), operationalModeSupplier);
     }
 
     /**
@@ -177,11 +268,13 @@ public final class ClusteredTable implements Table {
     }
 
     // @spec F04.R60 — local-owner operations execute directly on the local engine.
+    // @spec F04.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
     @Override
     public void create(String key, JlsmDocument doc) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(doc, "doc must not be null");
         checkNotClosed();
+        requireWritable("create");
 
         final NodeAddress owner = resolveOwner(key);
         if (isLocalOwner(owner)) {
@@ -215,12 +308,14 @@ public final class ClusteredTable implements Table {
     }
 
     // @spec F04.R60 — local-owner operations execute directly on the local engine.
+    // @spec F04.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
     @Override
     public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(doc, "doc must not be null");
         Objects.requireNonNull(mode, "mode must not be null");
         checkNotClosed();
+        requireWritable("update");
 
         final NodeAddress owner = resolveOwner(key);
         if (isLocalOwner(owner)) {
@@ -236,10 +331,12 @@ public final class ClusteredTable implements Table {
     }
 
     // @spec F04.R60 — local-owner operations execute directly on the local engine.
+    // @spec F04.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
     @Override
     public void delete(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         checkNotClosed();
+        requireWritable("delete");
 
         final NodeAddress owner = resolveOwner(key);
         if (isLocalOwner(owner)) {
@@ -254,10 +351,12 @@ public final class ClusteredTable implements Table {
         }
     }
 
+    // @spec F04.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
     @Override
     public void insert(JlsmDocument doc) throws IOException {
         Objects.requireNonNull(doc, "doc must not be null");
         checkNotClosed();
+        requireWritable("insert");
         // Insert without an explicit key requires the schema-defined primary key.
         // For now, delegate to the first live node.
         throw new UnsupportedOperationException(
@@ -309,18 +408,20 @@ public final class ClusteredTable implements Table {
         final Set<NodeAddress> liveNodes = collectLiveNodes(view);
 
         if (liveNodes.isEmpty()) {
-            final PartialResultMetadata meta = new PartialResultMetadata(0, 0, Set.of(), true);
-            lastPartialResult.set(meta);
-            lastPartialResultShared = meta;
-            return Collections.emptyIterator();
+            return emptyScanWithMetadata();
         }
 
-        final int totalQueried = liveNodes.size();
+        final Set<NodeAddress> owners = resolveScanOwners(fromKey, toKey, view, liveNodes);
+        if (owners.isEmpty()) {
+            return emptyScanWithMetadata();
+        }
+
+        final int totalQueried = owners.size();
         final List<NodeFuture> perNode = new ArrayList<>(totalQueried);
-        // @spec F04.R77 — fan out to every live node in parallel. Local short-circuit (@spec
-        // F04.R60) runs inline; remote calls are submitted on a virtual-thread executor so the
-        // transport's synchronous per-call delay doesn't serialize the fanout.
-        for (final NodeAddress node : liveNodes) {
+        // @spec F04.R77 — fan out to each partition owner in parallel. Local short-circuit
+        // (@spec F04.R60) runs inline; remote calls are submitted on a virtual-thread executor
+        // so the transport's synchronous per-call delay doesn't serialize the fanout.
+        for (final NodeAddress node : owners) {
             if (isLocalOwner(node)) {
                 try {
                     final Iterator<TableEntry<String>> it = localTable().scan(fromKey, toKey);
@@ -527,6 +628,52 @@ public final class ClusteredTable implements Table {
     }
 
     /**
+     * Resolves the set of nodes that should receive a scatter request for
+     * {@code scan(fromKey, toKey)}.
+     *
+     * <p>
+     *
+     * @spec F04.R63 — when the configured keyspace exposes more than one partition, only owners of
+     *       partitions overlapping {@code [fromKey, toKey)} are returned; non-overlapping owners
+     *       are pruned from the fanout. When the keyspace has a single partition (the default
+     *       backward-compat case) no useful pruning is possible, so every live member is returned
+     *       so scans over un-partitioned tables still reach every replica.
+     *
+     * @param fromKey inclusive lower bound; must not be null
+     * @param toKey exclusive upper bound; must not be null
+     * @param view the current membership view; must not be null
+     * @param liveNodes the set of live nodes in {@code view}, precomputed by the caller
+     * @return the set of nodes to scatter to; never null, may be empty
+     */
+    private Set<NodeAddress> resolveScanOwners(String fromKey, String toKey, MembershipView view,
+            Set<NodeAddress> liveNodes) {
+        assert fromKey != null : "fromKey must not be null";
+        assert toKey != null : "toKey must not be null";
+        assert view != null : "view must not be null";
+        assert liveNodes != null : "liveNodes must not be null";
+
+        if (keySpace.partitionCount() <= 1) {
+            return new HashSet<>(liveNodes);
+        }
+        final Set<NodeAddress> owners = new HashSet<>(
+                ownership.ownersForKeyRange(tableMetadata.name(), fromKey, toKey, view, keySpace));
+        owners.retainAll(liveNodes);
+        return owners;
+    }
+
+    /**
+     * Publishes an "empty scan" partial-result metadata record and returns an empty iterator. Used
+     * whenever the scan resolves to zero owners — either because no live nodes exist or because the
+     * keyspace pruned every candidate.
+     */
+    private Iterator<TableEntry<String>> emptyScanWithMetadata() {
+        final PartialResultMetadata meta = new PartialResultMetadata(0, 0, Set.of(), true);
+        lastPartialResult.set(meta);
+        lastPartialResultShared = meta;
+        return Collections.emptyIterator();
+    }
+
+    /**
      * Creates a RemotePartitionClient for a key-specific operation routed to the owner.
      *
      * <p>
@@ -663,6 +810,18 @@ public final class ClusteredTable implements Table {
     private void checkNotClosedUnchecked() {
         if (closed) {
             throw new IllegalStateException("ClusteredTable is closed");
+        }
+    }
+
+    /**
+     * Verifies the engine's operational mode permits mutations. Throws {@link QuorumLostException}
+     * when the engine is in {@link ClusterOperationalMode#READ_ONLY} (@spec F04.R41).
+     */
+    private void requireWritable(String op) throws QuorumLostException {
+        final ClusterOperationalMode m = modeSupplier.get();
+        if (m == ClusterOperationalMode.READ_ONLY) {
+            throw new QuorumLostException(
+                    op + " rejected: engine is READ_ONLY (quorum lost — @spec F04.R41)");
         }
     }
 
