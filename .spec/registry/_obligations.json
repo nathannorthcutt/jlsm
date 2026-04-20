@@ -85,7 +85,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-17",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "cross-module-integration WD-01: FullTextIndex.Factory SPI + LsmFullTextIndexFactory + FullTextFieldIndex adapter",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "OBL-F10-vector",

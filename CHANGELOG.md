@@ -40,6 +40,28 @@ semver release cadence is established.
 - Table-to-`PartitionKeySpace` configuration is currently by constructor argument; there is no declarative `TableMetadata` or SQL path to assign a range-partitioned layout yet — pruning is opt-in via the new `ClusteredTable` ctor overload
 - `SeedRetryTask` retry interval is a construction parameter with no live tuning; per-retry failures are logged and swallowed without surfacing backoff state to the caller
 
+### Added — Wire Full-Text Index Integration (WD-01)
+- `jlsm.core.indexing.FullTextIndex.Factory` — SPI producing `FullTextIndex<MemorySegment>` per `(tableName, fieldName)`, the module-boundary contract between `jlsm-table` and `jlsm-indexing`
+- `jlsm.indexing.LsmFullTextIndexFactory` — LSM-backed factory isolating each index on its own `LocalWriteAheadLog` + `TrieSSTable` + `LsmInvertedIndex.StringTermed` + `LsmFullTextIndex.Impl` chain
+- `StandardJlsmTable.StringKeyedBuilder.addIndex(IndexDefinition)` and `.fullTextFactory(FullTextIndex.Factory)` — table-builder surface for registering secondary indices with the required factory; rejects FULL_TEXT with no factory at `build()`
+- `StringKeyedTable` now routes `create/update/delete` through an optional `IndexRegistry` so FULL_TEXT indices stay synchronised with the primary tree
+- F10 spec v2 → v3: R5/R79-R84 rewritten forward to describe the delegation contract; new Amendments section summarises WD-01
+- 31 new tests: 18 in `FullTextFieldIndexTest` (adapter semantics against a fake backing), 9 in `LsmFullTextIndexFactoryTest` (factory round-trip against a real LSM-backed index), 4 in `FullTextTableIntegrationTest` (end-to-end: builder + registry + factory through `JlsmTable.StringKeyed`)
+
+### Changed — Wire Full-Text Index Integration (WD-01)
+- `IndexRegistry` gained a three-arg constructor accepting a `FullTextIndex.Factory`; the two-arg constructor remains and delegates with `null`. FULL_TEXT definitions without a factory now fail fast with `IllegalArgumentException` at construction instead of throwing `UnsupportedOperationException` on the first write
+- `FullTextFieldIndex` is no longer a stub — it adapts `SecondaryIndex` mutations to the batch `FullTextIndex.index`/`remove` API and translates `FullTextMatch` predicates to `Query.TermQuery`
+- `jlsm-indexing` test classpath now includes `jlsm-table` (test-only — production code still depends one way: `jlsm-table → jlsm-core`; `jlsm-indexing → jlsm-core`)
+- `ResourceLifecycleAdversarialTest` + `IndexRegistryEncryptionTest` updated to reflect the new failure mode (IAE on missing factory / injectable-factory-that-throws) rather than the prior FULL_TEXT stub UOE
+
+### Removed — Wire Full-Text Index Integration (WD-01)
+- Obligation `OBL-F10-fulltext` resolved (removed from F10 `open_obligations`); WD-01 marked `COMPLETE` in the cross-module-integration work group
+
+### Known Gaps — Wire Full-Text Index Integration (WD-01)
+- Query-time wiring through `JlsmTable.query()` / `TableQuery.execute()` is still scope of `OBL-F05-R37` (a separate WD). The current PR exposes a `StringKeyedTable.indexRegistry()` accessor so integration tests can drive `SecondaryIndex.lookup` directly until that binding lands
+- `LongKeyedTable` has not been wired for secondary indices — deferred; no WD caller currently requires it
+- `FullTextIndex.Factory` does not yet thread through a shared `ArenaBufferPool`; each per-index LSM tree owns its own WAL + memtable allocations
+
 ### Added — Remote Dispatch and Parallel Scatter (WD-03)
 - `QueryRequestPayload` — shared encoder/decoder for cluster `QUERY_REQUEST` payloads with `[tableNameLen][tableName UTF-8][partitionId][opcode][body]` format (F04.R68)
 - `QueryRequestHandler` — server-side `MessageHandler` that routes `QUERY_REQUEST` messages to the correct local table via `Engine.getTable(name)` and serializes the `QUERY_RESPONSE`
