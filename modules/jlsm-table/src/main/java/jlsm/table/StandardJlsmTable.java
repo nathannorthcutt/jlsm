@@ -1,10 +1,16 @@
 package jlsm.table;
 
+import jlsm.core.indexing.VectorIndex;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.tree.TypedLsmTree;
+import jlsm.table.internal.IndexRegistry;
 import jlsm.table.internal.LongKeyedTable;
 import jlsm.table.internal.StringKeyedTable;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -48,6 +54,8 @@ public final class StandardJlsmTable {
 
         private TypedLsmTree.StringKeyed<JlsmDocument> tree;
         private JlsmSchema schema;
+        private final List<IndexDefinition> indexDefinitions = new ArrayList<>();
+        private VectorIndex.Factory vectorFactory;
 
         private StringKeyedBuilder() {
         }
@@ -74,6 +82,33 @@ public final class StandardJlsmTable {
             return this;
         }
 
+        /**
+         * Adds a secondary index definition. May be called multiple times. When any definition has
+         * {@link IndexType#VECTOR}, a {@link VectorIndex.Factory} must also be supplied via
+         * {@link #vectorFactory(VectorIndex.Factory)}.
+         *
+         * @param definition the index definition; must not be null
+         * @return this builder
+         */
+        public StringKeyedBuilder addIndex(IndexDefinition definition) {
+            Objects.requireNonNull(definition, "definition must not be null");
+            indexDefinitions.add(definition);
+            return this;
+        }
+
+        /**
+         * Sets the vector index factory used to materialise {@link IndexType#VECTOR} indices.
+         * Required when any registered definition has type VECTOR; ignored otherwise.
+         *
+         * @param vectorFactory the factory; must not be null
+         * @return this builder
+         */
+        public StringKeyedBuilder vectorFactory(VectorIndex.Factory vectorFactory) {
+            this.vectorFactory = Objects.requireNonNull(vectorFactory,
+                    "vectorFactory must not be null");
+            return this;
+        }
+
         @Override
         public JlsmTable.StringKeyed build() {
             Objects.requireNonNull(tree, "tree must not be null");
@@ -81,7 +116,21 @@ public final class StandardJlsmTable {
                     ? DocumentSerializer.forSchema(schema)
                     : null;
             assert codec != null : "codec must not be null when schema is provided";
-            return new StringKeyedTable(tree, codec, schema);
+
+            IndexRegistry registry = null;
+            if (!indexDefinitions.isEmpty()) {
+                if (schema == null) {
+                    throw new IllegalStateException(
+                            "indexDefinitions require a schema on the builder");
+                }
+                try {
+                    registry = new IndexRegistry(schema, List.copyOf(indexDefinitions),
+                            vectorFactory);
+                } catch (IOException e) {
+                    throw new UncheckedIOException("Failed to create secondary index registry", e);
+                }
+            }
+            return new StringKeyedTable(tree, codec, schema, registry);
         }
     }
 

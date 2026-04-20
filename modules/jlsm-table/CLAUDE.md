@@ -25,3 +25,17 @@ Not exported in `module-info.java` and must not be made public:
 Do not add dependencies on `jlsm-indexing` or `jlsm-vector` from production code —
 secondary index delegation to those modules happens through `jlsm-core` interfaces
 (`FullTextIndex`, `VectorIndex`). The dependency arrow points one way only.
+
+## Secondary Index Wiring (WD-02)
+
+Secondary-index implementations are injected via factory SPIs defined in
+`jlsm-core`:
+
+- `VectorIndex.Factory` — `StandardJlsmTable.stringKeyedBuilder()` accepts
+  `vectorFactory(VectorIndex.Factory)`. Missing factory with a `VECTOR`
+  `IndexDefinition` fails at `build()` with `IllegalArgumentException`
+  instead of silently dropping vector writes. `jlsm-vector` supplies
+  `LsmVectorIndexFactory` (IvfFlat/Hnsw).
+- `VectorFieldIndex` adapts per-field `SecondaryIndex` mutation callbacks
+  to `VectorIndex.index/remove` and translates `VectorNearest` predicates
+  to `VectorIndex.search(query, topK)`.

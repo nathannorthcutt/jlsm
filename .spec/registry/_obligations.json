@@ -109,7 +109,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-17",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "cross-module-integration WD-02: VectorIndex.Factory nested SPI in jlsm-core keyed on (tableName, fieldName, dimensions, precision, similarityFunction); jlsm-vector supplies LsmVectorIndexFactory; VectorFieldIndex adapts SecondaryIndex mutations to VectorIndex.index/remove and VectorNearest lookup to VectorIndex.search; silent no-op writes eliminated — missing factory is now a fail-fast IllegalArgumentException at table build().",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "implement-f41-lifecycle",

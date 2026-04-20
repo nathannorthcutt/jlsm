@@ -12,6 +12,8 @@ import jlsm.table.TableEntry;
 import jlsm.table.UpdateMode;
 
 import java.io.IOException;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
@@ -21,11 +23,16 @@ import java.util.Optional;
 
 /**
  * String-keyed {@link JlsmTable} implementation backed by a {@link TypedLsmTree.StringKeyed}.
+ *
+ * <p>
+ * When an {@link IndexRegistry} is supplied, all mutations are routed through the registry so
+ * secondary indices (including FULL_TEXT and VECTOR) stay synchronised with the primary tree.
  */
 public final class StringKeyedTable implements JlsmTable.StringKeyed {
 
     private final TypedLsmTree.StringKeyed<JlsmDocument> tree;
     private final MemorySerializer<JlsmDocument> codec;
+    private final IndexRegistry indexRegistry; // nullable when no indices are configured
 
     /**
      * Constructs a new StringKeyedTable.
@@ -36,10 +43,24 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
      */
     public StringKeyedTable(TypedLsmTree.StringKeyed<JlsmDocument> tree,
             MemorySerializer<JlsmDocument> codec, JlsmSchema schema) {
+        this(tree, codec, schema, null);
+    }
+
+    /**
+     * Constructs a new StringKeyedTable with an index registry.
+     *
+     * @param tree the backing LSM tree; must not be null
+     * @param codec the document serializer for scan value deserialization; must not be null
+     * @param schema the optional schema (may be null)
+     * @param indexRegistry the secondary index registry; may be null if no indices are configured
+     */
+    public StringKeyedTable(TypedLsmTree.StringKeyed<JlsmDocument> tree,
+            MemorySerializer<JlsmDocument> codec, JlsmSchema schema, IndexRegistry indexRegistry) {
         assert tree != null : "tree must not be null";
         assert codec != null : "codec must not be null";
         this.tree = tree;
         this.codec = codec;
+        this.indexRegistry = indexRegistry;
     }
 
     @Override
@@ -50,6 +71,9 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
         final Optional<JlsmDocument> existing = tree.get(key);
         if (existing.isPresent()) {
             throw new DuplicateKeyException(key);
+        }
+        if (indexRegistry != null) {
+            indexRegistry.onInsert(encodeKey(key), doc);
         }
         tree.put(key, doc);
     }
@@ -72,9 +96,17 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
         }
 
         switch (mode) {
-            case REPLACE -> tree.put(key, doc);
+            case REPLACE -> {
+                if (indexRegistry != null) {
+                    indexRegistry.onUpdate(encodeKey(key), existing.get(), doc);
+                }
+                tree.put(key, doc);
+            }
             case PATCH -> {
                 final JlsmDocument merged = mergeDocuments(existing.get(), doc);
+                if (indexRegistry != null) {
+                    indexRegistry.onUpdate(encodeKey(key), existing.get(), merged);
+                }
                 tree.put(key, merged);
             }
         }
@@ -83,6 +115,12 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
     @Override
     public void delete(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
+        if (indexRegistry != null) {
+            final Optional<JlsmDocument> existing = tree.get(key);
+            if (existing.isPresent()) {
+                indexRegistry.onDelete(encodeKey(key), existing.get());
+            }
+        }
         tree.delete(key);
     }
 
@@ -131,14 +169,52 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
         };
     }
 
+    /**
+     * Returns the index registry, or {@code null} if none is configured. Package-accessible for
+     * {@link jlsm.table.TableQuery} to access during {@code execute()} wiring (a later WD).
+     */
+    public IndexRegistry indexRegistry() {
+        return indexRegistry;
+    }
+
     @Override
     public void close() throws IOException {
-        tree.close();
+        IOException deferred = null;
+        if (indexRegistry != null) {
+            try {
+                indexRegistry.close();
+            } catch (IOException e) {
+                deferred = e;
+            }
+        }
+        try {
+            tree.close();
+        } catch (IOException e) {
+            if (deferred == null) {
+                deferred = e;
+            } else {
+                deferred.addSuppressed(e);
+            }
+        }
+        if (deferred != null) {
+            throw deferred;
+        }
     }
 
     // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Encodes a string key as a UTF-8 {@link MemorySegment} for index-registry routing. Uses a
+     * fresh byte[]-backed segment so the bytes escape any per-call arena.
+     */
+    private static MemorySegment encodeKey(String key) {
+        byte[] bytes = key.getBytes(StandardCharsets.UTF_8);
+        MemorySegment seg = Arena.ofAuto().allocate(bytes.length);
+        seg.copyFrom(MemorySegment.ofArray(bytes));
+        return seg;
+    }
 
     private static JlsmDocument mergeDocuments(JlsmDocument existing, JlsmDocument patch) {
         final Object[] existingVals = DocumentAccess.get().values(existing);

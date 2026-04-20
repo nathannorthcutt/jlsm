@@ -15,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import jlsm.core.indexing.VectorIndex;
+import jlsm.core.indexing.VectorPrecision;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldDefinition;
 import jlsm.table.FieldType;
@@ -45,6 +47,25 @@ public final class IndexRegistry implements Closeable {
 
     // @spec F10.R92 — accept JlsmSchema and List<IndexDefinition>; validate each against schema
     public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions) throws IOException {
+        this(schema, definitions, null);
+    }
+
+    /**
+     * Constructs an IndexRegistry with an optional {@link VectorIndex.Factory} for building VECTOR
+     * indices. If any definition in {@code definitions} has index type VECTOR and the factory is
+     * {@code null}, construction fails fast with {@link IllegalArgumentException} so mis-wiring
+     * surfaces at table creation rather than on the first write.
+     *
+     * @param schema the table schema; must not be null
+     * @param definitions the index definitions; must not be null
+     * @param vectorFactory the factory for VECTOR indices; may be null if no VECTOR definitions are
+     *            present
+     * @throws IOException if an index fails to initialise
+     */
+    // @spec F10.R92 — schema-validated definitions; factory is injected so VECTOR indices
+    // resolve OBL-F10-vector via LsmVectorIndex in jlsm-vector
+    public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions,
+            VectorIndex.Factory vectorFactory) throws IOException {
         Objects.requireNonNull(schema, "schema");
         Objects.requireNonNull(definitions, "definitions");
         this.schema = schema;
@@ -54,10 +75,16 @@ public final class IndexRegistry implements Closeable {
 
         for (IndexDefinition def : definitions) {
             validate(schema, def);
+            if (def.indexType() == IndexType.VECTOR && vectorFactory == null) {
+                // Clean up already-created indices and the arena before failing.
+                closePartial(null);
+                throw new IllegalArgumentException("VECTOR index on field '" + def.fieldName()
+                        + "' requires a VectorIndex.Factory — pass one to the table builder");
+            }
             final int fieldIdx = schema.fieldIndex(def.fieldName());
             final FieldType fieldType = schema.fields().get(fieldIdx).type();
             try {
-                this.indices.add(createIndex(def, fieldType));
+                this.indices.add(createIndex(def, fieldType, schema.name(), vectorFactory));
             } catch (Exception e) {
                 // Close the managed arena before propagating the failure.
                 segmentArena.close();
@@ -594,13 +621,54 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    private static SecondaryIndex createIndex(IndexDefinition def, FieldType fieldType)
-            throws IOException {
+    private static SecondaryIndex createIndex(IndexDefinition def, FieldType fieldType,
+            String tableName, VectorIndex.Factory vectorFactory) throws IOException {
         return switch (def.indexType()) {
             case EQUALITY, RANGE, UNIQUE -> new FieldIndex(def, fieldType);
             case FULL_TEXT -> new FullTextFieldIndex(def);
-            case VECTOR -> new VectorFieldIndex(def);
+            case VECTOR -> {
+                assert vectorFactory != null
+                        : "vectorFactory null despite VECTOR index — constructor must reject earlier";
+                if (!(fieldType instanceof FieldType.VectorType vt)) {
+                    // validate() already ensures this, but keep the invariant local.
+                    throw new IllegalArgumentException(
+                            "VECTOR index requires VectorType field, got: " + fieldType);
+                }
+                final VectorPrecision precision = switch (vt.elementType()) {
+                    case FLOAT32 -> VectorPrecision.FLOAT32;
+                    case FLOAT16 -> VectorPrecision.FLOAT16;
+                    default -> throw new IllegalArgumentException(
+                            "VECTOR elementType must be FLOAT32 or FLOAT16, got "
+                                    + vt.elementType());
+                };
+                yield new VectorFieldIndex(def, vectorFactory.create(tableName, def.fieldName(),
+                        vt.dimensions(), precision, def.similarityFunction()));
+            }
         };
+    }
+
+    /**
+     * Closes all already-created indices and the shared arena on construction failure, suppressing
+     * secondary exceptions into {@code cause} where one is supplied.
+     */
+    private void closePartial(Exception cause) {
+        for (SecondaryIndex idx : indices) {
+            try {
+                idx.close();
+            } catch (IOException suppressed) {
+                if (cause != null) {
+                    cause.addSuppressed(suppressed);
+                }
+            }
+        }
+        indices.clear();
+        try {
+            segmentArena.close();
+        } catch (Exception arenaEx) {
+            if (cause != null) {
+                cause.addSuppressed(arenaEx);
+            }
+        }
     }
 
     // @spec F10.R139 — VectorType FLOAT32/FLOAT16 arrays returned as defensive copies, not internal

@@ -1,7 +1,7 @@
 ---
 {
   "id": "F10",
-  "version": 2,
+  "version": 3,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["query", "engine"],
@@ -11,7 +11,7 @@
   "amended_by": null,
   "decision_refs": [],
   "kb_refs": [],
-  "open_obligations": ["OBL-F10-fulltext", "OBL-F10-vector"]
+  "open_obligations": ["OBL-F10-fulltext"]
 }
 ---
 
@@ -211,13 +211,13 @@ R85. `VectorFieldIndex` must implement `SecondaryIndex` and must be a final clas
 
 R86. `VectorFieldIndex.supports` must return true only for `VectorNearest` predicates whose field matches the index's field.
 
-R87. `VectorFieldIndex.onInsert` must extract the vector from the field value and insert it into the backing vector index keyed by primary key.
+R87. `VectorFieldIndex.onInsert` must extract the vector from the field value and insert it into the backing vector index keyed by primary key. The backing implementation is obtained via `VectorIndex.Factory.create(tableName, fieldName, dimensions, precision, similarityFunction)`; when a table registers a `VECTOR` index without a configured factory, `build()` must fail with `IllegalArgumentException` rather than silently accepting unindexed writes.
 
-R88. `VectorFieldIndex.onUpdate` must remove the old vector and insert the new vector for the given primary key.
+R88. `VectorFieldIndex.onUpdate` must remove the old vector and insert the new vector for the given primary key. When the old vector is absent (field previously unset), the removal step is a no-op and the insert still proceeds.
 
 R89. `VectorFieldIndex.onDelete` must remove the vector associated with the given primary key from the backing index.
 
-R90. `VectorFieldIndex.lookup` for `VectorNearest` must return the `topK` closest primary keys to the query vector according to the configured similarity function.
+R90. `VectorFieldIndex.lookup` for `VectorNearest` must return the `topK` closest primary keys to the query vector according to the configured similarity function, using the backing implementation's `search(queryVector, topK)` call.
 
 ### IndexRegistry — index lifecycle management
 
@@ -431,3 +431,18 @@ Enable secondary index support and a fluent query API for `JlsmTable`. Users def
 **Regression tests added:** none (no VIOLATED requirements repaired — all violations deferred per user direction).
 
 **Code fixes applied:** none.
+
+#### Amendments (v2 → v3)
+
+Cross-module integration WD-02 (feature `cross-module-integration--wd-02`) resolved `OBL-F10-vector` by wiring `LsmVectorIndex` through a factory SPI. Requirements R87–R90 were extended forward to describe the shipped delegation contract; R85 and R86 remained structurally accurate. `open_obligations` now lists only `OBL-F10-fulltext` on this branch — WD-01 (`OBL-F10-fulltext` resolution) lands via a parallel PR and the second-to-merge PR bumps F10 to v4 and empties `open_obligations`.
+
+- **R6:** PARTIAL → SATISFIED. The validation half (reject VECTOR on non-VectorType) already shipped; the runtime half — writes actually reach the index — now ships via the factory SPI described in R87.
+- **R87:** extended to reference `VectorIndex.Factory.create(tableName, fieldName, dimensions, precision, similarityFunction)` and to codify fail-fast behaviour when no factory is configured (prior wording allowed silent stub no-ops).
+- **R88:** extended to cover the "old vector absent" edge case explicitly — removal is a no-op; the insert still proceeds.
+- **R90:** extended to name `search(queryVector, topK)` as the backing call.
+- **VectorIndex.Factory SPI** (new in jlsm-core, `jlsm.core.indexing.VectorIndex.Factory`): bridges the `jlsm-table → jlsm-vector` module-boundary invariant without a static dependency. Factory instances pick the algorithm (IvfFlat vs Hnsw) so table builders can configure the runtime flavour without changing the table API.
+
+Module surface:
+- `jlsm-core`: new nested interface `VectorIndex.Factory` (public).
+- `jlsm-vector`: new public class `LsmVectorIndexFactory` producing `LsmVectorIndex` (IvfFlat/Hnsw) instances under a per-(table, field) subdirectory.
+- `jlsm-table`: `StandardJlsmTable.stringKeyedBuilder()` gained `vectorFactory(VectorIndex.Factory)`. Tables registering a `VECTOR` index without a factory now fail at `build()` with `IllegalArgumentException` instead of silently dropping writes.

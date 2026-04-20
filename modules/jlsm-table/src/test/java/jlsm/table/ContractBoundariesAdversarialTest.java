@@ -141,14 +141,12 @@ class ContractBoundariesAdversarialTest {
                 "FieldIndex should reject VECTOR IndexType with IAE, not rely on assert");
     }
 
-    // Finding: F-R1.cb.3.2
-    // Bug: VectorFieldIndex.onInsert/onUpdate/onDelete throw UnsupportedOperationException
-    // unconditionally, making any table with a VECTOR index unusable for mutations
-    // Correct behavior: Stub VectorFieldIndex should silently accept mutations (no-op) so that
-    // tables with VECTOR indices can store documents; vector search is simply
-    // unavailable until the real implementation ships
-    // Fix location: VectorFieldIndex.java onInsert/onUpdate/onDelete methods (lines 54-67)
-    // Regression watch: Ensure real VectorFieldIndex impl (when shipped) re-enables actual indexing
+    // Finding: F-R1.cb.3.2 (resolved by WD-02)
+    // Historical bug: VectorFieldIndex.onInsert threw UnsupportedOperationException, making
+    // any table with a VECTOR index unusable for mutations.
+    // Post-WD-02 behavior: VectorFieldIndex delegates to a factory-supplied backing; inserts
+    // must succeed. A null vector field is a no-op per R56; a non-null vector gets indexed.
+    // This regression watch keeps the invariant that inserts do not throw.
     @Test
     void test_VectorFieldIndex_onInsert_doesNotThrowOnTableWithVectorIndex() throws Exception {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())
@@ -157,17 +155,17 @@ class ContractBoundariesAdversarialTest {
         List<IndexDefinition> definitions = List.of(new IndexDefinition("name", IndexType.EQUALITY),
                 new IndexDefinition("embedding", IndexType.VECTOR, SimilarityFunction.COSINE));
 
-        try (IndexRegistry registry = new IndexRegistry(schema, definitions)) {
+        try (IndexRegistry registry = new IndexRegistry(schema, definitions,
+                jlsm.table.internal.InMemoryVectorFactories.ivfFlatFake())) {
             byte[] pkBytes = "pk-1".getBytes(StandardCharsets.UTF_8);
             MemorySegment pk = Arena.ofAuto().allocate(pkBytes.length);
             pk.copyFrom(MemorySegment.ofArray(pkBytes));
 
             JlsmDocument doc = JlsmDocument.of(schema, "name", "Alice");
 
-            // Should NOT throw — stub VectorFieldIndex should accept mutations as no-ops
+            // Must NOT throw — VectorFieldIndex routes to a real backing; null vector is no-op.
             assertDoesNotThrow(() -> registry.onInsert(pk, doc),
-                    "Insert into table with VECTOR index should succeed; "
-                            + "VectorFieldIndex stub should be a no-op, not throw UnsupportedOperationException");
+                    "Insert into table with VECTOR index should succeed");
 
             // The document should be in the store after successful insert
             assertNotNull(registry.resolveEntry(pk),
