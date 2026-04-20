@@ -15,6 +15,7 @@ import jlsm.engine.cluster.NodeAddress;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,20 +35,20 @@ import java.util.concurrent.locks.ReentrantLock;
  * Rapid protocol implementation of {@link MembershipProtocol}.
  *
  * <p>
- * Contract: Implements a Rapid-inspired membership protocol with:
+ * Contract: Implements the RAPID protocol with:
  * <ul>
- * <li>Unilateral view changes — each node independently accepts joins, leaves, and suspicions
- * without requiring agreement from other nodes</li>
- * <li>Adaptive phi accrual edge failure detection via {@link PhiAccrualFailureDetector}</li>
- * <li>View change propagation — view mutations are broadcast to alive members for convergence</li>
- * <li>Epoch-ordered view acceptance — proposals with stale epochs are rejected</li>
+ * <li>Expander-graph monitoring overlay — each node pings only its outgoing monitors rather than
+ * every ALIVE member (see {@link ExpanderGraphOverlay}).</li>
+ * <li>Observer-quorum consensus before SUSPECT view changes — when a monitored peer's phi exceeds
+ * threshold, a {@link ConsensusCoordinator} round is started; the view transitions only on a quorum
+ * of agreeing observer votes.</li>
+ * <li>Self-refutation via incarnation bump — a live node receiving a suspicion about itself
+ * increments its incarnation and broadcasts an {@link AliveRefutation} so peers cancel pending
+ * rounds.</li>
+ * <li>Adaptive phi accrual edge failure detection via {@link PhiAccrualFailureDetector}.</li>
+ * <li>View change propagation — view mutations are broadcast to alive members for convergence with
+ * epoch-ordered acceptance.</li>
  * </ul>
- *
- * <p>
- * <strong>Limitation:</strong> This implementation does not include multi-process cut detection or
- * quorum-based consensus for view changes. Each node acts on view change proposals independently.
- * In a network partition, disjoint partitions may diverge. Future work may add configurable
- * consensus (see {@code .decisions/cluster-membership-protocol/adr.md}).
  *
  * <p>
  * Uses {@link ClusterTransport} for messaging, {@link DiscoveryProvider} for bootstrap, and
@@ -67,6 +68,9 @@ public final class RapidMembership implements MembershipProtocol {
     private static final byte MSG_JOIN_RESPONSE = 0x02;
     private static final byte MSG_LEAVE = 0x03;
     private static final byte MSG_VIEW_CHANGE_PROPOSAL = 0x04;
+    private static final byte MSG_SUSPICION_PROPOSAL = SuspicionProposal.SUB_TYPE;
+    private static final byte MSG_SUSPICION_VOTE = SuspicionVote.SUB_TYPE;
+    private static final byte MSG_ALIVE_REFUTATION = AliveRefutation.SUB_TYPE;
 
     /** Listener dispatcher queue capacity — bounded to prevent unbounded memory growth. */
     private static final int LISTENER_QUEUE_CAPACITY = 1024;
@@ -80,6 +84,18 @@ public final class RapidMembership implements MembershipProtocol {
     private final ListenerDispatcher<MembershipListener> listenerDispatcher;
     private final AtomicLong sequenceCounter = new AtomicLong(0);
     private final ReentrantLock viewLock = new ReentrantLock();
+
+    /**
+     * Expander-graph monitoring overlay. Rebuilt after every view mutation to reflect the current
+     * ALIVE membership set. See {@link ExpanderGraphOverlay}.
+     */
+    private final ExpanderGraphOverlay expanderOverlay;
+
+    /**
+     * Consensus coordinator that brokers observer-quorum rounds before SUSPECT view changes are
+     * committed. Installed at construction with a {@link MonotonicClock} by default.
+     */
+    private final ConsensusCoordinator consensusCoordinator;
 
     private volatile MembershipView currentView;
     private volatile boolean started;
@@ -98,14 +114,38 @@ public final class RapidMembership implements MembershipProtocol {
     public RapidMembership(NodeAddress localAddress, ClusterTransport transport,
             DiscoveryProvider discovery, ClusterConfig config,
             PhiAccrualFailureDetector failureDetector) {
+        this(localAddress, transport, discovery, config, failureDetector, new MonotonicClock());
+    }
+
+    /**
+     * Creates a new Rapid membership protocol instance with an explicit monotonic clock. For
+     * testing; production callers should use the 5-arg constructor which supplies
+     * {@link MonotonicClock}.
+     *
+     * @param localAddress the address of this node; must not be null
+     * @param transport the cluster transport; must not be null
+     * @param discovery the discovery provider; must not be null
+     * @param config the cluster configuration; must not be null
+     * @param failureDetector the phi accrual failure detector; must not be null
+     * @param monotonicClock the monotonic clock supplied to the consensus coordinator; must not be
+     *            null
+     */
+    public RapidMembership(NodeAddress localAddress, ClusterTransport transport,
+            DiscoveryProvider discovery, ClusterConfig config,
+            PhiAccrualFailureDetector failureDetector, Clock monotonicClock) {
         this.localAddress = Objects.requireNonNull(localAddress, "localAddress must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
         this.discovery = Objects.requireNonNull(discovery, "discovery must not be null");
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.failureDetector = Objects.requireNonNull(failureDetector,
                 "failureDetector must not be null");
+        Objects.requireNonNull(monotonicClock, "monotonicClock must not be null");
         this.listenerDispatcher = new ListenerDispatcher<>(
                 "membership-listeners-" + localAddress.nodeId(), LISTENER_QUEUE_CAPACITY);
+        this.expanderOverlay = new ExpanderGraphOverlay();
+        this.consensusCoordinator = new ConsensusCoordinator(localAddress, transport,
+                expanderOverlay, monotonicClock, config.consensusRoundTimeout(),
+                config.consensusQuorumPercent(), new CoordinatorSink());
     }
 
     @Override
@@ -129,6 +169,7 @@ public final class RapidMembership implements MembershipProtocol {
         // Initialize with self as the only member
         final var selfMember = new Member(localAddress, MemberState.ALIVE, 0);
         currentView = new MembershipView(0, Set.of(selfMember), Instant.now());
+        rebuildOverlayAndNotifyCoordinator(currentView);
 
         try {
             // Try to join existing cluster via seeds
@@ -264,6 +305,10 @@ public final class RapidMembership implements MembershipProtocol {
         transport.deregisterHandler(MessageType.PING);
         transport.deregisterHandler(MessageType.VIEW_CHANGE);
 
+        // Cancel any in-flight consensus rounds before tearing down listeners so sink
+        // invocations triggered by cancellation drain through the dispatcher.
+        consensusCoordinator.close();
+
         // Close the dispatcher before clearing listeners so any in-flight callbacks
         // drain to terminal state before the listener list is emptied. The dispatcher
         // is single-threaded and awaits up to 1s, then forces shutdown.
@@ -333,10 +378,116 @@ public final class RapidMembership implements MembershipProtocol {
             handleViewChangeProposal(sender, payload);
             return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
                     sequenceCounter.getAndIncrement(), new byte[0]));
+        } else if (subType == MSG_SUSPICION_PROPOSAL) {
+            handleSuspicionProposal(payload);
+            return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
+                    sequenceCounter.getAndIncrement(), new byte[0]));
+        } else if (subType == MSG_SUSPICION_VOTE) {
+            handleSuspicionVote(payload);
+            return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
+                    sequenceCounter.getAndIncrement(), new byte[0]));
+        } else if (subType == MSG_ALIVE_REFUTATION) {
+            handleAliveRefutation(payload);
+            return CompletableFuture.completedFuture(new Message(MessageType.ACK, localAddress,
+                    sequenceCounter.getAndIncrement(), new byte[0]));
         }
 
         return CompletableFuture.failedFuture(new IllegalArgumentException(
                 "Unknown VIEW_CHANGE sub-type: 0x" + String.format("%02x", subType)));
+    }
+
+    private void handleSuspicionProposal(byte[] payload) {
+        final SuspicionProposal proposal;
+        try {
+            proposal = SuspicionProposal.deserialize(payload);
+        } catch (RuntimeException e) {
+            // Malformed payload — log via assert and drop (best-effort per transport contract).
+            assert e != null : "exception should not be null";
+            return;
+        }
+        consensusCoordinator.onProposalReceived(proposal,
+                addr -> failureDetector.phi(addr) > config.phiThreshold());
+    }
+
+    private void handleSuspicionVote(byte[] payload) {
+        final SuspicionVote vote;
+        try {
+            vote = SuspicionVote.deserialize(payload);
+        } catch (RuntimeException e) {
+            assert e != null : "exception should not be null";
+            return;
+        }
+        consensusCoordinator.onVoteReceived(vote);
+    }
+
+    private void handleAliveRefutation(byte[] payload) {
+        final AliveRefutation refutation;
+        try {
+            refutation = AliveRefutation.deserialize(payload);
+        } catch (RuntimeException e) {
+            assert e != null : "exception should not be null";
+            return;
+        }
+
+        // 1) Cancel any active round targeting the refuter.
+        consensusCoordinator.onRefutationReceived(refutation);
+
+        // 2) If the refutation's subject is in our view with a lower incarnation, update it to
+        // ALIVE at the refutation's incarnation. A higher-incarnation ALIVE supersedes any
+        // lower-incarnation SUSPECT/DEAD record per R38.
+        if (refutation.subject().equals(localAddress)) {
+            // No-op for self — refutations about self do not mutate the local view.
+            return;
+        }
+        applyIncarnationRefresh(refutation.subject(), refutation.incarnation());
+    }
+
+    private void applyIncarnationRefresh(NodeAddress subject, long newIncarnation) {
+        MembershipView oldViewForNotify = null;
+        MembershipView newViewForNotify = null;
+
+        viewLock.lock();
+        try {
+            final MembershipView oldView = currentView;
+            if (oldView == null) {
+                return;
+            }
+            Member existing = null;
+            for (Member m : oldView.members()) {
+                if (m.address().equals(subject)) {
+                    existing = m;
+                    break;
+                }
+            }
+            if (existing == null) {
+                return;
+            }
+            if (newIncarnation <= existing.incarnation() && existing.state() == MemberState.ALIVE) {
+                // No change required — existing record already dominates.
+                return;
+            }
+            final Set<Member> newMembers = new HashSet<>();
+            for (Member m : oldView.members()) {
+                if (m.address().equals(subject)) {
+                    newMembers.add(new Member(subject, MemberState.ALIVE,
+                            Math.max(newIncarnation, existing.incarnation())));
+                } else {
+                    newMembers.add(m);
+                }
+            }
+            final MembershipView newView = new MembershipView(oldView.epoch() + 1, newMembers,
+                    Instant.now());
+            currentView = newView;
+            oldViewForNotify = oldView;
+            newViewForNotify = newView;
+        } finally {
+            viewLock.unlock();
+        }
+
+        if (oldViewForNotify != null) {
+            rebuildOverlayAndNotifyCoordinator(newViewForNotify);
+            notifyViewChanged(oldViewForNotify, newViewForNotify);
+        }
     }
 
     private CompletableFuture<Message> handleJoinRequest(NodeAddress sender, byte[] payload) {
@@ -397,6 +548,9 @@ public final class RapidMembership implements MembershipProtocol {
         } finally {
             viewLock.unlock();
         }
+
+        // Rebuild the monitoring overlay and inform the coordinator outside viewLock.
+        rebuildOverlayAndNotifyCoordinator(viewToPropagate);
 
         // Notify listeners outside viewLock — callbacks must not block view mutations
         notifyViewChanged(oldViewForPropagation, viewToPropagate);
@@ -463,6 +617,7 @@ public final class RapidMembership implements MembershipProtocol {
             if (leftMember != null) {
                 failureDetector.remove(leftMember.address());
             }
+            rebuildOverlayAndNotifyCoordinator(newViewForNotify);
             notifyViewChanged(oldViewForNotify, newViewForNotify);
             if (leftMember != null) {
                 notifyMemberLeft(leftMember);
@@ -510,6 +665,7 @@ public final class RapidMembership implements MembershipProtocol {
 
         // Notify listeners outside viewLock — callbacks must not block view mutations
         if (accepted) {
+            rebuildOverlayAndNotifyCoordinator(proposedView);
             notifyViewChanged(oldViewForNotify, proposedView);
 
             for (Member newMember : proposedView.members()) {
@@ -579,6 +735,7 @@ public final class RapidMembership implements MembershipProtocol {
                             viewLock.unlock();
                         }
                         // Notify listeners outside viewLock
+                        rebuildOverlayAndNotifyCoordinator(newViewForNotify);
                         notifyViewChanged(oldViewForNotify, newViewForNotify);
                         return true;
                     }
@@ -601,16 +758,22 @@ public final class RapidMembership implements MembershipProtocol {
             return;
         }
 
-        // Send pings to all alive members
-        for (Member member : view.members()) {
-            if (member.address().equals(localAddress)) {
-                continue;
+        // Under the RAPID overlay, each node pings only its outgoing monitor edges — NOT every
+        // ALIVE member. When the overlay has no edges (empty graph, degree == 0, singleton
+        // cluster), the loop is a no-op and the coordinator never observes any phi breach.
+        final Set<NodeAddress> monitors = expanderOverlay.monitorsOf(localAddress);
+
+        for (NodeAddress target : monitors) {
+            // Re-resolve the target against the current view — overlay snapshots may lag a
+            // concurrent view mutation. Skip targets that have departed or been suspected.
+            final MembershipView viewBeforeRequest = currentView;
+            if (viewBeforeRequest == null) {
+                return;
             }
-            if (member.state() != MemberState.ALIVE) {
+            if (findAliveMember(viewBeforeRequest, target) == null) {
                 continue;
             }
 
-            final NodeAddress target = member.address();
             transport
                     .request(target,
                             new Message(MessageType.PING, localAddress,
@@ -627,97 +790,63 @@ public final class RapidMembership implements MembershipProtocol {
                         // accrual detector will handle suspicion via elapsed time.
                     });
 
-            // Re-check the current view before phi operations. A concurrent view mutation
-            // (e.g., handleLeaveNotification) may have removed this member since we captured
-            // the iteration snapshot. Without this check, we would compute phi and seed
-            // heartbeats for already-departed members.
+            // Re-check the current view after the request — a concurrent leave may have
+            // transitioned the target from ALIVE to DEAD during the ping round-trip. Without
+            // this second check, the phi==0 seed path below would inject a heartbeat for an
+            // already-departed member, polluting the failure detector's history.
             final MembershipView freshView = currentView;
-            if (freshView == null || !isMemberAlive(freshView, target)) {
+            if (freshView == null) {
+                return;
+            }
+            final Member member = findAliveMember(freshView, target);
+            if (member == null) {
                 continue;
             }
 
             // Check phi for this member
-            final double phi = failureDetector.phi(member.address());
+            final double phi = failureDetector.phi(target);
             if (phi == 0.0) {
                 // No heartbeat history for this node — it joined but has never responded.
                 // Seed a heartbeat now so the phi clock starts ticking. On subsequent ticks,
                 // if no real heartbeat arrives from the node, elapsed time grows and phi
-                // will eventually exceed the threshold, triggering suspicion. Without this
-                // seed, phi() returns 0.0 forever for unresponsive nodes, making them immune
-                // to failure detection.
-                failureDetector.recordHeartbeat(member.address());
+                // will eventually exceed the threshold, triggering a consensus round. Without
+                // this seed, phi() returns 0.0 forever for unresponsive nodes, making them
+                // immune to failure detection.
+                failureDetector.recordHeartbeat(target);
             } else if (phi > config.phiThreshold()) {
-                handleSuspectedNode(member);
+                // RAPID consensus replaces the unilateral transition: initiate an observer
+                // quorum round instead of bumping the view directly. The coordinator cancels
+                // or commits based on observer votes.
+                try {
+                    consensusCoordinator.startRound(target, freshView.epoch(),
+                            member.incarnation());
+                } catch (IllegalStateException e) {
+                    // Coordinator closed concurrently — stop emitting rounds.
+                    assert e != null : "exception should not be null";
+                    return;
+                } catch (RuntimeException e) {
+                    // Defensive: never let a round-start failure take down the tick loop.
+                    assert e != null : "exception should not be null";
+                }
             }
         }
-    }
 
-    /**
-     * Returns true if the given address belongs to an ALIVE member in the provided view.
-     */
-    private static boolean isMemberAlive(MembershipView view, NodeAddress address) {
-        for (Member m : view.members()) {
-            if (m.address().equals(address)) {
-                return m.state() == MemberState.ALIVE;
-            }
-        }
-        return false;
-    }
-
-    private void handleSuspectedNode(Member suspected) {
-        MembershipView oldViewForNotify = null;
-        MembershipView newViewForNotify = null;
-        Member suspectedForNotify = null;
-
-        viewLock.lock();
+        // Expire any rounds whose deadline has passed — bounded work per tick.
         try {
-            final MembershipView oldView = currentView;
-            assert oldView != null : "view should not be null";
-
-            // Check if the node is still alive in the current view
-            boolean stillAlive = false;
-            for (Member m : oldView.members()) {
-                if (m.address().equals(suspected.address()) && m.state() == MemberState.ALIVE) {
-                    stillAlive = true;
-                    break;
-                }
-            }
-            if (!stillAlive) {
-                return;
-            }
-
-            // Move to SUSPECTED state
-            final Set<Member> newMembers = new HashSet<>();
-            Member suspectedMember = null;
-            for (Member m : oldView.members()) {
-                if (m.address().equals(suspected.address())) {
-                    suspectedMember = new Member(m.address(), MemberState.SUSPECTED,
-                            m.incarnation());
-                    newMembers.add(suspectedMember);
-                } else {
-                    newMembers.add(m);
-                }
-            }
-
-            final MembershipView newView = new MembershipView(oldView.epoch() + 1, newMembers,
-                    Instant.now());
-            currentView = newView;
-
-            // Capture for notification outside the lock
-            oldViewForNotify = oldView;
-            newViewForNotify = newView;
-            suspectedForNotify = suspectedMember;
-        } finally {
-            viewLock.unlock();
+            consensusCoordinator.tick();
+        } catch (IllegalStateException e) {
+            assert e != null : "exception should not be null";
         }
+    }
 
-        // Notify listeners outside viewLock — callbacks must not block view mutations
-        if (oldViewForNotify != null) {
-            notifyViewChanged(oldViewForNotify, newViewForNotify);
-            if (suspectedForNotify != null) {
-                notifyMemberSuspected(suspectedForNotify);
+    /** Returns the ALIVE {@link Member} matching {@code addr} in {@code view}, or null. */
+    private static Member findAliveMember(MembershipView view, NodeAddress addr) {
+        for (Member m : view.members()) {
+            if (m.address().equals(addr) && m.state() == MemberState.ALIVE) {
+                return m;
             }
         }
+        return null;
     }
 
     private void propagateViewChange(MembershipView newView, MembershipView oldView) {
@@ -767,6 +896,102 @@ public final class RapidMembership implements MembershipProtocol {
             return;
         }
         listenerDispatcher.dispatch(listeners, l -> l.onMemberSuspected(member));
+    }
+
+    // --- Overlay / coordinator wiring ---
+
+    /**
+     * Recomputes the expander-graph overlay for the new view's ALIVE members and informs the
+     * coordinator. Must be called after every view mutation (join, leave, proposal apply, consensus
+     * commit). Computes an auto-degree of ceil(log2(n)) when
+     * {@link ClusterConfig#expanderGraphDegree()} is 0.
+     */
+    private void rebuildOverlayAndNotifyCoordinator(MembershipView newView) {
+        assert newView != null : "newView must not be null";
+        final Set<NodeAddress> aliveAddrs = new HashSet<>();
+        for (Member m : newView.members()) {
+            if (m.state() == MemberState.ALIVE) {
+                aliveAddrs.add(m.address());
+            }
+        }
+        final int configured = config.expanderGraphDegree();
+        final int degree;
+        if (configured > 0) {
+            degree = configured;
+        } else if (aliveAddrs.size() <= 1) {
+            degree = 0;
+        } else {
+            degree = Math.max(2, (int) Math.ceil(Math.log(aliveAddrs.size()) / Math.log(2)));
+        }
+        expanderOverlay.rebuild(aliveAddrs, degree, newView.epoch());
+        try {
+            consensusCoordinator.onViewChanged(newView);
+        } catch (IllegalStateException e) {
+            // Coordinator has been closed — safe to ignore during shutdown.
+            assert e != null : "exception should not be null";
+        }
+    }
+
+    /**
+     * Coordinator sink: commits a SUSPECT view change when a round reaches QUORUM_AGREE. The
+     * transition mirrors {@link #handleSuspectedNode} but is driven by observer-quorum consensus
+     * instead of a unilateral phi breach.
+     */
+    private final class CoordinatorSink implements ConsensusCoordinator.ViewChangeSink {
+        @Override
+        public void applySuspicion(NodeAddress subject, long roundEpoch) {
+            MembershipView oldViewForNotify = null;
+            MembershipView newViewForNotify = null;
+            Member suspectedForNotify = null;
+
+            viewLock.lock();
+            try {
+                final MembershipView oldView = currentView;
+                if (oldView == null) {
+                    return;
+                }
+                // Only transition if the subject is still ALIVE — a stale commit against an
+                // already-DEAD or absent member must be silently dropped.
+                boolean stillAlive = false;
+                for (Member m : oldView.members()) {
+                    if (m.address().equals(subject) && m.state() == MemberState.ALIVE) {
+                        stillAlive = true;
+                        break;
+                    }
+                }
+                if (!stillAlive) {
+                    return;
+                }
+                final Set<Member> newMembers = new HashSet<>();
+                Member suspectedMember = null;
+                for (Member m : oldView.members()) {
+                    if (m.address().equals(subject)) {
+                        suspectedMember = new Member(m.address(), MemberState.SUSPECTED,
+                                m.incarnation());
+                        newMembers.add(suspectedMember);
+                    } else {
+                        newMembers.add(m);
+                    }
+                }
+                final MembershipView newView = new MembershipView(oldView.epoch() + 1, newMembers,
+                        Instant.now());
+                currentView = newView;
+                oldViewForNotify = oldView;
+                newViewForNotify = newView;
+                suspectedForNotify = suspectedMember;
+            } finally {
+                viewLock.unlock();
+            }
+
+            assert roundEpoch >= 0 : "roundEpoch must be non-negative";
+            if (oldViewForNotify != null) {
+                rebuildOverlayAndNotifyCoordinator(newViewForNotify);
+                notifyViewChanged(oldViewForNotify, newViewForNotify);
+                if (suspectedForNotify != null) {
+                    notifyMemberSuspected(suspectedForNotify);
+                }
+            }
+        }
     }
 
     // --- Payload encoding/decoding ---

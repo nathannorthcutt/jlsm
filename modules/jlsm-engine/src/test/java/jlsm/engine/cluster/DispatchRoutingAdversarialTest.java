@@ -75,8 +75,9 @@ final class DispatchRoutingAdversarialTest {
         var transport2 = new InJvmTransport(ADDR_2);
         closeables.add(transport2);
 
-        // Craft a VIEW_CHANGE message with unknown sub-type byte 0x05
-        var unknownSubTypeMsg = new Message(MessageType.VIEW_CHANGE, ADDR_2, 1, new byte[]{ 0x05 });
+        // Craft a VIEW_CHANGE message with unknown sub-type byte 0x7F
+        // (0x05/0x06/0x07 are now reserved for SUSPICION_PROPOSAL / SUSPICION_VOTE / REFUTATION).
+        var unknownSubTypeMsg = new Message(MessageType.VIEW_CHANGE, ADDR_2, 1, new byte[]{ 0x7F });
 
         // Send the message via request (which invokes the handler and returns the future)
         CompletableFuture<Message> responseFuture = transport2.request(ADDR_1, unknownSubTypeMsg);
