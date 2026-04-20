@@ -10,7 +10,7 @@
 | WD | Title | Status | Domains | Deps | Produces |
 |----|-------|--------|---------|------|----------|
 | WD-01 | Protocol Infrastructure | COMPLETE | engine | 0 | — |
-| WD-02 | Engine Lifecycle and Local Routing | SPECIFIED | engine | 0 | — |
+| WD-02 | Engine Lifecycle and Local Routing | IMPLEMENTING | engine | 0 | — |
 | WD-03 | Remote Dispatch and Parallel Scatter | BLOCKED | engine | 1 | — |
 | WD-04 | RAPID Consensus Protocol | SPECIFIED | engine | 1 | — |
 | WD-05 | Fault Tolerance and Smart Rebalancing | BLOCKED | engine,  partitioning | 1 | — |

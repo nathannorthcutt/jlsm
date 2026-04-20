@@ -1,5 +1,6 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.Engine;
 import jlsm.engine.Table;
 import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.RemotePartitionClient;
@@ -54,11 +55,20 @@ public final class ClusteredTable implements Table {
     private final MembershipProtocol membership;
     private final NodeAddress localAddress;
     private final RendezvousOwnership ownership;
+    /** Nullable local engine handle used for in-process short-circuit routing. */
+    private final Engine localEngine;
     private volatile PartialResultMetadata lastPartialResult;
     private volatile boolean closed;
 
     /**
-     * Creates a new clustered table proxy with a shared ownership instance.
+     * Creates a new clustered table proxy with a shared ownership instance and a local engine for
+     * in-process short-circuit routing.
+     *
+     * <p>
+     *
+     * @spec F04.R60 — when the partition owner is the local node and {@code localEngine} is
+     *       non-null, CRUD and scan operations execute directly against
+     *       {@code localEngine.getTable(name)} without invoking the cluster transport.
      *
      * @param tableMetadata the metadata for this table; must not be null
      * @param transport the cluster transport for remote communication; must not be null
@@ -68,24 +78,44 @@ public final class ClusteredTable implements Table {
      *            ensures that eviction events from view changes (propagated by the engine) apply to
      *            the same cache used by this table, preventing stale routing after membership
      *            changes.
+     * @param localEngine the local engine used to short-circuit locally-owned operations; may be
+     *            null to disable short-circuit routing (backward-compat behavior).
      */
     public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
-            MembershipProtocol membership, NodeAddress localAddress,
-            RendezvousOwnership ownership) {
+            MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
+            Engine localEngine) {
         this.tableMetadata = Objects.requireNonNull(tableMetadata,
                 "tableMetadata must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
         this.membership = Objects.requireNonNull(membership, "membership must not be null");
         this.localAddress = Objects.requireNonNull(localAddress, "localAddress must not be null");
         this.ownership = Objects.requireNonNull(ownership, "ownership must not be null");
+        this.localEngine = localEngine;
+    }
+
+    /**
+     * Creates a new clustered table proxy with a shared ownership instance but no local-engine
+     * short-circuit. All operations route through the transport.
+     *
+     * @param tableMetadata the metadata for this table; must not be null
+     * @param transport the cluster transport for remote communication; must not be null
+     * @param membership the membership protocol for resolving partition owners; must not be null
+     * @param localAddress the address of the local node; must not be null
+     * @param ownership the shared ownership resolver; must not be null
+     */
+    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+            MembershipProtocol membership, NodeAddress localAddress,
+            RendezvousOwnership ownership) {
+        this(tableMetadata, transport, membership, localAddress, ownership, null);
     }
 
     /**
      * Creates a new clustered table proxy with a private ownership instance.
      *
      * <p>
-     * Prefer the 5-argument constructor when a shared {@link RendezvousOwnership} is available
-     * (e.g., from {@link ClusteredEngine}) so that view-change evictions apply to the same cache.
+     * Prefer the 5-argument (or 6-argument) constructor when a shared {@link RendezvousOwnership}
+     * is available (e.g., from {@link ClusteredEngine}) so that view-change evictions apply to the
+     * same cache.
      *
      * @param tableMetadata the metadata for this table; must not be null
      * @param transport the cluster transport for remote communication; must not be null
@@ -94,9 +124,10 @@ public final class ClusteredTable implements Table {
      */
     public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress) {
-        this(tableMetadata, transport, membership, localAddress, new RendezvousOwnership());
+        this(tableMetadata, transport, membership, localAddress, new RendezvousOwnership(), null);
     }
 
+    // @spec F04.R60 — local-owner operations execute directly on the local engine.
     @Override
     public void create(String key, JlsmDocument doc) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
@@ -104,6 +135,10 @@ public final class ClusteredTable implements Table {
         checkNotClosed();
 
         final NodeAddress owner = resolveOwner(key);
+        if (isLocalOwner(owner)) {
+            localTable().create(key, doc);
+            return;
+        }
         final RemotePartitionClient client = createClient(key, owner);
         try {
             client.create(key, doc);
@@ -112,12 +147,16 @@ public final class ClusteredTable implements Table {
         }
     }
 
+    // @spec F04.R60 — local-owner operations execute directly on the local engine.
     @Override
     public Optional<JlsmDocument> get(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         checkNotClosed();
 
         final NodeAddress owner = resolveOwner(key);
+        if (isLocalOwner(owner)) {
+            return localTable().get(key);
+        }
         final RemotePartitionClient client = createClient(key, owner);
         try {
             return client.get(key);
@@ -126,6 +165,7 @@ public final class ClusteredTable implements Table {
         }
     }
 
+    // @spec F04.R60 — local-owner operations execute directly on the local engine.
     @Override
     public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
@@ -134,6 +174,10 @@ public final class ClusteredTable implements Table {
         checkNotClosed();
 
         final NodeAddress owner = resolveOwner(key);
+        if (isLocalOwner(owner)) {
+            localTable().update(key, doc, mode);
+            return;
+        }
         final RemotePartitionClient client = createClient(key, owner);
         try {
             client.update(key, doc, mode);
@@ -142,12 +186,17 @@ public final class ClusteredTable implements Table {
         }
     }
 
+    // @spec F04.R60 — local-owner operations execute directly on the local engine.
     @Override
     public void delete(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         checkNotClosed();
 
         final NodeAddress owner = resolveOwner(key);
+        if (isLocalOwner(owner)) {
+            localTable().delete(key);
+            return;
+        }
         final RemotePartitionClient client = createClient(key, owner);
         try {
             client.delete(key);
@@ -173,6 +222,9 @@ public final class ClusteredTable implements Table {
                 "TableQuery is not yet supported in clustered mode; use scan() instead");
     }
 
+    // @spec F04.R60 — per-node local short-circuit: when the target node is the local address and
+    // a local engine is available, the scan is executed directly against the local engine's table
+    // instead of going through the remote partition client.
     @Override
     public Iterator<TableEntry<String>> scan(String fromKey, String toKey) throws IOException {
         Objects.requireNonNull(fromKey, "fromKey must not be null");
@@ -192,8 +244,20 @@ public final class ClusteredTable implements Table {
         final List<Iterator<TableEntry<String>>> iterators = new ArrayList<>();
         final Set<String> unavailable = new HashSet<>();
 
-        // Scatter: send range query to all live nodes
+        // Scatter: send range query to all live nodes; short-circuit to the local engine when
+        // the target is the local address and a local engine is available (@spec F04.R60).
         for (final NodeAddress node : liveNodes) {
+            if (isLocalOwner(node)) {
+                try {
+                    final Iterator<TableEntry<String>> it = localTable().scan(fromKey, toKey);
+                    iterators.add(it);
+                } catch (IOException e) {
+                    // @spec F04.R60,R64 — local-owner failure counts as unavailable with the
+                    // local node id, matching the remote path's accounting.
+                    unavailable.add(node.nodeId());
+                }
+                continue;
+            }
             final RemotePartitionClient client = createClientForNode(node);
             try {
                 final Iterator<TableEntry<String>> it = client.getRange(fromKey, toKey);
@@ -299,6 +363,24 @@ public final class ClusteredTable implements Table {
      */
     private NodeAddress findLocalAddress() {
         return localAddress;
+    }
+
+    /**
+     * Returns {@code true} when {@code owner} is the local node AND a local engine is available for
+     * in-process short-circuit routing (@spec F04.R60).
+     */
+    private boolean isLocalOwner(NodeAddress owner) {
+        assert owner != null : "owner must not be null";
+        return localEngine != null && owner.equals(localAddress);
+    }
+
+    /**
+     * Resolves the local engine's {@link Table} handle for this clustered table's name. Must only
+     * be called when {@link #isLocalOwner(NodeAddress)} returned {@code true}.
+     */
+    private Table localTable() throws IOException {
+        assert localEngine != null : "localTable() must only be called when localEngine is set";
+        return localEngine.getTable(tableMetadata.name());
     }
 
     /**
