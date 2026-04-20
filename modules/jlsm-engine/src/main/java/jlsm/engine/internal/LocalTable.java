@@ -112,12 +112,13 @@ final class LocalTable implements Table {
     }
 
     @Override
-    // @spec F05.R37 — query pass-through deferred to OBL-F05-R37 (pending jlsm-table binding)
+    // @spec F05.R37 — query pass-through delegates to the underlying JlsmTable.StringKeyed, which
+    // returns either a bound TableQuery (when schema + IndexRegistry are configured) or an
+    // unbound TableQuery whose execute() throws UOE. OBL-F05-R37 resolved by WD-03.
     public TableQuery<String> query() {
         synchronized (registration) {
             checkValid();
-            throw new UnsupportedOperationException(
-                    "Query binding not yet implemented — use scan() for now");
+            return delegate.query();
         }
     }
 

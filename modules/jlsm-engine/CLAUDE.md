@@ -46,10 +46,14 @@ Not exported in `module-info.java` and must not be made public:
 
 ## Known Gaps
 
-- `Table.query()` throws `UnsupportedOperationException` — `TableQuery` has a
-  private constructor and cannot be instantiated from outside `jlsm.table`. Use
-  `Table.scan()` for range queries until this is resolved.
 - `ClusteredTable.query()` and `insert(JlsmDocument)` throw
   `UnsupportedOperationException` in clustered mode.
 - `RemotePartitionClient.doQuery(...)` returns an empty list — scored-entry
   response framing over the cluster transport is not yet wired.
+
+## Resolved Gaps
+
+- `Table.query()` now delegates to the underlying `JlsmTable.StringKeyed.query()`
+  which, for schema-configured tables, returns a `TableQuery<String>` bound
+  through `QueryExecutor`. OBL-F05-R37 resolved by WD-03
+  (cross-module-integration work group).

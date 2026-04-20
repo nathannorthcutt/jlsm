@@ -118,11 +118,15 @@ public final class StandardJlsmTable {
             assert codec != null : "codec must not be null when schema is provided";
 
             IndexRegistry registry = null;
-            if (!indexDefinitions.isEmpty()) {
-                if (schema == null) {
-                    throw new IllegalStateException(
-                            "indexDefinitions require a schema on the builder");
-                }
+            if (!indexDefinitions.isEmpty() && schema == null) {
+                throw new IllegalStateException("indexDefinitions require a schema on the builder");
+            }
+            // @spec F05.R37 — when a schema is configured, always materialise an IndexRegistry
+            // so table.query() can route through QueryExecutor even with zero secondary indices.
+            // The registry's documentStore acts as the schema-aware mirror used for
+            // scan-and-filter fallback. When no schema is configured, no registry is created and
+            // query() falls back to its unbound default.
+            if (schema != null) {
                 try {
                     registry = new IndexRegistry(schema, List.copyOf(indexDefinitions),
                             fullTextFactory);

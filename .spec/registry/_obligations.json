@@ -496,7 +496,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "cross-module-integration WD-03: TableQuery bindable via QueryRunner factory + StringKeyedTable.query() + QueryExecutor wiring",
+      "resolved_date": "2026-04-20"
     }
   ]
 }

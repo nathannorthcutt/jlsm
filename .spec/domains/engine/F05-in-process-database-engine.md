@@ -1,7 +1,7 @@
 ---
 {
   "id": "F05",
-  "version": 2,
+  "version": 3,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["engine"],
@@ -11,7 +11,7 @@
   "amended_by": null,
   "decision_refs": ["table-catalog-persistence", "engine-api-surface-design"],
   "kb_refs": [],
-  "open_obligations": ["OBL-F05-R37"]
+  "open_obligations": []
 }
 ---
 
@@ -111,7 +111,7 @@ R83. Table handle operations must synchronize validity checks with the operation
 
 ### Query pass-through
 
-R37. The table handle must support executing queries via the fluent query API provided by the underlying table implementation. Until the jlsm-table query-binding facility (F10) is in place, `query()` may throw `UnsupportedOperationException` with a message directing callers to use `scan()`; this gap is tracked by obligation `OBL-F05-R37`.
+R37. The table handle must support executing queries via the fluent query API provided by the underlying table implementation. Calling `table.query()` must return a non-null `TableQuery<String>` bound to the underlying `JlsmTable.StringKeyed` — calling `execute()` on that query must dispatch its predicate tree through the table's `QueryExecutor`, using registered secondary indices where supported and scan-and-filter fallback otherwise. Queries on schemaless tables (no schema configured at build time) may throw `UnsupportedOperationException` from `TableQuery.execute()` because no predicate execution context exists.
 
 R38. The table handle must support scan operations (range iteration) via the underlying table implementation.
 
@@ -314,7 +314,7 @@ Provide an in-process database engine that manages multiple named tables under a
 | R34 | SATISFIED | `LocalTable.update:68-77`, `LocalTableTest.updateDelegatesToStub` |
 | R35 | SATISFIED | `LocalTable.delete:79-86`, `LocalTableTest.deleteDelegatesToStub` |
 | R36 | SATISFIED | `LocalTable.checkValid:151-159`, `LocalTableTest.evictedHandleThrowsOnGet` |
-| R37 | PARTIAL (amended) | `LocalTable.query:116` throws UOE per amended spec; **OBL-F05-R37** tracks jlsm-table binding work |
+| R37 | SATISFIED (amended v3) | `LocalTable.query:116` delegates to `StringKeyedTable.query()` which returns a bound `TableQuery` wired through `QueryExecutor`; `TableQueryExecutionTest` covers index-backed + scan-fallback + AND/OR + empty paths. **OBL-F05-R37** resolved by WD-03. |
 | R38 | SATISFIED | `LocalTable.scan:122-131`, `LocalTableTest.scanDelegatesToStub` |
 | R39 | SATISFIED | `LocalTable.checkValid` used by `scan`/`query` |
 | R40 | SATISFIED | `HandleTracker.register:95-144`, `HandleTrackerTest.registerReturnsNonNullRegistration` |
@@ -372,10 +372,10 @@ Provide an in-process database engine that manages multiple named tables under a
 
 **Overall: PASS_WITH_NOTES**
 
-Amendments applied: 17 (R14, R21–R25, R28, R37, R42, R51, R52, R54, R55, R57, R60, R67, R74)
+Amendments applied: 18 (R14, R21–R25, R28, R37 [v2 + v3], R42, R51, R52, R54, R55, R57, R60, R67, R74)
 Code fixes applied: 7 (R1 public factory, R3 absolute check, R19 state filter, R20 READY snapshot, R26/R27/R31 tombstone drop, R54 atomic write-then-rename)
-Regression tests added: 8 (F05ContractTest)
-Obligations created: 1 (OBL-F05-R37 — query pass-through pending F10)
+Regression tests added: 8 (F05ContractTest) + 9 (TableQueryExecutionTest, WD-03)
+Obligations created: 1 (OBL-F05-R37 — query pass-through pending F10); RESOLVED by WD-03 on 2026-04-20
 Untestable: 2 (R61, R79)
 
 #### Amendments
@@ -387,7 +387,8 @@ Untestable: 2 (R61, R79)
 - **R26, R27** drop transitions metadata state to DROPPED via atomic write-then-rename (tombstone); the in-memory catalog drops the entry from the served view
 - **R28** "illegal argument exception" → "IOException"
 - **R31** on deletion failure the drop still succeeds (DROPPED state already persisted); best-effort cleanup only, no failure propagation
-- **R37** permit `UnsupportedOperationException` pending jlsm-table query-binding (tracked by OBL-F05-R37)
+- **R37** (v2 amendment, superseded by v3) permitted `UnsupportedOperationException` pending jlsm-table query-binding (tracked by OBL-F05-R37)
+- **R37** (v3, WD-03 2026-04-20) rewritten forward: `table.query()` returns a bound `TableQuery<String>` that dispatches via `QueryExecutor` against registered secondary indices and scan-and-filter fallback. UOE is retained only for schemaless tables where no `IndexRegistry` can be materialised. OBL-F05-R37 resolved.
 - **R42** source identifier is always `Thread.threadId()`; `CALLER_TAG` / `FULL_STACK` govern allocation-site capture only
 - **R51** LRU ordering via per-source list insertion order (no explicit timestamp)
 - **R52** per-table `<root>/<tableName>/table.meta` files (per ADR `table-catalog-persistence`)
