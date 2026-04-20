@@ -2,10 +2,16 @@ plugins { id 'java-library' }
 
 dependencies {
     api project(':modules:jlsm-core')
+    // Integration tests only — jlsm-indexing's production code does not depend on jlsm-table.
+    // This dep supports WD-01 end-to-end tests that wire LsmFullTextIndexFactory into
+    // StandardJlsmTable + StringKeyedTable + IndexRegistry through the jlsm-core factory SPI.
+    testImplementation project(':modules:jlsm-table')
 }
 
 test {
     jvmArgs '-ea'
+    jvmArgs '--add-modules', 'jdk.incubator.vector'
+    jvmArgs '--add-exports', 'jlsm.table/jlsm.table.internal=ALL-UNNAMED'
 }
 // No eclipse block needed: jlsm.indexing requires transitive jlsm.core,
 // which exports all needed packages. JDT resolves them without add.exports.

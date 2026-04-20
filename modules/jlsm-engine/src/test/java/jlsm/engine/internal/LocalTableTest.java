@@ -198,13 +198,19 @@ class LocalTableTest {
         }
     }
 
-    // ---- query throws UnsupportedOperationException ----
+    // ---- query delegates to underlying table ----
 
-    // @spec F05.R37 — query() may throw UnsupportedOperationException pending OBL-F05-R37 (F10)
+    // @spec F05.R37 — query() now delegates to the underlying JlsmTable.StringKeyed
+    // (OBL-F05-R37 resolved by WD-03). The stub delegate does not override query() so it
+    // returns the interface default — an unbound TableQuery whose execute() throws UOE.
     @Test
-    void queryThrowsUnsupportedOperationException() {
+    void queryReturnsUnboundTableQueryFromStub() {
         try (final LocalTable table = createTable()) {
-            assertThrows(UnsupportedOperationException.class, table::query);
+            jlsm.table.TableQuery<String> q = table.query();
+            assertNotNull(q, "query() must return a non-null TableQuery");
+            q.where("name").eq("Alice");
+            assertThrows(UnsupportedOperationException.class, q::execute,
+                    "unbound TableQuery.execute() throws UOE (stub delegate provides no binding)");
         }
     }
 

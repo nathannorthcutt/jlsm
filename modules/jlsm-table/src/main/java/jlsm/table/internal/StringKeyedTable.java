@@ -9,6 +9,7 @@ import jlsm.table.JlsmSchema;
 import jlsm.table.JlsmTable;
 import jlsm.table.KeyNotFoundException;
 import jlsm.table.TableEntry;
+import jlsm.table.TableQuery;
 import jlsm.table.UpdateMode;
 
 import java.io.IOException;
@@ -32,6 +33,7 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
 
     private final TypedLsmTree.StringKeyed<JlsmDocument> tree;
     private final MemorySerializer<JlsmDocument> codec;
+    private final JlsmSchema schema; // nullable when built without a schema
     private final IndexRegistry indexRegistry; // nullable when no indices are configured
 
     /**
@@ -60,6 +62,7 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
         assert codec != null : "codec must not be null";
         this.tree = tree;
         this.codec = codec;
+        this.schema = schema;
         this.indexRegistry = indexRegistry;
     }
 
@@ -171,10 +174,24 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
 
     /**
      * Returns the index registry, or {@code null} if none is configured. Package-accessible for
-     * {@link jlsm.table.TableQuery} to access during {@code execute()} wiring (a later WD).
+     * {@link jlsm.table.TableQuery} to access during {@code execute()} wiring.
      */
     public IndexRegistry indexRegistry() {
         return indexRegistry;
+    }
+
+    @Override
+    // @spec F05.R37, F10.R37 — when schema + IndexRegistry are present, return a TableQuery
+    // bound to a QueryExecutor over this table's registry. When no schema/registry is
+    // configured, fall back to the interface's default unbound query (execute() → UOE) so
+    // callers get a clear failure pointing at the missing configuration rather than silent
+    // wrong behaviour.
+    public TableQuery<String> query() {
+        if (schema == null || indexRegistry == null) {
+            return TableQuery.unbound();
+        }
+        final QueryExecutor<String> executor = QueryExecutor.forStringKeys(schema, indexRegistry);
+        return TableQuery.bound(executor::execute);
     }
 
     @Override

@@ -138,7 +138,7 @@ class VectorTypeTest {
 
         var defs = List.of(new IndexDefinition("emb", IndexType.VECTOR, SimilarityFunction.COSINE));
 
-        try (var registry = new IndexRegistry(schema, defs,
+        try (var registry = new IndexRegistry(schema, defs, null,
                 jlsm.table.internal.InMemoryVectorFactories.ivfFlatFake())) {
             assertFalse(registry.isEmpty());
         }
@@ -449,7 +449,7 @@ class VectorTypeTest {
                 .vectorField("emb", FieldType.Primitive.FLOAT32, 64).build();
         var defs = List.of(new IndexDefinition("emb", IndexType.VECTOR, SimilarityFunction.COSINE));
 
-        try (var registry = new IndexRegistry(schema, defs,
+        try (var registry = new IndexRegistry(schema, defs, null,
                 jlsm.table.internal.InMemoryVectorFactories.ivfFlatFake())) {
             FieldType declared = schema.fields().get(0).type();
             assertInstanceOf(FieldType.VectorType.class, declared);

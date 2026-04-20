@@ -188,8 +188,13 @@ class VectorTableIntegrationTest {
             table.create("k1", JlsmDocument.of(schema, "embedding", new float[]{ 1.0f, 2.0f }));
             assertEquals(1.0f, table.get("k1").orElseThrow().getFloat32Vector("embedding")[0],
                     1e-6);
-            assertTrue(table instanceof StringKeyedTable skt && skt.indexRegistry() == null,
-                    "no indexDefinitions → no registry");
+            // @spec F05.R37 (WD-03) — a schema-configured table always materialises an
+            // IndexRegistry (even with zero index definitions) so table.query() can execute
+            // scan-and-filter queries. The registry must be present and empty.
+            assertTrue(
+                    table instanceof StringKeyedTable skt && skt.indexRegistry() != null
+                            && skt.indexRegistry().isEmpty(),
+                    "schema + no indexDefinitions → empty registry (was: no registry; changed by WD-03 to enable query binding)");
         }
     }
 

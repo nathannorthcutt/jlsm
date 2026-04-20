@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import jlsm.core.indexing.FullTextIndex;
 import jlsm.core.indexing.VectorIndex;
 import jlsm.core.indexing.VectorPrecision;
 import jlsm.encryption.EncryptionSpec;
@@ -51,21 +52,45 @@ public final class IndexRegistry implements Closeable {
     }
 
     /**
-     * Constructs an IndexRegistry with an optional {@link VectorIndex.Factory} for building VECTOR
-     * indices. If any definition in {@code definitions} has index type VECTOR and the factory is
-     * {@code null}, construction fails fast with {@link IllegalArgumentException} so mis-wiring
-     * surfaces at table creation rather than on the first write.
+     * Constructs an IndexRegistry with an optional {@link FullTextIndex.Factory} for building
+     * FULL_TEXT indices. If any definition in {@code definitions} has index type FULL_TEXT and the
+     * factory is {@code null}, construction fails fast with {@link IllegalArgumentException} so
+     * mis-wiring surfaces at table creation rather than on the first write. Delegates to the 4-arg
+     * constructor with {@code vectorFactory = null}; this overload is retained for callers that do
+     * not register VECTOR indices.
      *
      * @param schema the table schema; must not be null
      * @param definitions the index definitions; must not be null
+     * @param fullTextFactory the factory for FULL_TEXT indices; may be null if no FULL_TEXT
+     *            definitions are present
+     * @throws IOException if an index fails to initialise
+     */
+    public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions,
+            FullTextIndex.Factory fullTextFactory) throws IOException {
+        this(schema, definitions, fullTextFactory, null);
+    }
+
+    /**
+     * Constructs an IndexRegistry with optional factories for both FULL_TEXT and VECTOR indices. If
+     * any definition in {@code definitions} has index type FULL_TEXT and {@code fullTextFactory} is
+     * {@code null}, or index type VECTOR and {@code vectorFactory} is {@code null}, construction
+     * fails fast with {@link IllegalArgumentException} so mis-wiring surfaces at table creation
+     * rather than on the first write.
+     *
+     * @param schema the table schema; must not be null
+     * @param definitions the index definitions; must not be null
+     * @param fullTextFactory the factory for FULL_TEXT indices; may be null if no FULL_TEXT
+     *            definitions are present
      * @param vectorFactory the factory for VECTOR indices; may be null if no VECTOR definitions are
      *            present
      * @throws IOException if an index fails to initialise
      */
-    // @spec F10.R92 — schema-validated definitions; factory is injected so VECTOR indices
-    // resolve OBL-F10-vector via LsmVectorIndex in jlsm-vector
+    // @spec F10.R92 — schema-validated definitions; factories are injected so FULL_TEXT
+    // resolves OBL-F10-fulltext via LsmFullTextIndex in jlsm-indexing and VECTOR resolves
+    // OBL-F10-vector via LsmVectorIndex in jlsm-vector
     public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions,
-            VectorIndex.Factory vectorFactory) throws IOException {
+            FullTextIndex.Factory fullTextFactory, VectorIndex.Factory vectorFactory)
+            throws IOException {
         Objects.requireNonNull(schema, "schema");
         Objects.requireNonNull(definitions, "definitions");
         this.schema = schema;
@@ -75,8 +100,13 @@ public final class IndexRegistry implements Closeable {
 
         for (IndexDefinition def : definitions) {
             validate(schema, def);
-            if (def.indexType() == IndexType.VECTOR && vectorFactory == null) {
+            if (def.indexType() == IndexType.FULL_TEXT && fullTextFactory == null) {
                 // Clean up already-created indices and the arena before failing.
+                closePartial(null);
+                throw new IllegalArgumentException("FULL_TEXT index on field '" + def.fieldName()
+                        + "' requires a FullTextIndex.Factory — pass one to the table builder");
+            }
+            if (def.indexType() == IndexType.VECTOR && vectorFactory == null) {
                 closePartial(null);
                 throw new IllegalArgumentException("VECTOR index on field '" + def.fieldName()
                         + "' requires a VectorIndex.Factory — pass one to the table builder");
@@ -84,7 +114,8 @@ public final class IndexRegistry implements Closeable {
             final int fieldIdx = schema.fieldIndex(def.fieldName());
             final FieldType fieldType = schema.fields().get(fieldIdx).type();
             try {
-                this.indices.add(createIndex(def, fieldType, schema.name(), vectorFactory));
+                this.indices.add(
+                        createIndex(def, fieldType, schema.name(), fullTextFactory, vectorFactory));
             } catch (Exception e) {
                 // Close the managed arena before propagating the failure.
                 segmentArena.close();
@@ -622,10 +653,16 @@ public final class IndexRegistry implements Closeable {
     }
 
     private static SecondaryIndex createIndex(IndexDefinition def, FieldType fieldType,
-            String tableName, VectorIndex.Factory vectorFactory) throws IOException {
+            String tableName, FullTextIndex.Factory fullTextFactory,
+            VectorIndex.Factory vectorFactory) throws IOException {
         return switch (def.indexType()) {
             case EQUALITY, RANGE, UNIQUE -> new FieldIndex(def, fieldType);
-            case FULL_TEXT -> new FullTextFieldIndex(def);
+            case FULL_TEXT -> {
+                assert fullTextFactory != null
+                        : "fullTextFactory null despite FULL_TEXT index — constructor must reject earlier";
+                yield new FullTextFieldIndex(def,
+                        fullTextFactory.create(tableName, def.fieldName()));
+            }
             case VECTOR -> {
                 assert vectorFactory != null
                         : "vectorFactory null despite VECTOR index — constructor must reject earlier";

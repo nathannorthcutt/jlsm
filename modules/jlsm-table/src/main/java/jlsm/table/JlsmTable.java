@@ -66,6 +66,21 @@ public sealed interface JlsmTable extends Closeable
          */
         Iterator<TableEntry<String>> getAllInRange(String from, String to) throws IOException;
 
+        /**
+         * Returns a fluent {@link TableQuery} for this table. The default implementation returns an
+         * unbound query — its {@link TableQuery#execute()} throws
+         * {@link UnsupportedOperationException}. Production table implementations override this
+         * method to return a query bound to the table's schema, primary storage, and any registered
+         * secondary indices.
+         *
+         * @return a {@link TableQuery} for building and executing predicate queries
+         */
+        // @spec F05.R37, F10.R37 — query() must return a functional TableQuery wired to the
+        // underlying table when the table has a schema; unbound otherwise.
+        default TableQuery<String> query() {
+            return TableQuery.unbound();
+        }
+
         /** Builder for {@link StringKeyed} tables. */
         interface Builder {
             JlsmTable.StringKeyed build();

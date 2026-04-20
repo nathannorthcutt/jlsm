@@ -37,8 +37,49 @@ public final class TableQuery<K> {
 
     private Predicate root;
     private CombineMode nextMode = CombineMode.NONE;
+    // @spec F10.R37,F10.R38 — null runner → unbound → execute() throws UOE;
+    // non-null runner → bound → execute() delegates to the runner.
+    private final QueryRunner<K> runner;
 
     private TableQuery() {
+        this(null);
+    }
+
+    private TableQuery(QueryRunner<K> runner) {
+        this.runner = runner;
+    }
+
+    /**
+     * Creates an unbound {@link TableQuery}. The returned query supports fluent predicate building
+     * but throws {@link UnsupportedOperationException} from {@link #execute()} — callers must
+     * obtain a bound instance via {@link JlsmTable.StringKeyed#query()} (or another table-provided
+     * factory) to execute the query.
+     *
+     * @param <K> the primary key type
+     * @return a new unbound query
+     */
+    // @spec F10.R38 — explicit unbound constructor; execute() throws UOE.
+    public static <K> TableQuery<K> unbound() {
+        return new TableQuery<>();
+    }
+
+    /**
+     * Creates a {@link TableQuery} bound to the supplied {@link QueryRunner}. The returned query's
+     * {@link #execute()} method dispatches the built predicate through the runner.
+     *
+     * <p>
+     * This factory is intended for use by table implementations in {@code jlsm.table.internal}; the
+     * runner type is public only so implementations can expose a typed execution backend. External
+     * callers who need a query should call {@link JlsmTable.StringKeyed#query()} on their table.
+     *
+     * @param runner the execution backend; must not be null
+     * @param <K> the primary key type
+     * @return a new bound query
+     */
+    // @spec F05.R37,F10.R37 — bound factory used by StringKeyedTable to wire QueryExecutor.
+    public static <K> TableQuery<K> bound(QueryRunner<K> runner) {
+        Objects.requireNonNull(runner, "runner must not be null");
+        return new TableQuery<>(runner);
     }
 
     /**
@@ -60,10 +101,19 @@ public final class TableQuery<K> {
      * @return iterator over matching table entries
      * @throws IOException if an I/O error occurs during query execution
      */
-    // @spec F10.R37,R38 — returns Iterator<TableEntry<K>>; unbound instance throws UOE
+    // @spec F10.R37,R38 — returns Iterator<TableEntry<K>>; unbound instance throws UOE, bound
+    // instance delegates to the QueryRunner wired by the owning table.
     public Iterator<TableEntry<K>> execute() throws IOException {
-        throw new UnsupportedOperationException(
-                "execute() requires table binding — use table.query() to obtain a bound instance");
+        if (runner == null) {
+            throw new UnsupportedOperationException(
+                    "execute() requires table binding — use table.query() to obtain a bound instance");
+        }
+        if (root == null) {
+            // Empty predicate tree — nothing was built. Return an empty iterator rather than
+            // forcing callers to special-case the no-predicate form.
+            return java.util.Collections.emptyIterator();
+        }
+        return runner.run(root);
     }
 
     /**

@@ -85,7 +85,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-17",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "cross-module-integration WD-01: FullTextIndex.Factory SPI + LsmFullTextIndexFactory + FullTextFieldIndex adapter",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "OBL-F10-vector",
@@ -284,7 +286,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-05: ClusterOperationalMode (NORMAL/READ_ONLY), QuorumLostException, quorum-monitoring in ClusteredEngine.onViewChanged, SeedRetryTask for proactive re-contact during quorum loss, and ViewReconciler (higher-incarnation-wins; severity DEAD > SUSPECTED > ALIVE on ties) wired into RapidMembership.handleViewChangeProposal.",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "OBL-F04-R47-50-grace-gated-rebalance",
@@ -303,7 +307,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-05: GraceGatedRebalancer schedules deferred rebalance at grace expiry; RendezvousOwnership.differentialAssign recomputes only affected partition IDs so still-live members keep their assignments; cancelPending(NodeAddress) aborts a pending rebalance when a node rejoins within grace.",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "OBL-F04-R63-partition-pruning",
@@ -320,7 +326,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-05: PartitionKeySpace SPI (SinglePartitionKeySpace fallback + LexicographicPartitionKeySpace range-based impl), RendezvousOwnership.ownersForKeyRange resolves intersecting partition owners, ClusteredTable.scan delegates owner resolution to the configured keyspace so fanout narrows to range-overlapping owners instead of every live member.",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "OBL-F04-R56-57-79-engine-join",
@@ -496,7 +504,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "cross-module-integration WD-03: TableQuery bindable via QueryRunner factory + StringKeyedTable.query() + QueryExecutor wiring",
+      "resolved_date": "2026-04-20"
     }
   ]
 }

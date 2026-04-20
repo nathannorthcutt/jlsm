@@ -65,29 +65,32 @@ class ResourceLifecycleAdversarialTest {
     // Regression watch: Ensure the original cause is not swallowed by cleanup
     @Test
     void test_IndexRegistry_constructionFailure_closesAlreadyCreatedIndices() throws Exception {
-        // Schema with EQUALITY (succeeds) then FULL_TEXT (throws UnsupportedOperationException)
+        // Schema with EQUALITY (succeeds) then FULL_TEXT (fails via a factory that throws)
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())
                 .field("description", FieldType.string()).build();
 
         List<IndexDefinition> definitions = List.of(new IndexDefinition("name", IndexType.EQUALITY),
                 new IndexDefinition("description", IndexType.FULL_TEXT));
 
-        // Before the fix: the FieldIndex created for "name" is leaked (never closed)
-        // and a raw UnsupportedOperationException escapes the constructor.
-        //
-        // After the fix: the constructor catches the failure, closes already-created
-        // indices, and wraps the cause in IOException (matching the declared signature).
-        //
-        // This assertion fails before the fix because the raw UnsupportedOperationException
-        // propagates without cleanup, and assertThrows(IOException.class, ...) does not
-        // catch UnsupportedOperationException.
+        // Factory that throws an IOException the second time it is invoked — exercises the same
+        // partial-construction path previously covered by the FULL_TEXT stub's UOE. The failure
+        // must be reported as IOException and already-created indices must be closed.
+        jlsm.core.indexing.FullTextIndex.Factory failingFactory = (table, field) -> {
+            throw new IOException("boom during FULL_TEXT index creation");
+        };
+
         IOException thrown = assertThrows(IOException.class,
-                () -> new IndexRegistry(schema, definitions),
+                () -> new IndexRegistry(schema, definitions, failingFactory),
                 "Construction failure should be wrapped in IOException after index cleanup");
 
-        // The original cause must be preserved so callers can diagnose the root problem
-        assertInstanceOf(UnsupportedOperationException.class, thrown.getCause(),
-                "Original UnsupportedOperationException must be the cause");
+        // The original cause must be preserved so callers can diagnose the root problem.
+        // The boom IOException is the direct throw — it must be the same instance (since
+        // IndexRegistry.createIndex rethrows IOExceptions directly) or surface as cause.
+        String msg = thrown.getMessage();
+        assertTrue(
+                msg != null && (msg.contains("boom") || (thrown.getCause() != null
+                        && String.valueOf(thrown.getCause().getMessage()).contains("boom"))),
+                "Original cause must be preserved; got: " + thrown);
     }
 
     // Finding: F-R1.resource_lifecycle.1.4
@@ -106,7 +109,7 @@ class ResourceLifecycleAdversarialTest {
                 new IndexDefinition("embedding", IndexType.VECTOR, SimilarityFunction.COSINE),
                 new IndexDefinition("age", IndexType.EQUALITY));
 
-        try (IndexRegistry registry = new IndexRegistry(schema, definitions,
+        try (IndexRegistry registry = new IndexRegistry(schema, definitions, null,
                 jlsm.table.internal.InMemoryVectorFactories.ivfFlatFake())) {
             MemorySegment pk = stringKey("pk-1");
             JlsmDocument doc = JlsmDocument.of(schema, "name", "Alice", "age", 30);
@@ -885,24 +888,29 @@ class ResourceLifecycleAdversarialTest {
     @Test
     void test_IndexRegistry_firstIndexCreationFailure_wrapsInIOException() throws Exception {
         // Schema with a single FULL_TEXT field — the first (and only) index creation will fail
+        // because the injected factory throws an IOException during create.
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("description", FieldType.string())
                 .build();
 
         List<IndexDefinition> definitions = List
                 .of(new IndexDefinition("description", IndexType.FULL_TEXT));
 
-        // Before the fix: the raw UnsupportedOperationException from FullTextFieldIndex
-        // constructor escapes because indices is empty at throw time, so the code
-        // falls through to `throw e` without wrapping.
-        // After the fix: the exception is wrapped in IOException for consistency.
-        IOException thrown = assertThrows(IOException.class,
-                () -> new IndexRegistry(schema, definitions),
-                "First index creation failure should be wrapped in IOException, "
-                        + "not thrown raw as UnsupportedOperationException");
+        jlsm.core.indexing.FullTextIndex.Factory failingFactory = (table, field) -> {
+            throw new IOException("boom on first FULL_TEXT creation");
+        };
 
-        // The original cause must be preserved
-        assertInstanceOf(UnsupportedOperationException.class, thrown.getCause(),
-                "Original UnsupportedOperationException must be the cause");
+        // Constructor must surface the failure as IOException (already the declared checked
+        // type) rather than leaking a different exception type. The message or cause must
+        // preserve the original problem so callers can diagnose.
+        IOException thrown = assertThrows(IOException.class,
+                () -> new IndexRegistry(schema, definitions, failingFactory),
+                "First index creation failure should be reported as IOException");
+
+        String msg = thrown.getMessage();
+        assertTrue(
+                msg != null && (msg.contains("boom") || (thrown.getCause() != null
+                        && String.valueOf(thrown.getCause().getMessage()).contains("boom"))),
+                "Original cause must be preserved; got: " + thrown);
     }
 
     // Finding: F-R1.resource_lifecycle.4.3

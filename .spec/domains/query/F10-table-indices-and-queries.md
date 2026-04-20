@@ -1,7 +1,7 @@
 ---
 {
   "id": "F10",
-  "version": 3,
+  "version": 4,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["query", "engine"],
@@ -11,7 +11,7 @@
   "amended_by": null,
   "decision_refs": [],
   "kb_refs": [],
-  "open_obligations": ["OBL-F10-fulltext"]
+  "open_obligations": []
 }
 ---
 
@@ -29,7 +29,7 @@ R3. `RANGE` must support `Eq`, `Ne`, `Gt`, `Gte`, `Lt`, `Lte`, and `Between` pre
 
 R4. `UNIQUE` must support the same predicate lookups as `RANGE` and additionally enforce a uniqueness constraint at write time.
 
-R5. `FULL_TEXT` must support only `FullTextMatch` predicate lookups and must require a `STRING` or `BoundedString` field type.
+R5. `FULL_TEXT` must support only `FullTextMatch` predicate lookups and must require a `STRING` or `BoundedString` field type. The `FullTextFieldIndex` adapter must delegate to a `FullTextIndex<MemorySegment>` backing supplied by a `FullTextIndex.Factory` so that write-path mutations propagate to a real index implementation without a direct static dependency from `jlsm-table` on `jlsm-indexing`.
 
 R6. `VECTOR` must support only `VectorNearest` predicate lookups and must require a `VectorType` field type.
 
@@ -193,17 +193,17 @@ R78. Unique constraint checks must skip null field values (null values are not s
 
 ### FullTextFieldIndex
 
-R79. `FullTextFieldIndex` must implement `SecondaryIndex` and must be a final class in `jlsm.table.internal`.
+R79. `FullTextFieldIndex` must implement `SecondaryIndex` and must be a final class in `jlsm.table.internal`. It must be constructed with a non-null `IndexDefinition` of type `FULL_TEXT` and a non-null backing `jlsm.core.indexing.FullTextIndex<MemorySegment>` supplied by the caller (typically via `FullTextIndex.Factory`). Any other index type must be rejected with `IllegalArgumentException`.
 
-R80. `FullTextFieldIndex.supports` must return true only for `FullTextMatch` predicates whose field matches the index's field.
+R80. `FullTextFieldIndex.supports` must return true only for `FullTextMatch` predicates whose `field()` equals the index's field, and must return false for all other predicates and after `close()`.
 
-R81. `FullTextFieldIndex.onInsert` must tokenize the string field value and index each term mapped to the primary key.
+R81. `FullTextFieldIndex.onInsert` must route `(fieldName -> String.valueOf(fieldValue))` to `FullTextIndex.index(primaryKey, fields)` on the backing index so that the backing implementation's tokenisation pipeline indexes each term for the primary key. Null `fieldValue` is a no-op per R56.
 
-R82. `FullTextFieldIndex.onUpdate` must remove old terms and index new terms for the given primary key.
+R82. `FullTextFieldIndex.onUpdate` must invoke `FullTextIndex.remove` with the old field value (when non-null) and then `FullTextIndex.index` with the new field value (when non-null), so that old terms are deindexed and new terms indexed for the given primary key.
 
-R83. `FullTextFieldIndex.onDelete` must remove all terms for the given primary key.
+R83. `FullTextFieldIndex.onDelete` must route `(fieldName -> String.valueOf(fieldValue))` to `FullTextIndex.remove(primaryKey, fields)` on the backing index so that all terms for the primary key are removed. Null `fieldValue` is a no-op per R60.
 
-R84. `FullTextFieldIndex.lookup` for `FullTextMatch` must return primary keys of documents containing the query terms.
+R84. `FullTextFieldIndex.lookup` for `FullTextMatch` must translate the predicate to `jlsm.core.indexing.Query.TermQuery(field, query)` and return the iterator produced by `FullTextIndex.search`; it must reject any other predicate shape with `UnsupportedOperationException`. `FullTextFieldIndex.close()` must be idempotent and must close the backing index exactly once; subsequent calls are no-ops.
 
 ### VectorFieldIndex
 
@@ -388,7 +388,7 @@ Enable secondary index support and a fluent query API for `JlsmTable`. Users def
 |-----|---------|----------|
 | R1 | SATISFIED | `IndexType` enum — five constants |
 | R2–R4 | SATISFIED | `FieldIndex.supports` per-type dispatch |
-| R5 | DEFERRED (OBL-F10-fulltext) | `IndexRegistry.validate` enforces STRING/BoundedString; `FullTextFieldIndex` is a stub |
+| R5 | SATISFIED | `IndexRegistry.validate` enforces STRING/BoundedString; `FullTextFieldIndex` delegates to `FullTextIndex.Factory`-supplied backing (WD-01) |
 | R6 | DEFERRED (OBL-F10-vector) | `IndexRegistry.validate` enforces VectorType; `VectorFieldIndex` is a stub |
 | R7–R13 | SATISFIED | `IndexDefinition` record + compact ctor validation |
 | R14 | SATISFIED | `Predicate` sealed interface with 11 nested record permits |
@@ -398,7 +398,7 @@ Enable secondary index support and a fluent query API for `JlsmTable`. Users def
 | R53–R62 | SATISFIED | `SecondaryIndex` sealed interface; FieldIndex satisfies all; stub impls tracked by obligations |
 | R63–R73 | SATISFIED | `FieldIndex` — `ConcurrentSkipListMap<ByteArrayKey, List<MemorySegment>>` |
 | R74–R78 | SATISFIED | Two-phase unique validation in `IndexRegistry.onInsert`/`onUpdate` with rollback |
-| R79–R84 | DEFERRED (OBL-F10-fulltext) | `FullTextFieldIndex` is a stub — all operations throw `UnsupportedOperationException` |
+| R79–R84 | SATISFIED | `FullTextFieldIndex` delegates to `FullTextIndex<MemorySegment>` supplied by `FullTextIndex.Factory`; `LsmFullTextIndexFactory` provides the LSM-backed implementation in `jlsm-indexing` (WD-01) |
 | R85–R90 | DEFERRED (OBL-F10-vector) | `VectorFieldIndex` is a stub — mutation is no-op, lookup throws |
 | R91–R105 | SATISFIED | `IndexRegistry` — `ReentrantReadWriteLock`, `AtomicBoolean`, deferred-exception close |
 | R106–R110 | SATISFIED | `FieldIndex.onUpdate` remove-then-insert; null-field early returns |
@@ -432,17 +432,34 @@ Enable secondary index support and a fluent query API for `JlsmTable`. Users def
 
 **Code fixes applied:** none.
 
-#### Amendments (v2 → v3)
+#### Amendments (v2 → v4)
 
-Cross-module integration WD-02 (feature `cross-module-integration--wd-02`) resolved `OBL-F10-vector` by wiring `LsmVectorIndex` through a factory SPI. Requirements R87–R90 were extended forward to describe the shipped delegation contract; R85 and R86 remained structurally accurate. `open_obligations` now lists only `OBL-F10-fulltext` on this branch — WD-01 (`OBL-F10-fulltext` resolution) lands via a parallel PR and the second-to-merge PR bumps F10 to v4 and empties `open_obligations`.
+Two parallel cross-module-integration work definitions closed the remaining F10 integration obligations. WD-01 (`OBL-F10-fulltext`) merged first and bumped v2 → v3. WD-02 (`OBL-F10-vector`) merges next and bumps v3 → v4, emptying `open_obligations`.
 
-- **R6:** PARTIAL → SATISFIED. The validation half (reject VECTOR on non-VectorType) already shipped; the runtime half — writes actually reach the index — now ships via the factory SPI described in R87.
-- **R87:** extended to reference `VectorIndex.Factory.create(tableName, fieldName, dimensions, precision, similarityFunction)` and to codify fail-fast behaviour when no factory is configured (prior wording allowed silent stub no-ops).
-- **R88:** extended to cover the "old vector absent" edge case explicitly — removal is a no-op; the insert still proceeds.
-- **R90:** extended to name `search(queryVector, topK)` as the backing call.
+**WD-01 (2026-04-20) — `OBL-F10-fulltext` resolved:**
+- **R5 (PARTIAL → SATISFIED):** amended to codify that the FULL_TEXT integration path delegates to a `FullTextIndex<MemorySegment>` supplied by a `FullTextIndex.Factory` SPI. This keeps the one-way dependency arrow from `jlsm-table` → `jlsm-core` intact — `jlsm-table` never imports `jlsm-indexing`.
+- **R79 (VIOLATED → SATISFIED):** amended to require constructor injection of the backing `FullTextIndex<MemorySegment>` and to reject non-FULL_TEXT index types with `IllegalArgumentException`. The prior stub that threw `UnsupportedOperationException` on every method is replaced by a real adapter.
+- **R80 (VIOLATED → SATISFIED):** amended to explicitly require `supports` to return false for all non-FullTextMatch predicates and after close.
+- **R81, R82, R83 (VIOLATED → SATISFIED):** amended to describe the mutation-routing contract in terms of the `FullTextIndex.index` / `FullTextIndex.remove` batch API rather than lower-level term tokenisation (tokenisation lives inside the backing implementation).
+- **R84 (VIOLATED → SATISFIED):** amended to describe the `FullTextMatch → Query.TermQuery` translation path, to reject non-FullTextMatch predicates with `UnsupportedOperationException`, and to require idempotent `close()`.
+
+Supporting artefacts (WD-01):
+- `jlsm.core.indexing.FullTextIndex.Factory` — factory SPI in `jlsm-core`.
+- `jlsm.indexing.LsmFullTextIndexFactory` — concrete factory in `jlsm-indexing` producing LSM-backed indices keyed by `(tableName, fieldName)`.
+- `StandardJlsmTable.StringKeyedBuilder.addIndex(...)` + `.fullTextFactory(...)` — table-builder surface for registering FULL_TEXT indices. The builder rejects FULL_TEXT definitions with no factory at `build()` time (fail-fast at table creation, not on first write).
+
+**WD-02 (2026-04-20) — `OBL-F10-vector` resolved:**
+- **R6 (PARTIAL → SATISFIED):** The validation half (reject VECTOR on non-VectorType) already shipped; the runtime half — writes actually reach the index — now ships via the factory SPI described in R87.
+- **R87 (extended):** references `VectorIndex.Factory.create(tableName, fieldName, dimensions, precision, similarityFunction)` and codifies fail-fast behaviour when no factory is configured (prior wording allowed silent stub no-ops).
+- **R88 (extended):** covers the "old vector absent" edge case explicitly — removal is a no-op; the insert still proceeds.
+- **R90 (extended):** names `search(queryVector, topK)` as the backing call.
 - **VectorIndex.Factory SPI** (new in jlsm-core, `jlsm.core.indexing.VectorIndex.Factory`): bridges the `jlsm-table → jlsm-vector` module-boundary invariant without a static dependency. Factory instances pick the algorithm (IvfFlat vs Hnsw) so table builders can configure the runtime flavour without changing the table API.
 
-Module surface:
+Supporting artefacts (WD-02):
 - `jlsm-core`: new nested interface `VectorIndex.Factory` (public).
 - `jlsm-vector`: new public class `LsmVectorIndexFactory` producing `LsmVectorIndex` (IvfFlat/Hnsw) instances under a per-(table, field) subdirectory.
 - `jlsm-table`: `StandardJlsmTable.stringKeyedBuilder()` gained `vectorFactory(VectorIndex.Factory)`. Tables registering a `VECTOR` index without a factory now fail at `build()` with `IllegalArgumentException` instead of silently dropping writes.
+
+**Combined IndexRegistry surface:** the four-arg constructor `IndexRegistry(schema, definitions, fullTextFactory, vectorFactory)` accepts both factories together; the three-arg overload passing `null` for `vectorFactory` is retained for call-sites that do not register VECTOR indices.
+
+**Obligations resolved:** `open_obligations` is now empty.

@@ -155,7 +155,7 @@ class ContractBoundariesAdversarialTest {
         List<IndexDefinition> definitions = List.of(new IndexDefinition("name", IndexType.EQUALITY),
                 new IndexDefinition("embedding", IndexType.VECTOR, SimilarityFunction.COSINE));
 
-        try (IndexRegistry registry = new IndexRegistry(schema, definitions,
+        try (IndexRegistry registry = new IndexRegistry(schema, definitions, null,
                 jlsm.table.internal.InMemoryVectorFactories.ivfFlatFake())) {
             byte[] pkBytes = "pk-1".getBytes(StandardCharsets.UTF_8);
             MemorySegment pk = Arena.ofAuto().allocate(pkBytes.length);

@@ -1,5 +1,6 @@
 package jlsm.table;
 
+import jlsm.core.indexing.FullTextIndex;
 import jlsm.core.indexing.VectorIndex;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.tree.TypedLsmTree;
@@ -55,6 +56,7 @@ public final class StandardJlsmTable {
         private TypedLsmTree.StringKeyed<JlsmDocument> tree;
         private JlsmSchema schema;
         private final List<IndexDefinition> indexDefinitions = new ArrayList<>();
+        private FullTextIndex.Factory fullTextFactory;
         private VectorIndex.Factory vectorFactory;
 
         private StringKeyedBuilder() {
@@ -84,6 +86,8 @@ public final class StandardJlsmTable {
 
         /**
          * Adds a secondary index definition. May be called multiple times. When any definition has
+         * {@link IndexType#FULL_TEXT}, a {@link FullTextIndex.Factory} must also be supplied via
+         * {@link #fullTextFactory(FullTextIndex.Factory)}. When any definition has
          * {@link IndexType#VECTOR}, a {@link VectorIndex.Factory} must also be supplied via
          * {@link #vectorFactory(VectorIndex.Factory)}.
          *
@@ -93,6 +97,19 @@ public final class StandardJlsmTable {
         public StringKeyedBuilder addIndex(IndexDefinition definition) {
             Objects.requireNonNull(definition, "definition must not be null");
             indexDefinitions.add(definition);
+            return this;
+        }
+
+        /**
+         * Sets the full-text index factory used to materialise {@link IndexType#FULL_TEXT} indices.
+         * Required when any registered definition has type FULL_TEXT; ignored otherwise.
+         *
+         * @param fullTextFactory the factory; must not be null
+         * @return this builder
+         */
+        public StringKeyedBuilder fullTextFactory(FullTextIndex.Factory fullTextFactory) {
+            this.fullTextFactory = Objects.requireNonNull(fullTextFactory,
+                    "fullTextFactory must not be null");
             return this;
         }
 
@@ -118,15 +135,20 @@ public final class StandardJlsmTable {
             assert codec != null : "codec must not be null when schema is provided";
 
             IndexRegistry registry = null;
-            if (!indexDefinitions.isEmpty()) {
-                if (schema == null) {
-                    throw new IllegalStateException(
-                            "indexDefinitions require a schema on the builder");
-                }
+            if (!indexDefinitions.isEmpty() && schema == null) {
+                throw new IllegalStateException("indexDefinitions require a schema on the builder");
+            }
+            // @spec F05.R37 — when a schema is configured, always materialise an IndexRegistry
+            // so table.query() can route through QueryExecutor even with zero secondary indices.
+            // The registry's documentStore acts as the schema-aware mirror used for
+            // scan-and-filter fallback. When no schema is configured, no registry is created and
+            // query() falls back to its unbound default.
+            if (schema != null) {
                 try {
                     registry = new IndexRegistry(schema, List.copyOf(indexDefinitions),
-                            vectorFactory);
+                            fullTextFactory, vectorFactory);
                 } catch (IOException e) {
+                    // Wrap in UncheckedIOException so the builder signature stays unchanged.
                     throw new UncheckedIOException("Failed to create secondary index registry", e);
                 }
             }

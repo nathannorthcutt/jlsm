@@ -2,6 +2,7 @@ package jlsm.core.indexing;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -20,6 +21,32 @@ import java.util.Map;
  * @param <D> the document ID type
  */
 public interface FullTextIndex<D> extends Closeable {
+
+    /**
+     * SPI for producing {@link FullTextIndex} instances keyed by {@code (tableName, fieldName)}.
+     *
+     * <p>
+     * The factory is the module-boundary contract that lets higher-level modules (e.g.
+     * {@code jlsm-table}) obtain a full-text index implementation without a static dependency on
+     * the module that owns the concrete implementation (e.g. {@code jlsm-indexing}). Each call to
+     * {@link #create(String, String)} returns a fresh index that the caller owns and must close.
+     *
+     * <p>
+     * Implementations should isolate each {@code (tableName, fieldName)} pair on its own backing
+     * storage so multiple indices on the same root directory do not share state.
+     */
+    interface Factory {
+
+        /**
+         * Creates a full-text index for the given table and field.
+         *
+         * @param tableName the name of the table owning the index; must not be null or blank
+         * @param fieldName the name of the field being indexed; must not be null or blank
+         * @return a new {@link FullTextIndex} instance keyed by primary-key bytes
+         * @throws IOException if the backing storage cannot be created
+         */
+        FullTextIndex<MemorySegment> create(String tableName, String fieldName) throws IOException;
+    }
 
     /**
      * Indexes {@code docId} under all tokens extracted from each field's text.
