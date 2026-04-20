@@ -1,7 +1,7 @@
 ---
 {
   "id": "F04",
-  "version": 3,
+  "version": 4,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["engine"],
@@ -19,8 +19,6 @@
   ],
   "kb_refs": [],
   "open_obligations": [
-    "OBL-F04-R34-38-consensus",
-    "OBL-F04-R35-expander-graph",
     "OBL-F04-R41-43-split-brain",
     "OBL-F04-R47-50-grace-gated-rebalance",
     "OBL-F04-R63-partition-pruning"
@@ -120,15 +118,15 @@ R32. The in-JVM transport must simulate configurable message delivery delay and 
 
 R33. The membership protocol must be a pluggable SPI with operations for: starting the protocol, querying the current membership view, adding a membership listener, and initiating a graceful leave.
 
-R34. The membership protocol implementation must be a Rapid-inspired unilateral protocol: each node independently accepts joins, leaves, and suspicions without requiring consensus from other nodes. View change proposals are broadcast to ALIVE members for convergence, with epoch-ordered acceptance (R92). Full RAPID multi-process cut detection with quorum-based consensus is deferred (see OBL-F04-R34-38-consensus in `_obligations.json`); this amendment reflects the shipped implementation's design and is not a claim that unilateral convergence is equivalent to RAPID consensus under all partition scenarios.
+R34. The membership protocol must use multi-process cut detection with quorum-based consensus before applying a SUSPECT view change. When a node's local failure detector raises phi above the configured threshold for a peer, the node must start a consensus round by broadcasting a SUSPICION_PROPOSAL (VIEW_CHANGE sub-type 0x05) to the peer's observer set. The view change must be committed only when a quorum of observers (configurable via `consensusQuorumPercent`, default 75%) return agreeing SUSPICION_VOTE (sub-type 0x06) responses within the consensus round timeout. On quorum, the view advances to the next epoch with the peer marked SUSPECTED. Without quorum, the round is abandoned and the peer remains in its current state.
 
-R35. The membership protocol's current implementation pings every ALIVE member per protocol tick rather than distributing monitoring responsibility across a bounded expander graph. The `protocolPeriod` and ping parallelism bound per-tick work, but monitoring load does not scale sub-linearly with cluster size. An expander-graph overlay for clusters above ~100 nodes is deferred (see OBL-F04-R35-expander-graph).
+R35. The membership protocol must distribute monitoring responsibility across an expander-graph overlay so per-tick monitoring work is sub-linear in cluster size. Each node must monitor only the peers assigned as its outgoing edges in the overlay (default degree: `ceil(log2(ALIVE cluster size))`, clamped to at most `size - 1`; configurable via `expanderGraphDegree`). The overlay must be deterministic given `(alive members, degree, epoch)` so every node derives the same structure independently. The overlay must be rebuilt on every view change.
 
-R36. When a member suspects a peer via the failure detector, the current implementation unilaterally transitions the peer to SUSPECTED in a new view and broadcasts the view change proposal to other ALIVE members. Peer monitors do not broker a suspicion-consensus round before the transition. Observer-agreement consensus is deferred (see OBL-F04-R34-38-consensus).
+R36. When a consensus round is initiated, the proposing node must broadcast SUSPICION_PROPOSAL messages to every observer in the suspected peer's observer set. Observers receiving the proposal must independently evaluate their own phi reading for the suspected peer and respond with a SUSPICION_VOTE — agree if the local phi also exceeds threshold, disagree otherwise. Observers must never vote on their own behalf; a proposal targeting the receiver must trigger self-refutation (R38) rather than a vote.
 
-R37. The current implementation applies a view change as soon as the suspicion is raised locally; there is no consensus round to time-bound. Ping exchanges within a protocol tick are bounded by the configured `pingTimeout`. A consensus-round timeout becomes meaningful only when R34/R36 are implemented (see OBL-F04-R34-38-consensus).
+R37. A consensus round must enforce a bounded timeout, configurable via `consensusRoundTimeout` (default 2 seconds). If quorum is not reached before the timeout fires, the round must be abandoned and the peer must remain in its current state. An abandoned round must not retransmit; the next protocol tick re-evaluates phi and may start a fresh round.
 
-R38. Incarnation numbers are tracked on `Member` and are incremented on DEAD→ALIVE rejoin. Self-refutation — a live member receiving a suspicion about itself and broadcasting a higher-incarnation alive announcement to override pending suspicion — is deferred (see OBL-F04-R34-38-consensus). The `Member.incarnation` field is present to support this future work without a type-level migration.
+R38. A live member receiving a SUSPICION_PROPOSAL targeting itself must refute by incrementing its incarnation counter and broadcasting an ALIVE_REFUTATION (VIEW_CHANGE sub-type 0x07) to the current view. Observers receiving a refutation must cancel any pending consensus round targeting the refuter. Higher-incarnation ALIVE announcements must supersede lower-incarnation SUSPECT/DEAD records about the same subject.
 
 R39. The membership protocol must notify registered listeners of view changes, member joins, member departures, and member suspicions. Listener notification must be asynchronous and must not block protocol message processing. A slow or failing listener must not delay or prevent protocol progress.
 
@@ -345,3 +343,14 @@ See `F04-verification-diff.md` §2 for the full list with obligation mapping. Su
 - **R41–R43:** quorum-loss read-only mode / reconnect-and-merge / view-state reconciliation → no-op on quorum loss; epoch-ordered replacement; deferred.
 - **R47–R50:** grace-period-gated rebalance → immediate rebalance on view change; `GracePeriodManager` tracks but does not gate.
 - **R63:** partition pruning on predicate → full fanout to every live member.
+
+#### Amendments (v3 → v4)
+
+Phase 1 of the RAPID consensus work (feature `f04-obligation-resolution--wd-04`) delivered full multi-process cut detection, expander-graph monitoring, observer-quorum rounds, and self-refutation. Requirements R34–R38 were rewritten forward to describe the shipped behaviour; the previous AMENDED text has been replaced and the two obligations that tracked the deferral (`OBL-F04-R34-38-consensus`, `OBL-F04-R35-expander-graph`) were flipped to `resolved` in `.spec/registry/_obligations.json`.
+
+- **R34:** unilateral suspicion → multi-process cut detection with observer-quorum consensus (SUSPICION_PROPOSAL → SUSPICION_VOTE → view change on quorum; default 75%).
+- **R35:** ping every ALIVE member → per-node monitoring restricted to expander-graph outgoing neighbours (default degree `ceil(log2(N))`, clamped to `size - 1`, deterministic per (members, degree, epoch)).
+- **R36:** immediate unilateral SUSPECT → proposer broadcasts SUSPICION_PROPOSAL to the observer set; observers independently vote; proposals targeting self trigger refutation, not a vote.
+- **R37:** no consensus-round timeout → bounded timeout via `consensusRoundTimeout` (default 2 seconds); expired rounds are abandoned silently.
+- **R38:** self-refutation deferred → self-refutation implemented as incarnation bump + ALIVE_REFUTATION broadcast; observers cancel matching rounds; higher-incarnation ALIVE supersedes lower-incarnation SUSPECT/DEAD.
+- **ClusterConfig extensions:** four new parameters (`consensusRoundTimeout`, `expanderGraphDegree`, `cutDetectorLowWatermark`, `cutDetectorHighWatermark`) exposed via the builder with defaults and full constructor validation.

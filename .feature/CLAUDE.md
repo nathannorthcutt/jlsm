@@ -25,6 +25,7 @@
 | WD-12 Encrypted Query Capabilities | decisions-backlog--wd-12 | 2026-04-15 | spec-authoring complete | 4 decisions (3 accepted, 1 re-deferred); F45-F47 specs |
 | Protocol Infrastructure (F04 R39 + R53) | f04-obligation-resolution--wd-01 | 2026-04-19 | planning complete | work-plan.md written, 2 stubs created, balanced split WU-1/WU-2 |
 | Engine Lifecycle and Local Routing (F04 R56+R57+R58+R60+R79) | f04-obligation-resolution--wd-02 | 2026-04-19 | planning complete | work-plan.md written; 2 extension markers; single unit (no new files) |
+| RAPID Consensus Protocol (F04 R34-R38) | f04-obligation-resolution--wd-04 | 2026-04-19 | planning complete | 6 stubs; 4-unit balanced split {WU-1,WU-2}→WU-3→WU-4; KB rapid-consensus.md + incarnation-refutation.md |
 
 ## Completed / Archived
 

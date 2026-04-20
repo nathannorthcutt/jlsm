@@ -111,4 +111,106 @@ class ClusterConfigTest {
         var config = ClusterConfig.builder().indirectProbes(0).build();
         assertEquals(0, config.indirectProbes());
     }
+
+    // --- New WU-4 fields: consensus round + expander graph + cut detector ---
+
+    @Test
+    void defaultConsensusRoundTimeoutIsTwoSeconds() {
+        var config = ClusterConfig.builder().build();
+        assertEquals(Duration.ofSeconds(2), config.consensusRoundTimeout());
+    }
+
+    @Test
+    void defaultExpanderGraphDegreeIsAuto() {
+        var config = ClusterConfig.builder().build();
+        assertEquals(0, config.expanderGraphDegree(),
+                "default expander graph degree must be 0 (auto)");
+    }
+
+    @Test
+    void defaultCutDetectorLowWatermarkIsTwo() {
+        var config = ClusterConfig.builder().build();
+        assertEquals(2, config.cutDetectorLowWatermark());
+    }
+
+    @Test
+    void defaultCutDetectorHighWatermarkIsAuto() {
+        var config = ClusterConfig.builder().build();
+        assertEquals(0, config.cutDetectorHighWatermark(),
+                "default cut detector high watermark must be 0 (auto)");
+    }
+
+    @Test
+    void builderOverridesNewFields() {
+        var config = ClusterConfig.builder().consensusRoundTimeout(Duration.ofSeconds(5))
+                .expanderGraphDegree(7).cutDetectorLowWatermark(3).cutDetectorHighWatermark(9)
+                .build();
+        assertEquals(Duration.ofSeconds(5), config.consensusRoundTimeout());
+        assertEquals(7, config.expanderGraphDegree());
+        assertEquals(3, config.cutDetectorLowWatermark());
+        assertEquals(9, config.cutDetectorHighWatermark());
+    }
+
+    @Test
+    void nullConsensusRoundTimeoutThrows() {
+        assertThrows(NullPointerException.class,
+                () -> ClusterConfig.builder().consensusRoundTimeout(null));
+    }
+
+    @Test
+    void zeroConsensusRoundTimeoutThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ClusterConfig.builder().consensusRoundTimeout(Duration.ZERO).build());
+    }
+
+    @Test
+    void negativeConsensusRoundTimeoutThrows() {
+        assertThrows(IllegalArgumentException.class, () -> ClusterConfig.builder()
+                .consensusRoundTimeout(Duration.ofSeconds(-1)).build());
+    }
+
+    @Test
+    void negativeExpanderGraphDegreeThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ClusterConfig.builder().expanderGraphDegree(-1).build());
+    }
+
+    @Test
+    void zeroCutDetectorLowWatermarkThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ClusterConfig.builder().cutDetectorLowWatermark(0).build());
+    }
+
+    @Test
+    void negativeCutDetectorLowWatermarkThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ClusterConfig.builder().cutDetectorLowWatermark(-1).build());
+    }
+
+    @Test
+    void negativeCutDetectorHighWatermarkThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ClusterConfig.builder().cutDetectorHighWatermark(-1).build());
+    }
+
+    @Test
+    void highWatermarkBelowLowWatermarkThrows() {
+        assertThrows(IllegalArgumentException.class, () -> ClusterConfig.builder()
+                .cutDetectorLowWatermark(5).cutDetectorHighWatermark(3).build());
+    }
+
+    @Test
+    void highWatermarkEqualToLowWatermarkThrows() {
+        assertThrows(IllegalArgumentException.class, () -> ClusterConfig.builder()
+                .cutDetectorLowWatermark(5).cutDetectorHighWatermark(5).build());
+    }
+
+    @Test
+    void autoHighWatermarkCompatibleWithAnyLowWatermark() {
+        // When cutDetectorHighWatermark == 0 (auto), low watermark constraint does not apply
+        var config = ClusterConfig.builder().cutDetectorLowWatermark(10).cutDetectorHighWatermark(0)
+                .build();
+        assertEquals(10, config.cutDetectorLowWatermark());
+        assertEquals(0, config.cutDetectorHighWatermark());
+    }
 }

@@ -8,7 +8,7 @@ LSM-tree backed storage systems.
 
 | Category | Path | Files | Last Updated | Covers |
 |----------|------|-------|--------------|--------|
-| cluster-membership | [cluster-membership/](cluster-membership/CLAUDE.md) | 7 | 2026-04-13 | SWIM protocol, failure detection, split-brain, service discovery, bootstrap, stall recovery, fail-slow |
+| cluster-membership | [cluster-membership/](cluster-membership/CLAUDE.md) | 9 | 2026-04-19 | SWIM + RAPID, failure detection, self-refutation, split-brain, service discovery, bootstrap, stall recovery, fail-slow |
 | consensus | [consensus/](consensus/CLAUDE.md) | 1 | 2026-04-13 | Raft, Paxos, EPaxos, ISR, leaderless replication for partition groups |
 | data-partitioning | [data-partitioning/](data-partitioning/CLAUDE.md) | 6 | 2026-04-13 | Partitioning strategies, vector search, rebalancing, migration |
 | networking | [networking/](networking/CLAUDE.md) | 3 | 2026-04-13 | Transport framing, multiplexing, QoS, backpressure |

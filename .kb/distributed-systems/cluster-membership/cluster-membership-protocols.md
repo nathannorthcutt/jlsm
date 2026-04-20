@@ -15,6 +15,8 @@ related:
   - "distributed-systems/networking/multiplexed-transport-framing.md"
   - "distributed-systems/cluster-membership/view-stall-recovery.md"
   - "distributed-systems/cluster-membership/fail-slow-detection.md"
+  - "distributed-systems/cluster-membership/rapid-consensus.md"
+  - "distributed-systems/cluster-membership/incarnation-refutation.md"
 sources:
   - url: "https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf"
     title: "SWIM: Scalable Weakly-consistent Infection-style Process Group Membership Protocol"

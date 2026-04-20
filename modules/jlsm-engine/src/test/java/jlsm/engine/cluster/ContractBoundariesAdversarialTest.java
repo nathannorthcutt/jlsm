@@ -745,7 +745,12 @@ final class ContractBoundariesAdversarialTest {
         final InJvmTransport transport = new InJvmTransport(LOCAL);
         try {
             final InJvmDiscoveryProvider discovery = new InJvmDiscoveryProvider();
-            final ClusterConfig config = ClusterConfig.builder().build();
+            // 100% quorum with degree=1 means the single observer (LOCAL) agreeing is sufficient.
+            // NOTE: under the WU-4 RAPID wiring, protocolTick starts a consensus round on phi
+            // breach rather than transitioning the view unilaterally. The round still completes
+            // synchronously in-JVM because observers[REMOTE_A] = {LOCAL} for a 2-node cluster.
+            final ClusterConfig config = ClusterConfig.builder().expanderGraphDegree(1)
+                    .consensusQuorumPercent(100).build();
             final PhiAccrualFailureDetector detector = new PhiAccrualFailureDetector(2);
 
             final RapidMembership rapid = new RapidMembership(LOCAL, transport, discovery, config,
@@ -763,6 +768,19 @@ final class ContractBoundariesAdversarialTest {
                 final Field viewField = RapidMembership.class.getDeclaredField("currentView");
                 viewField.setAccessible(true);
                 viewField.set(rapid, initialView);
+
+                // Rebuild the overlay so protocolTick can observe REMOTE_A as a monitor.
+                final var rebuildMethod = RapidMembership.class.getDeclaredMethod(
+                        "rebuildOverlayAndNotifyCoordinator", MembershipView.class);
+                rebuildMethod.setAccessible(true);
+                rebuildMethod.invoke(rapid, initialView);
+
+                // Register handlers so VIEW_CHANGE messages (for the SUSPICION_PROPOSAL → VOTE
+                // self-dispatch path) are routed back into the coordinator.
+                final var registerHandlersMethod = RapidMembership.class
+                        .getDeclaredMethod("registerHandlers");
+                registerHandlersMethod.setAccessible(true);
+                registerHandlersMethod.invoke(rapid);
 
                 // Record two heartbeats so the detector has history for REMOTE_A
                 final long baseNanos = System.nanoTime() - 60_000_000_000L;
@@ -853,7 +871,7 @@ final class ContractBoundariesAdversarialTest {
         final InJvmTransport transport = new InJvmTransport(LOCAL);
         try {
             final InJvmDiscoveryProvider discovery = new InJvmDiscoveryProvider();
-            final ClusterConfig config = ClusterConfig.builder().build();
+            final ClusterConfig config = ClusterConfig.builder().expanderGraphDegree(1).build();
             final PhiAccrualFailureDetector detector = new PhiAccrualFailureDetector(2);
 
             final RapidMembership rapid = new RapidMembership(LOCAL, transport, discovery, config,
@@ -871,6 +889,13 @@ final class ContractBoundariesAdversarialTest {
                 final Field viewField = RapidMembership.class.getDeclaredField("currentView");
                 viewField.setAccessible(true);
                 viewField.set(rapid, initialView);
+
+                // Rebuild the overlay so protocolTick observes REMOTE_A as a monitor target;
+                // without this, the overlay remains empty and no seeding happens.
+                final var rebuildMethod = RapidMembership.class.getDeclaredMethod(
+                        "rebuildOverlayAndNotifyCoordinator", MembershipView.class);
+                rebuildMethod.setAccessible(true);
+                rebuildMethod.invoke(rapid, initialView);
 
                 // REMOTE_A has NO heartbeat history at all — it just joined and never responded.
                 // Before the fix: phi(REMOTE_A) returns 0.0, which is < threshold, so
@@ -1140,12 +1165,9 @@ final class ContractBoundariesAdversarialTest {
             }
         };
 
-        final var config = ClusterConfig.builder().protocolPeriod(Duration.ofSeconds(60)) // long
-                                                                                          // period
-                                                                                          // — we
-                                                                                          // invoke
-                                                                                          // manually
-                .build();
+        // long protocolPeriod so we can invoke protocolTick manually
+        final var config = ClusterConfig.builder().protocolPeriod(Duration.ofSeconds(60))
+                .expanderGraphDegree(1).build();
         final var detector = new PhiAccrualFailureDetector(100);
         final var discovery = new InJvmDiscoveryProvider();
 
@@ -1157,12 +1179,19 @@ final class ContractBoundariesAdversarialTest {
             // Start single-node
             rapid.start(List.of());
 
-            // Manually set currentView to include tickRemote as ALIVE
+            // Manually set currentView to include tickRemote as ALIVE and rebuild overlay so
+            // protocolTick sees tickRemote as a monitor target.
             final Field cvField = RapidMembership.class.getDeclaredField("currentView");
             cvField.setAccessible(true);
-            cvField.set(rapid,
-                    new MembershipView(1, Set.of(new Member(tickLocal, MemberState.ALIVE, 0),
-                            new Member(tickRemote, MemberState.ALIVE, 0)), Instant.now()));
+            final MembershipView injected = new MembershipView(1,
+                    Set.of(new Member(tickLocal, MemberState.ALIVE, 0),
+                            new Member(tickRemote, MemberState.ALIVE, 0)),
+                    Instant.now());
+            cvField.set(rapid, injected);
+            final var rebuildMethod = RapidMembership.class
+                    .getDeclaredMethod("rebuildOverlayAndNotifyCoordinator", MembershipView.class);
+            rebuildMethod.setAccessible(true);
+            rebuildMethod.invoke(rapid, injected);
 
             // Invoke protocolTick directly via reflection
             final java.lang.reflect.Method tickMethod = RapidMembership.class

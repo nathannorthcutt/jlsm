@@ -244,7 +244,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-04: full RAPID consensus — ExpanderGraphOverlay monitoring, ConsensusCoordinator with observer-quorum voting, self-refutation via incarnation bump, configurable round timeout",
+      "resolved_date": "2026-04-19"
     },
     {
       "id": "OBL-F04-R35-expander-graph",
@@ -260,7 +262,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-04: full RAPID consensus — ExpanderGraphOverlay monitoring, ConsensusCoordinator with observer-quorum voting, self-refutation via incarnation bump, configurable round timeout",
+      "resolved_date": "2026-04-19"
     },
     {
       "id": "OBL-F04-R41-43-split-brain",
@@ -332,7 +336,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-02: ClusteredEngine.Builder.discovery(...) mandatory; ClusteredEngine.join(seeds) orchestrates discovery.register -> membership.start with rollback on partial failure; close() deregisters symmetrically (R58 bonus)",
+      "resolved_date": "2026-04-19"
     },
     {
       "id": "OBL-F04-R60-local-short-circuit",
@@ -348,7 +354,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution WD-02: ClusteredTable 6-arg constructor with Engine localEngine; CRUD and scan route directly through localEngine.getTable(name) when owner.equals(localAddress)",
+      "resolved_date": "2026-04-19"
     },
     {
       "id": "OBL-F04-R68-payload-table-id",

@@ -2,15 +2,18 @@
 *Topic: distributed-systems*
 
 Protocols and algorithms for maintaining consistent cluster membership views
-in distributed systems. Covers failure detection (SWIM, phi accrual),
-membership dissemination (gossip/piggybacking), and split-brain detection
-(quorum-based, adaptive).
+in distributed systems. Covers failure detection (SWIM, phi accrual, RAPID),
+membership dissemination (gossip/piggybacking, expander-graph overlay),
+consensus-backed view changes, self-refutation primitives, and split-brain
+detection (quorum-based, adaptive).
 
 ## Contents
 
 | File | Subject | Status | Key Metric | Best For |
 |------|---------|--------|------------|----------|
 | [cluster-membership-protocols.md](cluster-membership-protocols.md) | SWIM, phi accrual, split-brain detection | mature | O(1) per-member per-period | Peer-to-peer cluster membership at scale |
+| [rapid-consensus.md](rapid-consensus.md) | RAPID — multi-process cut detection + Fast Paxos + expander overlay | mature | O(log N) monitoring load, 1-round common-case commit | Strongly-consistent membership at 1k–10k nodes |
+| [incarnation-refutation.md](incarnation-refutation.md) | Incarnation-based self-refutation (SWIM/Lifeguard) | mature | O(1) per inbound message | Any membership protocol with a SUSPECT state |
 | [nan-at-phi-threshold.md](nan-at-phi-threshold.md) | NaN bypasses phi threshold validation | active | adversarial-finding | Failure detector parameter validation |
 | [ismember-ignores-state.md](ismember-ignores-state.md) | isMember() returns true for DEAD members | active | adversarial-finding | Membership state transition handling |
 | [engine-clustering.md](engine-clustering.md) | engine-clustering feature footprint | stable | feature-footprint | Cluster membership + ownership audit |
@@ -23,15 +26,18 @@ membership dissemination (gossip/piggybacking), and split-brain detection
 
 ## Recommended Reading Order
 1. Start: [cluster-membership-protocols.md](cluster-membership-protocols.md) — SWIM protocol, failure detection, split-brain
-2. Then: [service-discovery-patterns.md](service-discovery-patterns.md) — bootstrap, environment config, auth'd discovery
-3. Then: [view-stall-recovery.md](view-stall-recovery.md) — quorum loss, tiered escalation, anti-entropy sync
-4. Then: [fail-slow-detection.md](fail-slow-detection.md) — degraded state detection, phi bands, peer scoring
+2. Then: [rapid-consensus.md](rapid-consensus.md) — strongly-consistent alternative at scale
+3. Then: [incarnation-refutation.md](incarnation-refutation.md) — primitive for overriding premature suspicions
+4. Then: [service-discovery-patterns.md](service-discovery-patterns.md) — bootstrap, environment config, auth'd discovery
+5. Then: [view-stall-recovery.md](view-stall-recovery.md) — quorum loss, tiered escalation, anti-entropy sync
+6. Then: [fail-slow-detection.md](fail-slow-detection.md) — degraded state detection, phi bands, peer scoring
 
 ## Research Gaps
 - Raft-based membership (strong consistency alternative to SWIM)
 - Virtual synchrony / JGroups approach (ordered view changes)
 - Phi accrual failure detector detailed implementation and tuning
 - CRDT-based membership state (conflict-free replicated membership)
+- Byzantine-tolerant variants of RAPID (crash-only assumptions today)
 
 ## Shared References Used
 @../../_refs/complexity-notation.md
