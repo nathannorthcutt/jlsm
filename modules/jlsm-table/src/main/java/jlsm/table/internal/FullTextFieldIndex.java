@@ -2,77 +2,152 @@ package jlsm.table.internal;
 
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.Objects;
 
+import jlsm.core.indexing.FullTextIndex;
+import jlsm.core.indexing.Query;
 import jlsm.table.IndexDefinition;
+import jlsm.table.IndexType;
 import jlsm.table.Predicate;
 
 /**
- * Secondary index for full-text search on a STRING field. Wraps {@code LsmFullTextIndex} from
- * jlsm-indexing.
+ * Secondary index for full-text search on a STRING field. Adapts the {@link SecondaryIndex} per-
+ * field mutation callbacks to the batch map-based {@link FullTextIndex} API provided by
+ * {@code jlsm-indexing}.
  *
  * <p>
  * Contract:
  * <ul>
- * <li>Supports: FullTextMatch predicate only</li>
- * <li>On insert: tokenises the field value and indexes each term → primary key</li>
- * <li>On update: removes old terms, indexes new terms</li>
- * <li>On delete: removes all terms for the document</li>
- * <li>Delegates tokenization, stemming, and stop-word filtering to the underlying LsmFullTextIndex
- * pipeline</li>
+ * <li>Supports: {@link Predicate.FullTextMatch} on the index's field only</li>
+ * <li>On insert: routes {@code (fieldName -> String.valueOf(value))} to
+ * {@link FullTextIndex#index(Object, Map)}; null values are a no-op (R56)</li>
+ * <li>On update: removes old terms (if non-null) then indexes new terms (if non-null) (R57, R58,
+ * R82)</li>
+ * <li>On delete: routes {@code (fieldName -> String.valueOf(value))} to
+ * {@link FullTextIndex#remove(Object, Map)}; null values are a no-op (R60, R83)</li>
+ * <li>{@link #close()} is idempotent and propagates once to the backing index (R84)</li>
  * </ul>
  *
  * <p>
- * Governed by: domains.md § Full-Text Index Integration
+ * The adapter does not own tokenisation, stemming, or stop-word filtering — those are configuration
+ * on the underlying {@link FullTextIndex} implementation.
  */
 // @spec F10.R79 — final class in jlsm.table.internal implementing SecondaryIndex
-// @spec F10.R5,R80,R81,R82,R83,R84 — STUB: all operations throw UnsupportedOperationException;
-// deferred to OBL-F10-fulltext (LsmFullTextIndex wiring)
+// @spec F10.R5,R80,R81,R82,R83,R84 — delegates to FullTextIndex<MemorySegment> backing,
+// resolving OBL-F10-fulltext
 public final class FullTextFieldIndex implements SecondaryIndex {
 
+    private final IndexDefinition definition;
+    private final FullTextIndex<MemorySegment> backing;
+    private volatile boolean closed;
+
     /**
-     * Creates a new full-text field index.
+     * Creates a new full-text field index adapter.
      *
-     * @param definition the index definition (must be FULL_TEXT type)
-     * @throws IOException if the backing index cannot be created
+     * @param definition the index definition; must be FULL_TEXT type
+     * @param backing the backing full-text index from {@code jlsm-indexing} (or a test double);
+     *            must not be null
      */
-    public FullTextFieldIndex(IndexDefinition definition) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+    public FullTextFieldIndex(IndexDefinition definition, FullTextIndex<MemorySegment> backing) {
+        Objects.requireNonNull(definition, "definition must not be null");
+        Objects.requireNonNull(backing, "backing must not be null");
+        if (definition.indexType() != IndexType.FULL_TEXT) {
+            throw new IllegalArgumentException(
+                    "FullTextFieldIndex requires FULL_TEXT index type, got "
+                            + definition.indexType());
+        }
+        this.definition = definition;
+        this.backing = backing;
     }
 
     @Override
     public IndexDefinition definition() {
-        throw new UnsupportedOperationException("Not implemented");
+        return definition;
     }
 
+    // @spec F10.R55,R56,R81 — tokenise field value and index per term; null value is a no-op
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        ensureOpen();
+        Objects.requireNonNull(primaryKey, "primaryKey must not be null");
+        if (fieldValue == null) {
+            return;
+        }
+        backing.index(primaryKey, Map.of(definition.fieldName(), String.valueOf(fieldValue)));
     }
 
+    // @spec F10.R57,R58,R82 — remove old terms (if non-null) then insert new terms (if non-null)
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        ensureOpen();
+        Objects.requireNonNull(primaryKey, "primaryKey must not be null");
+        if (oldFieldValue != null) {
+            backing.remove(primaryKey,
+                    Map.of(definition.fieldName(), String.valueOf(oldFieldValue)));
+        }
+        if (newFieldValue != null) {
+            backing.index(primaryKey,
+                    Map.of(definition.fieldName(), String.valueOf(newFieldValue)));
+        }
     }
 
+    // @spec F10.R59,R60,R83 — remove terms for the given PK; null value is a no-op
     @Override
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        ensureOpen();
+        Objects.requireNonNull(primaryKey, "primaryKey must not be null");
+        if (fieldValue == null) {
+            return;
+        }
+        backing.remove(primaryKey, Map.of(definition.fieldName(), String.valueOf(fieldValue)));
     }
 
+    // @spec F10.R61,R82,R84 — translate FullTextMatch → Query.TermQuery and delegate; throw for
+    // unsupported predicates
     @Override
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        ensureOpen();
+        Objects.requireNonNull(predicate, "predicate must not be null");
+        if (!(predicate instanceof Predicate.FullTextMatch ftm)) {
+            throw new UnsupportedOperationException(
+                    "FullTextFieldIndex.lookup requires FullTextMatch predicate, got "
+                            + predicate.getClass().getSimpleName());
+        }
+        if (!ftm.field().equals(definition.fieldName())) {
+            // Defensive: IndexRegistry.findIndex already gates on supports(), but a caller can
+            // invoke lookup directly. Return an empty iterator rather than querying for a mismatch.
+            return Collections.emptyIterator();
+        }
+        return backing.search(new Query.TermQuery(ftm.field(), ftm.query()));
     }
 
+    // @spec F10.R62,R80 — true only for FullTextMatch whose field matches this index's field
     @Override
     public boolean supports(Predicate predicate) {
-        throw new UnsupportedOperationException("Not implemented");
+        if (closed) {
+            return false;
+        }
+        return predicate instanceof Predicate.FullTextMatch ftm
+                && ftm.field().equals(definition.fieldName());
     }
 
+    // @spec F10.R84 — idempotent close; propagates once to backing
     @Override
     public void close() throws IOException {
-        throw new UnsupportedOperationException("Not implemented");
+        if (closed) {
+            return;
+        }
+        closed = true;
+        backing.close();
+    }
+
+    private void ensureOpen() {
+        if (closed) {
+            throw new IllegalStateException("FullTextFieldIndex is closed");
+        }
     }
 }

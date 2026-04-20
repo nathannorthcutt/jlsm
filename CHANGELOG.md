@@ -10,6 +10,100 @@ semver release cadence is established.
 
 ## [Unreleased]
 
+### Added — Fault Tolerance and Smart Rebalancing (WD-05)
+- `ClusterOperationalMode` enum (`NORMAL`, `READ_ONLY`) + `ClusteredEngine.operationalMode()` accessor — engine transitions to `READ_ONLY` when quorum is lost (F04.R41)
+- `QuorumLostException` (checked `IOException` subtype) — thrown by `ClusteredTable.create/update/delete/insert` while the engine is in `READ_ONLY` mode; reads remain available (F04.R41)
+- `SeedRetryTask` — background task that reinvokes `membership.start(seeds)` on a configurable interval while quorum is lost; idempotent start/stop (F04.R42)
+- `ViewReconciler.reconcile(localView, proposedView)` — pure per-member merge applying higher-incarnation-wins with severity `DEAD > SUSPECTED > ALIVE` on ties; called from `RapidMembership.handleViewChangeProposal` before view installation (F04.R43)
+- `GraceGatedRebalancer` — scheduled coordinator that drains `GracePeriodManager.expiredDepartures()` and invokes `RendezvousOwnership.differentialAssign(...)` for only the departed member's partitions; `cancelPending(NodeAddress)` aborts a pending rebalance when a node rejoins within grace (F04.R47, R48, R50)
+- `RendezvousOwnership.differentialAssign(oldView, newView, affectedPartitionIds)` — partial recomputation that mutates cache entries only for the supplied partition IDs, so assignments for still-live members' partitions remain stable (F04.R48)
+- `PartitionKeySpace` SPI — `partitionForKey`, `partitionsForRange`, `partitionCount`, `allPartitions`; thread-safe and immutable after construction (F04.R63)
+- `SinglePartitionKeySpace` — trivial fallback mapping every key to one partition (no pruning, backward-compat)
+- `LexicographicPartitionKeySpace(splitKeys, partitionIds)` — range-based partition layout with binary-search lookup; enables scan pruning to only overlapping partitions
+- `RendezvousOwnership.ownersForKeyRange(tableName, fromKey, toKey, view, keyspace)` — resolves the set of owners whose partitions intersect `[fromKey, toKey)` (F04.R63)
+- F04 spec version 5 → 6: R41–R43, R47–R50, R63 rewritten forward to describe shipped behaviour; `open_obligations` now empty
+- 115 new tests across 11 test classes: `ViewReconcilerTest`, `SeedRetryTaskTest`, `GraceGatedRebalancerTest`, `RendezvousOwnershipDifferentialTest`, `RapidMembershipReconciliationTest`, `ClusteredTableReadOnlyTest`, `ClusteredEngineQuorumTest`, `SinglePartitionKeySpaceTest`, `LexicographicPartitionKeySpaceTest`, `ClusteredTableScanPruningTest`, `RendezvousOwnershipOwnersForKeyRangeTest`
+
+### Changed — Fault Tolerance and Smart Rebalancing (WD-05)
+- `ClusteredEngine.onViewChanged` — evaluates `newView.hasQuorum(config.consensusQuorumPercent())` on every view change and transitions `operationalMode` accordingly; replaces the prior immediate-rebalance logic with a grace-gated pathway that records departures into `GracePeriodManager` and lets `GraceGatedRebalancer` drive rebalancing asynchronously
+- `RapidMembership.handleViewChangeProposal` — when a higher-epoch proposal is accepted (subject to R90's no-drop-alive check), delegates per-member reconciliation to `ViewReconciler.reconcile(...)` instead of overwriting the local view wholesale
+- `ClusteredTable` — gained an 8-arg canonical constructor accepting `(TableMetadata, ClusterTransport, MembershipProtocol, NodeAddress, RendezvousOwnership, Engine, PartitionKeySpace, Supplier<ClusterOperationalMode>)`; legacy constructors delegate to it with `SinglePartitionKeySpace("default")` and a `() -> NORMAL` mode supplier (backward-compat)
+- `ClusteredTable.scan(fromKey, toKey)` — delegates owner resolution to `RendezvousOwnership.ownersForKeyRange(...)` using the configured `PartitionKeySpace`; extracted `resolveScanOwners` and `emptyScanWithMetadata` helpers; preserves R60 local short-circuit, R77 parallel fanout, R100 client close, R67 ordered merge, R64 partial metadata
+- `ClusteredTable.create/update/delete/insert` — consult `operationalMode` supplier at method entry and throw `QuorumLostException` when `READ_ONLY`
+- `RendezvousOwnership` is now non-`final` to permit in-tree test spying (`GraceGatedRebalancerTest`); behaviour is unchanged
+
+### Performance — Fault Tolerance and Smart Rebalancing (WD-05)
+- Scans narrowed by `LexicographicPartitionKeySpace` contact only the partitions whose lexicographic range overlaps `[fromKey, toKey)` instead of every live member — scatter cost now scales with the number of intersecting partitions, not cluster size
+- `differentialAssign` avoids full-cache invalidation on member departure: only the departed member's partition IDs are recomputed, so stable assignments on still-live members incur zero cache-miss cost after rebalance
+
+### Known Gaps — Fault Tolerance and Smart Rebalancing (WD-05)
+- Table-to-`PartitionKeySpace` configuration is currently by constructor argument; there is no declarative `TableMetadata` or SQL path to assign a range-partitioned layout yet — pruning is opt-in via the new `ClusteredTable` ctor overload
+- `SeedRetryTask` retry interval is a construction parameter with no live tuning; per-retry failures are logged and swallowed without surfacing backoff state to the caller
+
+### Added — Wire Query Binding Through StringKeyedTable (WD-03)
+- `jlsm.table.QueryRunner<K>` — public functional interface (one method: `run(Predicate)`) used as the bridge between `TableQuery.execute()` and the internal `QueryExecutor` so table implementations can plug in an execution backend without leaking `jlsm.table.internal` types on the builder API
+- `TableQuery.unbound()` and `TableQuery.bound(QueryRunner)` — explicit public factories replacing reflection-based construction for the unbound form; internal callers use `bound(...)` to wire a runner
+- `JlsmTable.StringKeyed.query()` — default interface method returning an unbound `TableQuery<String>`; production implementations override it to return a bound instance
+- `StringKeyedTable.query()` — returns a `TableQuery<String>` bound to the table's schema and `IndexRegistry` via `QueryExecutor.forStringKeys(...)`; empty predicate trees yield an empty iterator rather than an exception
+- F05 spec v2 → v3: R37 rewritten forward — `table.query()` now returns a functional `TableQuery` bound to the table's storage and indices; UOE is retained only for schemaless tables. `OBL-F05-R37` resolved.
+- 9 new tests in `TableQueryExecutionTest`: index-backed equality, scan-fallback on unindexed field, AND across index + scan predicates, OR union, empty result, Gte scan fallback, schema-mismatch IAE, predicate-tree inspection, unbound `execute()` UOE
+
+### Changed — Wire Query Binding Through StringKeyedTable (WD-03)
+- `StandardJlsmTable.StringKeyedBuilder` now materialises an `IndexRegistry` whenever a schema is configured, even with zero index definitions — the registry's document store acts as the schema-aware mirror used for scan-and-filter fallback. Schema-less tables continue to have no registry (and no queries).
+- `LocalTable.query()` (jlsm-engine) no longer throws `UnsupportedOperationException` — it delegates to the underlying `JlsmTable.StringKeyed.query()`
+- `FullTextTableIntegrationTest.noIndexDefinitions_tableBehavesAsBefore` updated to assert that the registry is present and empty instead of null (the `registry != null && isEmpty()` contract)
+- `LocalTableTest.queryThrowsUnsupportedOperationException` renamed and rewritten to `queryReturnsUnboundTableQueryFromStub` — verifies the new delegation contract against a stub delegate
+
+### Fixed — Wire Query Binding Through StringKeyedTable (WD-03)
+- Long-standing known gap: `Table.query()` no longer throws `UnsupportedOperationException` for schema-configured `StringKeyed` tables — predicate execution routes through `QueryExecutor`, using registered secondary indices where supported and scan-and-filter fallback otherwise
+
+### Added — Wire Full-Text Index Integration (WD-01)
+- `jlsm.core.indexing.FullTextIndex.Factory` — SPI producing `FullTextIndex<MemorySegment>` per `(tableName, fieldName)`, the module-boundary contract between `jlsm-table` and `jlsm-indexing`
+- `jlsm.indexing.LsmFullTextIndexFactory` — LSM-backed factory isolating each index on its own `LocalWriteAheadLog` + `TrieSSTable` + `LsmInvertedIndex.StringTermed` + `LsmFullTextIndex.Impl` chain
+- `StandardJlsmTable.StringKeyedBuilder.addIndex(IndexDefinition)` and `.fullTextFactory(FullTextIndex.Factory)` — table-builder surface for registering secondary indices with the required factory; rejects FULL_TEXT with no factory at `build()`
+- `StringKeyedTable` now routes `create/update/delete` through an optional `IndexRegistry` so FULL_TEXT indices stay synchronised with the primary tree
+- F10 spec v2 → v3: R5/R79-R84 rewritten forward to describe the delegation contract; new Amendments section summarises WD-01
+- 31 new tests: 18 in `FullTextFieldIndexTest` (adapter semantics against a fake backing), 9 in `LsmFullTextIndexFactoryTest` (factory round-trip against a real LSM-backed index), 4 in `FullTextTableIntegrationTest` (end-to-end: builder + registry + factory through `JlsmTable.StringKeyed`)
+
+### Changed — Wire Full-Text Index Integration (WD-01)
+- `IndexRegistry` gained a three-arg constructor accepting a `FullTextIndex.Factory`; the two-arg constructor remains and delegates with `null`. FULL_TEXT definitions without a factory now fail fast with `IllegalArgumentException` at construction instead of throwing `UnsupportedOperationException` on the first write
+- `FullTextFieldIndex` is no longer a stub — it adapts `SecondaryIndex` mutations to the batch `FullTextIndex.index`/`remove` API and translates `FullTextMatch` predicates to `Query.TermQuery`
+- `jlsm-indexing` test classpath now includes `jlsm-table` (test-only — production code still depends one way: `jlsm-table → jlsm-core`; `jlsm-indexing → jlsm-core`)
+- `ResourceLifecycleAdversarialTest` + `IndexRegistryEncryptionTest` updated to reflect the new failure mode (IAE on missing factory / injectable-factory-that-throws) rather than the prior FULL_TEXT stub UOE
+
+### Removed — Wire Full-Text Index Integration (WD-01)
+- Obligation `OBL-F10-fulltext` resolved (removed from F10 `open_obligations`); WD-01 marked `COMPLETE` in the cross-module-integration work group
+
+### Known Gaps — Wire Full-Text Index Integration (WD-01)
+- Query-time wiring through `JlsmTable.query()` / `TableQuery.execute()` is still scope of `OBL-F05-R37` (a separate WD). The current PR exposes a `StringKeyedTable.indexRegistry()` accessor so integration tests can drive `SecondaryIndex.lookup` directly until that binding lands
+- `LongKeyedTable` has not been wired for secondary indices — deferred; no WD caller currently requires it
+- `FullTextIndex.Factory` does not yet thread through a shared `ArenaBufferPool`; each per-index LSM tree owns its own WAL + memtable allocations
+
+### Added — Wire Vector Index Integration (WD-02)
+- `VectorIndex.Factory` nested SPI in `jlsm.core.indexing.VectorIndex` — bridges `jlsm-table` and `jlsm-vector` without a static module dependency. Keyed on `(tableName, fieldName, dimensions, precision, similarityFunction)`; implementations pick the algorithm (IvfFlat vs Hnsw).
+- `LsmVectorIndexFactory` in `jlsm-vector` — concrete factory producing `LsmVectorIndex` instances under per-(table, field) subdirectories. Two static builders: `ivfFlat(Path root, int numCentroids)` and `hnsw(Path root, int maxConnections, int efConstruction)`.
+- `StandardJlsmTable.stringKeyedBuilder().vectorFactory(VectorIndex.Factory)` — optional builder parameter; tables that register a `VECTOR` index without a factory fail fast at `build()` with `IllegalArgumentException` instead of silently dropping writes.
+- `VectorFieldIndex` (production implementation, in `jlsm.table.internal`) — adapts per-field `SecondaryIndex` mutation callbacks (`onInsert`/`onUpdate`/`onDelete`) to `VectorIndex.index/remove`; translates `VectorNearest(field, query, topK)` predicates to `VectorIndex.search(query, topK)` returning primary keys; handles null old-vector (update after unset field) and null new-vector (delete-semantics insert) without throwing.
+- F10 spec v3 → v4: R87–R90 extended to describe the vector factory SPI and shipped behaviour; R6 promoted PARTIAL → SATISFIED; `open_obligations` now empty (both `OBL-F10-fulltext` and `OBL-F10-vector` resolved).
+- 3 new test classes: `VectorFieldIndexTest` (in-memory backing + lifecycle), `LsmVectorIndexFactoryTest` (IvfFlat/Hnsw factory construction), `VectorTableIntegrationTest` (end-to-end JlsmTable + VECTOR index + nearest-neighbour query).
+
+### Changed — Wire Vector Index Integration (WD-02)
+- `VectorFieldIndex.onInsert/onUpdate/onDelete` no longer silent no-ops — writes to tables with `VECTOR` indices are now actually indexed (or the build fails fast). Previously the stub silently dropped all vector writes, a data-integrity hazard for tables with `VECTOR` indices.
+- `VectorFieldIndex.supports(Predicate)` now returns `true` for `VectorNearest` whose field matches the index's field; previously always threw `UnsupportedOperationException`.
+- `VectorFieldIndex.lookup(VectorNearest)` returns nearest-neighbour primary keys via the backing `VectorIndex.search`; previously threw `UnsupportedOperationException`.
+- `IndexRegistry` gained a four-arg constructor `(schema, definitions, fullTextFactory, vectorFactory)` accepting both factories; the three-arg overload is retained for call-sites that do not register VECTOR indices.
+- `VectorIndex` interface gained `precision()` accessor so `VectorFieldIndex` can validate incoming vectors match the configured precision.
+
+### Fixed — Wire Vector Index Integration (WD-02)
+- Silent-drop hazard: tables registering a `VECTOR` index previously accepted writes that were never indexed. This PR eliminates that path — all `VECTOR` writes either persist to the backing index or fail at `build()` time.
+
+### Removed — Wire Vector Index Integration (WD-02)
+- `OBL-F10-vector` flipped to `resolved` in `.spec/registry/_obligations.json`. Together with WD-01's resolution of `OBL-F10-fulltext`, `F10.open_obligations` is now empty.
+
+### Known Gaps — Wire Vector Index Integration (WD-02)
+- `LongKeyedTable` (integer-keyed table variant) is not wired for secondary indices. No caller currently creates a `LongKeyedTable` with a secondary index, so this is deferred until there is one.
+- The factory does not yet use a shared `ArenaBufferPool` — each backing `LsmVectorIndex` allocates its own arena. Revisit if multi-index memory pressure becomes a concern.
+
 ### Added — Remote Dispatch and Parallel Scatter (WD-03)
 - `QueryRequestPayload` — shared encoder/decoder for cluster `QUERY_REQUEST` payloads with `[tableNameLen][tableName UTF-8][partitionId][opcode][body]` format (F04.R68)
 - `QueryRequestHandler` — server-side `MessageHandler` that routes `QUERY_REQUEST` messages to the correct local table via `Engine.getTable(name)` and serializes the `QUERY_RESPONSE`
