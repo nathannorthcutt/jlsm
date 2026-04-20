@@ -8,6 +8,8 @@ import jlsm.engine.cluster.internal.GracePeriodManager;
 import jlsm.engine.cluster.internal.InJvmDiscoveryProvider;
 import jlsm.engine.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.PhiAccrualFailureDetector;
+import jlsm.engine.cluster.internal.QueryRequestHandler;
+import jlsm.engine.cluster.internal.QueryRequestPayload;
 import jlsm.engine.cluster.internal.RapidMembership;
 import jlsm.engine.cluster.internal.RemotePartitionClient;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
@@ -30,6 +32,8 @@ import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
@@ -240,7 +244,7 @@ final class ContractBoundariesAdversarialTest {
                 MemorySegment.ofArray(new byte[0]),
                 MemorySegment.ofArray(new byte[]{ (byte) 0xFF }), REMOTE_A.nodeId(), 0L);
         final RemotePartitionClient client = new RemotePartitionClient(desc, REMOTE_A,
-                localTransport, LOCAL, SCHEMA);
+                localTransport, LOCAL, SCHEMA, "users");
         try {
             final Optional<JlsmDocument> result = client.get("existing-key");
 
@@ -364,7 +368,7 @@ final class ContractBoundariesAdversarialTest {
                 MemorySegment.ofArray(new byte[0]),
                 MemorySegment.ofArray(new byte[]{ (byte) 0xFF }), REMOTE_A.nodeId(), 0L);
         final RemotePartitionClient client = new RemotePartitionClient(desc, REMOTE_A,
-                localTransport, LOCAL, SCHEMA);
+                localTransport, LOCAL, SCHEMA, "users");
         try {
             final Iterator<TableEntry<String>> result = client.getRange("a", "z");
 
@@ -1236,6 +1240,71 @@ final class ContractBoundariesAdversarialTest {
             InJvmTransport.clearRegistry();
             InJvmDiscoveryProvider.clearRegistrations();
         }
+    }
+
+    // Finding: F-R1.contract_boundaries.1.1
+    // Bug: QueryRequestHandler.handle() invokes msg.payload() twice (once for decodeHeader
+    // and once for dispatch), and Message.payload() clones the backing byte[] on every
+    // call. This doubles the defensive-clone allocation per dispatch.
+    // Correct behavior: handle() should call msg.payload() exactly once per dispatch, storing
+    // the cloned result in a local variable and passing it to both decodeHeader and
+    // dispatch.
+    // Fix location: QueryRequestHandler.handle (L78-108) — hoist msg.payload() to a single
+    // local variable.
+    // Regression watch: both decodeHeader and dispatch must continue to receive the cloned
+    // payload byte[]; do not re-introduce a second payload() call.
+    @Test
+    @Timeout(10)
+    void test_QueryRequestHandler_handle_payloadClonedOncePerDispatch() throws Exception {
+        // Locate the QueryRequestHandler source file. The test asserts a source-level
+        // property: handle() must call msg.payload() at most once. Calling it twice
+        // doubles defensive-clone allocation per dispatch, because Message.payload()
+        // clones the backing byte[] on every invocation (Message.java:40-42).
+        final Path source = Path
+                .of("src/main/java/jlsm/engine/cluster/internal/QueryRequestHandler.java");
+        assertTrue(Files.exists(source),
+                "QueryRequestHandler source file not found at expected path: "
+                        + source.toAbsolutePath());
+        final String src = Files.readString(source);
+
+        // Extract the handle(...) method body. The method signature on one line simplifies
+        // the extraction — find "public CompletableFuture<Message> handle(" and read until
+        // the next method declaration or the class closer.
+        final int handleStart = src.indexOf("public CompletableFuture<Message> handle(");
+        assertTrue(handleStart >= 0, "handle() method not found in QueryRequestHandler source");
+        // The body ends at the first "private " (dispatch is the next private method).
+        final int handleEnd = src.indexOf("private byte[] dispatch(", handleStart);
+        assertTrue(handleEnd > handleStart, "Could not locate end of handle() method");
+        final String handleBody = src.substring(handleStart, handleEnd);
+
+        // Count occurrences of "msg.payload()" in the handle() method body.
+        int count = 0;
+        int idx = 0;
+        while ((idx = handleBody.indexOf("msg.payload()", idx)) >= 0) {
+            count++;
+            idx += "msg.payload()".length();
+        }
+
+        assertTrue(count <= 1,
+                "QueryRequestHandler.handle() invokes msg.payload() " + count + " times — "
+                        + "Message.payload() clones the payload byte[] on every call, so each "
+                        + "extra invocation doubles defensive-clone allocation. Hoist the "
+                        + "payload to a single local variable and pass it to both decodeHeader "
+                        + "and dispatch.");
+
+        // Sanity: ensure the test also verifies functional behavior — a request with a
+        // non-trivial payload still routes correctly through handle() after the fix.
+        final Engine engine = new PermissiveStubEngine();
+        engine.createTable("users", SCHEMA);
+        final QueryRequestHandler handler = new QueryRequestHandler(engine, LOCAL);
+        final byte[] payload = QueryRequestPayload.encodeGet("users", 0L, "key1");
+        final Message request = new Message(MessageType.QUERY_REQUEST, REMOTE_A, 1L, payload);
+        final Message response = handler.handle(REMOTE_A, request).get(5, TimeUnit.SECONDS);
+        assertEquals(MessageType.QUERY_RESPONSE, response.type(),
+                "handle() must still produce a QUERY_RESPONSE after the fix");
+        assertEquals(1L, response.sequenceNumber(),
+                "Response sequence number must match request after the fix");
+        engine.close();
     }
 
     // --- Helpers ---

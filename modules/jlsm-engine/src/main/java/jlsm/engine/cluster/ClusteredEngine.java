@@ -5,6 +5,7 @@ import jlsm.engine.EngineMetrics;
 import jlsm.engine.Table;
 import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.GracePeriodManager;
+import jlsm.engine.cluster.internal.QueryRequestHandler;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
 import jlsm.table.JlsmSchema;
 
@@ -49,6 +50,7 @@ public final class ClusteredEngine implements Engine {
     private final ClusterConfig config;
     private final NodeAddress localAddress;
     private final DiscoveryProvider discovery;
+    private final QueryRequestHandler queryHandler;
     private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -64,8 +66,45 @@ public final class ClusteredEngine implements Engine {
         // @spec F04.R56,R79 — discovery is a mandatory builder parameter rejected at build time.
         this.discovery = Objects.requireNonNull(builder.discovery, "discovery");
 
-        // Register as a membership listener to trigger rebalancing on view changes
-        membership.addListener(new ClusterMembershipListener());
+        // H-RL-10 / Finding F-R1.concurrency.1.2 — publish `this` to the membership protocol
+        // only after every final field has been assigned. The ClusterMembershipListener inner
+        // class captures ClusteredEngine.this; a MembershipProtocol implementation that
+        // dispatches the initial view on a separate thread during addListener would otherwise
+        // expose fields assigned after the registration as null under the JMM because no
+        // happens-before edge links the ctor's subsequent writes to the dispatcher's reads.
+        // The listener body only reads `ownership` and `gracePeriodManager` (both assigned
+        // above), so publishing `this` here is safe.
+        this.queryHandler = new QueryRequestHandler(localEngine, localAddress);
+        final MembershipListener membershipListener = new ClusterMembershipListener();
+        membership.addListener(membershipListener);
+
+        // @spec F04.R68 — register the server-side QUERY_REQUEST dispatcher so remote
+        // RemotePartitionClient requests can route to local tables. H-RL-10: any failure in
+        // registerHandler propagates out of the ctor so no partially-initialized engine leaks.
+        //
+        // Finding F-R1.concurrency.1.3 — register the handler AFTER membership.addListener so
+        // a QUERY_REQUEST arriving synchronously via a shared transport is never dispatched
+        // against an engine whose membership listener has not yet been installed. The handler
+        // only captures final `localEngine` and `localAddress` references (assigned above), so
+        // publishing it here is safe. Ordering registerHandler last ensures that any thread
+        // that observes the handler in the transport also observes the listener registration
+        // and every engine field that precedes it.
+        //
+        // Finding F-R1.resource_lifecycle.1.1 — if registerHandler throws, the listener
+        // registered above is leaked (MembershipProtocol retains a strong reference to the
+        // inner class, which captures ClusteredEngine.this). Roll back the listener on
+        // failure via MembershipProtocol.removeListener so construction is atomic with
+        // respect to listener installation.
+        try {
+            transport.registerHandler(MessageType.QUERY_REQUEST, queryHandler);
+        } catch (RuntimeException | Error ex) {
+            try {
+                membership.removeListener(membershipListener);
+            } catch (RuntimeException rollbackEx) {
+                ex.addSuppressed(rollbackEx);
+            }
+            throw ex;
+        }
     }
 
     /**
@@ -221,9 +260,14 @@ public final class ClusteredEngine implements Engine {
         try {
             membership.start(seeds);
         } catch (IOException | RuntimeException failure) {
+            // @spec F04.R57 — rollback catches any Exception from discovery.deregister (mirroring
+            // the symmetric defence in close() at the deregister call site) so a non-compliant
+            // DiscoveryProvider impl that leaks a checked exception cannot hide the original
+            // membership.start failure. The rollback failure is attached via addSuppressed and
+            // the original failure is always the primary throw.
             try {
                 discovery.deregister(localAddress);
-            } catch (RuntimeException deregisterFailure) {
+            } catch (Exception deregisterFailure) {
                 failure.addSuppressed(deregisterFailure);
             }
             throw failure;
@@ -290,6 +334,20 @@ public final class ClusteredEngine implements Engine {
             errors.add(e);
         }
 
+        // @spec F04.R68 — deregister the QUERY_REQUEST handler symmetrically with registration.
+        // H-RL-8: deregister MUST happen before transport.close so we don't call deregister on a
+        // closed transport. Any exception is accumulated into the deferred-exception pattern so
+        // remaining resources still close.
+        try {
+            transport.deregisterHandler(MessageType.QUERY_REQUEST);
+        } catch (Exception e) {
+            if (e instanceof IOException ioe) {
+                errors.add(ioe);
+            } else {
+                errors.add(new IOException("Failed to deregister QUERY_REQUEST handler", e));
+            }
+        }
+
         // Close cluster transport
         try {
             transport.close();
@@ -330,6 +388,16 @@ public final class ClusteredEngine implements Engine {
     private void onViewChanged(MembershipView oldView, MembershipView newView) {
         Objects.requireNonNull(oldView, "oldView must not be null");
         Objects.requireNonNull(newView, "newView must not be null");
+
+        // Finding F-R1.shared_state.1.1 — a membership-dispatcher callback can arrive
+        // after close() has begun (enqueued before close, or from an in-flight tick that
+        // races close.CAS). Mutating ownership/gracePeriodManager on a torn-down engine
+        // is a contract/cleanup ordering violation: the mutations silently succeed on a
+        // closed engine because the collaborators remain valid references, yielding
+        // misleading post-close state. Short-circuit once close() has started.
+        if (closed.get()) {
+            return;
+        }
 
         // Evict stale ownership cache entries
         ownership.evictBefore(newView.epoch());

@@ -40,6 +40,25 @@ public interface MembershipProtocol extends AutoCloseable {
     void addListener(MembershipListener listener);
 
     /**
+     * Removes a previously-registered listener.
+     *
+     * <p>
+     * Used for rollback when a registering caller (e.g. {@code ClusteredEngine} ctor) fails partway
+     * through and must release any listener it already installed. Implementations must tolerate
+     * being called with a listener that was never registered — such a call is a best-effort no-op.
+     *
+     * <p>
+     * The default implementation is a no-op so existing test stubs that never exercise rollback
+     * need not implement it. Production implementations (e.g. {@code RapidMembership}) override
+     * this to remove the listener from their internal listener list.
+     *
+     * @param listener the listener to remove; must not be null
+     */
+    default void removeListener(MembershipListener listener) {
+        // no-op default for implementations that do not track listener removal.
+    }
+
+    /**
      * Initiates a graceful leave from the cluster.
      *
      * @throws IOException if the leave announcement fails

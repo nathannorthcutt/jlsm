@@ -260,6 +260,16 @@ public final class RapidMembership implements MembershipProtocol {
     }
 
     @Override
+    public void removeListener(MembershipListener listener) {
+        Objects.requireNonNull(listener, "listener must not be null");
+        // Supports F-R1.resource_lifecycle.1.1 rollback — ClusteredEngine ctor calls this
+        // when registerHandler fails after addListener has already installed the listener.
+        // CopyOnWriteArrayList.remove tolerates calls with listeners that were never added
+        // (returns false); callers rely on this best-effort no-op semantics.
+        listeners.remove(listener);
+    }
+
+    @Override
     public void leave() throws IOException {
         if (!started || closed.get()) {
             return;

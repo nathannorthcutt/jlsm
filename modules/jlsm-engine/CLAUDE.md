@@ -49,7 +49,7 @@ Not exported in `module-info.java` and must not be made public:
 - `Table.query()` throws `UnsupportedOperationException` — `TableQuery` has a
   private constructor and cannot be instantiated from outside `jlsm.table`. Use
   `Table.scan()` for range queries until this is resolved.
-- `ClusteredTable.scan()` returns empty iterators — full document serialization
-  over the cluster transport is deferred until the message format is finalized.
 - `ClusteredTable.query()` and `insert(JlsmDocument)` throw
   `UnsupportedOperationException` in clustered mode.
+- `RemotePartitionClient.doQuery(...)` returns an empty list — scored-entry
+  response framing over the cluster transport is not yet wired.
