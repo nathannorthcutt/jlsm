@@ -57,7 +57,28 @@ Check the WD's status in the resolver output.
 
 If SPECIFIED: proceed to Step 4.
 
-If READY or BLOCKED or SPECIFYING: the WD has not been through `/work-plan` yet.
+If BLOCKED: check the blocker detail from the resolver output.
+- If blocked by `wd:` deps (predecessor WDs not complete): report which WDs
+  must complete first. Do not offer to start — the ordering exists for a reason.
+  ```
+  WD-<nn> (<title>) is BLOCKED by predecessor work definitions:
+    <list blockers from resolver>
+
+  Complete these first, or use /work-start "<group-slug>" next to auto-select
+  a WD that is ready.
+  ```
+  Stop.
+- If blocked by unmet artifact deps (spec/adr/kb): this WD needs specification.
+  ```
+  WD-<nn> (<title>) needs specification before implementation.
+  Run /work-plan "<group-slug>" WD-<nn> first.
+  ```
+  Use AskUserQuestion with options:
+    - "Run /work-plan first"
+    - "Start anyway (skip specification)"
+    - "Stop"
+
+If READY or SPECIFYING: the WD has not been through `/work-plan` yet.
 ```
 WD-<nn> (<title>) needs specification before implementation.
 Run /work-plan "<group-slug>" WD-<nn> first.

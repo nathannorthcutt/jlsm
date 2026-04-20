@@ -725,6 +725,26 @@ if [[ -d ".spec" && -d ".spec/domains" ]]; then
 
     sort -t'|' -k3 -rn "$TMPDIR_SCAN/spec-absent.txt" -o "$TMPDIR_SCAN/spec-absent.txt" 2>/dev/null || true
 
+    # ── 10e: Obligation registry (_obligations.json) ─────────────────────
+    # Scan for a centralized obligations registry and surface open items
+    # grouped by spec. This catches obligations that exist in the registry
+    # but may not appear as frontmatter markers in spec files.
+
+    > "$TMPDIR_SCAN/obligation-registry.txt"
+    OB_REGISTRY=".spec/registry/_obligations.json"
+    if [[ -f "$OB_REGISTRY" ]] && command -v jq >/dev/null 2>&1; then
+        # Extract open obligations grouped by spec
+        jq -r '
+          .obligations[]
+          | select(.status == "open")
+          | [.spec, .id, (.domains // [] | join(",")), (.affects // [] | length | tostring), (.blocked_by // "none")]
+          | @tsv
+        ' "$OB_REGISTRY" 2>/dev/null | while IFS=$'\t' read -r ob_spec ob_id ob_domains ob_affects ob_blocked; do
+            [[ -z "$ob_spec" ]] && continue
+            echo "OB_REGISTRY|$ob_spec|$ob_id|$ob_domains|$ob_affects|$ob_blocked" >> "$TMPDIR_SCAN/obligation-registry.txt"
+        done
+    fi
+
 fi
 
 # ── Analysis 11: Cross-reference repair candidates ──────────────────────────
@@ -1423,6 +1443,27 @@ if [[ -s "$TMPDIR_SCAN/spec-orphaned.txt" ]]; then
     echo "" >> "$SUMMARY_FILE"
 fi
 
+# Obligation registry
+if [[ -s "$TMPDIR_SCAN/obligation-registry.txt" ]]; then
+    echo "## Open Obligations Registry" >> "$SUMMARY_FILE"
+    echo "Open obligations from .spec/registry/_obligations.json that need resolution." >> "$SUMMARY_FILE"
+    echo "These represent spec requirements where the code does not match the spec." >> "$SUMMARY_FILE"
+    echo "Route to: \`/work-decompose \"<group>\" --from-obligations\` to create work definitions." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Spec | Obligation | Domains | Affected Reqs | Blocked By |" >> "$SUMMARY_FILE"
+    echo "|------|-----------|---------|---------------|------------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ ob_spec ob_id ob_domains ob_affects ob_blocked; do
+        echo "| $ob_spec | $ob_id | $ob_domains | $ob_affects | $ob_blocked |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/obligation-registry.txt"
+    echo "" >> "$SUMMARY_FILE"
+
+    # Summary line: count by spec
+    ob_total="$(wc -l < "$TMPDIR_SCAN/obligation-registry.txt")"
+    ob_specs="$(awk -F'|' '{print $2}' "$TMPDIR_SCAN/obligation-registry.txt" | sort -u | wc -l)"
+    echo "**Total:** $ob_total open obligations across $ob_specs specs." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
 # Deferred audit feedback
 if [[ -s "$TMPDIR_SCAN/audit-feedback.txt" ]]; then
     echo "## Deferred Audit Feedback" >> "$SUMMARY_FILE"
@@ -1506,6 +1547,7 @@ echo "  Unspecified shared types: $(wc -l < "$TMPDIR_SCAN/spec-unspecified.txt" 
 echo "  Specs with obligations: $(wc -l < "$TMPDIR_SCAN/spec-obligations.txt" 2>/dev/null || echo 0)"
 echo "  Spec-code drift: $(wc -l < "$TMPDIR_SCAN/spec-drift.txt" 2>/dev/null || echo 0)"
 echo "  Specs with [ABSENT] reqs: $(wc -l < "$TMPDIR_SCAN/spec-absent.txt" 2>/dev/null || echo 0)"
+echo "  Obligation registry: $(wc -l < "$TMPDIR_SCAN/obligation-registry.txt" 2>/dev/null || echo 0)"
 xref_total=$(( $(wc -l < "$TMPDIR_SCAN/xref-kb-tags.txt" 2>/dev/null || echo 0) + $(wc -l < "$TMPDIR_SCAN/xref-kb-applies.txt" 2>/dev/null || echo 0) + $(wc -l < "$TMPDIR_SCAN/xref-adr-kb.txt" 2>/dev/null || echo 0) ))
 echo "  Deferred audit feedback: $(wc -l < "$TMPDIR_SCAN/audit-feedback.txt" 2>/dev/null || echo 0)"
 echo "  Cross-ref candidates: $xref_total"

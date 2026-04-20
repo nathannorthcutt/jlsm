@@ -57,6 +57,9 @@ No command re-does completed work without explicit user confirmation.
                        .feature/<slug>/units/WU-N/cycle-log.md (parallel: code entries)
   Refactor Agent     → implementation files + .feature/<slug>/cycle-log.md (refactor entries)
                        .feature/<slug>/units/WU-N/cycle-log.md (parallel: refactor entries)
+                       .work/<group>/WD-*.md (status→COMPLETE, work-group features only)
+                       .spec/registry/_obligations.json (resolve obligations, if referenced in brief)
+                       .spec/domains/*/*.md (remove resolved IDs from open_obligations)
   PR command         → .feature/<slug>/pr-draft.md
   Retro command      → .feature/<slug>/cycle-log.md (retro-complete entry)
                        (invokes /architect, /decisions revisit, /research as sub-agents)
