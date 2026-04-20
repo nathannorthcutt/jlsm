@@ -125,25 +125,22 @@ class IndexRegistryEncryptionTest {
 
     // ── FULL_TEXT index on Deterministic field → allowed ─────────────────
 
-    // Updated by audit F-R1.shared_state.8.3: IndexRegistry constructor now wraps
-    // createIndex failures in IOException (with cleanup of already-created indices).
-    // The FullTextFieldIndex stub throws UnsupportedOperationException, which is now
-    // wrapped in IOException. We verify the cause is UOE (not IAE from encryption validation).
+    // Updated by WD-01 (cross-module-integration): FullTextFieldIndex is no longer a stub —
+    // it delegates to a real FullTextIndex obtained from an injected FullTextIndex.Factory.
+    // When no factory is supplied at construction, IndexRegistry fails fast with
+    // IllegalArgumentException rather than deferring the failure to the first write.
+    // Encryption validation still passes for Deterministic fields; we verify the missing-factory
+    // IAE is the reason for rejection, not an encryption validation failure.
     @Test
     void fullTextIndex_deterministicField_allowed() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("bio", FieldType.string(), EncryptionSpec.deterministic()).build();
 
         var defs = List.of(new IndexDefinition("bio", IndexType.FULL_TEXT));
-        // FullTextFieldIndex is currently a stub that throws UnsupportedOperationException.
-        // The encryption validation passes (no IllegalArgumentException), but index creation
-        // fails because the full-text index itself is not yet implemented.
-        // The IndexRegistry constructor wraps this in IOException with cleanup.
-        var ex = assertThrows(IOException.class, () -> new IndexRegistry(schema, defs));
-        assertInstanceOf(UnsupportedOperationException.class, ex.getCause(),
-                "Root cause should be the FULL_TEXT stub's UnsupportedOperationException, "
-                        + "not an encryption validation failure");
-        assertEquals("Not implemented", ex.getCause().getMessage());
+        var ex = assertThrows(IllegalArgumentException.class,
+                () -> new IndexRegistry(schema, defs));
+        assertTrue(ex.getMessage().contains("FullTextIndex.Factory"),
+                "Message should explain the missing factory, got: " + ex.getMessage());
     }
 
     // ── FULL_TEXT index on Opaque field → throws IAE ─────────────────────

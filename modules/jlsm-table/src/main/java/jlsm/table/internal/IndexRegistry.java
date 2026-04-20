@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import jlsm.core.indexing.FullTextIndex;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldDefinition;
 import jlsm.table.FieldType;
@@ -45,6 +46,25 @@ public final class IndexRegistry implements Closeable {
 
     // @spec F10.R92 — accept JlsmSchema and List<IndexDefinition>; validate each against schema
     public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions) throws IOException {
+        this(schema, definitions, null);
+    }
+
+    /**
+     * Constructs an IndexRegistry with an optional {@link FullTextIndex.Factory} for building
+     * FULL_TEXT indices. If any definition in {@code definitions} has index type FULL_TEXT and the
+     * factory is {@code null}, construction fails fast with {@link IllegalArgumentException} so
+     * mis-wiring surfaces at table creation rather than on the first write.
+     *
+     * @param schema the table schema; must not be null
+     * @param definitions the index definitions; must not be null
+     * @param fullTextFactory the factory for FULL_TEXT indices; may be null if no FULL_TEXT
+     *            definitions are present
+     * @throws IOException if an index fails to initialise
+     */
+    // @spec F10.R92 — schema-validated definitions; factory is injected so FULL_TEXT indices
+    // resolve OBL-F10-fulltext via LsmFullTextIndex in jlsm-indexing
+    public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions,
+            FullTextIndex.Factory fullTextFactory) throws IOException {
         Objects.requireNonNull(schema, "schema");
         Objects.requireNonNull(definitions, "definitions");
         this.schema = schema;
@@ -54,10 +74,16 @@ public final class IndexRegistry implements Closeable {
 
         for (IndexDefinition def : definitions) {
             validate(schema, def);
+            if (def.indexType() == IndexType.FULL_TEXT && fullTextFactory == null) {
+                // Clean up already-created indices and the arena before failing.
+                closePartial(null);
+                throw new IllegalArgumentException("FULL_TEXT index on field '" + def.fieldName()
+                        + "' requires a FullTextIndex.Factory — pass one to the table builder");
+            }
             final int fieldIdx = schema.fieldIndex(def.fieldName());
             final FieldType fieldType = schema.fields().get(fieldIdx).type();
             try {
-                this.indices.add(createIndex(def, fieldType));
+                this.indices.add(createIndex(def, fieldType, schema.name(), fullTextFactory));
             } catch (Exception e) {
                 // Close the managed arena before propagating the failure.
                 segmentArena.close();
@@ -594,13 +620,42 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    private static SecondaryIndex createIndex(IndexDefinition def, FieldType fieldType)
-            throws IOException {
+    private static SecondaryIndex createIndex(IndexDefinition def, FieldType fieldType,
+            String tableName, FullTextIndex.Factory fullTextFactory) throws IOException {
         return switch (def.indexType()) {
             case EQUALITY, RANGE, UNIQUE -> new FieldIndex(def, fieldType);
-            case FULL_TEXT -> new FullTextFieldIndex(def);
+            case FULL_TEXT -> {
+                assert fullTextFactory != null
+                        : "fullTextFactory null despite FULL_TEXT index — constructor must reject earlier";
+                yield new FullTextFieldIndex(def,
+                        fullTextFactory.create(tableName, def.fieldName()));
+            }
             case VECTOR -> new VectorFieldIndex(def);
         };
+    }
+
+    /**
+     * Closes all already-created indices and the shared arena on construction failure, suppressing
+     * secondary exceptions into {@code cause} where one is supplied.
+     */
+    private void closePartial(Exception cause) {
+        for (SecondaryIndex idx : indices) {
+            try {
+                idx.close();
+            } catch (IOException suppressed) {
+                if (cause != null) {
+                    cause.addSuppressed(suppressed);
+                }
+            }
+        }
+        indices.clear();
+        try {
+            segmentArena.close();
+        } catch (Exception arenaEx) {
+            if (cause != null) {
+                cause.addSuppressed(arenaEx);
+            }
+        }
     }
 
     // @spec F10.R139 — VectorType FLOAT32/FLOAT16 arrays returned as defensive copies, not internal

@@ -1,10 +1,16 @@
 package jlsm.table;
 
+import jlsm.core.indexing.FullTextIndex;
 import jlsm.core.io.MemorySerializer;
 import jlsm.core.tree.TypedLsmTree;
+import jlsm.table.internal.IndexRegistry;
 import jlsm.table.internal.LongKeyedTable;
 import jlsm.table.internal.StringKeyedTable;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -48,6 +54,8 @@ public final class StandardJlsmTable {
 
         private TypedLsmTree.StringKeyed<JlsmDocument> tree;
         private JlsmSchema schema;
+        private final List<IndexDefinition> indexDefinitions = new ArrayList<>();
+        private FullTextIndex.Factory fullTextFactory;
 
         private StringKeyedBuilder() {
         }
@@ -74,6 +82,33 @@ public final class StandardJlsmTable {
             return this;
         }
 
+        /**
+         * Adds a secondary index definition. May be called multiple times. When any definition has
+         * {@link IndexType#FULL_TEXT}, a {@link FullTextIndex.Factory} must also be supplied via
+         * {@link #fullTextFactory(FullTextIndex.Factory)}.
+         *
+         * @param definition the index definition; must not be null
+         * @return this builder
+         */
+        public StringKeyedBuilder addIndex(IndexDefinition definition) {
+            Objects.requireNonNull(definition, "definition must not be null");
+            indexDefinitions.add(definition);
+            return this;
+        }
+
+        /**
+         * Sets the full-text index factory used to materialise {@link IndexType#FULL_TEXT} indices.
+         * Required when any registered definition has type FULL_TEXT; ignored otherwise.
+         *
+         * @param fullTextFactory the factory; must not be null
+         * @return this builder
+         */
+        public StringKeyedBuilder fullTextFactory(FullTextIndex.Factory fullTextFactory) {
+            this.fullTextFactory = Objects.requireNonNull(fullTextFactory,
+                    "fullTextFactory must not be null");
+            return this;
+        }
+
         @Override
         public JlsmTable.StringKeyed build() {
             Objects.requireNonNull(tree, "tree must not be null");
@@ -81,7 +116,22 @@ public final class StandardJlsmTable {
                     ? DocumentSerializer.forSchema(schema)
                     : null;
             assert codec != null : "codec must not be null when schema is provided";
-            return new StringKeyedTable(tree, codec, schema);
+
+            IndexRegistry registry = null;
+            if (!indexDefinitions.isEmpty()) {
+                if (schema == null) {
+                    throw new IllegalStateException(
+                            "indexDefinitions require a schema on the builder");
+                }
+                try {
+                    registry = new IndexRegistry(schema, List.copyOf(indexDefinitions),
+                            fullTextFactory);
+                } catch (IOException e) {
+                    // Wrap in UncheckedIOException so the builder signature stays unchanged.
+                    throw new UncheckedIOException("Failed to create secondary index registry", e);
+                }
+            }
+            return new StringKeyedTable(tree, codec, schema, registry);
         }
     }
 
