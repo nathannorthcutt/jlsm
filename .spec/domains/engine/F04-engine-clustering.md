@@ -1,7 +1,7 @@
 ---
 {
   "id": "F04",
-  "version": 4,
+  "version": 5,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["engine"],
@@ -202,6 +202,14 @@ R97. The membership protocol's close operation must deregister the node from the
 
 R98. The clustered engine's table creation must detect and close a previously existing table proxy with the same name before registering the new proxy. If table creation fails after the local table is created, the local table must be rolled back (dropped). <!-- covers: F-R1.cb.1.6, F-R1.resource_lifecycle.2.6 -->
 
+R102. The clustered engine constructor must assign every final field before registering any membership listener or transport message handler. Listener and handler registration must be the last observable actions of construction so that any callback triggered during or after registration observes all engine fields as fully initialized. <!-- covers: F-R1.concurrency.1.2, F-R1.concurrency.1.3 -->
+
+R103. The clustered engine constructor must unwind every successfully completed registration step if any subsequent construction step throws. In particular, a failure to register the transport message handler must cause the previously registered membership listener to be removed before the original exception propagates to the caller. <!-- covers: F-R1.resource_lifecycle.1.1 -->
+
+R104. When a clustered engine join operation rolls back after a failure of a prior step, exceptions thrown by rollback actions (including checked exceptions from discovery deregistration) must be attached to the original failure via suppressed exceptions rather than replacing it. The caller must always observe the original cause as the primary exception. <!-- covers: F-R1.resource_lifecycle.1.2 -->
+
+R105. Membership listener callbacks delivered to the clustered engine after close has begun must be observable as no-ops. A callback arriving concurrently with or after close must not mutate ownership state, grace-period state, or any other engine-owned shared state. <!-- covers: F-R1.shared_state.1.1 -->
+
 ### Clustered table and scatter-gather queries
 
 R59. The clustered table must act as a partition-aware proxy over the local engine's tables. For each CRUD operation, the clustered table must determine the target partition and route the operation to the owning node.
@@ -226,6 +234,14 @@ R66. The scatter-gather timeout for waiting on partition responses must be confi
 
 R67. The merge phase of scatter-gather must preserve the ordering guarantees of the underlying query. If the query specifies a sort order, the merge must perform an ordered merge across partition results, not a concatenation.
 
+R106. The clustered table's scan operation must track in-flight scatter fanout tasks and cancel each tracked task on close. A close that fires while scatter requests are outstanding must not leak scheduling work on the shared scatter executor. <!-- covers: F-R1.resource_lifecycle.2.2 -->
+
+R107. When a scatter fanout request is cancelled (for example, because the clustered table is closing), the scatter executor thread servicing that request must be released from any synchronous transport call it is blocked on. The cancellation mechanism must not allow a single blocked request to pin the servicing thread past the fanout's abandonment. <!-- covers: F-R1.shared_state.2.3 -->
+
+R108. The clustered table's scatter scan must report every failure that occurs while releasing a per-partition remote client, including failures observed only after the partition's results have been collected. Close-path failures must be surfaced through a diagnostic channel and must never be silently discarded by assertion checks that are disabled in production. <!-- covers: F-R1.concurrency.1.4 -->
+
+R113. The ordered merge phase of scatter-gather must fail with an explicit runtime error if any per-partition iterator yields a malformed element (for example, an entry whose key is null). The merge must not propagate NullPointerException or AssertionError through the priority-queue comparator. <!-- covers: F-R1.data_transformation.1.5 -->
+
 ### Remote partition client
 
 R68. The remote partition client must serialize CRUD operations into the message format defined by the transport. Each serialized operation must include sufficient information for the remote node to identify the target table and partition.
@@ -235,6 +251,16 @@ R69. The remote partition client must deserialize responses and propagate remote
 R70. The remote partition client must set a per-request timeout on the transport's request future. If the future does not complete within the timeout, the client must cancel the future and report the partition as unavailable.
 
 R101. The remote partition client must serialize the full document content and operation mode for create, update, and delete operations. The client must deserialize non-empty response payloads for get and range scan operations. A stub implementation that discards payloads or returns empty results violates the partition-aware proxy contract. <!-- covers: F-R1.cb.1.2, F-R1.cb.1.3, F-R1.cb.1.4, F-R1.cb.1.5 -->
+
+R109. The remote partition client must validate, with a runtime check, that the transport's request future is non-null before awaiting it. A null future must be reported to the caller as an I/O failure; it must not rely on assertions that are disabled in production to surface. <!-- covers: F-R1.concurrency.1.9 -->
+
+R110. When a remote partition client's per-request timeout fires, the client must cancel the originating transport future so that the transport can release any per-request server-side state. Simply completing a downstream future is insufficient — the cancellation signal must reach the source future that the transport is observing. <!-- covers: F-R1.concurrency.1.10 -->
+
+R111. The remote partition client must distinguish local-origin failures (for example, a failure to encode a request payload) from remote-node failures when completing per-partition futures. A locally thrown encoding exception must not be reported to the caller as a node-unavailability condition. <!-- covers: F-R1.data_transformation.1.7 -->
+
+R112. The query request handler's response encoder must fail with a semantic I/O error when the cumulative size of the response payload would overflow the wire-format size field. Silent integer wrap that yields a negatively-sized or truncated payload is not acceptable. <!-- covers: F-R1.data_transformation.1.2 -->
+
+R114. Decoding of a range-scan response must distinguish a legitimately empty range from a malformed response that carries a populated payload but no schema. A malformed response must fail explicitly; it must not silently degrade to an empty result iterator. <!-- covers: F-R1.data_transformation.1.6 -->
 
 ### Observability and diagnostics
 
@@ -354,3 +380,11 @@ Phase 1 of the RAPID consensus work (feature `f04-obligation-resolution--wd-04`)
 - **R37:** no consensus-round timeout → bounded timeout via `consensusRoundTimeout` (default 2 seconds); expired rounds are abandoned silently.
 - **R38:** self-refutation deferred → self-refutation implemented as incarnation bump + ALIVE_REFUTATION broadcast; observers cancel matching rounds; higher-incarnation ALIVE supersedes lower-incarnation SUSPECT/DEAD.
 - **ClusterConfig extensions:** four new parameters (`consensusRoundTimeout`, `expanderGraphDegree`, `cutDetectorLowWatermark`, `cutDetectorHighWatermark`) exposed via the builder with defaults and full constructor validation.
+
+#### Amendments (v4 → v5)
+
+Adversarial audit against WD-03 (feature `f04-obligation-resolution--wd-03`) surfaced 13 regression-prevention contracts that the v4 spec did not explicitly require. These were added as R102–R114, each tagged to the audit finding that motivated it. No previous requirement was rewritten; the additions strengthen existing requirements (R68, R70, R77, R86, R97, R100, R101) by codifying previously implicit invariants.
+
+- **R102–R105:** clustered engine construction and close-path hygiene — safe publication of final fields before listener/handler registration; rollback on partial construction failure; suppressed-exception accumulation in join rollback; listener callbacks after close must be no-ops.
+- **R106–R108, R113:** scatter-gather fanout robustness — track and cancel in-flight scatter tasks on close; unblock cancelled scatter threads from synchronous transport calls; surface per-partition client-close failures through a diagnostic channel (not assertions); fail explicitly on malformed per-partition iterator elements in the merge comparator.
+- **R109–R112, R114:** remote partition client robustness — runtime-enforce non-null transport futures; cancel the source transport future on timeout (not a wrapper); attribute local-origin encoding failures distinctly from remote-node failures; use checked arithmetic in the response encoder's size accumulation; reject malformed range-scan responses instead of silently degrading to an empty iterator.

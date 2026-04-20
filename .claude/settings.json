@@ -68,6 +68,14 @@
             "command": "bash .claude/scripts/token-hook-wrapper.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/token-hook-wrapper.sh"
+          }
+        ]
       }
     ],
     "SubagentStart": [

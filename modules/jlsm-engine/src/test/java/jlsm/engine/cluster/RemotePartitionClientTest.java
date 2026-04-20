@@ -49,7 +49,7 @@ final class RemotePartitionClientTest {
         descriptor = new PartitionDescriptor(1L,
                 MemorySegment.ofArray("a".getBytes(StandardCharsets.UTF_8)),
                 MemorySegment.ofArray("m".getBytes(StandardCharsets.UTF_8)), REMOTE.nodeId(), 0L);
-        client = new RemotePartitionClient(descriptor, REMOTE, localTransport, LOCAL);
+        client = new RemotePartitionClient(descriptor, REMOTE, localTransport, LOCAL, "users");
     }
 
     @AfterEach
@@ -65,25 +65,25 @@ final class RemotePartitionClientTest {
     @Test
     void constructor_nullDescriptor_throws() {
         assertThrows(NullPointerException.class,
-                () -> new RemotePartitionClient(null, REMOTE, localTransport, LOCAL));
+                () -> new RemotePartitionClient(null, REMOTE, localTransport, LOCAL, "users"));
     }
 
     @Test
     void constructor_nullOwner_throws() {
         assertThrows(NullPointerException.class,
-                () -> new RemotePartitionClient(descriptor, null, localTransport, LOCAL));
+                () -> new RemotePartitionClient(descriptor, null, localTransport, LOCAL, "users"));
     }
 
     @Test
     void constructor_nullTransport_throws() {
         assertThrows(NullPointerException.class,
-                () -> new RemotePartitionClient(descriptor, REMOTE, null, LOCAL));
+                () -> new RemotePartitionClient(descriptor, REMOTE, null, LOCAL, "users"));
     }
 
     @Test
     void constructor_nullLocalAddress_throws() {
         assertThrows(NullPointerException.class,
-                () -> new RemotePartitionClient(descriptor, REMOTE, localTransport, null));
+                () -> new RemotePartitionClient(descriptor, REMOTE, localTransport, null, "users"));
     }
 
     // --- descriptor() ---

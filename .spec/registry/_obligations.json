@@ -372,7 +372,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "WD-03: new QueryRequestPayload [tableNameLen][tableName][partitionId][opcode][body] format + QueryRequestHandler dispatcher registered on transport by ClusteredEngine",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "OBL-F04-R77-parallel-scatter",
@@ -388,7 +390,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "WD-03: PartitionClient.getRangeAsync default + RemotePartitionClient.getRangeAsync transport.request override + ClusteredTable.scan parallel fanout via virtual-thread scatter executor and CompletableFuture.allOf",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "OBL-F04-R53-monotonic-clock",
@@ -404,7 +408,9 @@
       ],
       "created_by": "spec-verify",
       "created": "2026-04-18",
-      "status": "open"
+      "status": "resolved",
+      "resolved_by": "f04-obligation-resolution--wd-01",
+      "resolved_date": "2026-04-20"
     },
     {
       "id": "OBL-F04-R10-duplicate-dedup",

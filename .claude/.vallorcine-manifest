@@ -122,6 +122,7 @@
 .claude/scripts/work-resolve.sh
 .claude/scripts/work-validate.sh
 .claude/scripts/work-context.sh
+.claude/scripts/work-finalize.sh
 .claude/scripts/narrative-wrapper.sh
 .claude/scripts/narrative/model.py
 .claude/scripts/narrative/tokenizer.py

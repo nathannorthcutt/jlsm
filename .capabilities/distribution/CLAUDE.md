@@ -11,7 +11,7 @@ with scatter-gather, and multi-engine coordination.
 | Capability | Type | Status | Tags | Features |
 |-----------|------|--------|------|----------|
 | [database-engine](database-engine.md) | core | active | engine, database, catalog, multi-table | 1 |
-| [engine-clustering](engine-clustering.md) | core | active | clustering, distributed, SWIM, HRW, scatter-gather | 1 |
+| [engine-clustering](engine-clustering.md) | core | active | clustering, distributed, SWIM, HRW, scatter-gather | 2 |
 | [table-partitioning](table-partitioning.md) | core | active | partitioning, range, scatter-gather, routing | 1 |
 
 ## Cross-references

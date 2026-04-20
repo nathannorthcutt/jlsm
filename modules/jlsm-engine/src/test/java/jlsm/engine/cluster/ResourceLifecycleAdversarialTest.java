@@ -1025,6 +1025,282 @@ final class ResourceLifecycleAdversarialTest {
                 + "cached assignments persist after table close, leaking memory");
     }
 
+    // Finding: F-R1.resource_lifecycle.1.2
+    // Bug: join() rollback only catches RuntimeException from discovery.deregister(); a
+    // non-RuntimeException (e.g., a checked IOException thrown via sneakyThrow, or the
+    // unchecked-IOException-but-with-a-cause-Exception path that close() handles symmetrically)
+    // escapes the rollback block and hides the original membership.start failure.
+    // Correct behavior: The rollback must catch Exception (matching the symmetric defence in
+    // close() at L315-323), attach the rollback failure via addSuppressed on the original
+    // membership.start failure, and rethrow the original failure — never the rollback failure.
+    // Fix location: ClusteredEngine.join (ClusteredEngine.java:260-269)
+    // Regression watch: normal rollback of RuntimeException must still work; the original
+    // membership.start failure must still be the primary throw.
+    @Test
+    @Timeout(10)
+    void test_ClusteredEngine_join_rollbackSurfacesMembershipStartFailureWhenDeregisterThrowsChecked()
+            throws IOException {
+        final var membershipStartFailure = new IOException("membership.start failed");
+        final var deregisterFailure = new IOException("deregister blew up");
+
+        // DiscoveryProvider whose deregister throws a checked IOException via sneakyThrow on the
+        // first invocation (the rollback inside join), then no-ops on subsequent calls (the
+        // defer-collection path inside close()). Simulates a non-compliant impl that surfaces
+        // IOException through the Throwable hierarchy in a way that escapes
+        // catch(RuntimeException).
+        final var sneakyThrownOnce = new AtomicBoolean(false);
+        DiscoveryProvider sneakyDiscovery = new DiscoveryProvider() {
+            @Override
+            public Set<NodeAddress> discoverSeeds() {
+                return Set.of();
+            }
+
+            @Override
+            public void register(NodeAddress self) {
+                // no-op
+            }
+
+            @Override
+            public void deregister(NodeAddress self) {
+                if (sneakyThrownOnce.compareAndSet(false, true)) {
+                    sneakyThrow(deregisterFailure);
+                }
+            }
+        };
+
+        // Membership whose start throws an IOException so rollback is exercised
+        MembershipProtocol failingMembership = new MembershipProtocol() {
+            @Override
+            public void start(List<NodeAddress> seeds) throws IOException {
+                throw membershipStartFailure;
+            }
+
+            @Override
+            public MembershipView currentView() {
+                return null;
+            }
+
+            @Override
+            public void addListener(MembershipListener listener) {
+            }
+
+            @Override
+            public void removeListener(MembershipListener listener) {
+            }
+
+            @Override
+            public void leave() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        ClusterTransport noopTransport = new ClusterTransport() {
+            @Override
+            public void send(NodeAddress target, Message msg) {
+            }
+
+            @Override
+            public CompletableFuture<Message> request(NodeAddress target, Message msg) {
+                return CompletableFuture.failedFuture(new IOException("not implemented"));
+            }
+
+            @Override
+            public void registerHandler(MessageType type, MessageHandler handler) {
+            }
+
+            @Override
+            public void deregisterHandler(MessageType type) {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        jlsm.engine.Engine stubEngine = new jlsm.engine.Engine() {
+            @Override
+            public jlsm.engine.Table createTable(String name, JlsmSchema schema) {
+                return null;
+            }
+
+            @Override
+            public jlsm.engine.Table getTable(String name) {
+                return null;
+            }
+
+            @Override
+            public void dropTable(String name) {
+            }
+
+            @Override
+            public java.util.Collection<TableMetadata> listTables() {
+                return List.of();
+            }
+
+            @Override
+            public TableMetadata tableMetadata(String name) {
+                return null;
+            }
+
+            @Override
+            public jlsm.engine.EngineMetrics metrics() {
+                return null;
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        final var engine = ClusteredEngine.builder().localEngine(stubEngine)
+                .membership(failingMembership)
+                .ownership(new jlsm.engine.cluster.internal.RendezvousOwnership())
+                .gracePeriodManager(new GracePeriodManager(Duration.ofMinutes(1)))
+                .transport(noopTransport).config(ClusterConfig.builder().build())
+                .localAddress(NODE_A).discovery(sneakyDiscovery).build();
+
+        try {
+            // join() must propagate the ORIGINAL membership.start failure, with the deregister
+            // failure attached via addSuppressed. The buggy code lets the deregister failure
+            // escape and hide the primary failure.
+            final IOException thrown = assertThrows(IOException.class,
+                    () -> engine.join(List.of(NODE_A)));
+
+            assertSame(membershipStartFailure, thrown,
+                    "join() must propagate the original membership.start failure, not the "
+                            + "rollback deregister failure — the primary cause must not be hidden");
+
+            final Throwable[] suppressed = thrown.getSuppressed();
+            assertEquals(1, suppressed.length,
+                    "the rollback deregister failure must be attached via addSuppressed");
+            assertSame(deregisterFailure, suppressed[0],
+                    "the suppressed throwable must be the deregister failure");
+        } finally {
+            engine.close();
+        }
+    }
+
+    // Finding: F-R1.resource_lifecycle.2.2
+    // Bug: SCATTER_EXECUTOR is a static `Executors.newVirtualThreadPerTaskExecutor()` that is
+    // never shut down; ClusteredTable.close() does not cancel in-flight fanout tasks, so tasks
+    // parked on a stalled transport remain parked for JVM lifetime — no operator recourse.
+    // Correct behavior: either (a) close() must cancel in-flight scatter futures, or (b) the
+    // executor must be scoped to per-table lifecycle and close()d, or (c) a JVM shutdown hook
+    // must register to close the executor cleanly on termination.
+    // Fix location: ClusteredTable.close (ClusteredTable.java:434-437) and SCATTER_EXECUTOR
+    // declaration (ClusteredTable.java:73).
+    // Regression watch: ensure live tables' scatter executor remains usable when one table
+    // closes; ensure the in-flight future does not complete normally after close().
+    @Test
+    @Timeout(10)
+    void test_ClusteredTable_close_cancelsInFlightScatterTasks() throws Exception {
+        final var nodeB = new NodeAddress("node-b", "localhost", 8002);
+        final var now = Instant.parse("2026-04-06T00:00:00Z");
+
+        // Transport whose request() returns a future that never completes — simulates the
+        // pathological case where the transport stalls (timer thread died, custom transport
+        // bypasses orTimeout, etc.). The scatter virtual thread will park indefinitely waiting
+        // on the result.
+        final var stalledFuture = new CompletableFuture<Message>();
+        ClusterTransport stalledTransport = new ClusterTransport() {
+            @Override
+            public void send(NodeAddress target, Message msg) {
+            }
+
+            @Override
+            public CompletableFuture<Message> request(NodeAddress target, Message msg) {
+                return stalledFuture; // never completes
+            }
+
+            @Override
+            public void registerHandler(MessageType type, MessageHandler handler) {
+            }
+
+            @Override
+            public void deregisterHandler(MessageType type) {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        MembershipProtocol stubMembership = new MembershipProtocol() {
+            @Override
+            public void start(List<NodeAddress> seeds) {
+            }
+
+            @Override
+            public MembershipView currentView() {
+                return new MembershipView(1, Set.of(new Member(NODE_A, MemberState.ALIVE, 0),
+                        new Member(nodeB, MemberState.ALIVE, 0)), now);
+            }
+
+            @Override
+            public void addListener(MembershipListener listener) {
+            }
+
+            @Override
+            public void leave() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        final var schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
+                .build();
+        final var meta = new TableMetadata("users", schema, now, TableMetadata.TableState.READY);
+        final var table = new ClusteredTable(meta, stalledTransport, stubMembership, NODE_A);
+
+        // Start a scatter scan in a separate thread — it will park on allOf().get() awaiting
+        // the stalled request future.
+        final var scanStarted = new java.util.concurrent.CountDownLatch(1);
+        final var scanCompleted = new java.util.concurrent.CountDownLatch(1);
+        final var scanThread = Thread.ofVirtual().unstarted(() -> {
+            try {
+                scanStarted.countDown();
+                table.scan("a", "z");
+            } catch (Exception _) {
+                // Expected — scan is interrupted or times out
+            } finally {
+                scanCompleted.countDown();
+            }
+        });
+        scanThread.start();
+        assertTrue(scanStarted.await(2, java.util.concurrent.TimeUnit.SECONDS));
+        // Give the scan a moment to submit its supplyAsync tasks to SCATTER_EXECUTOR
+        Thread.sleep(200);
+
+        // close() should signal the scatter fanout to cancel — a bounded-lifetime contract.
+        // Without a cancellation mechanism, the scan thread and its scatter tasks remain
+        // parked for JVM lifetime on the stalled future.
+        table.close();
+
+        // The scan thread must complete within a short window after close(). If it does not,
+        // close() does not propagate cancellation to in-flight scatter tasks.
+        final boolean scanEnded = scanCompleted.await(2, java.util.concurrent.TimeUnit.SECONDS);
+        // Best-effort: interrupt the scan thread to prevent the test from leaking a parked
+        // virtual thread regardless of whether close() cancels.
+        scanThread.interrupt();
+        assertTrue(scanEnded,
+                "close() must cancel in-flight scatter tasks so they do not remain parked "
+                        + "for JVM lifetime when the transport stalls past its timeout");
+    }
+
+    // Generic-trick sneakyThrow — used only to simulate a deregister impl that leaks a checked
+    // exception past a RuntimeException-only catch block. This is a legitimate attack vector
+    // because the DiscoveryProvider boundary contract does not forbid such impls and the
+    // symmetric close() path catches Exception.
+    @SuppressWarnings("unchecked")
+    private static <E extends Throwable> void sneakyThrow(Throwable t) throws E {
+        throw (E) t;
+    }
+
     // Finding: F-R1.resource_lifecycle.2.4
     // Bug: GracePeriodManager.departures map grows without bound — expiredDepartures()
     // returns expired nodes but never removes them from the internal map
@@ -1082,5 +1358,131 @@ final class ResourceLifecycleAdversarialTest {
         // The recent node should still report as in grace period
         assertTrue(manager.isInGracePeriod(recentNode),
                 "Recent node must still be in grace period after cleanup of expired nodes");
+    }
+
+    // Finding: F-R1.resource_lifecycle.1.1
+    // Bug: registerHandler failure at L91 leaks the membership listener registered at L78
+    // Correct behavior: If transport.registerHandler throws during the ctor after
+    // membership.addListener has been called, the listener must be removed from the
+    // membership protocol — the ctor must either roll back the listener or avoid
+    // registering it until after registerHandler succeeds
+    // Fix location: ClusteredEngine ctor (ClusteredEngine.java:57-92)
+    // Regression watch: ensure the successful-build path still registers exactly one
+    // listener; ensure concurrency.1.3 ordering (handler visible implies listener visible)
+    // is preserved or replaced with an equivalent guarantee.
+    @Test
+    @Timeout(10)
+    void test_ClusteredEngine_ctor_registerHandlerFailureDoesNotLeakMembershipListener()
+            throws IOException {
+        // Tracking membership that records all listener adds/removes so the test can verify
+        // the post-failure listener count.
+        final var listenerCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        MembershipProtocol trackingMembership = new MembershipProtocol() {
+            @Override
+            public void start(List<NodeAddress> seeds) {
+            }
+
+            @Override
+            public MembershipView currentView() {
+                return null;
+            }
+
+            @Override
+            public void addListener(MembershipListener listener) {
+                listenerCount.incrementAndGet();
+            }
+
+            @Override
+            public void removeListener(MembershipListener listener) {
+                listenerCount.decrementAndGet();
+            }
+
+            @Override
+            public void leave() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        // Transport whose registerHandler throws — simulates a closed/broken transport
+        // encountered mid-construction, AFTER the membership listener has already been
+        // registered at L78 of ClusteredEngine.
+        ClusterTransport failingTransport = new ClusterTransport() {
+            @Override
+            public void send(NodeAddress target, Message msg) {
+            }
+
+            @Override
+            public CompletableFuture<Message> request(NodeAddress target, Message msg) {
+                return CompletableFuture.failedFuture(new IOException("not implemented"));
+            }
+
+            @Override
+            public void registerHandler(MessageType type, MessageHandler handler) {
+                throw new IllegalStateException("simulated registerHandler failure");
+            }
+
+            @Override
+            public void deregisterHandler(MessageType type) {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        jlsm.engine.Engine stubEngine = new jlsm.engine.Engine() {
+            @Override
+            public jlsm.engine.Table createTable(String name, JlsmSchema schema) {
+                return null;
+            }
+
+            @Override
+            public jlsm.engine.Table getTable(String name) {
+                return null;
+            }
+
+            @Override
+            public void dropTable(String name) {
+            }
+
+            @Override
+            public java.util.Collection<TableMetadata> listTables() {
+                return List.of();
+            }
+
+            @Override
+            public TableMetadata tableMetadata(String name) {
+                return null;
+            }
+
+            @Override
+            public jlsm.engine.EngineMetrics metrics() {
+                return null;
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        // Build must throw (we expect the IllegalStateException to propagate).
+        assertThrows(IllegalStateException.class,
+                () -> ClusteredEngine.builder().localEngine(stubEngine)
+                        .membership(trackingMembership)
+                        .ownership(new jlsm.engine.cluster.internal.RendezvousOwnership())
+                        .gracePeriodManager(new GracePeriodManager(Duration.ofMinutes(1)))
+                        .transport(failingTransport).config(ClusterConfig.builder().build())
+                        .localAddress(NODE_A).discovery(new InJvmDiscoveryProvider()).build());
+
+        // BUG: Without rollback, the listener count is 1 (leaked). A correct ctor either
+        // removes the listener on failure (count back to 0) or never registers it before
+        // the handler registration succeeds.
+        assertEquals(0, listenerCount.get(),
+                "ctor must not leak the membership listener when registerHandler fails — "
+                        + "MembershipProtocol retains a strong reference to the listener "
+                        + "(and via the inner class, to the half-initialized ClusteredEngine)");
     }
 }

@@ -9,6 +9,9 @@ features:
   - slug: engine-clustering
     role: core
     description: "Cluster membership, table/partition ownership via rendezvous hashing, scatter-gather queries, and automatic rebalancing"
+  - slug: f04-obligation-resolution--wd-03
+    role: core
+    description: "Remote dispatch payload format (table name + partition id) + parallel scatter via virtual-thread fanout — first end-to-end working scatter-gather (F04.R68, F04.R77)"
 composes: []
 spec_refs: ["F04"]
 decision_refs: ["transport-abstraction-design", "discovery-spi-design", "scatter-gather-query-execution", "rebalancing-grace-period-strategy", "partition-to-node-ownership", "cluster-membership-protocol"]

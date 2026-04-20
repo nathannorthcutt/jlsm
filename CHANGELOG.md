@@ -10,7 +10,44 @@ semver release cadence is established.
 
 ## [Unreleased]
 
-### Added
+### Added — Remote Dispatch and Parallel Scatter (WD-03)
+- `QueryRequestPayload` — shared encoder/decoder for cluster `QUERY_REQUEST` payloads with `[tableNameLen][tableName UTF-8][partitionId][opcode][body]` format (F04.R68)
+- `QueryRequestHandler` — server-side `MessageHandler` that routes `QUERY_REQUEST` messages to the correct local table via `Engine.getTable(name)` and serializes the `QUERY_RESPONSE`
+- `PartitionClient.getRangeAsync(...)` — new default interface method returning `CompletableFuture<Iterator<TableEntry<String>>>` for async scatter-gather (F04.R77)
+- `MembershipProtocol.removeListener(...)` — new default SPI method for ctor-failure rollback
+- F04 spec version 4 → 5: 13 new requirements R102–R114 (ctor/close ordering, listener rollback, scatter cancellation propagation, response encoder overflow guard, merge iterator null-key rejection, range decode malformed-payload semantics)
+- 3 new KB adversarial-finding patterns: `unsafe-this-escape-via-listener-registration`, `local-failure-masquerading-as-remote-outage`, `timeout-wrapper-does-not-cancel-source-future`
+- 103 tests total across WD-03 (61 cycle-1 + 24 adversarial hardening + 18 audit)
+
+### Changed — Remote Dispatch and Parallel Scatter (WD-03)
+- `RemotePartitionClient` ctors now require a trailing `String tableName` parameter (breaking); all payload encoders use the new `QueryRequestPayload` format carrying table name + partition id
+- `RemotePartitionClient.getRangeAsync(...)` override — transport-based async path with `orTimeout`, explicit source-future cancellation, and defensive handling of null/truncated/malformed responses
+- `ClusteredTable.scan(...)` — parallel fanout via virtual-thread scatter executor + `CompletableFuture.allOf`; preserves local short-circuit (R60), ordered k-way merge (R67), partial-result metadata (R64), and per-node client close on every path (R100)
+- `ClusteredEngine` — registers `QueryRequestHandler` in the constructor after all final fields are assigned; symmetric deregister before `transport.close()` in `close()`; rollback of membership listener if handler registration throws
+- `ClusteredEngine.onViewChanged` — no-ops when close has begun, preventing post-close state mutations
+
+### Performance — Remote Dispatch and Parallel Scatter (WD-03)
+- `ClusteredTable.scan` fans out remote partition requests in parallel; prior implementation issued partitions sequentially with each request blocking on the previous response. Virtual-thread scatter executor keeps fanout non-blocking even when the transport layer has synchronous delivery semantics
+- `QueryRequestHandler.handle` reads the incoming payload once instead of twice, halving defensive-clone allocation per dispatch
+
+### Fixed — Remote Dispatch and Parallel Scatter (WD-03)
+- `RemotePartitionClient.close()` check-then-set race that could corrupt `OPEN_INSTANCES` counter under concurrent close (replaced `volatile boolean` with `AtomicBoolean.compareAndSet`)
+- `ClusteredTable.mergeOrdered` — explicit `IllegalStateException` on null `TableEntry` instead of `AssertionError`/NPE propagation from the heap comparator
+- `decodeRangeResponsePayload` — distinguishes legitimately empty range from a populated payload with null schema (previously silent data loss)
+- `getRangeAsync` — encoding errors propagate synchronously so upstream scatter logic does not mis-classify a local failure as a remote node outage
+- `QueryRequestHandler.encodeRangeResponse` — `Math.addExact` overflow guard + `OutOfMemoryError` catch surface response-too-large as `IOException`
+- `join()` rollback catches `Exception` so a checked-exception-leaking `DiscoveryProvider.deregister` no longer hides the original `membership.start` failure
+- 12 additional issues surfaced by adversarial audit across concurrency, resource_lifecycle, and shared_state domains
+
+### Removed — Remote Dispatch and Parallel Scatter (WD-03)
+- Obligations `OBL-F04-R68-payload-table-id` and `OBL-F04-R77-parallel-scatter` resolved (removed from F04 open obligations); `WD-03` marked `COMPLETE` in the work group manifest
+
+### Known Gaps — Remote Dispatch and Parallel Scatter (WD-03)
+- `RemotePartitionClient.doQuery(...)` still returns an empty list — scored-entry response framing over the cluster transport is not yet wired (deferred)
+- Wire-format versioning / magic byte deferred to a coordinated protocol spec cycle
+- `doGet` null-schema conflation with not-found deferred pending a pre-existing test relaxation
+
+### Added — SSTable v3 format
 - SSTable v3 format: per-block CRC32C checksums for silent corruption detection and configurable block size for remote-backend optimization
 - `CorruptBlockException` — diagnostic `IOException` subclass with block index and checksum mismatch details
 - `TrieSSTableWriter.Builder` — new builder API for v3 format with `blockSize()` and `codec()` configuration

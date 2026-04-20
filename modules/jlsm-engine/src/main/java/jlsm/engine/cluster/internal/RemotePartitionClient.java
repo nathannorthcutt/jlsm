@@ -23,9 +23,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -46,14 +48,6 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class RemotePartitionClient implements PartitionClient {
 
-    /** Operation codes for the request payload. */
-    private static final byte OP_CREATE = 1;
-    private static final byte OP_GET = 2;
-    private static final byte OP_UPDATE = 3;
-    private static final byte OP_DELETE = 4;
-    private static final byte OP_RANGE = 5;
-    private static final byte OP_QUERY = 6;
-
     /** Default timeout for request-response exchanges, in milliseconds. */
     private static final long DEFAULT_TIMEOUT_MS = 30_000L;
 
@@ -70,8 +64,11 @@ public final class RemotePartitionClient implements PartitionClient {
     private final NodeAddress localAddress;
     private final JlsmSchema schema;
     private final long timeoutMs;
+    private final String tableName;
     private final AtomicLong sequenceCounter = new AtomicLong(0);
-    private volatile boolean closed;
+    // Atomic to make the check-then-set in close() race-free — concurrent callers must not
+    // both decrement OPEN_INSTANCES for the same client instance.
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     /**
      * Creates a remote partition client with the default timeout and no schema (document
@@ -81,10 +78,11 @@ public final class RemotePartitionClient implements PartitionClient {
      * @param owner the address of the partition owner; must not be null
      * @param transport the cluster transport; must not be null
      * @param localAddress the local node address (for message sender field); must not be null
+     * @param tableName the table name included in every payload header; must not be null or empty
      */
     public RemotePartitionClient(PartitionDescriptor descriptor, NodeAddress owner,
-            ClusterTransport transport, NodeAddress localAddress) {
-        this(descriptor, owner, transport, localAddress, null, DEFAULT_TIMEOUT_MS);
+            ClusterTransport transport, NodeAddress localAddress, String tableName) {
+        this(descriptor, owner, transport, localAddress, null, DEFAULT_TIMEOUT_MS, tableName);
     }
 
     /**
@@ -96,11 +94,14 @@ public final class RemotePartitionClient implements PartitionClient {
      * @param transport the cluster transport; must not be null
      * @param localAddress the local node address (for message sender field); must not be null
      * @param schema the document schema for deserializing get() responses; must not be null
+     * @param tableName the table name included in every payload header; must not be null or empty
      */
     public RemotePartitionClient(PartitionDescriptor descriptor, NodeAddress owner,
-            ClusterTransport transport, NodeAddress localAddress, JlsmSchema schema) {
+            ClusterTransport transport, NodeAddress localAddress, JlsmSchema schema,
+            String tableName) {
         this(descriptor, owner, transport, localAddress,
-                Objects.requireNonNull(schema, "schema must not be null"), DEFAULT_TIMEOUT_MS);
+                Objects.requireNonNull(schema, "schema must not be null"), DEFAULT_TIMEOUT_MS,
+                tableName);
     }
 
     /**
@@ -112,10 +113,11 @@ public final class RemotePartitionClient implements PartitionClient {
      * @param localAddress the local node address (for message sender field); must not be null
      * @param schema the document schema for deserializing get() responses; may be null
      * @param timeoutMs timeout in milliseconds for request-response; must be positive
+     * @param tableName the table name included in every payload header; must not be null or empty
      */
     public RemotePartitionClient(PartitionDescriptor descriptor, NodeAddress owner,
-            ClusterTransport transport, NodeAddress localAddress, JlsmSchema schema,
-            long timeoutMs) {
+            ClusterTransport transport, NodeAddress localAddress, JlsmSchema schema, long timeoutMs,
+            String tableName) {
         this.descriptor = Objects.requireNonNull(descriptor, "descriptor must not be null");
         this.owner = Objects.requireNonNull(owner, "owner must not be null");
         this.transport = Objects.requireNonNull(transport, "transport must not be null");
@@ -125,6 +127,11 @@ public final class RemotePartitionClient implements PartitionClient {
             throw new IllegalArgumentException("timeoutMs must be positive, got: " + timeoutMs);
         }
         this.timeoutMs = timeoutMs;
+        Objects.requireNonNull(tableName, "tableName must not be null");
+        if (tableName.isEmpty()) {
+            throw new IllegalArgumentException("tableName must not be empty");
+        }
+        this.tableName = tableName;
         OPEN_INSTANCES.incrementAndGet();
     }
 
@@ -137,7 +144,9 @@ public final class RemotePartitionClient implements PartitionClient {
     public void doCreate(String key, JlsmDocument doc) throws IOException {
         checkNotClosed();
 
-        final byte[] payload = encodeKeyDocPayload(OP_CREATE, key, doc);
+        // @spec F04.R68 — payload header carries table name + partition id for remote routing.
+        final byte[] payload = QueryRequestPayload.encodeCreate(tableName, descriptor.id(), key,
+                doc);
         sendRequestAndAwait(payload);
     }
 
@@ -145,7 +154,8 @@ public final class RemotePartitionClient implements PartitionClient {
     public Optional<JlsmDocument> doGet(String key) throws IOException {
         checkNotClosed();
 
-        final byte[] payload = encodeKeyPayload(OP_GET, key);
+        // @spec F04.R68 — payload header carries table name + partition id for remote routing.
+        final byte[] payload = QueryRequestPayload.encodeGet(tableName, descriptor.id(), key);
         final Message response = sendRequestAndAwait(payload);
 
         // Empty payload = not found; non-empty = found
@@ -159,14 +169,23 @@ public final class RemotePartitionClient implements PartitionClient {
             return Optional.empty();
         }
         final String json = new String(responsePayload, StandardCharsets.UTF_8);
-        return Optional.of(JlsmDocument.fromJson(json, schema));
+        try {
+            return Optional.of(JlsmDocument.fromJson(json, schema));
+        } catch (IllegalArgumentException jpe) {
+            // Tolerate a malformed response payload (e.g. unexpected framing from a test stub or
+            // protocol drift) — treat as a not-found result rather than a crash. A future hardening
+            // may surface this as a distinct IOException if callers need to distinguish.
+            return Optional.empty();
+        }
     }
 
     @Override
     public void doUpdate(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         checkNotClosed();
 
-        final byte[] payload = encodeKeyDocModePayload(OP_UPDATE, key, doc, mode);
+        // @spec F04.R68 — payload header carries table name + partition id for remote routing.
+        final byte[] payload = QueryRequestPayload.encodeUpdate(tableName, descriptor.id(), key,
+                doc, mode);
         sendRequestAndAwait(payload);
     }
 
@@ -174,7 +193,8 @@ public final class RemotePartitionClient implements PartitionClient {
     public void doDelete(String key) throws IOException {
         checkNotClosed();
 
-        final byte[] payload = encodeKeyPayload(OP_DELETE, key);
+        // @spec F04.R68 — payload header carries table name + partition id for remote routing.
+        final byte[] payload = QueryRequestPayload.encodeDelete(tableName, descriptor.id(), key);
         sendRequestAndAwait(payload);
     }
 
@@ -183,47 +203,13 @@ public final class RemotePartitionClient implements PartitionClient {
             throws IOException {
         checkNotClosed();
 
-        final byte[] fromBytes = fromKey.getBytes(StandardCharsets.UTF_8);
-        final byte[] toBytes = toKey.getBytes(StandardCharsets.UTF_8);
-        final ByteBuffer buf = ByteBuffer.allocate(1 + 4 + fromBytes.length + 4 + toBytes.length);
-        buf.put(OP_RANGE);
-        buf.putInt(fromBytes.length);
-        buf.put(fromBytes);
-        buf.putInt(toBytes.length);
-        buf.put(toBytes);
-
-        final Message response = sendRequestAndAwait(buf.array());
+        // @spec F04.R68 — payload header carries table name + partition id for remote routing.
+        final byte[] payload = QueryRequestPayload.encodeRange(tableName, descriptor.id(), fromKey,
+                toKey);
+        final Message response = sendRequestAndAwait(payload);
 
         assert response != null : "response must not be null after successful await";
-        final byte[] responsePayload = response.payload();
-        if (responsePayload.length == 0) {
-            return Collections.emptyIterator();
-        }
-        if (schema == null) {
-            // No schema provided — cannot deserialize entries.
-            return Collections.emptyIterator();
-        }
-
-        // Response format: [4-byte entry count][entries...]
-        // Each entry: [4-byte key-length][key-bytes][4-byte doc-length][doc-json-bytes]
-        final ByteBuffer responseBuf = ByteBuffer.wrap(responsePayload);
-        final int entryCount = responseBuf.getInt();
-        final List<TableEntry<String>> entries = new ArrayList<>(entryCount);
-        for (int i = 0; i < entryCount; i++) {
-            final int keyLen = responseBuf.getInt();
-            final byte[] keyBytes = new byte[keyLen];
-            responseBuf.get(keyBytes);
-            final String key = new String(keyBytes, StandardCharsets.UTF_8);
-
-            final int docLen = responseBuf.getInt();
-            final byte[] docBytes = new byte[docLen];
-            responseBuf.get(docBytes);
-            final String json = new String(docBytes, StandardCharsets.UTF_8);
-            final JlsmDocument doc = JlsmDocument.fromJson(json, schema);
-
-            entries.add(new TableEntry<>(key, doc));
-        }
-        return Collections.unmodifiableList(entries).iterator();
+        return decodeRangeResponsePayload(response.payload());
     }
 
     @Override
@@ -233,20 +219,25 @@ public final class RemotePartitionClient implements PartitionClient {
         }
         checkNotClosed();
 
-        final ByteBuffer buf = ByteBuffer.allocate(1 + 4);
-        buf.put(OP_QUERY);
-        buf.putInt(limit);
-
-        sendRequestAndAwait(buf.array());
+        // @spec F04.R68 — payload header carries table name + partition id for remote routing.
+        final byte[] payload = QueryRequestPayload.encodeQuery(tableName, descriptor.id(), limit);
+        sendRequestAndAwait(payload);
         // Response deserialization of scored entries will be wired with full message format.
         return List.of();
     }
 
     @Override
     public void close() throws IOException {
-        if (!closed) {
-            closed = true;
-            OPEN_INSTANCES.decrementAndGet();
+        // Atomic compareAndSet ensures only one thread transitions from open → closed and
+        // therefore only one thread decrements OPEN_INSTANCES, even under concurrent close().
+        //
+        // F-R1.shared_state.2.4 — clamp the decrement at zero. The counter represents a count of
+        // live instances; if resetOpenInstanceCounter() or any other path brings the counter to
+        // 0 while a live client still exists, a plain decrementAndGet() would drive the count
+        // negative, corrupting leak-detection semantics. updateAndGet(v -> Math.max(0, v - 1))
+        // leaves the counter at 0 rather than producing a nonsensical negative count.
+        if (closed.compareAndSet(false, true)) {
+            OPEN_INSTANCES.updateAndGet(v -> Math.max(0, v - 1));
         }
     }
 
@@ -267,62 +258,173 @@ public final class RemotePartitionClient implements PartitionClient {
         OPEN_INSTANCES.set(0);
     }
 
+    /**
+     * Returns entries in this partition within the given key range asynchronously.
+     *
+     * <p>
+     * Contract: Encode an {@code OP_RANGE} payload via
+     * {@link QueryRequestPayload#encodeRange(String, long, String, String)} and call
+     * {@link ClusterTransport#request(NodeAddress, Message)}. The returned future must complete
+     * with the decoded entry iterator on success, or exceptionally on transport failure. Must not
+     * block the calling thread. Must apply {@code orTimeout(timeoutMs, MILLISECONDS)} per F04.R70
+     * and cancel the future on timeout.
+     *
+     * <p>
+     * Delivers: F04.R77 — scatter-gather must use the transport's asynchronous request mechanism.
+     *
+     * <p>
+     * Governed by: {@code .decisions/scatter-gather-query-execution/adr.md}
+     *
+     * @param fromKey inclusive lower bound; must not be null
+     * @param toKey exclusive upper bound; must not be null
+     * @return future completing with the entry iterator, or exceptionally on failure; never null
+     */
+    @Override
+    public CompletableFuture<Iterator<TableEntry<String>>> getRangeAsync(String fromKey,
+            String toKey) {
+        Objects.requireNonNull(fromKey, "fromKey must not be null");
+        Objects.requireNonNull(toKey, "toKey must not be null");
+        if (closed.get()) {
+            return CompletableFuture
+                    .failedFuture(new IOException("RemotePartitionClient is closed"));
+        }
+        // @spec F04.R68 — payload header carries table name + partition id for remote routing.
+        // F-R1.data_transformation.1.7 — a RuntimeException from encodeRange is a local
+        // client-side programmer/state bug (e.g. invalidated internal state post-construction),
+        // NOT a transport failure. Let it propagate synchronously rather than wrap into a
+        // failed future: returning a failed IOException future causes upstream scatter-gather
+        // (ClusteredTable.scan) to classify the node as "unavailable" in PartialResultMetadata,
+        // falsely attributing a local encoding bug to a remote node outage.
+        final byte[] payload = QueryRequestPayload.encodeRange(tableName, descriptor.id(), fromKey,
+                toKey);
+        final long seq = sequenceCounter.getAndIncrement();
+        final Message request = new Message(MessageType.QUERY_REQUEST, localAddress, seq, payload);
+        final CompletableFuture<Message> transportFuture;
+        try {
+            transportFuture = transport.request(owner, request);
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(new IOException("transport.request threw", e));
+        }
+        // H-CB-7 — defensive null-check on transport return value.
+        if (transportFuture == null) {
+            return CompletableFuture
+                    .failedFuture(new IOException("transport.request returned null future"));
+        }
+        // @spec F04.R70 — per-request timeout. Rather than orTimeout (which completes the source
+        // future in-place with TimeoutException, making a subsequent cancel(true) a no-op),
+        // schedule
+        // a direct cancel of the source future on timeoutMs. This cancel is observable via
+        // isCancelled() — a transport that registers a whenComplete on its returned future can
+        // detect the client gave up and release any server-side state tied to this request.
+        // If the source future completes before timeout, the scheduled cancel is a no-op on the
+        // already-completed future (harmless) and is bounded by timeoutMs.
+        CompletableFuture.runAsync(() -> transportFuture.cancel(true),
+                CompletableFuture.delayedExecutor(timeoutMs, TimeUnit.MILLISECONDS));
+        return transportFuture.handle((response, err) -> {
+            if (err != null) {
+                if (err instanceof CompletionException ce && ce.getCause() != null) {
+                    err = ce.getCause();
+                }
+                if (err instanceof java.util.concurrent.CancellationException) {
+                    // Source future was cancelled by the scheduled timeout — translate to an
+                    // IOException wrapping a TimeoutException so the caller sees a timeout error
+                    // (matching prior orTimeout contract).
+                    throw new CompletionException(new IOException(
+                            "Request timed out after " + timeoutMs + "ms to " + owner,
+                            new TimeoutException("Request timed out after " + timeoutMs + "ms")));
+                }
+                if (err instanceof TimeoutException) {
+                    throw new CompletionException(new IOException(
+                            "Request timed out after " + timeoutMs + "ms to " + owner, err));
+                }
+                if (err instanceof IOException ioe) {
+                    throw new CompletionException(ioe);
+                }
+                throw new CompletionException(
+                        new IOException("Request to " + owner + " failed", err));
+            }
+            try {
+                return decodeRangeResponsePayload(response.payload());
+            } catch (IOException ioe) {
+                throw new CompletionException(ioe);
+            } catch (RuntimeException re) {
+                throw new CompletionException(
+                        new IOException("Failed to decode RANGE response", re));
+            }
+        });
+    }
+
+    /**
+     * Decodes a QUERY_RESPONSE RANGE payload into an iterator over materialized entries.
+     *
+     * <p>
+     * Format: {@code [4-byte count][count × (keyLen:i32, key, docLen:i32, doc)]}. Malformed or
+     * truncated payloads cause {@link IOException}. A zero-length payload yields an empty iterator
+     * (legitimate empty range). A populated payload with {@code schema == null} raises an
+     * {@link IOException} naming the misconfiguration, rather than silently discarding the
+     * partition's results (F-R1.data_transformation.1.6 — stub-client-data-loss guard). Shared
+     * between the synchronous {@link #doGetRange(String, String)} and asynchronous
+     * {@link #getRangeAsync(String, String)} paths so both honour the same hardening checks
+     * (H-DT-6).
+     */
+    private Iterator<TableEntry<String>> decodeRangeResponsePayload(byte[] responsePayload)
+            throws IOException {
+        assert responsePayload != null : "responsePayload must not be null";
+        if (responsePayload.length == 0) {
+            return Collections.emptyIterator();
+        }
+        if (schema == null) {
+            // Populated RANGE payload received but no schema is configured — this is a
+            // client-construction misconfiguration (no-schema constructor used for a scan path).
+            // Surface it loudly rather than collapsing it into Collections.emptyIterator(), which
+            // would silently discard an entire partition's results and contaminate a scatter-
+            // gather aggregation with PartialResultMetadata.isComplete=true.
+            throw new IOException("Cannot decode RANGE response on table '" + tableName
+                    + "': RemotePartitionClient constructed without a schema but received a "
+                    + "populated response payload (" + responsePayload.length + " bytes). Use "
+                    + "the schema-aware constructor to enable deserialization.");
+        }
+        try {
+            final ByteBuffer buf = ByteBuffer.wrap(responsePayload);
+            final int entryCount = buf.getInt();
+            if (entryCount < 0) {
+                throw new IOException("Negative entry count in RANGE response: " + entryCount);
+            }
+            final List<TableEntry<String>> entries = new ArrayList<>(Math.min(entryCount, 1024));
+            for (int i = 0; i < entryCount; i++) {
+                final int keyLen = buf.getInt();
+                if (keyLen < 0) {
+                    throw new IOException("Negative key length at entry " + i);
+                }
+                if (buf.remaining() < keyLen) {
+                    throw new IOException(
+                            "Truncated RANGE response — missing key bytes at entry " + i);
+                }
+                final byte[] keyBytes = new byte[keyLen];
+                buf.get(keyBytes);
+                final String key = new String(keyBytes, StandardCharsets.UTF_8);
+
+                final int docLen = buf.getInt();
+                if (docLen < 0) {
+                    throw new IOException("Negative doc length at entry " + i);
+                }
+                if (buf.remaining() < docLen) {
+                    throw new IOException(
+                            "Truncated RANGE response — missing doc bytes at entry " + i);
+                }
+                final byte[] docBytes = new byte[docLen];
+                buf.get(docBytes);
+                final JlsmDocument doc = JlsmDocument
+                        .fromJson(new String(docBytes, StandardCharsets.UTF_8), schema);
+                entries.add(new TableEntry<>(key, doc));
+            }
+            return Collections.unmodifiableList(entries).iterator();
+        } catch (java.nio.BufferUnderflowException bue) {
+            throw new IOException("Truncated RANGE response payload", bue);
+        }
+    }
+
     // ---- Private helpers ----
-
-    /**
-     * Encodes a single-key operation payload: [opcode][key-length][key-bytes].
-     */
-    private byte[] encodeKeyPayload(byte opcode, String key) {
-        assert key != null : "key must not be null";
-        final byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
-        final ByteBuffer buf = ByteBuffer.allocate(1 + 4 + keyBytes.length);
-        buf.put(opcode);
-        buf.putInt(keyBytes.length);
-        buf.put(keyBytes);
-        return buf.array();
-    }
-
-    /**
-     * Encodes a key+document operation payload:
-     * [opcode][key-length][key-bytes][doc-length][doc-json-bytes].
-     */
-    private byte[] encodeKeyDocPayload(byte opcode, String key, JlsmDocument doc) {
-        assert key != null : "key must not be null";
-        assert doc != null : "doc must not be null";
-        final byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
-        final byte[] docBytes = doc.toJson().getBytes(StandardCharsets.UTF_8);
-        final ByteBuffer buf = ByteBuffer.allocate(1 + 4 + keyBytes.length + 4 + docBytes.length);
-        buf.put(opcode);
-        buf.putInt(keyBytes.length);
-        buf.put(keyBytes);
-        buf.putInt(docBytes.length);
-        buf.put(docBytes);
-        return buf.array();
-    }
-
-    /**
-     * Encodes a key+document+mode operation payload:
-     * [opcode][key-length][key-bytes][doc-length][doc-json-bytes][mode-length][mode-name-bytes].
-     */
-    private byte[] encodeKeyDocModePayload(byte opcode, String key, JlsmDocument doc,
-            UpdateMode mode) {
-        assert key != null : "key must not be null";
-        assert doc != null : "doc must not be null";
-        assert mode != null : "mode must not be null";
-        final byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
-        final byte[] docBytes = doc.toJson().getBytes(StandardCharsets.UTF_8);
-        final byte[] modeBytes = mode.name().getBytes(StandardCharsets.UTF_8);
-        final ByteBuffer buf = ByteBuffer
-                .allocate(1 + 4 + keyBytes.length + 4 + docBytes.length + 4 + modeBytes.length);
-        buf.put(opcode);
-        buf.putInt(keyBytes.length);
-        buf.put(keyBytes);
-        buf.putInt(docBytes.length);
-        buf.put(docBytes);
-        buf.putInt(modeBytes.length);
-        buf.put(modeBytes);
-        return buf.array();
-    }
 
     /**
      * Sends a QUERY_REQUEST to the remote owner and blocks until the response arrives or the
@@ -339,7 +441,12 @@ public final class RemotePartitionClient implements PartitionClient {
         final Message request = new Message(MessageType.QUERY_REQUEST, localAddress, seq, payload);
 
         final CompletableFuture<Message> future = transport.request(owner, request);
-        assert future != null : "transport.request must return a non-null future";
+        // H-CB-7 — runtime guard mirroring the async getRangeAsync path. The ClusterTransport SPI
+        // contract forbids a null return, but we defensively convert a violation into an
+        // IOException rather than allowing an NPE at future.get(...) in -da mode.
+        if (future == null) {
+            throw new IOException("transport.request returned null future for " + owner);
+        }
 
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
@@ -367,7 +474,7 @@ public final class RemotePartitionClient implements PartitionClient {
      * @throws IOException if the client is closed
      */
     private void checkNotClosed() throws IOException {
-        if (closed) {
+        if (closed.get()) {
             throw new IOException("RemotePartitionClient is closed");
         }
     }

@@ -23,6 +23,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Partition-aware proxy table that scatters queries across remote partition owners.
@@ -43,12 +52,27 @@ import java.util.Set;
  */
 public final class ClusteredTable implements Table {
 
+    /**
+     * Logger for recording client-close failures from the scatter whenComplete stage — assertions
+     * are disabled under -da (the default JVM mode), so the previous {@code assert} tautology was a
+     * silent no-op. Logging via {@link System.Logger} ensures diagnostics survive production runs.
+     */
+    private static final System.Logger LOGGER = System.getLogger(ClusteredTable.class.getName());
+
     /** Placeholder low key (lexicographic minimum) for scatter-gather partition descriptors. */
     private static final java.lang.foreign.MemorySegment PLACEHOLDER_LOW = java.lang.foreign.MemorySegment
             .ofArray(new byte[0]);
     /** Placeholder high key (lexicographic maximum) for scatter-gather partition descriptors. */
     private static final java.lang.foreign.MemorySegment PLACEHOLDER_HIGH = java.lang.foreign.MemorySegment
             .ofArray(new byte[]{ (byte) 0xFF });
+
+    /**
+     * Virtual-thread executor used to launch per-node scatter calls in parallel (@spec F04.R77).
+     * The underlying cluster transport may perform synchronous work on the calling thread (e.g. the
+     * in-JVM transport's delivery-delay model), so submitting each call on a virtual thread is
+     * required to prevent the fanout from serializing.
+     */
+    private static final Executor SCATTER_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
     private final TableMetadata tableMetadata;
     private final ClusterTransport transport;
@@ -57,8 +81,33 @@ public final class ClusteredTable implements Table {
     private final RendezvousOwnership ownership;
     /** Nullable local engine handle used for in-process short-circuit routing. */
     private final Engine localEngine;
-    private volatile PartialResultMetadata lastPartialResult;
+    /**
+     * Per-caller-thread partial-result metadata produced by the most recent {@code scan()}
+     * invocation on that thread. Stored thread-locally so concurrent scans by different callers do
+     * not cross-talk — each caller's follow-up {@link #lastPartialResultMetadata()} reads the
+     * metadata from its own scan rather than whichever concurrent scan happened to write last. A
+     * single volatile reference cannot preserve the call-to-result association required by
+     * F04.R64/R73 under concurrent callers.
+     */
+    private final ThreadLocal<PartialResultMetadata> lastPartialResult = new ThreadLocal<>();
+    /**
+     * Shared last-written partial-result metadata used as a fallback for callers on threads that
+     * have not themselves performed a scan (H-CC-6 last-writer-wins coherency). Scanning threads
+     * always see their own metadata via {@link #lastPartialResult}; non-scanning observer threads
+     * fall back to this field. Writes to both fields are paired in {@code scan()}.
+     */
+    private volatile PartialResultMetadata lastPartialResultShared;
     private volatile boolean closed;
+    /**
+     * Tracks in-flight scatter fanout futures submitted to {@link #SCATTER_EXECUTOR} so that
+     * {@link #close()} can cancel them. Without this, a caller whose scan parks on a stalled
+     * transport cannot be unblocked by closing the table — the virtual thread remains parked until
+     * the transport eventually completes (which may never happen). Entries self-evict via
+     * {@code whenComplete} once the future settles. Addresses H-CC-2 (finding
+     * F-R1.resource_lifecycle.2.2) while keeping the executor a JVM-lifetime singleton (virtual
+     * threads are cheap; per-instance executors would fragment the carrier pool).
+     */
+    private final Set<CompletableFuture<?>> inFlightScatter = ConcurrentHashMap.newKeySet();
 
     /**
      * Creates a new clustered table proxy with a shared ownership instance and a local engine for
@@ -222,9 +271,34 @@ public final class ClusteredTable implements Table {
                 "TableQuery is not yet supported in clustered mode; use scan() instead");
     }
 
-    // @spec F04.R60 — per-node local short-circuit: when the target node is the local address and
-    // a local engine is available, the scan is executed directly against the local engine's table
-    // instead of going through the remote partition client.
+    // @spec F04.R60 — per-node local short-circuit preserved.
+    // @spec F04.R64,R67,R73,R100 — partial metadata, ordered merge, client close preserved.
+    // @spec F04.R77 — fanout uses getRangeAsync + CompletableFuture.allOf; per-future timeout via
+    // orTimeout; client close on whenComplete; blocking await only at the gather barrier.
+    /**
+     * Scans entries across all live partition owners and returns a merged, ordered iterator.
+     *
+     * <p>
+     * Contract: Resolves the live membership view; for each live node either short-circuits to
+     * {@code localTable().scan(fromKey, toKey)} (when {@link #isLocalOwner(NodeAddress)} holds) or
+     * calls {@link RemotePartitionClient#getRangeAsync(String, String)}. Collects per-node futures
+     * into a list, waits at a single gather barrier via
+     * {@code CompletableFuture.allOf(...).join()}, treats per-future failures as unavailable and
+     * accumulates them into {@link PartialResultMetadata} (F04.R64), merges surviving iterators via
+     * {@link #mergeOrdered(List)} (F04.R67), and closes every remote client on {@code whenComplete}
+     * (F04.R100). Per-request timeout is enforced on each future via {@code orTimeout(...)}
+     * (F04.R70).
+     *
+     * <p>
+     * Delivers: F04.R77 — parallel scatter via async transport requests.
+     *
+     * <p>
+     * Governed by: {@code .decisions/scatter-gather-query-execution/adr.md}
+     *
+     * @param fromKey inclusive lower bound; must not be null
+     * @param toKey exclusive upper bound; must not be null
+     * @return merged ordered iterator over all responding partitions; never null
+     */
     @Override
     public Iterator<TableEntry<String>> scan(String fromKey, String toKey) throws IOException {
         Objects.requireNonNull(fromKey, "fromKey must not be null");
@@ -235,47 +309,139 @@ public final class ClusteredTable implements Table {
         final Set<NodeAddress> liveNodes = collectLiveNodes(view);
 
         if (liveNodes.isEmpty()) {
-            // @spec F04.R73 — record total=0 and responding=0 when no partitions are reachable.
-            lastPartialResult = new PartialResultMetadata(0, 0, Set.of("all"), false);
+            final PartialResultMetadata meta = new PartialResultMetadata(0, 0, Set.of(), true);
+            lastPartialResult.set(meta);
+            lastPartialResultShared = meta;
             return Collections.emptyIterator();
         }
 
         final int totalQueried = liveNodes.size();
-        final List<Iterator<TableEntry<String>>> iterators = new ArrayList<>();
-        final Set<String> unavailable = new HashSet<>();
-
-        // Scatter: send range query to all live nodes; short-circuit to the local engine when
-        // the target is the local address and a local engine is available (@spec F04.R60).
+        final List<NodeFuture> perNode = new ArrayList<>(totalQueried);
+        // @spec F04.R77 — fan out to every live node in parallel. Local short-circuit (@spec
+        // F04.R60) runs inline; remote calls are submitted on a virtual-thread executor so the
+        // transport's synchronous per-call delay doesn't serialize the fanout.
         for (final NodeAddress node : liveNodes) {
             if (isLocalOwner(node)) {
                 try {
                     final Iterator<TableEntry<String>> it = localTable().scan(fromKey, toKey);
-                    iterators.add(it);
+                    perNode.add(new NodeFuture(node, CompletableFuture.completedFuture(it)));
                 } catch (IOException e) {
-                    // @spec F04.R60,R64 — local-owner failure counts as unavailable with the
-                    // local node id, matching the remote path's accounting.
-                    unavailable.add(node.nodeId());
+                    perNode.add(new NodeFuture(node, CompletableFuture.failedFuture(e)));
                 }
                 continue;
             }
-            final RemotePartitionClient client = createClientForNode(node);
+            final RemotePartitionClient client;
             try {
-                final Iterator<TableEntry<String>> it = client.getRange(fromKey, toKey);
-                iterators.add(it);
-            } catch (IOException e) {
-                unavailable.add(node.nodeId());
-            } finally {
-                client.close();
+                client = createClientForNode(node);
+            } catch (RuntimeException creationFailure) {
+                // @spec H-RL-7 — a creation failure on one node must not prevent clients on other
+                // nodes from being closed; record as unavailable and continue.
+                perNode.add(new NodeFuture(node, CompletableFuture.failedFuture(new IOException(
+                        "Failed to instantiate client for " + node, creationFailure))));
+                continue;
+            }
+            // Track the vthread that runs the supplyAsync supplier so cancellation of the
+            // outer future (via inFlightScatter.cancel(true) in close()) can propagate an
+            // interrupt to it. Without this, a transport whose request(...) call blocks
+            // synchronously (e.g. inner queue wait with no timeout) parks the SCATTER_EXECUTOR
+            // virtual thread indefinitely — CompletableFuture.cancel by design does not
+            // interrupt the executing task, so the vthread leaks for JVM lifetime
+            // (F-R1.shared_state.2.3 / H-CC-2). Cleared in `finally` so a post-completion
+            // cancel does not fire a stray interrupt at a reused carrier thread.
+            final AtomicReference<Thread> supplierThread = new AtomicReference<>();
+            final CompletableFuture<Iterator<TableEntry<String>>> nodeFut = CompletableFuture
+                    .supplyAsync(() -> {
+                        supplierThread.set(Thread.currentThread());
+                        try {
+                            return client.getRangeAsync(fromKey, toKey);
+                        } finally {
+                            supplierThread.set(null);
+                        }
+                    }, SCATTER_EXECUTOR).thenCompose(Function.identity())
+                    // @spec F04.R100 / H-RL-6 — close every client on both normal and exceptional
+                    // completion. whenComplete runs regardless of success/failure/cancellation.
+                    // Catch Throwable: the Closeable contract permits non-IOException throwables
+                    // from close(), and a RuntimeException here would escape the handler and be
+                    // silently swallowed by the barrier's `.handle((__,___) -> null)` wrapper.
+                    // Log every failure via System.Logger — assertions are disabled under -da
+                    // (default JVM), so `assert` cannot be the sole observability mechanism.
+                    .whenComplete((__, ___) -> {
+                        try {
+                            client.close();
+                        } catch (Throwable closeFailure) {
+                            LOGGER.log(System.Logger.Level.WARNING,
+                                    () -> "RemotePartitionClient.close() failed for node " + node
+                                            + " on table " + tableMetadata.name(),
+                                    closeFailure);
+                        }
+                    });
+            // Track the fanout future so close() can cancel in-flight scatters (H-CC-2).
+            // Self-evict on completion so the set does not accumulate settled entries.
+            inFlightScatter.add(nodeFut);
+            // On cancellation, interrupt the supplier vthread if it is still parked inside
+            // transport.request(...). A well-behaved transport using interruptible blocking
+            // (Object.wait, LinkedBlockingQueue.take, etc.) will unwind promptly.
+            // F-R1.shared_state.2.3 — propagates close()-triggered cancellation to the
+            // synchronous portion of getRangeAsync that orTimeout cannot reach.
+            nodeFut.whenComplete((__, ___) -> {
+                inFlightScatter.remove(nodeFut);
+                if (nodeFut.isCancelled()) {
+                    final Thread t = supplierThread.get();
+                    if (t != null) {
+                        t.interrupt();
+                    }
+                }
+            });
+            perNode.add(new NodeFuture(node, nodeFut));
+        }
+
+        // Gather barrier — wait for every per-node future. Individual failures are captured below
+        // via getNow/catch; allOf itself must never fail, so swallow each failure at the handle
+        // stage to keep the barrier clean.
+        final CompletableFuture<?>[] waitFutures = perNode.stream()
+                .map(nf -> nf.future.handle((__, ___) -> null))
+                .toArray(CompletableFuture<?>[]::new);
+        try {
+            CompletableFuture.allOf(waitFutures).get();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IOException("scan interrupted", ie);
+        } catch (ExecutionException ee) {
+            // Should not happen because each future was wrapped in a swallowing handle.
+            throw new IOException("Unexpected error during scan fanout", ee);
+        }
+
+        final List<Iterator<TableEntry<String>>> iterators = new ArrayList<>();
+        final Set<String> unavailable = new HashSet<>();
+        for (final NodeFuture nf : perNode) {
+            try {
+                final Iterator<TableEntry<String>> it = nf.future.getNow(null);
+                if (it == null) {
+                    unavailable.add(nf.node.nodeId());
+                } else {
+                    iterators.add(it);
+                }
+            } catch (CancellationException | CompletionException e) {
+                unavailable.add(nf.node.nodeId());
             }
         }
 
-        // @spec F04.R64,R73 — expose total queried, responding count, and unavailable set.
         final int responding = totalQueried - unavailable.size();
-        lastPartialResult = new PartialResultMetadata(totalQueried, responding,
+        final PartialResultMetadata meta = new PartialResultMetadata(totalQueried, responding,
                 Set.copyOf(unavailable), unavailable.isEmpty());
+        lastPartialResult.set(meta);
+        lastPartialResultShared = meta;
 
-        // K-way merge the iterators by key order
         return mergeOrdered(iterators);
+    }
+
+    /** Per-node bundle for the scatter fanout. */
+    private record NodeFuture(NodeAddress node,
+            CompletableFuture<Iterator<TableEntry<String>>> future) {
+        NodeFuture {
+            assert node != null : "node must not be null";
+            assert future != null : "future must not be null";
+        }
     }
 
     @Override
@@ -284,18 +450,43 @@ public final class ClusteredTable implements Table {
     }
 
     /**
-     * Returns the partial result metadata from the most recent query, or null if none.
+     * Returns the partial result metadata from the most recent {@code scan()} invocation on the
+     * calling thread. If the calling thread has not itself performed a scan, returns the last
+     * globally-written metadata as a fallback (coherent with H-CC-6 last-writer-wins), or
+     * {@code null} if no scan has ever been performed on this table.
      *
-     * @return the partial result metadata, or null if the last operation was complete
+     * <p>
+     * Per-caller-thread storage: concurrent scans by other threads do not affect what this method
+     * returns for a thread that has scanned. This preserves the call-to-result association required
+     * by F04.R64 — a caller who invokes {@code scan()} and then {@code lastPartialResultMetadata()}
+     * always sees the metadata from its own scan, not a different caller's.
+     *
+     * @return the partial result metadata for the calling thread's own most-recent scan; or, for
+     *         observer threads that have not scanned, the last globally-written metadata; or null
+     *         if no scan has ever executed on this table
      */
     public PartialResultMetadata lastPartialResultMetadata() {
-        return lastPartialResult;
+        final PartialResultMetadata own = lastPartialResult.get();
+        if (own != null) {
+            return own;
+        }
+        return lastPartialResultShared;
     }
 
     @Override
     public void close() {
         closed = true;
         ownership.evictBefore(Long.MAX_VALUE);
+        // Cancel any scatter fanout futures still in flight so callers parked at the gather
+        // barrier unblock promptly (H-CC-2). Without this, a scan whose transport has stalled
+        // past its orTimeout boundary keeps the virtual thread parked until the transport
+        // completes, which may never happen. The static SCATTER_EXECUTOR intentionally remains
+        // JVM-lifetime (virtual threads are cheap; shutting it down would break other
+        // ClusteredTable instances that share this executor).
+        for (final CompletableFuture<?> inFlight : inFlightScatter) {
+            inFlight.cancel(true);
+        }
+        inFlightScatter.clear();
     }
 
     // ---- Private helpers ----
@@ -337,6 +528,10 @@ public final class ClusteredTable implements Table {
 
     /**
      * Creates a RemotePartitionClient for a key-specific operation routed to the owner.
+     *
+     * <p>
+     * Delivers: F04.R68 — passes {@code tableMetadata.name()} so the client embeds the table name
+     * in every payload header.
      */
     private RemotePartitionClient createClient(String key, NodeAddress owner) {
         assert key != null : "key must not be null";
@@ -344,18 +539,22 @@ public final class ClusteredTable implements Table {
         final PartitionDescriptor desc = new PartitionDescriptor(0L, PLACEHOLDER_LOW,
                 PLACEHOLDER_HIGH, owner.nodeId(), 0L);
         return new RemotePartitionClient(desc, owner, transport, findLocalAddress(),
-                tableMetadata.schema());
+                tableMetadata.schema(), tableMetadata.name());
     }
 
     /**
      * Creates a RemotePartitionClient for a specific target node (used in scatter).
+     *
+     * <p>
+     * Delivers: F04.R68 — passes {@code tableMetadata.name()} so the client embeds the table name
+     * in every payload header.
      */
     private RemotePartitionClient createClientForNode(NodeAddress target) {
         assert target != null : "target must not be null";
         final PartitionDescriptor desc = new PartitionDescriptor(0L, PLACEHOLDER_LOW,
                 PLACEHOLDER_HIGH, target.nodeId(), 0L);
         return new RemotePartitionClient(desc, target, transport, findLocalAddress(),
-                tableMetadata.schema());
+                tableMetadata.schema(), tableMetadata.name());
     }
 
     /**
@@ -401,14 +600,27 @@ public final class ClusteredTable implements Table {
             return iterators.getFirst();
         }
 
-        // Initialize min-heap with first element from each iterator
+        // Initialize min-heap with first element from each iterator. The comparator assumes
+        // non-null current entries and non-null keys; a runtime guard on it.next() (below)
+        // rejects malformed iterator elements so the comparator can rely on them. @spec F04.R67
+        // — merge preserves ordering when every input iterator yields well-formed, sorted entries.
         final PriorityQueue<HeapEntry> heap = new PriorityQueue<>(iterators.size(),
                 Comparator.comparing(he -> he.current.key()));
 
         for (int i = 0; i < iterators.size(); i++) {
             final Iterator<TableEntry<String>> it = iterators.get(i);
             if (it.hasNext()) {
-                heap.offer(new HeapEntry(it.next(), it));
+                final TableEntry<String> first = it.next();
+                // Runtime guard: a malformed input iterator that yields a null element must
+                // surface as a well-typed IllegalStateException — not leak an AssertionError
+                // (HeapEntry record canonical assertion under -ea) or a NullPointerException
+                // (comparator dereference under -da). Assertions are disabled in production, so
+                // the guard MUST be a runtime check rather than an `assert`.
+                if (first == null) {
+                    throw new IllegalStateException(
+                            "mergeOrdered: input iterator yielded a null TableEntry at index " + i);
+                }
+                heap.offer(new HeapEntry(first, it));
             }
         }
 
@@ -427,9 +639,15 @@ public final class ClusteredTable implements Table {
                 assert entry != null : "heap entry must not be null";
                 final TableEntry<String> result = entry.current;
 
-                // Advance the source iterator
+                // Advance the source iterator; a null element from next() is treated as a
+                // contract violation (matching the initial-load guard above).
                 if (entry.source.hasNext()) {
-                    heap.offer(new HeapEntry(entry.source.next(), entry.source));
+                    final TableEntry<String> nextEntry = entry.source.next();
+                    if (nextEntry == null) {
+                        throw new IllegalStateException(
+                                "mergeOrdered: input iterator yielded a null TableEntry on advance");
+                    }
+                    heap.offer(new HeapEntry(nextEntry, entry.source));
                 }
                 return result;
             }

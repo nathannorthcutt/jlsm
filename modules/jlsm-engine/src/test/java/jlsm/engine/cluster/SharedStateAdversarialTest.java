@@ -1,11 +1,18 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.Engine;
+import jlsm.engine.EngineMetrics;
+import jlsm.engine.Table;
+import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.GracePeriodManager;
 import jlsm.engine.cluster.internal.InJvmDiscoveryProvider;
 import jlsm.engine.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.PhiAccrualFailureDetector;
 import jlsm.engine.cluster.internal.RapidMembership;
+import jlsm.engine.cluster.internal.RemotePartitionClient;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
+import jlsm.table.JlsmSchema;
+import jlsm.table.PartitionDescriptor;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -20,10 +28,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -945,6 +956,282 @@ final class SharedStateAdversarialTest {
                         + "extending grace to T+50s and enabling indefinite deferral via flapping.");
     }
 
+    // Finding: F-R1.shared_state.1.1
+    // Bug: onViewChanged mutates shared ownership/grace state after close() has started —
+    // a view-change callback delivered concurrently with close() will still record departures
+    // and returns in GracePeriodManager even though the engine is mid-teardown.
+    // Correct behavior: onViewChanged must check the closed flag at entry and short-circuit
+    // once close() has begun, so no shared state is mutated on a torn-down engine.
+    // Fix location: ClusteredEngine.onViewChanged (ClusteredEngine.java:388-425) — add
+    // closed.get() guard at method entry, mirroring checkNotClosed() in createTable.
+    // Regression watch: ensure normal pre-close view changes still record departures/returns
+    @Test
+    @Timeout(10)
+    void test_ClusteredEngine_onViewChanged_skipsMutationsAfterCloseStarted() throws Exception {
+        final NodeAddress addr2 = new NodeAddress("node-2", "localhost", 9002);
+
+        final var ownership = new RendezvousOwnership();
+        final var gracePeriod = new GracePeriodManager(Duration.ofSeconds(30));
+        final var transport = new InJvmTransport(ADDR_1);
+        closeables.add(transport);
+        final var config = ClusterConfig.builder().build();
+
+        // Stub membership that captures the listener and fires it on demand.
+        final var stubMembership = new ListenerCapturingMembership();
+
+        final ClusteredEngine engine = ClusteredEngine.builder().localEngine(new NoOpEngine())
+                .membership(stubMembership).ownership(ownership).gracePeriodManager(gracePeriod)
+                .transport(transport).config(config).localAddress(ADDR_1)
+                .discovery(new InJvmDiscoveryProvider()).build();
+
+        // Preconditions: listener is registered, but no departures recorded yet.
+        assertFalse(gracePeriod.isInGracePeriod(addr2),
+                "precondition: addr2 should not be in grace period before any view change");
+
+        // Close the engine — sets closed=true and tears down.
+        engine.close();
+
+        // Now simulate a concurrent view-change callback arriving AFTER close() has begun.
+        // The listener reference was captured during ctor. In a real system the
+        // RapidMembership dispatcher can deliver a pending callback while/just after close()
+        // runs. The dispatcher thread invokes onViewChanged on the engine without ever
+        // re-reading the closed flag at the engine layer.
+        final MembershipListener listener = stubMembership.captured;
+        assertNotNull(listener, "listener must have been registered during ctor");
+
+        final MembershipView oldView = new MembershipView(1L,
+                Set.of(new Member(ADDR_1, MemberState.ALIVE, 0),
+                        new Member(addr2, MemberState.ALIVE, 0)),
+                Instant.now());
+        final MembershipView newView = new MembershipView(2L,
+                Set.of(new Member(ADDR_1, MemberState.ALIVE, 0),
+                        new Member(addr2, MemberState.DEAD, 0)),
+                Instant.now());
+
+        // This is the adversarial delivery: a callback arrives after close().
+        listener.onViewChanged(oldView, newView);
+
+        // After close(), onViewChanged MUST NOT mutate the shared GracePeriodManager.
+        // Without the fix, addr2 is recorded as a departure (transitioned from ALIVE to
+        // DEAD) and the grace-period state is dirtied on a torn-down engine. With the
+        // fix, the closed guard short-circuits the callback and no state changes.
+        assertFalse(gracePeriod.isInGracePeriod(addr2),
+                "onViewChanged must not record a departure after close() has begun — "
+                        + "mutating shared ownership/grace state on a torn-down engine is "
+                        + "a contract/cleanup ordering violation");
+        assertTrue(gracePeriod.expiredDepartures().isEmpty(),
+                "no departures should be tracked on a closed engine");
+    }
+
+    // Finding: F-R1.shared_state.2.3
+    // Bug: ClusteredTable.scan submits supplyAsync(() -> client.getRangeAsync(...),
+    // SCATTER_EXECUTOR). Inside getRangeAsync, transport.request(owner, request) is
+    // called SYNCHRONOUSLY — if that call blocks indefinitely (a transport whose
+    // inner queue wait has no timeout), the SCATTER_EXECUTOR virtual thread is
+    // parked forever. The per-request orTimeout / delayed-cancel is only scheduled
+    // AFTER transport.request returns, so it never fires. Cancelling the outer
+    // CompletableFuture (inFlightScatter.cancel(true) in close()) does NOT
+    // propagate to the supplier thread — CompletableFuture.cancel never interrupts
+    // the task. Result: every scan that hits such a transport leaks one vthread
+    // per remote node for JVM lifetime (H-CC-2 / KB fan-out-iterator-leak.md).
+    // Correct behavior: close() must release the virtual thread parked inside
+    // transport.request. A well-behaved transport that uses an interruptible wait
+    // will return promptly when its thread is interrupted; ClusteredTable must
+    // propagate cancellation to that thread.
+    // Fix location: ClusteredTable.scan — track the supplier thread per scatter
+    // future and interrupt it when the future is cancelled (so close()'s
+    // inFlightScatter.cancel(true) actually unblocks parked threads).
+    // Regression watch: ensure the supplier thread is NOT interrupted on the
+    // normal-completion path (avoid interrupting a pooled virtual thread that has
+    // already moved on to another task).
+    @Test
+    @Timeout(10)
+    void test_ClusteredTable_scan_syncTransportRequestBlock_closeReleasesVirtualThread()
+            throws Exception {
+        // A transport whose request() BLOCKS SYNCHRONOUSLY before returning a future —
+        // the attack vector the finding describes. An InterruptedException is the only
+        // recovery path. The latch countDown in finally signals when the blocked
+        // request() actually returns.
+        final CountDownLatch requestEntered = new CountDownLatch(1);
+        final CountDownLatch requestExited = new CountDownLatch(1);
+
+        final ClusterTransport syncBlockingTransport = new ClusterTransport() {
+            @Override
+            public void send(NodeAddress target, Message msg) {
+            }
+
+            @Override
+            public CompletableFuture<Message> request(NodeAddress target, Message msg) {
+                requestEntered.countDown();
+                try {
+                    // Park synchronously on the caller's thread — simulates a transport
+                    // implementation whose internal queue wait has no timeout. The only
+                    // way out is an interrupt on the calling (virtual) thread.
+                    Thread.sleep(Duration.ofHours(1));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    requestExited.countDown();
+                }
+                return CompletableFuture.failedFuture(new IOException("interrupted"));
+            }
+
+            @Override
+            public void registerHandler(MessageType type, MessageHandler handler) {
+            }
+
+            @Override
+            public void deregisterHandler(MessageType type) {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        // Stub membership returning a 2-node view so at least one remote scatter is
+        // issued (ADDR_1 is the local address; the other member is the target of the
+        // blocking request).
+        final var remoteAddr = new NodeAddress("node-remote", "localhost", 9999);
+        final var twoNodeView = new MembershipView(1L,
+                Set.of(new Member(ADDR_1, MemberState.ALIVE, 0),
+                        new Member(remoteAddr, MemberState.ALIVE, 0)),
+                Instant.now());
+        final MembershipProtocol stubMembership = new MembershipProtocol() {
+            @Override
+            public void start(List<NodeAddress> seeds) {
+            }
+
+            @Override
+            public MembershipView currentView() {
+                return twoNodeView;
+            }
+
+            @Override
+            public void addListener(MembershipListener listener) {
+            }
+
+            @Override
+            public void leave() {
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+
+        final var schema = JlsmSchema.builder("t", 1)
+                .field("id", jlsm.table.FieldType.Primitive.STRING).build();
+        final var meta = new TableMetadata("t", schema, Instant.now(),
+                TableMetadata.TableState.READY);
+        final var table = new ClusteredTable(meta, syncBlockingTransport, stubMembership, ADDR_1);
+        closeables.add(table);
+
+        // Start scan on a separate virtual thread — it will fan out, with at least one
+        // remote call landing on a SCATTER_EXECUTOR vthread that parks inside
+        // transport.request(...).
+        final Thread scanThread = Thread.ofVirtual().start(() -> {
+            try {
+                table.scan("a", "z");
+            } catch (Exception ignored) {
+                // expected when close() unblocks the scan
+            }
+        });
+
+        // Wait for transport.request to be entered (vthread is parked inside it).
+        assertTrue(requestEntered.await(2, TimeUnit.SECONDS),
+                "transport.request should have been entered by a scatter vthread");
+        // Give the scan thread time to finish wiring the fanout future into
+        // inFlightScatter — the supplier can enter request() before the main scan
+        // thread finishes chaining whenComplete and registering with the tracking
+        // set. Without this pause, a fast supplier races ahead of the
+        // inFlightScatter registration and close() iterates an empty set.
+        Thread.sleep(200);
+
+        // Close the table. The fix must interrupt any vthread still blocked inside
+        // transport.request, unwinding it via the InterruptedException path so the
+        // vthread is released back to the carrier pool.
+        table.close();
+
+        // Verify the blocked vthread actually exited transport.request() —
+        // i.e. close() propagated cancellation all the way down to the synchronous
+        // blocking call. Without the fix, the vthread remains parked on Thread.sleep
+        // (CompletableFuture.cancel does not interrupt), and requestExited never fires.
+        final boolean exited = requestExited.await(3, TimeUnit.SECONDS);
+
+        // Best-effort cleanup so the test doesn't leak a vthread regardless of pass/fail.
+        scanThread.interrupt();
+        scanThread.join(1000);
+
+        assertTrue(exited,
+                "ClusteredTable.close() must release virtual threads parked inside a "
+                        + "synchronous transport.request(...) call. Without this, every scan "
+                        + "against a stalled transport leaks one SCATTER_EXECUTOR vthread per "
+                        + "remote node for JVM lifetime (H-CC-2 / F-R1.shared_state.2.3).");
+    }
+
+    // Finding: F-R1.shared_state.2.4
+    // Bug: OPEN_INSTANCES is decremented unconditionally in close() with no lower bound. If the
+    // counter is reset to 0 (by the test-harness reset method, or by any concurrent decrement
+    // that races past zero for any reason) between a client's construction and its close(),
+    // close() decrements below zero and openInstances() returns a negative value. A downstream
+    // leak-detection caller comparing openInstances() to 0 silently concludes "no leak" because
+    // a negative value is treated the same as zero in many naive comparisons, or worse, the
+    // leak-detection invariant is violated (the counter's contract is a non-negative count of
+    // live instances).
+    // Correct behavior: close() must guarantee the counter never drops below zero. The counter
+    // represents a *count* of live instances — a negative count is nonsensical and makes the
+    // metric unusable for leak detection.
+    // Fix location: RemotePartitionClient.close — clamp the decrement at zero (use updateAndGet
+    // with Math.max(0, v - 1) rather than decrementAndGet).
+    // Regression watch: A normal construct-then-close still nets the counter to 0; two
+    // constructions followed by two closes still net to 0; close() remains idempotent.
+    @Test
+    @Timeout(10)
+    void test_RemotePartitionClient_openInstances_neverGoesNegativeAfterReset() throws Exception {
+        // Start from a known baseline — mirror what test harnesses do in @BeforeEach.
+        RemotePartitionClient.resetOpenInstanceCounter();
+        InJvmTransport.clearRegistry();
+
+        final NodeAddress localAddr = new NodeAddress("local-neg", "localhost", 9501);
+        final NodeAddress remoteAddr = new NodeAddress("remote-neg", "localhost", 9502);
+        final var localTransport = new InJvmTransport(localAddr);
+        closeables.add(localTransport);
+        final var remoteTransport = new InJvmTransport(remoteAddr);
+        closeables.add(remoteTransport);
+
+        final PartitionDescriptor descriptor = new PartitionDescriptor(7L,
+                MemorySegment.ofArray(new byte[0]),
+                MemorySegment.ofArray(new byte[]{ (byte) 0xFF }), remoteAddr.nodeId(), 0L);
+
+        // Construct a client — counter increments to 1.
+        final RemotePartitionClient client = new RemotePartitionClient(descriptor, remoteAddr,
+                localTransport, localAddr, "users");
+        assertEquals(1, RemotePartitionClient.openInstances(),
+                "precondition: counter should be 1 after one live construction");
+
+        // Adversarial event: counter is reset to 0 while a live client exists. This mirrors a
+        // test harness that runs resetOpenInstanceCounter() in a @BeforeEach between tests that
+        // share a JVM with long-lived clients, OR any concurrent path that brings the count to
+        // 0 while a live client is still outstanding.
+        RemotePartitionClient.resetOpenInstanceCounter();
+        assertEquals(0, RemotePartitionClient.openInstances(),
+                "precondition: counter was reset mid-flight");
+
+        // Close the still-live client — unconditionally decrementing would take the count to -1.
+        client.close();
+
+        // The counter must never be negative — a negative live-instance count is nonsensical
+        // and breaks the contract that openInstances() reports the number of live clients.
+        final int count = RemotePartitionClient.openInstances();
+        assertTrue(count >= 0,
+                "openInstances() must never be negative — close() with a reset-to-zero "
+                        + "counter took it to " + count + ". A negative live-instance count "
+                        + "silently breaks leak detection (a negative count is not 'no leak' — "
+                        + "it signals counter corruption that downstream checks interpret "
+                        + "as 'count <= 0 → healthy').");
+    }
+
     // --- Helpers ---
 
     private static byte[] encodeJoinPayload(NodeAddress addr) {
@@ -1007,5 +1294,78 @@ final class SharedStateAdversarialTest {
             buf.put(md);
         }
         return buf.array();
+    }
+
+    /** MembershipProtocol stub that captures the registered listener for later invocation. */
+    private static final class ListenerCapturingMembership implements MembershipProtocol {
+
+        volatile MembershipListener captured;
+        volatile MembershipView view = new MembershipView(0L, Set.of(), Instant.now());
+        final List<MembershipListener> listeners = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void start(List<NodeAddress> seeds) {
+        }
+
+        @Override
+        public MembershipView currentView() {
+            return view;
+        }
+
+        @Override
+        public void addListener(MembershipListener listener) {
+            this.captured = listener;
+            listeners.add(listener);
+        }
+
+        @Override
+        public void removeListener(MembershipListener listener) {
+            listeners.remove(listener);
+        }
+
+        @Override
+        public void leave() {
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    /** Minimal no-op Engine stub for wiring ClusteredEngine without touching disk. */
+    private static final class NoOpEngine implements Engine {
+
+        @Override
+        public Table createTable(String name, JlsmSchema schema) {
+            throw new UnsupportedOperationException("createTable not supported in stub");
+        }
+
+        @Override
+        public Table getTable(String name) {
+            throw new UnsupportedOperationException("getTable not supported in stub");
+        }
+
+        @Override
+        public void dropTable(String name) {
+        }
+
+        @Override
+        public Collection<TableMetadata> listTables() {
+            return List.of();
+        }
+
+        @Override
+        public TableMetadata tableMetadata(String name) {
+            return null;
+        }
+
+        @Override
+        public EngineMetrics metrics() {
+            return new EngineMetrics(0, 0, Map.of(), Map.of());
+        }
+
+        @Override
+        public void close() {
+        }
     }
 }

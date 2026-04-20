@@ -26,6 +26,7 @@
 | Protocol Infrastructure (F04 R39 + R53) | f04-obligation-resolution--wd-01 | 2026-04-19 | planning complete | work-plan.md written, 2 stubs created, balanced split WU-1/WU-2 |
 | Engine Lifecycle and Local Routing (F04 R56+R57+R58+R60+R79) | f04-obligation-resolution--wd-02 | 2026-04-19 | planning complete | work-plan.md written; 2 extension markers; single unit (no new files) |
 | RAPID Consensus Protocol (F04 R34-R38) | f04-obligation-resolution--wd-04 | 2026-04-19 | planning complete | 6 stubs; 4-unit balanced split {WU-1,WU-2}→WU-3→WU-4; KB rapid-consensus.md + incarnation-refutation.md |
+| Remote Dispatch and Parallel Scatter (F04 R68+R77) | f04-obligation-resolution--wd-03 | 2026-04-19 | PR drafted | 103 tests (61 TDD + 24 hardening + 18 audit); 18 audit fixes; F04 v5 (R102-R114); 3 KB patterns; obligations R68+R77 resolved; WD-03 COMPLETE |
 
 ## Completed / Archived
 
