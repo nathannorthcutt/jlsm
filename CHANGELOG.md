@@ -10,6 +10,36 @@ semver release cadence is established.
 
 ## [Unreleased]
 
+### Added — Fault Tolerance and Smart Rebalancing (WD-05)
+- `ClusterOperationalMode` enum (`NORMAL`, `READ_ONLY`) + `ClusteredEngine.operationalMode()` accessor — engine transitions to `READ_ONLY` when quorum is lost (F04.R41)
+- `QuorumLostException` (checked `IOException` subtype) — thrown by `ClusteredTable.create/update/delete/insert` while the engine is in `READ_ONLY` mode; reads remain available (F04.R41)
+- `SeedRetryTask` — background task that reinvokes `membership.start(seeds)` on a configurable interval while quorum is lost; idempotent start/stop (F04.R42)
+- `ViewReconciler.reconcile(localView, proposedView)` — pure per-member merge applying higher-incarnation-wins with severity `DEAD > SUSPECTED > ALIVE` on ties; called from `RapidMembership.handleViewChangeProposal` before view installation (F04.R43)
+- `GraceGatedRebalancer` — scheduled coordinator that drains `GracePeriodManager.expiredDepartures()` and invokes `RendezvousOwnership.differentialAssign(...)` for only the departed member's partitions; `cancelPending(NodeAddress)` aborts a pending rebalance when a node rejoins within grace (F04.R47, R48, R50)
+- `RendezvousOwnership.differentialAssign(oldView, newView, affectedPartitionIds)` — partial recomputation that mutates cache entries only for the supplied partition IDs, so assignments for still-live members' partitions remain stable (F04.R48)
+- `PartitionKeySpace` SPI — `partitionForKey`, `partitionsForRange`, `partitionCount`, `allPartitions`; thread-safe and immutable after construction (F04.R63)
+- `SinglePartitionKeySpace` — trivial fallback mapping every key to one partition (no pruning, backward-compat)
+- `LexicographicPartitionKeySpace(splitKeys, partitionIds)` — range-based partition layout with binary-search lookup; enables scan pruning to only overlapping partitions
+- `RendezvousOwnership.ownersForKeyRange(tableName, fromKey, toKey, view, keyspace)` — resolves the set of owners whose partitions intersect `[fromKey, toKey)` (F04.R63)
+- F04 spec version 5 → 6: R41–R43, R47–R50, R63 rewritten forward to describe shipped behaviour; `open_obligations` now empty
+- 115 new tests across 11 test classes: `ViewReconcilerTest`, `SeedRetryTaskTest`, `GraceGatedRebalancerTest`, `RendezvousOwnershipDifferentialTest`, `RapidMembershipReconciliationTest`, `ClusteredTableReadOnlyTest`, `ClusteredEngineQuorumTest`, `SinglePartitionKeySpaceTest`, `LexicographicPartitionKeySpaceTest`, `ClusteredTableScanPruningTest`, `RendezvousOwnershipOwnersForKeyRangeTest`
+
+### Changed — Fault Tolerance and Smart Rebalancing (WD-05)
+- `ClusteredEngine.onViewChanged` — evaluates `newView.hasQuorum(config.consensusQuorumPercent())` on every view change and transitions `operationalMode` accordingly; replaces the prior immediate-rebalance logic with a grace-gated pathway that records departures into `GracePeriodManager` and lets `GraceGatedRebalancer` drive rebalancing asynchronously
+- `RapidMembership.handleViewChangeProposal` — when a higher-epoch proposal is accepted (subject to R90's no-drop-alive check), delegates per-member reconciliation to `ViewReconciler.reconcile(...)` instead of overwriting the local view wholesale
+- `ClusteredTable` — gained an 8-arg canonical constructor accepting `(TableMetadata, ClusterTransport, MembershipProtocol, NodeAddress, RendezvousOwnership, Engine, PartitionKeySpace, Supplier<ClusterOperationalMode>)`; legacy constructors delegate to it with `SinglePartitionKeySpace("default")` and a `() -> NORMAL` mode supplier (backward-compat)
+- `ClusteredTable.scan(fromKey, toKey)` — delegates owner resolution to `RendezvousOwnership.ownersForKeyRange(...)` using the configured `PartitionKeySpace`; extracted `resolveScanOwners` and `emptyScanWithMetadata` helpers; preserves R60 local short-circuit, R77 parallel fanout, R100 client close, R67 ordered merge, R64 partial metadata
+- `ClusteredTable.create/update/delete/insert` — consult `operationalMode` supplier at method entry and throw `QuorumLostException` when `READ_ONLY`
+- `RendezvousOwnership` is now non-`final` to permit in-tree test spying (`GraceGatedRebalancerTest`); behaviour is unchanged
+
+### Performance — Fault Tolerance and Smart Rebalancing (WD-05)
+- Scans narrowed by `LexicographicPartitionKeySpace` contact only the partitions whose lexicographic range overlaps `[fromKey, toKey)` instead of every live member — scatter cost now scales with the number of intersecting partitions, not cluster size
+- `differentialAssign` avoids full-cache invalidation on member departure: only the departed member's partition IDs are recomputed, so stable assignments on still-live members incur zero cache-miss cost after rebalance
+
+### Known Gaps — Fault Tolerance and Smart Rebalancing (WD-05)
+- Table-to-`PartitionKeySpace` configuration is currently by constructor argument; there is no declarative `TableMetadata` or SQL path to assign a range-partitioned layout yet — pruning is opt-in via the new `ClusteredTable` ctor overload
+- `SeedRetryTask` retry interval is a construction parameter with no live tuning; per-retry failures are logged and swallowed without surfacing backoff state to the caller
+
 ### Added — Wire Full-Text Index Integration (WD-01)
 - `jlsm.core.indexing.FullTextIndex.Factory` — SPI producing `FullTextIndex<MemorySegment>` per `(tableName, fieldName)`, the module-boundary contract between `jlsm-table` and `jlsm-indexing`
 - `jlsm.indexing.LsmFullTextIndexFactory` — LSM-backed factory isolating each index on its own `LocalWriteAheadLog` + `TrieSSTable` + `LsmInvertedIndex.StringTermed` + `LsmFullTextIndex.Impl` chain
