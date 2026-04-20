@@ -13,7 +13,7 @@
 | WD-02 | Engine Lifecycle and Local Routing | COMPLETE | engine | 0 | — |
 | WD-03 | Remote Dispatch and Parallel Scatter | COMPLETE | engine | 0 | — |
 | WD-04 | RAPID Consensus Protocol | COMPLETE | engine | 0 | — |
-| WD-05 | Fault Tolerance and Smart Rebalancing | SPECIFIED | engine,  partitioning | 1 | — |
+| WD-05 | Fault Tolerance and Smart Rebalancing | COMPLETE | engine,  partitioning | 0 | — |
 
 ## Dependency Graph
 

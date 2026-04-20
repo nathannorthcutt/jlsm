@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -53,6 +54,12 @@ public final class ClusteredEngine implements Engine {
     private final QueryRequestHandler queryHandler;
     private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
+    /**
+     * Engine-level operational mode (@spec F04.R41). Transitions between NORMAL and READ_ONLY on
+     * membership-view changes based on quorum. Exposed via {@link #operationalMode()} and consumed
+     * by {@link ClusteredTable} to gate mutating operations.
+     */
+    private volatile ClusterOperationalMode operationalMode = ClusterOperationalMode.NORMAL;
 
     private ClusteredEngine(Builder builder) {
         this.localEngine = Objects.requireNonNull(builder.localEngine, "localEngine");
@@ -274,6 +281,22 @@ public final class ClusteredEngine implements Engine {
         }
     }
 
+    /**
+     * Returns the engine's current operational mode (@spec F04.R41).
+     *
+     * <p>
+     * The mode is {@link ClusterOperationalMode#NORMAL} while the most recent membership view
+     * reports quorum (via {@link MembershipView#hasQuorum(int)} at
+     * {@link ClusterConfig#consensusQuorumPercent()}), and {@link ClusterOperationalMode#READ_ONLY}
+     * otherwise. In READ_ONLY mode, {@link ClusteredTable} write operations throw
+     * {@link QuorumLostException}.
+     *
+     * @return the current operational mode; never null
+     */
+    public ClusterOperationalMode operationalMode() {
+        return operationalMode;
+    }
+
     @Override
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) {
@@ -398,6 +421,15 @@ public final class ClusteredEngine implements Engine {
         if (closed.get()) {
             return;
         }
+
+        // @spec F04.R41 — transition operational mode based on quorum status of the new view.
+        // Empty views (no members) cannot satisfy quorum; hasQuorum returns false in that case
+        // which correctly leaves us in READ_ONLY if we enter it.
+        final Set<Member> newMembers = newView.members();
+        final boolean hasQuorum = !newMembers.isEmpty()
+                && newView.hasQuorum(config.consensusQuorumPercent());
+        operationalMode = hasQuorum ? ClusterOperationalMode.NORMAL
+                : ClusterOperationalMode.READ_ONLY;
 
         // Evict stale ownership cache entries
         ownership.evictBefore(newView.epoch());
