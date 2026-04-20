@@ -4,15 +4,18 @@ import jlsm.engine.cluster.Member;
 import jlsm.engine.cluster.MemberState;
 import jlsm.engine.cluster.MembershipView;
 import jlsm.engine.cluster.NodeAddress;
+import jlsm.engine.cluster.PartitionKeySpace;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -30,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Governed by: {@code .decisions/partition-to-node-ownership/adr.md}
  */
-public final class RendezvousOwnership {
+public class RendezvousOwnership {
 
     /** Default bound on the number of cached assignments per epoch when none is supplied. */
     public static final int DEFAULT_MAX_CACHE_ENTRIES_PER_EPOCH = 10_000;
@@ -141,6 +144,87 @@ public final class RendezvousOwnership {
     }
 
     /**
+     * Recomputes HRW ownership for the supplied partition IDs only, under the new membership view,
+     * and refreshes the cache entries for those IDs at the new epoch. Cache entries for partitions
+     * not listed in {@code affectedPartitionIds} are left untouched. The old-epoch cache is also
+     * evicted for the affected IDs so a subsequent call at the old epoch triggers a fresh HRW
+     * computation rather than returning a stale owner.
+     *
+     * <p>
+     * Delivers: F04.R48, R50 — only the departed member's partitions are recomputed on grace
+     * expiry, preserving stable ownerships for surviving partitions.
+     *
+     * @param oldView the previous membership view; must not be null
+     * @param newView the new membership view; must not be null
+     * @param affectedPartitionIds partition IDs whose ownership may have changed; must not be null
+     * @return the subset of {@code affectedPartitionIds} whose owner actually changed between
+     *         {@code oldView} and {@code newView}; never null, may be empty
+     * @throws NullPointerException if any argument is null
+     */
+    public Set<String> differentialAssign(MembershipView oldView, MembershipView newView,
+            Set<String> affectedPartitionIds) {
+        Objects.requireNonNull(oldView, "oldView must not be null");
+        Objects.requireNonNull(newView, "newView must not be null");
+        Objects.requireNonNull(affectedPartitionIds, "affectedPartitionIds must not be null");
+
+        if (affectedPartitionIds.isEmpty()) {
+            return Set.of();
+        }
+
+        final EpochCache oldCache = cache.get(oldView.epoch());
+        final EpochCache newCache = cache.computeIfAbsent(newView.epoch(),
+                _ -> new EpochCache(maxEntriesPerEpoch));
+
+        final Set<String> changed = new HashSet<>();
+        for (final String partitionId : affectedPartitionIds) {
+            assert partitionId != null : "partition id must not be null";
+
+            // Resolve the owner under oldView — either from cache or by direct HRW computation
+            // when no cache entry exists. Computing against oldView lets us accurately report
+            // whether ownership changed, even when the partition was never queried pre-transition.
+            NodeAddress oldOwner = oldCache != null ? oldCache.get(partitionId) : null;
+            if (oldOwner == null) {
+                try {
+                    final List<NodeAddress> rankedOld = computeRankedOwners(partitionId, oldView);
+                    oldOwner = rankedOld.getFirst();
+                } catch (IllegalStateException emptyOldView) {
+                    // oldView has no live members — treat as "no prior owner" and always report
+                    // the partition as changed once the new owner is resolved.
+                    oldOwner = null;
+                }
+            }
+
+            // Recompute under newView. A view with no live members (rare during transitions)
+            // propagates IllegalStateException from computeRankedOwners; swallow and skip so
+            // the remaining partitions can still be processed — the caller can retry when a
+            // new view arrives.
+            final NodeAddress newOwner;
+            try {
+                final List<NodeAddress> ranked = computeRankedOwners(partitionId, newView);
+                assert !ranked.isEmpty() : "ranked owners cannot be empty";
+                newOwner = ranked.getFirst();
+            } catch (IllegalStateException emptyView) {
+                continue;
+            }
+
+            // Refresh the new-epoch cache entry for this partition.
+            newCache.put(partitionId, newOwner);
+
+            // Evict the old-epoch cache entry for this partition only — other partitions keep
+            // their cached owners under the old epoch so range scans near the transition can
+            // still resolve stable ownerships from the old cache.
+            if (oldCache != null) {
+                oldCache.remove(partitionId);
+            }
+
+            if (oldOwner == null || !oldOwner.equals(newOwner)) {
+                changed.add(partitionId);
+            }
+        }
+        return Set.copyOf(changed);
+    }
+
+    /**
      * Computes the full ranking of live members for the given id, sorted by descending HRW weight.
      * Ties are broken by nodeId for determinism.
      */
@@ -206,6 +290,55 @@ public final class RendezvousOwnership {
         return hash;
     }
 
+    /**
+     * Resolves the owners of every partition in the given key-range using the supplied
+     * {@link PartitionKeySpace} for pruning and HRW hashing for per-partition ownership.
+     *
+     * <p>
+     * For each partition ID returned by {@code keyspace.partitionsForRange(fromKey, toKey)}, the
+     * owner is computed as {@code assignOwner(tableName + "/" + partitionId, view)}. Multiple
+     * partitions may map to the same owner (co-location under HRW); the returned set reflects the
+     * distinct set of owners. A range that overlaps no partition yields an empty set.
+     *
+     * <p>
+     * Delivers: F04.R63 — enables {@link jlsm.engine.cluster.ClusteredTable#scan(String, String)}
+     * to skip non-overlapping partition owners.
+     *
+     * @param tableName the table name used as the HRW partition-id prefix; must not be null or
+     *            empty
+     * @param fromKey inclusive lower bound passed to the keyspace; must not be null
+     * @param toKey exclusive upper bound passed to the keyspace; must not be null
+     * @param view the current membership view; must not be null
+     * @param keyspace the partition keyspace to consult for range pruning; must not be null
+     * @return the set of distinct owner node addresses for partitions overlapping
+     *         {@code [fromKey, toKey)}; never null, may be empty
+     * @throws NullPointerException if any argument is null
+     * @throws IllegalArgumentException if {@code tableName} is empty
+     * @throws IllegalStateException if the view contains no live members for a non-empty partition
+     *             list
+     */
+    public Set<NodeAddress> ownersForKeyRange(String tableName, String fromKey, String toKey,
+            MembershipView view, PartitionKeySpace keyspace) {
+        Objects.requireNonNull(tableName, "tableName must not be null");
+        Objects.requireNonNull(fromKey, "fromKey must not be null");
+        Objects.requireNonNull(toKey, "toKey must not be null");
+        Objects.requireNonNull(view, "view must not be null");
+        Objects.requireNonNull(keyspace, "keyspace must not be null");
+        if (tableName.isEmpty()) {
+            throw new IllegalArgumentException("tableName must not be empty");
+        }
+
+        final List<String> partitions = keyspace.partitionsForRange(fromKey, toKey);
+        if (partitions.isEmpty()) {
+            return Set.of();
+        }
+        final Set<NodeAddress> owners = new HashSet<>(partitions.size());
+        for (final String partitionId : partitions) {
+            owners.add(assignOwner(tableName + "/" + partitionId, view));
+        }
+        return Set.copyOf(owners);
+    }
+
     private record WeightedNode(NodeAddress address, long weight) {
     }
 
@@ -250,6 +383,12 @@ public final class RendezvousOwnership {
         int size() {
             synchronized (this) {
                 return entries.size();
+            }
+        }
+
+        void remove(String key) {
+            synchronized (this) {
+                entries.remove(key);
             }
         }
     }

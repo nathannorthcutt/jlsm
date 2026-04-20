@@ -1,7 +1,7 @@
 ---
 {
   "id": "F04",
-  "version": 5,
+  "version": 6,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["engine"],
@@ -18,11 +18,7 @@
     "transport-abstraction-design"
   ],
   "kb_refs": [],
-  "open_obligations": [
-    "OBL-F04-R41-43-split-brain",
-    "OBL-F04-R47-50-grace-gated-rebalance",
-    "OBL-F04-R63-partition-pruning"
-  ]
+  "open_obligations": []
 }
 ---
 
@@ -148,11 +144,11 @@ R92. The membership protocol must reject received views with an epoch less than 
 
 ### Split-brain detection and handling
 
-R41. `MembershipView.hasQuorum(int)` exposes quorum status so callers can observe loss of quorum, but the membership protocol does not currently transition the node to a read-only or degraded mode on quorum loss, nor does it refuse writes that change partition ownership. Quorum-gated write refusal and degraded-mode transition are deferred (see OBL-F04-R41-43-split-brain).
+R41. The clustered engine must transition to a read-only operational mode when the current membership view does not satisfy the configured quorum threshold. In read-only mode, mutating table operations (`create`, `update`, `delete`, `insert`) must reject writes with `QuorumLostException` (a checked `IOException` subtype), while read operations (`get`, `scan`) remain available. The engine must return to the normal operational mode on the first view change that restores quorum. The current mode must be observable via `ClusteredEngine.operationalMode()`.
 
-R42. On quorum loss, the current implementation takes no recovery action: it does not proactively retry seed contact, nor does it merge views by adopting a higher epoch. Quorum re-establishment and view-merge-on-heal are deferred (see OBL-F04-R41-43-split-brain). Per R92, received views with epoch ≤ current epoch are rejected, which prevents regression but does not implement merge semantics.
+R42. While the engine is in read-only mode, it must proactively retry contact with the seeds captured at join time. A `SeedRetryTask` schedules the retry at a configurable interval; each retry re-invokes `membership.start(seeds)` and is a no-op once quorum is restored. The retry task must be idempotent with respect to `start()`/`stop()`, must cancel cleanly on engine close, and must not propagate retry failures that the caller cannot act on (logged and swallowed).
 
-R43. The current implementation treats each incoming view change proposal as a replacement (subject to R90 and R92), not a merge of conflicting states. Reconciliation rules for per-member states across diverging views (higher incarnation wins; equal incarnations resolve by severity DEAD > SUSPECTED > ALIVE) are deferred (see OBL-F04-R41-43-split-brain).
+R43. When a view-change proposal with a strictly greater epoch is accepted (subject to R90's no-drop-alive check), the membership protocol must reconcile the new view against the current view on a per-member basis before installation. The reconciliation rules are: higher `incarnation` wins; on equal incarnations, severity `DEAD` > `SUSPECTED` > `ALIVE`; the merged view takes the maximum epoch. Reconciliation is performed by `ViewReconciler.reconcile(localView, proposedView)` as a pure function so the rules are independently testable.
 
 ### Partition ownership
 
@@ -164,13 +160,13 @@ R93. The ownership cache must be bounded in the number of entries per epoch. Whe
 
 R46. Ownership must be deterministic: given the same membership view (same set of live members and same epoch), all nodes must independently compute identical ownership assignments for every partition. No coordination messages are required for ownership agreement.
 
-R47. The current implementation reassigns ownership immediately on view change: `ClusteredEngine.onViewChanged` invalidates the ownership cache at the new epoch, and the next query recomputes owner assignments from the updated live-member set. `GracePeriodManager` tracks departures and returns but does not gate recomputation. Grace-period-gated rebalancing (holding a departed member's partitions unowned for `gracePeriod` before redistributing) is deferred (see OBL-F04-R47-50-grace-gated-rebalance).
+R47. When a member departs a view, the clustered engine must hold that member's partitions unowned for the configured `gracePeriod` before redistributing them. `ClusteredEngine.onViewChanged` records each departure via `GracePeriodManager` and schedules deferred work through `GraceGatedRebalancer`; no partition reassignment happens at the moment the view changes. Only on grace expiry does the engine invoke `RendezvousOwnership.differentialAssign(...)` to compute replacement owners.
 
-R48. Because rebalancing is immediate (R47), the current HRW recomputation redistributes a departed member's partitions to the remaining live members and — because rendezvous hashing is globally deterministic over the live set — may also cause partitions to move among still-live members when the departing node's hash rank was not highest for a given partition. Restricting movement strictly to the departed member's partitions requires the deferred grace-gated rebalance (see OBL-F04-R47-50-grace-gated-rebalance).
+R48. When grace expires for a departed member, only that member's partitions must be recomputed. `RendezvousOwnership.differentialAssign(oldView, newView, affectedPartitionIds)` mutates cache entries solely for the supplied partition IDs; ownership assignments for partitions owned by still-live members must not move. The affected partition set is supplied by the engine's pre-departure view snapshot.
 
-R49. Because rebalancing is immediate (R47), a rejoining node is by construction treated as a new member and receives fresh assignments via HRW over the current live-member set. Grace-expired re-admission semantics become meaningful once grace-gated rebalancing is implemented (see OBL-F04-R47-50-grace-gated-rebalance).
+R49. A node that rejoins after its grace period has expired is treated as a new member: the membership protocol admits it via the normal join path, and HRW assigns partitions across the current live-member set. No special re-admission path is required because the prior ownership state was already collapsed at grace expiry (R47, R48).
 
-R50. `GracePeriodManager.recordReturn` cancels the pending grace-period record for a returning node, but because rebalance is not grace-gated (R47), this cancellation does not today short-circuit a pending reassignment — the node participates in HRW at the current epoch like any other ALIVE member. Reclamation of previous assignments within grace is deferred (see OBL-F04-R47-50-grace-gated-rebalance).
+R50. When a departed node returns while still in grace, `GraceGatedRebalancer.cancelPending(returning)` must cancel any scheduled differential rebalance for that node and invoke `GracePeriodManager.recordReturn(returning)`. The returning node reclaims its previous assignments (which were never reassigned) without any partition movement. Cancellation must be idempotent and safe against races with a concurrently-firing grace-expiry check.
 
 ### Grace period management
 
@@ -224,7 +220,7 @@ R62. Queries that span multiple partitions must use scatter-gather execution: th
 
 R100. The scan operation on a clustered table must close remote partition client instances after each partition's results have been collected, even on the normal (non-exception) path. <!-- covers: F-R1.resource_lifecycle.2.2 -->
 
-R63. The current `ClusteredTable.scan(fromKey, toKey)` implementation scatters to every live member in the view without inspecting the range predicate for partition-key narrowing. Predicate-driven partition pruning — selecting only the owners of partitions whose keyspace intersects the requested range — is deferred (see OBL-F04-R63-partition-pruning). Until pruning lands, scatter-gather query cost scales linearly with the number of live members rather than with the number of intersecting partitions.
+R63. `ClusteredTable.scan(fromKey, toKey)` must fan out only to owners of partitions whose key range intersects `[fromKey, toKey)`. Partition-to-key mapping is supplied by a configured `PartitionKeySpace` (public SPI); the table delegates owner resolution to `RendezvousOwnership.ownersForKeyRange(tableName, fromKey, toKey, view, keyspace)`. The default `SinglePartitionKeySpace` yields no pruning (backward-compat — all live members are still contacted); `LexicographicPartitionKeySpace(splitKeys, partitionIds)` narrows fanout to the partitions whose lexicographic range overlaps the query range. When the intersecting owner set is empty, the scan returns an empty iterator with complete `PartialResultMetadata(0, 0, ∅, true)`.
 
 R64. Scatter-gather query results must include metadata indicating whether the result is complete or partial. The metadata must list which partitions were unavailable if the result is partial.
 
@@ -388,3 +384,15 @@ Adversarial audit against WD-03 (feature `f04-obligation-resolution--wd-03`) sur
 - **R102–R105:** clustered engine construction and close-path hygiene — safe publication of final fields before listener/handler registration; rollback on partial construction failure; suppressed-exception accumulation in join rollback; listener callbacks after close must be no-ops.
 - **R106–R108, R113:** scatter-gather fanout robustness — track and cancel in-flight scatter tasks on close; unblock cancelled scatter threads from synchronous transport calls; surface per-partition client-close failures through a diagnostic channel (not assertions); fail explicitly on malformed per-partition iterator elements in the merge comparator.
 - **R109–R112, R114:** remote partition client robustness — runtime-enforce non-null transport futures; cancel the source transport future on timeout (not a wrapper); attribute local-origin encoding failures distinctly from remote-node failures; use checked arithmetic in the response encoder's size accumulation; reject malformed range-scan responses instead of silently degrading to an empty iterator.
+
+#### Amendments (v5 → v6)
+
+Phase 2 obligation resolution (feature `f04-obligation-resolution--wd-05`) closed the final three deferred obligations: `OBL-F04-R41-43-split-brain`, `OBL-F04-R47-50-grace-gated-rebalance`, and `OBL-F04-R63-partition-pruning`. Requirements R41–R43, R47–R50, and R63 were rewritten forward to describe the shipped behaviour; previous AMENDED text has been replaced and the obligations were flipped to `resolved` in `.spec/registry/_obligations.json`. `open_obligations` in the F04 front matter is now empty.
+
+- **R41:** no quorum-gated mode → `ClusterOperationalMode` (NORMAL / READ_ONLY); reads continue, mutations throw `QuorumLostException` while quorum is lost; transitions are observable via `ClusteredEngine.operationalMode()`.
+- **R42:** no recovery action → `SeedRetryTask` reinvokes `membership.start(seeds)` on a configurable interval while quorum is lost; idempotent start/stop; retained seed list captured at join.
+- **R43:** straight-replacement view installation → `ViewReconciler.reconcile(local, proposed)` applies higher-incarnation-wins with severity `DEAD > SUSPECTED > ALIVE` on ties; called from `RapidMembership.handleViewChangeProposal` before the new view is installed.
+- **R47–R50:** immediate rebalance on view change → `GraceGatedRebalancer` schedules deferred differential rebalance at grace expiry; `RendezvousOwnership.differentialAssign` touches only the departed member's partitions; `cancelPending(NodeAddress)` aborts a pending rebalance when the node returns within grace.
+- **R63:** full fanout to every live member → `PartitionKeySpace` SPI (`SinglePartitionKeySpace` fallback + `LexicographicPartitionKeySpace` range-based) backing `RendezvousOwnership.ownersForKeyRange`; `ClusteredTable.scan(fromKey, toKey)` contacts only owners of range-overlapping partitions, preserving R60/R67/R77/R100/R64 semantics.
+
+Module surface: `RendezvousOwnership` is now non-`final` to permit in-tree test spying (`GraceGatedRebalancerTest`); behaviour is unchanged. `ClusteredTable` gained an 8-arg canonical constructor accepting `(TableMetadata, ClusterTransport, MembershipProtocol, NodeAddress, RendezvousOwnership, Engine, PartitionKeySpace, Supplier<ClusterOperationalMode>)`; legacy constructors delegate to it with `SinglePartitionKeySpace("default")` and a `() -> NORMAL` mode supplier.

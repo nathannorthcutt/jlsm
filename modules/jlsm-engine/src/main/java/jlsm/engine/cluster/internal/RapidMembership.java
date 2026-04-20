@@ -664,7 +664,10 @@ public final class RapidMembership implements MembershipProtocol {
                     }
                 }
                 if (!dropsAlive) {
-                    currentView = proposedView;
+                    // @spec F04.R43 — per-member reconciliation. Instead of a wholesale replace,
+                    // merge by incarnation / severity rules so higher-incarnation local records
+                    // survive conflicting proposed records.
+                    currentView = ViewReconciler.reconcile(oldView, proposedView);
                     oldViewForNotify = oldView;
                     accepted = true;
                 }
