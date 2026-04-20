@@ -11,7 +11,7 @@
 |----|-------|--------|---------|------|----------|
 | WD-01 | Wire Full-Text Index Integration | COMPLETE | query,  engine | 0 | — |
 | WD-02 | Wire Vector Index Integration | SPECIFIED | query,  engine,  vector-indexing | 0 | — |
-| WD-03 | Wire Query Binding Through StringKeyedTable | SPECIFIED | engine | 1 | — |
+| WD-03 | Wire Query Binding Through StringKeyedTable | COMPLETE | engine | 0 | — |
 
 ## Dependency Graph
 

@@ -40,6 +40,23 @@ semver release cadence is established.
 - Table-to-`PartitionKeySpace` configuration is currently by constructor argument; there is no declarative `TableMetadata` or SQL path to assign a range-partitioned layout yet — pruning is opt-in via the new `ClusteredTable` ctor overload
 - `SeedRetryTask` retry interval is a construction parameter with no live tuning; per-retry failures are logged and swallowed without surfacing backoff state to the caller
 
+### Added — Wire Query Binding Through StringKeyedTable (WD-03)
+- `jlsm.table.QueryRunner<K>` — public functional interface (one method: `run(Predicate)`) used as the bridge between `TableQuery.execute()` and the internal `QueryExecutor` so table implementations can plug in an execution backend without leaking `jlsm.table.internal` types on the builder API
+- `TableQuery.unbound()` and `TableQuery.bound(QueryRunner)` — explicit public factories replacing reflection-based construction for the unbound form; internal callers use `bound(...)` to wire a runner
+- `JlsmTable.StringKeyed.query()` — default interface method returning an unbound `TableQuery<String>`; production implementations override it to return a bound instance
+- `StringKeyedTable.query()` — returns a `TableQuery<String>` bound to the table's schema and `IndexRegistry` via `QueryExecutor.forStringKeys(...)`; empty predicate trees yield an empty iterator rather than an exception
+- F05 spec v2 → v3: R37 rewritten forward — `table.query()` now returns a functional `TableQuery` bound to the table's storage and indices; UOE is retained only for schemaless tables. `OBL-F05-R37` resolved.
+- 9 new tests in `TableQueryExecutionTest`: index-backed equality, scan-fallback on unindexed field, AND across index + scan predicates, OR union, empty result, Gte scan fallback, schema-mismatch IAE, predicate-tree inspection, unbound `execute()` UOE
+
+### Changed — Wire Query Binding Through StringKeyedTable (WD-03)
+- `StandardJlsmTable.StringKeyedBuilder` now materialises an `IndexRegistry` whenever a schema is configured, even with zero index definitions — the registry's document store acts as the schema-aware mirror used for scan-and-filter fallback. Schema-less tables continue to have no registry (and no queries).
+- `LocalTable.query()` (jlsm-engine) no longer throws `UnsupportedOperationException` — it delegates to the underlying `JlsmTable.StringKeyed.query()`
+- `FullTextTableIntegrationTest.noIndexDefinitions_tableBehavesAsBefore` updated to assert that the registry is present and empty instead of null (the `registry != null && isEmpty()` contract)
+- `LocalTableTest.queryThrowsUnsupportedOperationException` renamed and rewritten to `queryReturnsUnboundTableQueryFromStub` — verifies the new delegation contract against a stub delegate
+
+### Fixed — Wire Query Binding Through StringKeyedTable (WD-03)
+- Long-standing known gap: `Table.query()` no longer throws `UnsupportedOperationException` for schema-configured `StringKeyed` tables — predicate execution routes through `QueryExecutor`, using registered secondary indices where supported and scan-and-filter fallback otherwise
+
 ### Added — Wire Full-Text Index Integration (WD-01)
 - `jlsm.core.indexing.FullTextIndex.Factory` — SPI producing `FullTextIndex<MemorySegment>` per `(tableName, fieldName)`, the module-boundary contract between `jlsm-table` and `jlsm-indexing`
 - `jlsm.indexing.LsmFullTextIndexFactory` — LSM-backed factory isolating each index on its own `LocalWriteAheadLog` + `TrieSSTable` + `LsmInvertedIndex.StringTermed` + `LsmFullTextIndex.Impl` chain
