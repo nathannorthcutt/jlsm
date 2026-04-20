@@ -169,6 +169,7 @@ final class SharedStateAdversarialTest {
         assertTrue(foundDead, "Node-2 should be DEAD in the view after leaving");
 
         final List<Member> joinedMembers = new ArrayList<>();
+        final CountDownLatch joinLatch = new CountDownLatch(1);
         membership1.addListener(new MembershipListener() {
             @Override
             public void onViewChanged(MembershipView oldView, MembershipView newView) {
@@ -177,6 +178,7 @@ final class SharedStateAdversarialTest {
             @Override
             public void onMemberJoined(Member member) {
                 joinedMembers.add(member);
+                joinLatch.countDown();
             }
 
             @Override
@@ -197,6 +199,10 @@ final class SharedStateAdversarialTest {
         byte[] proposalPayload = encodeViewChangeProposal(proposedView);
         transport3.request(ADDR_1, new Message(MessageType.VIEW_CHANGE, addr3, 3, proposalPayload))
                 .get(5, TimeUnit.SECONDS);
+
+        // Listener dispatch is async (F04.R39) — wait for the dispatcher to deliver.
+        assertTrue(joinLatch.await(3, TimeUnit.SECONDS),
+                "onMemberJoined should be delivered by the dispatcher within 3s");
 
         // onMemberJoined fires for node-2 (DEAD→ALIVE).
         assertEquals(1, joinedMembers.size(),

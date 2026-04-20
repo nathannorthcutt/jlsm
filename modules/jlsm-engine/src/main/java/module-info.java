@@ -3,6 +3,7 @@
 module jlsm.engine {
     requires transitive jlsm.table;
     requires jlsm.core;
+    requires java.logging;
 
     exports jlsm.engine;
     exports jlsm.engine.cluster;

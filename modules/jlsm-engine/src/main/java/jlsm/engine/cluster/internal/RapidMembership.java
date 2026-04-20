@@ -68,12 +68,16 @@ public final class RapidMembership implements MembershipProtocol {
     private static final byte MSG_LEAVE = 0x03;
     private static final byte MSG_VIEW_CHANGE_PROPOSAL = 0x04;
 
+    /** Listener dispatcher queue capacity — bounded to prevent unbounded memory growth. */
+    private static final int LISTENER_QUEUE_CAPACITY = 1024;
+
     private final NodeAddress localAddress;
     private final ClusterTransport transport;
     private final DiscoveryProvider discovery;
     private final ClusterConfig config;
     private final PhiAccrualFailureDetector failureDetector;
     private final CopyOnWriteArrayList<MembershipListener> listeners = new CopyOnWriteArrayList<>();
+    private final ListenerDispatcher<MembershipListener> listenerDispatcher;
     private final AtomicLong sequenceCounter = new AtomicLong(0);
     private final ReentrantLock viewLock = new ReentrantLock();
 
@@ -100,6 +104,8 @@ public final class RapidMembership implements MembershipProtocol {
         this.config = Objects.requireNonNull(config, "config must not be null");
         this.failureDetector = Objects.requireNonNull(failureDetector,
                 "failureDetector must not be null");
+        this.listenerDispatcher = new ListenerDispatcher<>(
+                "membership-listeners-" + localAddress.nodeId(), LISTENER_QUEUE_CAPACITY);
     }
 
     @Override
@@ -257,6 +263,11 @@ public final class RapidMembership implements MembershipProtocol {
 
         transport.deregisterHandler(MessageType.PING);
         transport.deregisterHandler(MessageType.VIEW_CHANGE);
+
+        // Close the dispatcher before clearing listeners so any in-flight callbacks
+        // drain to terminal state before the listener list is emptied. The dispatcher
+        // is single-threaded and awaits up to 1s, then forces shutdown.
+        listenerDispatcher.close();
 
         listeners.clear();
 
@@ -731,43 +742,31 @@ public final class RapidMembership implements MembershipProtocol {
     // --- Listener notification ---
 
     private void notifyViewChanged(MembershipView oldView, MembershipView newView) {
-        for (MembershipListener listener : listeners) {
-            try {
-                listener.onViewChanged(oldView, newView);
-            } catch (Exception e) {
-                assert e != null : "exception should not be null";
-            }
+        if (closed.get()) {
+            return;
         }
+        listenerDispatcher.dispatch(listeners, l -> l.onViewChanged(oldView, newView));
     }
 
     private void notifyMemberJoined(Member member) {
-        for (MembershipListener listener : listeners) {
-            try {
-                listener.onMemberJoined(member);
-            } catch (Exception e) {
-                assert e != null : "exception should not be null";
-            }
+        if (closed.get()) {
+            return;
         }
+        listenerDispatcher.dispatch(listeners, l -> l.onMemberJoined(member));
     }
 
     private void notifyMemberLeft(Member member) {
-        for (MembershipListener listener : listeners) {
-            try {
-                listener.onMemberLeft(member);
-            } catch (Exception e) {
-                assert e != null : "exception should not be null";
-            }
+        if (closed.get()) {
+            return;
         }
+        listenerDispatcher.dispatch(listeners, l -> l.onMemberLeft(member));
     }
 
     private void notifyMemberSuspected(Member member) {
-        for (MembershipListener listener : listeners) {
-            try {
-                listener.onMemberSuspected(member);
-            } catch (Exception e) {
-                assert e != null : "exception should not be null";
-            }
+        if (closed.get()) {
+            return;
         }
+        listenerDispatcher.dispatch(listeners, l -> l.onMemberSuspected(member));
     }
 
     // --- Payload encoding/decoding ---
