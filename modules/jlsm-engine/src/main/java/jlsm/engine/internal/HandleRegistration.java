@@ -8,6 +8,8 @@ import java.util.Objects;
  * An opaque token representing a registered table handle. Must be released via
  * {@link HandleTracker#release(HandleRegistration)} when the handle is closed.
  */
+// @spec F05.R49,R51 — invalidation flag visible without caller synchronization; LRU order
+// maintained via list insertion order at the HandleTracker level
 final class HandleRegistration {
 
     private final String tableName;
@@ -52,6 +54,7 @@ final class HandleRegistration {
      *
      * @param reason the invalidation reason; must not be null
      */
+    // @spec F05.R50 — idempotent first-write-wins invalidation
     synchronized void invalidate(HandleEvictedException.Reason reason) {
         Objects.requireNonNull(reason, "reason must not be null");
         if (this.invalidated) {

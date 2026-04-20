@@ -27,6 +27,7 @@ class TableCatalogTest {
 
     // ---- open() on empty directory ----
 
+    // @spec F05.R59 — empty root directory → fresh installation, no tables
     @Test
     void openOnEmptyDirectoryDiscoversNoTables() throws IOException {
         var catalog = new TableCatalog(tempDir);
@@ -39,6 +40,8 @@ class TableCatalogTest {
 
     // ---- open() discovers existing tables ----
 
+    // @spec F05.R5,R52,R55,R57,R85 — startup scans root subdirs, reads each table.meta,
+    // restores state
     @Test
     void openDiscoversExistingTableSubdirectories() throws IOException {
         // First catalog: register a table
@@ -63,6 +66,7 @@ class TableCatalogTest {
 
     // ---- register() ----
 
+    // @spec F05.R15,R16,R52,R84 — register creates subdirectory, persists full metadata
     @Test
     void registerCreatesSubdirectoryAndMetadataFile() throws IOException {
         var catalog = new TableCatalog(tempDir);
@@ -78,6 +82,7 @@ class TableCatalogTest {
         catalog.close();
     }
 
+    // @spec F05.R14,R56,R67 — duplicate registration throws IOException
     @Test
     void registerDuplicateNameThrowsIOException() throws IOException {
         var catalog = new TableCatalog(tempDir);
@@ -212,6 +217,7 @@ class TableCatalogTest {
 
     // ---- Partial creation cleanup ----
 
+    // @spec F05.R58 — partial creation (no table.meta) → cleanup on startup
     @Test
     void openCleansUpDirectoryWithoutMetadataFile() throws IOException {
         // Create a directory but no metadata file — simulates partial creation
@@ -300,6 +306,7 @@ class TableCatalogTest {
 
     // ---- open() creates root directory if it does not exist ----
 
+    // @spec F05.R4 — open creates root (including parents) if missing
     @Test
     void openCreatesRootDirectoryIfMissing() throws IOException {
         Path nestedDir = tempDir.resolve("sub").resolve("dir");

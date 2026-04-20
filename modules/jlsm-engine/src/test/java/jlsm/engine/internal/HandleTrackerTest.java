@@ -19,6 +19,7 @@ class HandleTrackerTest {
 
     // ---- Lifecycle: register / release ----
 
+    // @spec F05.R40,R49 — register produces a tracked registration with visible invalidation flag
     @Test
     void registerReturnsNonNullRegistration() {
         try (var tracker = HandleTracker.builder().build()) {
@@ -32,6 +33,7 @@ class HandleTrackerTest {
         }
     }
 
+    // @spec F05.R77 — release decrements the handle count
     @Test
     void releaseDecrementsTotalHandles() throws IOException {
         try (var tracker = HandleTracker.builder().build()) {
@@ -43,6 +45,7 @@ class HandleTrackerTest {
         }
     }
 
+    // @spec F05.R50 — invalidate is idempotent, and release of an invalid registration is a no-op
     @Test
     void releaseOfAlreadyInvalidatedRegistrationIsNoOp() throws IOException {
         try (var tracker = HandleTracker.builder().build()) {
@@ -67,6 +70,7 @@ class HandleTrackerTest {
 
     // ---- Allocation tracking ----
 
+    // @spec F05.R43 — OFF mode captures no allocation site
     @Test
     void allocationTrackingOffSetsNullAllocationSite() throws IOException {
         try (var tracker = HandleTracker.builder().allocationTracking(AllocationTracking.OFF)
@@ -76,6 +80,7 @@ class HandleTrackerTest {
         }
     }
 
+    // @spec F05.R43 — CALLER_TAG mode currently captures no allocation site (reserved)
     @Test
     void allocationTrackingCallerTagSetsNullAllocationSite() throws IOException {
         try (var tracker = HandleTracker.builder().allocationTracking(AllocationTracking.CALLER_TAG)
@@ -85,6 +90,7 @@ class HandleTrackerTest {
         }
     }
 
+    // @spec F05.R43 — FULL_STACK captures a full stack trace
     @Test
     void allocationTrackingFullStackCapturesStackTrace() throws IOException {
         try (var tracker = HandleTracker.builder().allocationTracking(AllocationTracking.FULL_STACK)
@@ -97,6 +103,7 @@ class HandleTrackerTest {
 
     // ---- Eviction: per-source-per-table limit ----
 
+    // @spec F05.R42,R44,R80 — per-source-per-table limit triggers eviction
     @Test
     void evictIfNeededTriggersWhenPerSourcePerTableLimitExceeded() throws IOException {
         try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(2)
@@ -120,6 +127,7 @@ class HandleTrackerTest {
 
     // Updated by audit F-R1.cb.1.5: maxHandlesPerSourcePerTable > maxHandlesPerTable was a bug, now
     // correctly rejected by hierarchy validation
+    // @spec F05.R41,R45,R80 — per-table limit triggers eviction
     @Test
     void evictIfNeededTriggersWhenPerTableLimitExceeded() throws IOException {
         try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(3)
@@ -142,6 +150,7 @@ class HandleTrackerTest {
 
     // Updated by audit F-R1.cb.1.5: maxHandlesPerSourcePerTable > maxHandlesPerTable was a bug, now
     // correctly rejected by hierarchy validation
+    // @spec F05.R40,R46 — global handle-budget limit triggers eviction
     @Test
     void evictIfNeededTriggersWhenTotalLimitExceeded() throws IOException {
         try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(3)
@@ -188,6 +197,7 @@ class HandleTrackerTest {
 
     // ---- Eviction: oldest first within a source ----
 
+    // @spec F05.R51 — oldest handle (insertion-order) evicted first within a source
     @Test
     void oldestHandlesEvictedFirstWithinSource() throws IOException {
         try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(2)
@@ -239,6 +249,7 @@ class HandleTrackerTest {
 
     // ---- snapshot ----
 
+    // @spec F05.R62,R63,R64 — metrics expose live counts across sources/tables safely
     @Test
     void snapshotReturnsCorrectCounts() throws IOException {
         try (var tracker = HandleTracker.builder().build()) {
@@ -360,6 +371,7 @@ class HandleTrackerTest {
 
     // ---- Thread-safety: concurrent register/release ----
 
+    // @spec F05.R65,R69 — concurrent register/release must not corrupt state
     @Test
     void concurrentRegisterAndReleaseDoNotCorruptState() throws Exception {
         final int threadCount = 8;

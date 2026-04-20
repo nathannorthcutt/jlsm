@@ -51,11 +51,13 @@ class LocalEngineTest {
 
     // ---- Builder validation ----
 
+    // @spec F05.R1 — builder requires rootDirectory to be set before build()
     @Test
     void builderRequiresRootDirectory() {
         assertThrows(IllegalStateException.class, () -> LocalEngine.builder().build());
     }
 
+    // @spec F05.R2 — reject null rootDirectory with NPE identifying the parameter
     @Test
     void builderRejectsNullRootDirectory() {
         assertThrows(NullPointerException.class, () -> LocalEngine.builder().rootDirectory(null));
@@ -63,6 +65,7 @@ class LocalEngineTest {
 
     // ---- createTable ----
 
+    // @spec F05.R10,R22 — create+retrieve a handle supporting CRUD operations
     @Test
     void createTableReturnsUsableHandle() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -73,6 +76,7 @@ class LocalEngineTest {
         }
     }
 
+    // @spec F05.R15,R16 — persist metadata before returning; dedicated subdirectory per table
     @Test
     void createTableCreatesDirectoryAndWritesData() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -88,6 +92,7 @@ class LocalEngineTest {
         }
     }
 
+    // @spec F05.R14 — duplicate create throws IOException with the conflicting name
     @Test
     void createTableWithDuplicateNameThrowsIOException() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -96,6 +101,7 @@ class LocalEngineTest {
         }
     }
 
+    // @spec F05.R11,R70 — reject null name with NPE identifying the parameter
     @Test
     void createTableRejectsNullName() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -103,6 +109,7 @@ class LocalEngineTest {
         }
     }
 
+    // @spec F05.R13 — reject empty name with IllegalArgumentException
     @Test
     void createTableRejectsEmptyName() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -111,6 +118,7 @@ class LocalEngineTest {
         }
     }
 
+    // @spec F05.R12,R70 — reject null schema with NPE identifying the parameter
     @Test
     void createTableRejectsNullSchema() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -120,6 +128,7 @@ class LocalEngineTest {
 
     // ---- getTable ----
 
+    // @spec F05.R22,R53 — retrieve a handle to an existing table; data survives close/reopen
     @Test
     void getTableReturnsHandleToExistingTable() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -139,6 +148,7 @@ class LocalEngineTest {
         }
     }
 
+    // @spec F05.R23 — retrieving a non-existent table throws IOException with the name
     @Test
     void getTableForUnknownTableThrowsIOException() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -162,6 +172,7 @@ class LocalEngineTest {
 
     // ---- dropTable ----
 
+    // @spec F05.R26,R29 — drop transitions to DROPPED and invalidates held handles
     @Test
     void dropTableRemovesTableAndInvalidatesHandles() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -174,6 +185,7 @@ class LocalEngineTest {
         }
     }
 
+    // @spec F05.R28 — drop of unknown table throws IOException
     @Test
     void dropTableForUnknownTableThrowsIOException() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -197,6 +209,8 @@ class LocalEngineTest {
 
     // ---- listTables ----
 
+    // @spec F05.R20 — listTables returns the registered tables (READY-only filtering verified in
+    // F05ContractTest.listTablesReturnsReadyOnlySnapshot)
     @Test
     void listTablesReturnsAllRegisteredTables() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -217,6 +231,7 @@ class LocalEngineTest {
 
     // ---- tableMetadata ----
 
+    // @spec F05.R18 — tableMetadata exposes name, schema, state
     @Test
     void tableMetadataReturnsMetadataForKnownTable() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -227,6 +242,8 @@ class LocalEngineTest {
         }
     }
 
+    // @spec F05.R21 — tableMetadata returns null for unknown table (amended: "empty result" ==
+    // null)
     @Test
     void tableMetadataReturnsNullForUnknownTable() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -236,6 +253,7 @@ class LocalEngineTest {
 
     // ---- metrics ----
 
+    // @spec F05.R62,R63 — metrics expose handle counts reflecting current state
     @Test
     void metricsReturnCorrectCounts() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -253,6 +271,7 @@ class LocalEngineTest {
 
     // ---- close invalidates all handles ----
 
+    // @spec F05.R6 — close invalidates all outstanding table handles
     @Test
     void closeInvalidatesAllHandles() throws IOException {
         final LocalEngine engine = buildEngine();
@@ -314,6 +333,7 @@ class LocalEngineTest {
 
     // ---- Engine is usable after restart from same directory ----
 
+    // @spec F05.R5,R53,R84 — tables survive close/reopen with full schema recovered
     @Test
     void engineRecoversPreviouslyCreatedTables() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -341,6 +361,7 @@ class LocalEngineTest {
 
     // ---- Concurrent table creation ----
 
+    // @spec F05.R65,R66 — concurrent create-table calls with different names all succeed
     @Test
     void concurrentTableCreation() throws Exception {
         try (final LocalEngine engine = buildEngine()) {

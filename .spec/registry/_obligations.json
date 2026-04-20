@@ -225,6 +225,258 @@
       "created_by": "spec-verify",
       "created": "2026-04-17",
       "status": "open"
+    },
+    {
+      "id": "OBL-F04-R34-38-consensus",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R34-R38 (AMENDED): full RAPID consensus is not implemented. RapidMembership ships as a Rapid-inspired unilateral protocol (each node applies suspicions/view changes independently). Deferred components: multi-process cut detection, quorum-based consensus rounds (default 75%) with bounded timeout, observer-agreement broadcast before suspicion application, and self-refutation via incarnation bump. The Member.incarnation field is already in place and DEAD->ALIVE rejoin increments it (R13), but a live member receiving a suspicion about itself does not today refute by broadcasting a higher-incarnation alive announcement.",
+      "blocked_by": "multi-week RAPID consensus + refutation implementation",
+      "affects": [
+        "F04.R34",
+        "F04.R35",
+        "F04.R36",
+        "F04.R37",
+        "F04.R38"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R35-expander-graph",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R35 (AMENDED): protocolTick pings every ALIVE member every protocol period rather than distributing monitoring across a bounded expander-graph overlay. Scales linearly with cluster size. For clusters over ~100 nodes an expander graph with configurable degree must be constructed and maintained under churn. Blocked on consensus design because consensus over suspicions presumes a known observer set per monitored peer.",
+      "blocked_by": "expander-graph overlay design + OBL-F04-R34-38-consensus",
+      "affects": [
+        "F04.R35"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R41-43-split-brain",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R41-R43 (AMENDED): split-brain handling not implemented. hasQuorum exposes quorum status but the engine does not transition to read-only on quorum loss, does not proactively retry seed contact, and does not merge conflicting views on partition heal. R92 prevents epoch regression but true reconciliation (higher incarnation wins; equal incarnations resolve by severity DEAD > SUSPECTED > ALIVE) is future work.",
+      "blocked_by": "split-brain detection + view-merge reconciliation design",
+      "affects": [
+        "F04.R41",
+        "F04.R42",
+        "F04.R43"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R47-50-grace-gated-rebalance",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine",
+        "partitioning"
+      ],
+      "description": "F04.R47-R50 (AMENDED): rebalancing is immediate on view change. ClusteredEngine.onViewChanged invalidates the RendezvousOwnership cache and the next query recomputes. GracePeriodManager tracks departures/returns but does not gate rebalancing. Satisfying R47-R50 requires: hold a departed member's partitions unowned for gracePeriod before redistribution; on expiration redistribute only the departed member's partitions without moving partitions among still-live members (differential HRW or stable-ownership-with-deltas); on rejoin within grace cancel the pending rebalance and reclaim previous assignments.",
+      "blocked_by": "grace-gated rebalance scheduler + differential ownership scheme",
+      "affects": [
+        "F04.R47",
+        "F04.R48",
+        "F04.R50"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R63-partition-pruning",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine",
+        "partitioning"
+      ],
+      "description": "F04.R63 (AMENDED): ClusteredTable.scan scatters to every live member. Predicate-driven partition pruning using the partition-key predicate to narrow fanout to intersecting owners is not implemented. Blocks on having a concrete partition-key mapping surfaced through RendezvousOwnership so the client can ask 'which owners intersect [fromKey, toKey]' without a full scan.",
+      "blocked_by": "partition-key boundary tracking in RendezvousOwnership",
+      "affects": [
+        "F04.R63"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R56-57-79-engine-join",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R56/R57/R79 (CODE BUG NOT REPAIRED INLINE): ClusteredEngine.Builder does not accept a DiscoveryProvider as a mandatory parameter and ClusteredEngine does not orchestrate the join sequence (discovery.register + membership.start). Callers must start the membership protocol externally before passing it to the builder. Fix requires expanding the builder signature, ordering the join sequence with rollback on partial failure, and updating tests/examples. Not repaired inline because it alters the builder public API and surrounding fixtures.",
+      "blocked_by": "ClusteredEngine.Builder public API expansion + lifecycle orchestration",
+      "affects": [
+        "F04.R56",
+        "F04.R57",
+        "F04.R79"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R60-local-short-circuit",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R60 (CODE BUG NOT REPAIRED INLINE): ClusteredTable always routes CRUD through RemotePartitionClient even when the resolved owner equals localAddress. A local short-circuit (owner.equals(localAddress) -> invoke localEngine.getTable(name) directly) is required. Not applied inline because ClusteredTable does not hold a reference to the local Engine today; wiring it requires a constructor change propagated through ClusteredEngine.createTable.",
+      "blocked_by": "ClusteredTable constructor now needs a local-engine reference",
+      "affects": [
+        "F04.R60"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R68-payload-table-id",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R68 (CODE BUG NOT REPAIRED INLINE): RemotePartitionClient payloads include [opcode][key][doc] but not the target table name or partition identifier. A remote node receiving QUERY_REQUEST cannot route to the correct table. Payload format needs a table-name prefix and partition-id field. Not repaired inline because the remote-side QUERY_REQUEST dispatcher has not been written end-to-end yet, so a format change has no downstream consumer to validate against today.",
+      "blocked_by": "remote QUERY_REQUEST dispatcher end-to-end",
+      "affects": [
+        "F04.R68"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R77-parallel-scatter",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R77 (CODE BUG NOT REPAIRED INLINE): ClusteredTable.scan issues partition requests sequentially; each getRange blocks in sendRequestAndAwait before the next partition is contacted. Parallel fanout via transport.request futures plus a barrier-style collection is required. Not repaired inline because getRange eager-materializes the entire partition response into a List — a correct streaming parallel implementation needs getRange to return a CompletableFuture<Iterator<TableEntry<String>>> first, a broader refactor than a spec-verify session.",
+      "blocked_by": "getRange async-iterator refactor",
+      "affects": [
+        "F04.R77"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R53-monotonic-clock",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R53 (PARTIAL, documented): GracePeriodManager accepts an injected Clock and all operations capture a single now per call (R95), so intra-call jitter does not produce inconsistent results. However the default (Clock.systemUTC()) is wall-clock, not monotonic; a backward clock adjustment between calls can extend the grace window (demonstrated by SharedStateAdversarialTest.test_GracePeriodManager_isInGracePeriod_clockBackwardJumpExtendsGracePeriod). Fix requires a MonotonicClock on System.nanoTime() with a fixed Instant epoch, or migrating the manager to long-nanos internally. Not repaired inline because it touches every Instant/Duration API surface and all callers.",
+      "blocked_by": "MonotonicClock design or nano-based API refactor",
+      "affects": [
+        "F04.R53"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R10-duplicate-dedup",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R10 (AMENDED): amendment clarifies the base membership protocol does not today deduplicate received messages by sender sequence number because view-change application is already idempotent under R91/R92. Future replication layers requiring exactly-once semantics will need per-sender lastSeenSequence tracking on each receiver; Message.sequenceNumber is in place for that use.",
+      "blocked_by": "replication layer requiring exactly-once semantics",
+      "affects": [
+        "F04.R10"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R20-phi-init",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R20 (AMENDED): PhiAccrualFailureDetector does not initialize its window with protocolPeriod; it relies on the >=2-heartbeat floor (phi returns 0.0 until two samples) and RapidMembership seeds an initial heartbeat on first tick when phi==0. This matches the Cassandra-style implementation and the jlsm test behavior but drifts from the classical description that expects a seeded mean. If startup false positives appear under a high protocolPeriod, inject protocolPeriod as a synthetic first interval.",
+      "blocked_by": "field-measured startup false-positive rate",
+      "affects": [
+        "F04.R20"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R29-transport-timeout",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R29 (AMENDED): amendment moves request-timeout enforcement to the client layer (RemotePartitionClient.timeoutMs) since the InJvmTransport has no blocking send path to interrupt. A future network-backed transport should own timeout enforcement at the transport boundary so calls made via ClusterTransport.request directly (not through RemotePartitionClient) get the same guarantee.",
+      "blocked_by": "network-backed transport implementation",
+      "affects": [
+        "F04.R29"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F04-R39-async-listeners",
+      "spec": "F04",
+      "target_feature": "F04",
+      "domains": [
+        "engine"
+      ],
+      "description": "F04.R39 (NOT REPAIRED INLINE): listener callbacks are invoked synchronously on the membership protocol thread outside viewLock. A slow listener blocks subsequent message processing even though it does not block view mutation. The spec requires listener notification be fully asynchronous so a slow listener cannot delay protocol progress. Fix requires a dedicated listener executor (bounded, with drop or backpressure policy on overflow) plus tests covering slow-listener and throwing-listener cases.",
+      "blocked_by": "listener executor design + drop/backpressure policy",
+      "affects": [
+        "F04.R39"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
+    },
+    {
+      "id": "OBL-F05-R37",
+      "spec": "F05",
+      "target_feature": "F05",
+      "domains": [
+        "engine"
+      ],
+      "description": "F05.R37 AMENDED: Table.query() throws UnsupportedOperationException because TableQuery has a private constructor and cannot be instantiated outside jlsm.table. The amended spec permits UOE until the query-binding facility lands in F10. Resolution requires (a) adding TableQuery<String> query() to jlsm.table.JlsmTable.StringKeyed (cross-module API change), (b) refactoring StringKeyedTable to carry schema + IndexRegistry, (c) making TableQuery bindable (package-private constructor) and (d) wiring execute() to QueryExecutor. Blocked on F10 query infrastructure work.",
+      "blocked_by": "F10 query-binding facility in jlsm-table",
+      "affects": [
+        "F05.R37"
+      ],
+      "created_by": "spec-verify",
+      "created": "2026-04-18",
+      "status": "open"
     }
   ]
 }

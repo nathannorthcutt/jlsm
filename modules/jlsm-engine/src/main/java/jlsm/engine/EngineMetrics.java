@@ -15,6 +15,7 @@ import java.util.Objects;
  * @param handlesPerTable open handle count per table name; never null
  * @param handlesPerSourcePerTable open handle count per source per table; never null
  */
+// @spec F05.R62,R63,R64 — engine-wide metrics: READY count, open handles, per-table, per-source
 public record EngineMetrics(int tableCount, int totalOpenHandles,
         Map<String, Integer> handlesPerTable,
         Map<String, Map<String, Integer>> handlesPerSourcePerTable) {
