@@ -15,6 +15,7 @@ import jlsm.table.JlsmTable;
 import jlsm.table.KeyNotFoundException;
 import jlsm.table.PartitionDescriptor;
 import jlsm.table.Predicate;
+import jlsm.table.ScoredEntry;
 import jlsm.table.StandardJlsmTable;
 import jlsm.table.TableEntry;
 import jlsm.table.UpdateMode;
@@ -77,6 +78,7 @@ class InProcessPartitionClientTest {
     // Construction
     // -------------------------------------------------------------------------
 
+    // @spec F11.R49 — null descriptor rejected with NPE
     @Test
     void constructor_nullDescriptor_throwsNullPointerException() throws IOException {
         final Path dir = tempDir.resolve("ctor_null_desc");
@@ -88,6 +90,7 @@ class InProcessPartitionClientTest {
         }
     }
 
+    // @spec F11.R49 — null table rejected with NPE
     @Test
     void constructor_nullTable_throwsNullPointerException() {
         assertThrows(NullPointerException.class,
@@ -109,6 +112,7 @@ class InProcessPartitionClientTest {
     // create / get
     // -------------------------------------------------------------------------
 
+    // @spec F11.R41,R42,R50 — create routes to wrapped table; get returns Optional; delegate
     @Test
     void create_and_get_roundtrip() throws IOException {
         final Path dir = tempDir.resolve("create_get");
@@ -139,6 +143,7 @@ class InProcessPartitionClientTest {
         }
     }
 
+    // @spec F11.R41 — create throws DuplicateKeyException
     @Test
     void create_duplicateKey_throwsDuplicateKeyException() throws IOException {
         final Path dir = tempDir.resolve("create_duplicate");
@@ -177,6 +182,7 @@ class InProcessPartitionClientTest {
         }
     }
 
+    // @spec F11.R43 — update throws KeyNotFoundException
     @Test
     void update_missingKey_throwsKeyNotFoundException() throws IOException {
         final Path dir = tempDir.resolve("update_missing");
@@ -195,6 +201,7 @@ class InProcessPartitionClientTest {
     // delete
     // -------------------------------------------------------------------------
 
+    // @spec F11.R44,R50 — delete delegates to wrapped table
     @Test
     void delete_removesDocument() throws IOException {
         final Path dir = tempDir.resolve("delete_removes");
@@ -216,6 +223,7 @@ class InProcessPartitionClientTest {
     // getRange
     // -------------------------------------------------------------------------
 
+    // @spec F11.R45,R51 — getRange delegates to getAllInRange, half-open semantics
     @Test
     void getRange_returnsEntriesInHalfOpenRange() throws IOException {
         final Path dir = tempDir.resolve("getRange_halfOpen");
@@ -255,18 +263,112 @@ class InProcessPartitionClientTest {
     }
 
     // -------------------------------------------------------------------------
-    // query — throws UnsupportedOperationException
+    // query — scan-and-filter implementation
     // -------------------------------------------------------------------------
 
+    // @spec F11.R46 — query returns List<ScoredEntry<String>> of at most limit matches
     @Test
-    void query_throwsUnsupportedOperationException() throws IOException {
-        final Path dir = tempDir.resolve("query_unsupported");
+    void query_scalarEqPredicate_returnsMatchingEntries() throws IOException {
+        final Path dir = tempDir.resolve("query_eq_match");
+        Files.createDirectories(dir);
+        final JlsmSchema schema = testSchema();
+        try (var table = buildTable(dir, schema);
+                var client = new InProcessPartitionClient(descriptor(1L), table)) {
+            client.create("alice", JlsmDocument.of(schema, "name", "Alice", "age", 30));
+            client.create("bob", JlsmDocument.of(schema, "name", "Bob", "age", 25));
+
+            final List<ScoredEntry<String>> results = client
+                    .query(new Predicate.Eq("name", "Alice"), 10);
+
+            assertEquals(1, results.size());
+            assertEquals("alice", results.get(0).key());
+            assertEquals("Alice", results.get(0).document().getString("name"));
+        }
+    }
+
+    // @spec F11.R46 — respects the limit parameter by stopping scan after N matches
+    @Test
+    void query_limitRespected_stopsAtLimit() throws IOException {
+        final Path dir = tempDir.resolve("query_limit");
+        Files.createDirectories(dir);
+        final JlsmSchema schema = testSchema();
+        try (var table = buildTable(dir, schema);
+                var client = new InProcessPartitionClient(descriptor(1L), table)) {
+            client.create("a", JlsmDocument.of(schema, "name", "X", "age", 1));
+            client.create("b", JlsmDocument.of(schema, "name", "X", "age", 2));
+            client.create("c", JlsmDocument.of(schema, "name", "X", "age", 3));
+            client.create("d", JlsmDocument.of(schema, "name", "X", "age", 4));
+
+            final List<ScoredEntry<String>> results = client.query(new Predicate.Eq("name", "X"),
+                    2);
+
+            assertEquals(2, results.size(), "limit=2 should cap results at 2 even with 4 matches");
+        }
+    }
+
+    @Test
+    void query_noMatches_returnsEmptyList() throws IOException {
+        final Path dir = tempDir.resolve("query_nomatch");
+        Files.createDirectories(dir);
+        final JlsmSchema schema = testSchema();
+        try (var table = buildTable(dir, schema);
+                var client = new InProcessPartitionClient(descriptor(1L), table)) {
+            client.create("alice", JlsmDocument.of(schema, "name", "Alice", "age", 30));
+            final List<ScoredEntry<String>> results = client
+                    .query(new Predicate.Eq("name", "Nobody"), 10);
+            assertTrue(results.isEmpty());
+        }
+    }
+
+    // @spec F11.R46 — VectorNearest requires per-partition index; scan-and-filter rejects
+    @Test
+    void query_vectorNearestPredicate_throwsUnsupportedOperationException() throws IOException {
+        final Path dir = tempDir.resolve("query_vector_uoe");
+        Files.createDirectories(dir);
+        final JlsmSchema schema = testSchema();
+        try (var table = buildTable(dir, schema);
+                var client = new InProcessPartitionClient(descriptor(1L), table)) {
+            client.create("a", JlsmDocument.of(schema, "name", "A", "age", 1));
+            final Predicate vn = new Predicate.VectorNearest("name", new float[]{ 1.0f }, 5);
+            assertThrows(UnsupportedOperationException.class, () -> client.query(vn, 10));
+        }
+    }
+
+    // @spec F11.R46 — FullTextMatch requires per-partition index; scan-and-filter rejects
+    @Test
+    void query_fullTextPredicate_throwsUnsupportedOperationException() throws IOException {
+        final Path dir = tempDir.resolve("query_fulltext_uoe");
+        Files.createDirectories(dir);
+        final JlsmSchema schema = testSchema();
+        try (var table = buildTable(dir, schema);
+                var client = new InProcessPartitionClient(descriptor(1L), table)) {
+            client.create("a", JlsmDocument.of(schema, "name", "hello", "age", 1));
+            final Predicate ft = new Predicate.FullTextMatch("name", "hello");
+            assertThrows(UnsupportedOperationException.class, () -> client.query(ft, 10));
+        }
+    }
+
+    @Test
+    void query_nullPredicate_throwsNullPointerException() throws IOException {
+        final Path dir = tempDir.resolve("query_null_pred");
+        Files.createDirectories(dir);
+        final JlsmSchema schema = testSchema();
+        try (var table = buildTable(dir, schema);
+                var client = new InProcessPartitionClient(descriptor(1L), table)) {
+            assertThrows(NullPointerException.class, () -> client.query(null, 10));
+        }
+    }
+
+    @Test
+    void query_nonPositiveLimit_throwsIllegalArgumentException() throws IOException {
+        final Path dir = tempDir.resolve("query_bad_limit");
         Files.createDirectories(dir);
         final JlsmSchema schema = testSchema();
         try (var table = buildTable(dir, schema);
                 var client = new InProcessPartitionClient(descriptor(1L), table)) {
             final Predicate pred = new Predicate.Eq("name", "Alice");
-            assertThrows(UnsupportedOperationException.class, () -> client.query(pred, 10));
+            assertThrows(IllegalArgumentException.class, () -> client.query(pred, 0));
+            assertThrows(IllegalArgumentException.class, () -> client.query(pred, -1));
         }
     }
 
@@ -274,6 +376,7 @@ class InProcessPartitionClientTest {
     // close
     // -------------------------------------------------------------------------
 
+    // @spec F11.R52,R102 — close closes wrapped table (R52) and is idempotent (R102)
     @Test
     void close_doesNotThrow() throws IOException {
         final Path dir = tempDir.resolve("close_ok");

@@ -33,12 +33,14 @@ public final class GracePeriodManager {
     private volatile Clock clock;
 
     /**
-     * Creates a grace period manager with the specified duration using the system UTC clock.
+     * Creates a grace period manager with the specified duration using a monotonic clock
+     * ({@link MonotonicClock}). A monotonic clock guarantees that backward wall-clock adjustments
+     * (NTP corrections, manual clock sets) cannot extend an active grace window.
      *
      * @param gracePeriod the grace period duration; must not be null and must be positive
      */
     public GracePeriodManager(Duration gracePeriod) {
-        this(gracePeriod, Clock.systemUTC());
+        this(gracePeriod, new MonotonicClock());
     }
 
     /**

@@ -11,9 +11,20 @@ import java.util.Objects;
  * <p>
  * Values are stored in schema-field order. A {@code null} entry means the field is absent (PATCH
  * semantics). Type validation is performed eagerly at construction.
+ *
+ * @spec F14.R1 — public final class in jlsm.table
+ * @spec F14.R48,R49 — no YAML methods (absent, removed per F15.R1)
+ * @spec F14.R56,R57 — no synchronization; effectively immutable from public API perspective
+ * @spec F14.R62 — no toString() override (callers use toJson())
+ * @spec F14.R63 — does not implement Serializable
+ * @spec F14.R64 — nested JlsmDocument for ObjectType not validated against inner schema
+ * @spec F14.R65 — no set/with mutator; document is write-once from public API
+ * @spec F15.R1 — no YAML methods (absent behavior)
+ * @spec F15.R2 — YamlParser/YamlWriter removed (confirmed absent)
  */
 public final class JlsmDocument {
 
+    // @spec F14.R52,R53 — register DocumentAccess.Accessor for jlsm.table.internal bridge
     static {
         jlsm.table.internal.DocumentAccess
                 .setAccessor(new jlsm.table.internal.DocumentAccess.Accessor() {
@@ -24,6 +35,7 @@ public final class JlsmDocument {
 
                     @Override
                     public JlsmDocument create(jlsm.table.JlsmSchema schema, Object[] values) {
+                        // @spec F14.R53 — create uses 2-arg ctor (preEncrypted = false)
                         return new JlsmDocument(schema, values);
                     }
 
@@ -34,6 +46,8 @@ public final class JlsmDocument {
                 });
     }
 
+    // @spec F14.R54 — schema and preEncrypted are private final and immutable
+    // @spec F14.R55 — values reference is private final; contents reachable only via values() clone
     private final JlsmSchema schema;
     private final Object[] values;
     private final boolean preEncrypted;
@@ -44,6 +58,7 @@ public final class JlsmDocument {
      * @param schema the schema describing the document structure; must not be null
      * @param values values in schema-field order; must not be null
      */
+    // @spec F14.R2,R3 — package-private ctor delegates to 3-arg with preEncrypted = false
     JlsmDocument(JlsmSchema schema, Object[] values) {
         this(schema, values, false);
     }
@@ -55,6 +70,9 @@ public final class JlsmDocument {
      * @param values values in schema-field order; must not be null
      * @param preEncrypted whether the document's encrypted fields contain pre-encrypted ciphertext
      */
+    // @spec F14.R2 — package-private ctor
+    // @spec F14.R4 — runtime validation via requireNonNull + length IAE (stricter than asserts)
+    // @spec F14.R5 — values array reference stored without defensive copy
     JlsmDocument(JlsmSchema schema, Object[] values, boolean preEncrypted) {
         Objects.requireNonNull(schema, "schema must not be null");
         Objects.requireNonNull(values, "values must not be null");
@@ -80,6 +98,8 @@ public final class JlsmDocument {
      * @throws IllegalArgumentException if a field name is unknown, type is mismatched, or pairs
      *             length is odd
      */
+    // @spec F14.R6,R7,R8,R9,R10,R11,R12,R30,R66 — public factory: null/odd/type/unknown/duplicate
+    // rejection, null passthrough, vector defensive copy, preEncrypted = false
     public static JlsmDocument of(JlsmSchema schema, Object... nameValuePairs) {
         Objects.requireNonNull(schema, "schema must not be null");
         Objects.requireNonNull(nameValuePairs, "nameValuePairs must not be null");
@@ -130,6 +150,9 @@ public final class JlsmDocument {
      * @throws IllegalArgumentException if a field name is unknown, type is mismatched for an
      *             unencrypted field, or pairs length is odd
      */
+    // @spec F14.R13,R14,R15,R16,R17,R18,R19,R20,R32 — preEncrypted factory: null/odd/type/unknown
+    // rejection, byte[] ciphertext for encrypted fields, normal validation for unencrypted,
+    // preEncrypted = true, vector defensive copy
     public static JlsmDocument preEncrypted(JlsmSchema schema, Object... nameValuePairs) {
         Objects.requireNonNull(schema, "schema must not be null");
         Objects.requireNonNull(nameValuePairs, "nameValuePairs must not be null");
@@ -182,10 +205,12 @@ public final class JlsmDocument {
     // -------------------------------------------------------------------------
 
     /** Returns the schema for this document. */
+    // @spec F14.R42 — schema() returns stored reference, not a copy
     public JlsmSchema schema() {
         return schema;
     }
 
+    // @spec F14.R58 — equals based on schema, preEncrypted, Arrays.deepEquals(values)
     @Override
     public boolean equals(Object obj) {
         if (this == obj) {
@@ -198,6 +223,7 @@ public final class JlsmDocument {
                 && Arrays.deepEquals(values, other.values);
     }
 
+    // @spec F14.R59 — hashCode combines schema, preEncrypted, Arrays.deepHashCode(values)
     @Override
     public int hashCode() {
         int result = Objects.hash(schema, preEncrypted);
@@ -209,6 +235,7 @@ public final class JlsmDocument {
      * Returns {@code true} if this document was constructed via {@link #preEncrypted} and its
      * encrypted fields hold pre-encrypted ciphertext.
      */
+    // @spec F14.R50 — package-private isPreEncrypted()
     boolean isPreEncrypted() {
         return preEncrypted;
     }
@@ -217,16 +244,20 @@ public final class JlsmDocument {
      * Returns a defensive copy of the value array in schema-field order (package-private for
      * serializer use).
      */
+    // @spec F14.R51 — values() returns defensive clone; callers cannot mutate top-level slots
     Object[] values() {
         return values.clone();
     }
 
     /** Returns {@code true} if the field with the given name is null/absent. */
+    // @spec F14.R43,R44 — isNull: null/unknown field rejection via requireIndex; returns value ==
+    // null
     public boolean isNull(String field) {
         return values[requireIndex(field)] == null;
     }
 
     /** Returns the STRING or BoundedString value of the named field. */
+    // @spec F14.R33,R34,R35,R36,R37 — typed getter guards + STRING/BoundedString acceptance
     public String getString(String field) {
         final int idx = requireIndex(field);
         final FieldType actualType = schema.fields().get(idx).type();
@@ -263,6 +294,7 @@ public final class JlsmDocument {
      * <p>
      * Use {@link #getTimestamp(String)} for TIMESTAMP fields if you want self-documenting code.
      */
+    // @spec F14.R38,R69 — getLong accepts INT64/TIMESTAMP; descriptive NPE with field name
     public long getLong(String field) {
         final int idx = requireIndex(field);
         final FieldType type = schema.fields().get(idx).type();
@@ -278,6 +310,7 @@ public final class JlsmDocument {
     }
 
     /** Returns the raw IEEE 754 half-precision bits for the FLOAT16 named field. */
+    // @spec F14.R39 — getFloat16Bits returns raw IEEE 754 half-precision short bits
     public short getFloat16Bits(String field) {
         return (Short) requireValue(field, FieldType.Primitive.FLOAT16);
     }
@@ -303,6 +336,7 @@ public final class JlsmDocument {
     }
 
     /** Returns the ARRAY value of the named field. */
+    // @spec F14.R40 — getArray returns Object[] defensive copy via clone()
     public Object[] getArray(String field) {
         final int idx = requireIndex(field);
         if (!(schema.fields().get(idx).type() instanceof FieldType.ArrayType)) {
@@ -316,6 +350,7 @@ public final class JlsmDocument {
     }
 
     /** Returns the nested document (ObjectType) value of the named field. */
+    // @spec F14.R41 — getObject returns nested JlsmDocument reference directly (no copy)
     public JlsmDocument getObject(String field) {
         final int idx = requireIndex(field);
         if (!(schema.fields().get(idx).type() instanceof FieldType.ObjectType)) {
@@ -332,6 +367,7 @@ public final class JlsmDocument {
      * Returns a defensive copy of the VECTOR(FLOAT32) value of the named field as a
      * {@code float[]}.
      */
+    // @spec F14.R60 — getFloat32Vector returns clone; rejects non-VECTOR(FLOAT32) + null
     public float[] getFloat32Vector(String field) {
         final int idx = requireIndex(field);
         final FieldType type = schema.fields().get(idx).type();
@@ -351,6 +387,7 @@ public final class JlsmDocument {
      * Returns a defensive copy of the VECTOR(FLOAT16) value of the named field as a
      * {@code short[]}.
      */
+    // @spec F14.R61 — getFloat16Vector returns clone; rejects non-VECTOR(FLOAT16) + null
     public short[] getFloat16Vector(String field) {
         final int idx = requireIndex(field);
         final FieldType type = schema.fields().get(idx).type();
@@ -370,7 +407,12 @@ public final class JlsmDocument {
     // JSON serialization / deserialization
     // -------------------------------------------------------------------------
 
-    /** Serializes this document to a compact JSON string. */
+    /**
+     * Serializes this document to a compact JSON string.
+     *
+     * @spec F14.R45 — toJson() emits compact (no-indent) JSON
+     * @spec F15.R43 — uses jlsm-core JSON writer internally
+     */
     public String toJson() {
         return jlsm.core.json.JsonWriter
                 .write(jlsm.table.internal.JsonValueAdapter.toJsonValue(this));
@@ -380,6 +422,7 @@ public final class JlsmDocument {
      * Serializes this document to a JSON string.
      *
      * @param pretty {@code true} for pretty-printed output (2-space indent)
+     * @spec F14.R46 — toJson(boolean) uses 2-space indent when pretty, compact otherwise
      */
     public String toJson(boolean pretty) {
         return jlsm.core.json.JsonWriter
@@ -393,6 +436,8 @@ public final class JlsmDocument {
      * @param schema the target schema; must not be null
      * @return a new JlsmDocument
      * @throws IllegalArgumentException if the JSON is malformed or a field type does not match
+     * @spec F14.R47 — fromJson deserializes JSON into a JlsmDocument conforming to the schema
+     * @spec F15.R42 — uses jlsm-core JSON parser internally
      */
     public static JlsmDocument fromJson(String json, JlsmSchema schema) {
         Objects.requireNonNull(json, "json must not be null");
@@ -409,6 +454,7 @@ public final class JlsmDocument {
     // Internal helpers
     // -------------------------------------------------------------------------
 
+    // @spec F14.R33,R34 — null field NPE, unknown field IAE (shared guard for all typed getters)
     private int requireIndex(String field) {
         Objects.requireNonNull(field, "field must not be null");
         final int idx = schema.fieldIndex(field);
@@ -418,6 +464,7 @@ public final class JlsmDocument {
         return idx;
     }
 
+    // @spec F14.R35,R36 — shared guard: type-mismatch IAE + null-value NPE for typed getters
     private Object requireValue(String field, FieldType expectedType) {
         final int idx = requireIndex(field);
         final FieldType actualType = schema.fields().get(idx).type();
@@ -444,12 +491,14 @@ public final class JlsmDocument {
      * Maximum nesting depth for ArrayType validation. Prevents StackOverflowError on pathologically
      * nested array schemas.
      */
+    // @spec F14.R67 — bounded recursion depth for nested ArrayType validation
     private static final int MAX_ARRAY_NESTING_DEPTH = 32;
 
     private static void validateType(String fieldName, FieldType type, Object value) {
         validateType(fieldName, type, value, 0);
     }
 
+    // @spec F14.R21,R22,R23,R24,R25,R26,R27,R28,R29,R67 — type dispatch + bounded depth
     private static void validateType(String fieldName, FieldType type, Object value, int depth) {
         assert fieldName != null : "fieldName must not be null";
         assert type != null : "type must not be null";
@@ -485,6 +534,7 @@ public final class JlsmDocument {
                     }
                 }
             }
+            // @spec F12.R49 — validateType rejects VectorType with array length != dimensions
             case FieldType.VectorType vt -> {
                 if (vt.elementType() == FieldType.Primitive.FLOAT32) {
                     expect(fieldName, value, float[].class, "VECTOR(FLOAT32)");
@@ -549,6 +599,8 @@ public final class JlsmDocument {
      * or Object[] for ArrayType fields). Other types are returned as-is (immutable or not an
      * array).
      */
+    // @spec F14.R30,R31,R68 — clone float[]/short[] vectors and deep-copy Object[] arrays;
+    // scalars and nested JlsmDocument pass through
     private static Object defensiveCopyIfVector(FieldType type, Object value) {
         if (value == null) {
             return null;
@@ -572,6 +624,7 @@ public final class JlsmDocument {
      * cloned; only {@code Object[]} levels are cloned so that callers cannot mutate the document's
      * internal state.
      */
+    // @spec F14.R68 — deep copy of nested Object[] levels so inner arrays are not shared
     private static Object[] deepCopyArray(FieldType.ArrayType arrayType, Object[] source) {
         final Object[] copy = source.clone();
         if (arrayType.elementType() instanceof FieldType.ArrayType innerType) {

@@ -35,12 +35,14 @@ import java.util.stream.StreamSupport;
  * <p>
  * Implements {@link AutoCloseable}; closing the reader closes the underlying input stream.
  *
- * @spec F15.R30 — streaming JSONL reader from InputStream
- * @spec F15.R31 — lazy Stream of JsonValue
- * @spec F15.R32 — configurable error handling (FAIL_FAST or SKIP_ON_ERROR)
- * @spec F15.R33 — optional error callback
- * @spec F15.R34 — constant memory per line
- * @spec F15.R35 — skip blank lines
+ * @spec F15.R30 — reads JSON Lines from InputStream, one value per non-empty line
+ * @spec F15.R31 — stream() returns Stream of JsonValue
+ * @spec F15.R32 — no accumulation across lines, O(line) memory
+ * @spec F15.R33 — fail-fast and skip-on-error modes
+ * @spec F15.R34 — error handler for skipped lines
+ * @spec F15.R35 — AutoCloseable, closes underlying stream
+ * @spec F15.R53 — stream() callable at most once
+ * @spec F15.R54 — close() releases all internal resources
  */
 public final class JsonlReader implements AutoCloseable {
 

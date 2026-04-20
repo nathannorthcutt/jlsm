@@ -1,9 +1,9 @@
 ---
 {
   "id": "F07",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["query"],
   "requires": [],
   "invalidates": [],
@@ -163,13 +163,13 @@ R66. The translator must reject `MATCH` calls with a number of arguments other t
 
 R67. The translator must reject `MATCH` when the target field is not of type `STRING` or `BoundedString` with a `SqlParseException`.
 
-R68. The translator must reject `MATCH` when the query argument is not a string literal or string-valued bind parameter with a `SqlParseException`.
+R68. The translator must reject `MATCH` when the query argument is not a string literal with a `SqlParseException`. Bind parameters are not accepted as the MATCH query argument because `Predicate.FullTextMatch` (F10.R19) stores the query as a resolved `String` and cannot defer resolution to execution time.
 
 R69. The translator must translate `VECTOR_DISTANCE(field, vector, metric)` in ORDER BY position to a `SqlQuery.VectorDistanceOrder` record, not to a `Predicate`.
 
 R70. The translator must reject `VECTOR_DISTANCE` calls with a number of arguments other than 3 with a `SqlParseException`.
 
-R71. The translator must reject `VECTOR_DISTANCE` when the target field is not of type `VectorType` or `ArrayType` with a `SqlParseException`.
+R71. The translator must reject `VECTOR_DISTANCE` when the target field is neither a `VectorType` nor an `ArrayType` whose element type is `FLOAT16` or `FLOAT32`. An `ArrayType` with a non-float element type (e.g. `STRING`) must be rejected with a `SqlParseException`.
 
 R72. The translator must reject `VECTOR_DISTANCE` when the vector argument is not a bind parameter (`?`) with a `SqlParseException`.
 
@@ -197,7 +197,7 @@ R82. `SqlQuery` must reject mismatched sizes between projections and aliases (wh
 
 R83. The `BindMarker` record must implement `Comparable<BindMarker>` by comparing index values.
 
-R84. The `VectorDistanceOrder` record must store the field name, the bind parameter index for the query vector, and the metric string.
+R84. The `VectorDistanceOrder` record must store the field name, the bind parameter index for the query vector, the metric string, and an `ascending` flag that mirrors the ORDER BY direction (true for ASC, false for DESC).
 
 ### SqlParseException — error reporting
 
@@ -241,7 +241,7 @@ R99. `JlsmSql.parse` must construct fresh lexer, parser, and translator instance
 
 R100. The lexer must handle an input consisting solely of whitespace by returning a list containing only the `EOF` token.
 
-R101. The lexer must handle a numeric literal that ends with a decimal point (e.g. `42.`) by including the trailing dot in the token text.
+R101. The lexer must reject a numeric literal that ends with a decimal point and has no fractional digits (e.g. `42.`) with a `SqlParseException` positioned at the start of the literal. A trailing dot without digits is not a valid numeric token and must not be silently accepted.
 
 R102. The lexer must handle identifiers containing digits after the initial letter or underscore (e.g. `field_1`, `col2`).
 
@@ -279,3 +279,91 @@ A hand-written recursive descent parser was chosen over a parser generator (ANTL
 - Double-quoted identifiers or backtick-quoted identifiers
 - Multi-table FROM clauses
 - Nested subqueries in WHERE or FROM
+
+---
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-18
+
+**Overall: PASS**
+
+| Scope | Count |
+|-------|-------|
+| SATISFIED | 103 |
+| PARTIAL | 0 |
+| VIOLATED | 0 |
+| UNTESTABLE | 0 |
+
+Evidence is anchored by `@spec F07.RN` annotations across
+`modules/jlsm-sql/src/main/java/jlsm/sql/*.java` and the test suite in
+`modules/jlsm-sql/src/test/java/jlsm/sql/*.java`. The full pipeline —
+`JlsmSql.parse` → `SqlLexer.tokenize` → `SqlParser.parse` → `SqlTranslator.translate` —
+is annotated end to end, including SqlAst/SqlQuery record structure and the
+SqlParseException contract.
+
+#### Amendments (v1 → v2)
+
+- **R68**: widened-bind-parameter clause removed. Now requires MATCH query
+  argument to be a string literal. Rationale: F10.R19 locks
+  `Predicate.FullTextMatch.query` to a `String`; deferred bind resolution
+  would require a cross-module change to jlsm-table that is out of scope for
+  this verification.
+- **R71**: clarified the permitted target field type. `VectorType` is always
+  accepted; `ArrayType` is accepted only when the element type is `FLOAT16`
+  or `FLOAT32`. An `ArrayType` with a non-float element (e.g. `STRING`) must
+  be rejected.
+- **R84**: `VectorDistanceOrder` record also stores an `ascending` flag that
+  mirrors the ORDER BY direction (ASC → true, DESC → false).
+- **R101**: inverted. A numeric literal ending with a decimal point and no
+  fractional digits (e.g. `42.`) must be rejected with a `SqlParseException`.
+  The prior "include trailing dot in token text" wording did not match the
+  implementation (which rejects) or the long-standing
+  `trailingDotNumericLiteral` test.
+
+#### Code fixes applied
+
+- **R78** — `SqlTranslator.parseNumber` now detects decimal overflow to
+  `Double.POSITIVE_INFINITY` / `NaN` and throws `SqlParseException`. Previously
+  `Double.parseDouble("1e400")` returned Infinity silently, producing a
+  predicate value that bypassed the translator's overflow contract.
+- **R103** — `SqlParser.parseSelectStatement` now asserts the next token is
+  `EOF` before returning. Trailing junk after a complete SELECT (e.g.
+  `SELECT * FROM t EXTRA`) is now rejected with an `SqlParseException`
+  carrying the trailing token's position. Previously the parser silently
+  discarded all trailing tokens.
+
+#### Regression tests added
+
+- `SqlTranslatorAdversarialTest.decimalOverflowThrowsSqlParseException`
+- `SqlTranslatorAdversarialTest.decimalNegativeOverflowThrowsSqlParseException`
+- `SqlParserAdversarialTest.trailingTokensAfterSelectRejected`
+- `SqlParserAdversarialTest.trailingTokensAfterLimitRejected`
+- `SqlParserAdversarialTest.noTrailingTokensParsesCleanly` (positive
+  regression guard)
+
+#### Structural test gaps filled
+
+New class `F07StructuralTest` covers reflective requirements that the
+existing suite did not exercise directly: R1 (module exports), R6 (private
+utility constructor), R46/R49/R50 (sealed hierarchy permits), R79 (SqlQuery
+record), R48/R52/R81 (defensive list copies), R83 (`BindMarker.compareTo`
+ordering), R100 (whitespace-only input → single EOF), and R77 (numeric
+widening Integer→Long→Double).
+
+Every existing test method that maps to an F07 requirement was also
+annotated with a `// @spec F07.RN` tag.
+
+#### Deferred obligations
+
+None.
+
+#### Undocumented behavior noted
+
+- `SqlLexer` tokenizes `-` as a `MINUS` token, which the parser consumes to
+  produce negative `NumberLiteral`s. The spec does not enumerate this token
+  under R17/R18/R21, but the behavior is validated by
+  `ContractBoundariesAdversarialTest.test_SqlLexer_negativeNumericLiteral_parseable`
+  and the broader numeric-range tests. Left as implementation detail rather
+  than a new requirement — negative numeric literals are a property of
+  numeric literal syntax (R15), not a standalone operator.

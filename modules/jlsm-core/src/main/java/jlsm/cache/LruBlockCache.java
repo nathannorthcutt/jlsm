@@ -28,6 +28,8 @@ public final class LruBlockCache implements BlockCache {
     }
 
     private final long capacity;
+    // @spec F09.R34,R36 — each stripe holds its own independent lock; concurrent operations on
+    // different stripes never contend on the same monitor
     private final ReentrantLock lock;
     private final LinkedHashMap<CacheKey, MemorySegment> map;
     private volatile boolean closed;
@@ -40,6 +42,7 @@ public final class LruBlockCache implements BlockCache {
         this.capacity = builder.capacity;
         this.lock = new ReentrantLock();
         final long cap = this.capacity;
+        // @spec F09.R15 — each stripe's LRU eviction fires when per-stripe capacity is exceeded
         this.map = new LinkedHashMap<>(16, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<CacheKey, MemorySegment> eldest) {
@@ -89,6 +92,9 @@ public final class LruBlockCache implements BlockCache {
         }
     }
 
+    // @spec F09.R37,R47 — release the stripe lock before calling loader.get() (R37);
+    // double-checked locking ensures concurrent callers observe the same
+    // cached reference (R47)
     @Override
     public MemorySegment getOrLoad(long sstableId, long blockOffset,
             Supplier<MemorySegment> loader) {
@@ -127,7 +133,9 @@ public final class LruBlockCache implements BlockCache {
         var block = loader.get();
         Objects.requireNonNull(block, "loader must not return null");
 
-        // Second check: another thread may have loaded the same key concurrently
+        // @spec F09.R47 — double-checked locking: if another thread committed a value during our
+        // load, return it and discard ours; either way, all callers observe the
+        // same cached reference
         lock.lock();
         try {
             if (closed) {
@@ -202,6 +210,7 @@ public final class LruBlockCache implements BlockCache {
      *
      * @return a new {@link StripedBlockCache.Builder}
      */
+    // @spec F09.R41 — getMultiThreaded returns StripedBlockCache.Builder
     public static StripedBlockCache.Builder getMultiThreaded() {
         return StripedBlockCache.builder();
     }
@@ -212,6 +221,7 @@ public final class LruBlockCache implements BlockCache {
      *
      * @return a new {@link Builder}
      */
+    // @spec F09.R42 — getSingleThreaded returns LruBlockCache.Builder
     public static Builder getSingleThreaded() {
         return builder();
     }
@@ -226,6 +236,7 @@ public final class LruBlockCache implements BlockCache {
         private Builder() {
         }
 
+        // @spec F09.R44 — eager rejection of capacity <= 0 at the setter call
         public Builder capacity(long capacity) {
             if (capacity <= 0) {
                 throw new IllegalArgumentException("capacity must be positive, got: " + capacity);
@@ -234,6 +245,7 @@ public final class LruBlockCache implements BlockCache {
             return this;
         }
 
+        // @spec F09.R43 — reject capacity exceeding Integer.MAX_VALUE (LinkedHashMap int size())
         public LruBlockCache build() {
             if (capacity <= 0) {
                 throw new IllegalArgumentException("capacity must be positive, got: " + capacity);

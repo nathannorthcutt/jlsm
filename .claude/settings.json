@@ -20,6 +20,38 @@
             "command": "bash .claude/scripts/token-hook-wrapper.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/token-hook-wrapper.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/token-hook-wrapper.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/token-hook-wrapper.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/token-hook-wrapper.sh"
+          }
+        ]
       }
     ],
     "SubagentStart": [
@@ -38,6 +70,16 @@
           {
             "type": "command",
             "command": "bash .claude/scripts/subagent-hook-wrapper.sh"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/precompact-hook.sh"
           }
         ]
       }

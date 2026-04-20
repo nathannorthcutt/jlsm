@@ -1,10 +1,13 @@
 package jlsm.engine;
 
+import jlsm.engine.internal.LocalEngine;
 import jlsm.table.JlsmSchema;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Objects;
 
 /**
  * Engine lifecycle and table management interface.
@@ -18,6 +21,16 @@ import java.util.Collection;
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
  */
 public interface Engine extends Closeable {
+
+    /**
+     * Returns a new builder for constructing a local (in-process) {@link Engine}.
+     *
+     * @return a new builder; never null
+     */
+    // @spec F05.R1 — public factory exposed from the exported jlsm.engine package
+    static Builder builder() {
+        return new Builder();
+    }
 
     /**
      * Creates a new table with the given name and schema.
@@ -78,4 +91,70 @@ public interface Engine extends Closeable {
      */
     @Override
     void close() throws IOException;
+
+    /**
+     * Builder for a local (in-process) {@link Engine} backed by a root directory on the local
+     * filesystem. Delegates to the internal {@link LocalEngine.Builder}; the indirection keeps the
+     * implementation class out of the exported public API surface.
+     */
+    // @spec F05.R1 — public Builder type exposed from the exported jlsm.engine package
+    final class Builder {
+
+        private final LocalEngine.Builder delegate;
+
+        private Builder() {
+            this.delegate = LocalEngine.builder();
+        }
+
+        /**
+         * Sets the root directory that will hold all tables managed by this engine.
+         *
+         * @param path the absolute root directory; must not be null and must be absolute
+         * @return this builder
+         * @throws NullPointerException if {@code path} is null
+         */
+        public Builder rootDirectory(Path path) {
+            delegate.rootDirectory(Objects.requireNonNull(path, "path must not be null"));
+            return this;
+        }
+
+        public Builder maxHandlesPerSourcePerTable(int max) {
+            delegate.maxHandlesPerSourcePerTable(max);
+            return this;
+        }
+
+        public Builder maxHandlesPerTable(int max) {
+            delegate.maxHandlesPerTable(max);
+            return this;
+        }
+
+        public Builder maxTotalHandles(int max) {
+            delegate.maxTotalHandles(max);
+            return this;
+        }
+
+        public Builder allocationTracking(AllocationTracking tracking) {
+            delegate.allocationTracking(tracking);
+            return this;
+        }
+
+        public Builder memTableFlushThresholdBytes(long bytes) {
+            delegate.memTableFlushThresholdBytes(bytes);
+            return this;
+        }
+
+        /**
+         * Constructs the engine. Validates configuration, scans the root directory for existing
+         * tables, and returns a ready engine.
+         *
+         * @return a new {@link Engine}
+         * @throws IOException if the root directory cannot be read or is corrupt
+         * @throws IllegalArgumentException if any configuration value is invalid (including a
+         *             non-absolute root directory — R3)
+         * @throws IllegalStateException if required configuration has not been set
+         */
+        public Engine build() throws IOException {
+            return delegate.build();
+        }
+    }
 }

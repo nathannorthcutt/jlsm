@@ -69,9 +69,9 @@ validate_wd_file() {
       [[ -z "$dep_type" ]] && continue
       ((dep_count++)) || true
 
-      # Type must be spec, adr, or kb
-      if [[ ! "$dep_type" =~ ^(spec|adr|kb)$ ]]; then
-        errors+=("artifact_deps: invalid type '$dep_type' (must be spec|adr|kb)")
+      # Type must be spec, adr, kb, or wd
+      if [[ ! "$dep_type" =~ ^(spec|adr|kb|wd)$ ]]; then
+        errors+=("artifact_deps: invalid type '$dep_type' (must be spec|adr|kb|wd)")
       fi
 
       # Reference must be non-empty
@@ -79,8 +79,8 @@ validate_wd_file() {
         errors+=("artifact_deps: missing path/slug for $dep_type dependency")
       fi
 
-      # spec and adr must have required_state/required_status
-      if [[ "$dep_type" =~ ^(spec|adr)$ && -z "$dep_req_state" ]]; then
+      # spec, adr, and wd must have required_state/required_status
+      if [[ "$dep_type" =~ ^(spec|adr|wd)$ && -z "$dep_req_state" ]]; then
         errors+=("artifact_deps: $dep_type:$dep_ref missing required_state/required_status")
       fi
     done < <(work_fm_artifact_deps "$file")
@@ -160,6 +160,12 @@ check_circular_deps() {
     DEP_EDGES["$wd_id"]=""
     while IFS='|' read -r dep_type dep_ref dep_req_state dep_kind; do
       [[ -z "$dep_type" ]] && continue
+      # wd-type deps are direct WD-to-WD edges
+      if [[ "$dep_type" == "wd" ]]; then
+        [[ "$dep_ref" == "$wd_id" ]] && continue  # self-reference
+        DEP_EDGES["$wd_id"]="${DEP_EDGES[$wd_id]} $dep_ref"
+        continue
+      fi
       local key="$dep_type|$dep_ref"
       if [[ -n "${PRODUCES_MAP[$key]+x}" ]]; then
         local producer="${PRODUCES_MAP[$key]}"

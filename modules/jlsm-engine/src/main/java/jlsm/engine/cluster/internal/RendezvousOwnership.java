@@ -8,7 +8,10 @@ import jlsm.engine.cluster.NodeAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -29,13 +32,43 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class RendezvousOwnership {
 
-    /**
-     * Maximum number of cached entries per epoch. Beyond this limit, ownership is computed
-     * on-the-fly without caching to prevent unbounded heap growth from many unique partition IDs.
-     */
-    private static final int MAX_CACHE_ENTRIES_PER_EPOCH = 10_000;
+    /** Default bound on the number of cached assignments per epoch when none is supplied. */
+    public static final int DEFAULT_MAX_CACHE_ENTRIES_PER_EPOCH = 10_000;
 
-    private final ConcurrentHashMap<Long, ConcurrentHashMap<String, NodeAddress>> cache = new ConcurrentHashMap<>();
+    // @spec F04.R93 — bound must be configurable; eviction policy is oldest-first within an epoch.
+    private final int maxEntriesPerEpoch;
+    private final ConcurrentHashMap<Long, EpochCache> cache = new ConcurrentHashMap<>();
+
+    /**
+     * Creates a rendezvous ownership resolver with the default per-epoch cache bound.
+     */
+    public RendezvousOwnership() {
+        this(DEFAULT_MAX_CACHE_ENTRIES_PER_EPOCH);
+    }
+
+    /**
+     * Creates a rendezvous ownership resolver with a configurable per-epoch cache bound.
+     *
+     * @param maxEntriesPerEpoch maximum number of cached assignments per epoch; must be positive.
+     *            When the bound is reached, the oldest entry in that epoch is evicted to make room
+     *            for the new one.
+     */
+    public RendezvousOwnership(int maxEntriesPerEpoch) {
+        if (maxEntriesPerEpoch < 1) {
+            throw new IllegalArgumentException(
+                    "maxEntriesPerEpoch must be >= 1, got: " + maxEntriesPerEpoch);
+        }
+        this.maxEntriesPerEpoch = maxEntriesPerEpoch;
+    }
+
+    /**
+     * Returns the configured per-epoch cache bound.
+     *
+     * @return the bound; always &gt;= 1
+     */
+    public int maxEntriesPerEpoch() {
+        return maxEntriesPerEpoch;
+    }
 
     /**
      * Assigns a single owner for the given identifier within the current membership view.
@@ -52,8 +85,8 @@ public final class RendezvousOwnership {
             throw new IllegalArgumentException("id must not be empty");
         }
 
-        final ConcurrentHashMap<String, NodeAddress> epochCache = cache
-                .computeIfAbsent(view.epoch(), _ -> new ConcurrentHashMap<>());
+        final EpochCache epochCache = cache.computeIfAbsent(view.epoch(),
+                _ -> new EpochCache(maxEntriesPerEpoch));
 
         final NodeAddress cached = epochCache.get(id);
         if (cached != null) {
@@ -64,11 +97,10 @@ public final class RendezvousOwnership {
         assert !ranked.isEmpty() : "ranked list must not be empty after live-member check";
 
         final NodeAddress owner = ranked.getFirst();
-        // Only cache if the per-epoch map has not exceeded its size bound.
-        // Beyond the limit, ownership is computed on-the-fly to prevent unbounded heap growth.
-        if (epochCache.size() < MAX_CACHE_ENTRIES_PER_EPOCH) {
-            epochCache.put(id, owner);
-        }
+        // @spec F04.R93 — EpochCache evicts its oldest entry when the configured bound is reached
+        // before accepting the new one, giving O(1) amortized put cost and a hard upper bound on
+        // per-epoch memory usage.
+        epochCache.put(id, owner);
         return owner;
     }
 
@@ -175,5 +207,50 @@ public final class RendezvousOwnership {
     }
 
     private record WeightedNode(NodeAddress address, long weight) {
+    }
+
+    /**
+     * Bounded LRU-by-insertion cache used within a single epoch. Wraps a {@link LinkedHashMap}
+     * under a monitor so concurrent putters observe a consistent size bound; reads of individual
+     * entries go through the backing map's {@code get} to avoid mutating insertion order.
+     */
+    private static final class EpochCache {
+        private final int maxEntries;
+        private final LinkedHashMap<String, NodeAddress> entries;
+
+        EpochCache(int maxEntries) {
+            this.maxEntries = maxEntries;
+            this.entries = new LinkedHashMap<>(Math.min(maxEntries, 1024), 0.75f, false);
+        }
+
+        NodeAddress get(String key) {
+            synchronized (this) {
+                return entries.get(key);
+            }
+        }
+
+        void put(String key, NodeAddress value) {
+            synchronized (this) {
+                if (entries.containsKey(key)) {
+                    entries.put(key, value);
+                    return;
+                }
+                if (entries.size() >= maxEntries) {
+                    final Iterator<Map.Entry<String, NodeAddress>> it = entries.entrySet()
+                            .iterator();
+                    if (it.hasNext()) {
+                        it.next();
+                        it.remove();
+                    }
+                }
+                entries.put(key, value);
+            }
+        }
+
+        int size() {
+            synchronized (this) {
+                return entries.size();
+            }
+        }
     }
 }

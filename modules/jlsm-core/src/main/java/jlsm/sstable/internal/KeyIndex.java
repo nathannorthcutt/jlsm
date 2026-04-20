@@ -19,6 +19,8 @@ import java.util.Optional;
  * The trie uses sparse children (sorted {@code edges[]} + parallel {@code children[]}) for space
  * efficiency with binary search on edges at each node.
  */
+// @spec F02.R14 — block index + intra-block offset, not absolute file offset
+// @spec F02.R33 — validates block index in [0, blockCount) and non-negative offset
 public final class KeyIndex {
 
     /** A key-offset pair produced during iteration. */

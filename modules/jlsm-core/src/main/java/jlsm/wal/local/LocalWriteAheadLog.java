@@ -267,6 +267,10 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
     /** Dummy segment used as compression buffer when pool is exhausted (R36). Never written to. */
     private static final MemorySegment DUMMY_COMPRESSION_BUF = MemorySegment.ofArray(new byte[0]);
 
+    // @spec F17.R25 — payload below threshold written uncompressed
+    // @spec F17.R26 — compressed+5 >= uncompressed -> write uncompressed
+    // @spec F17.R29 — same format semantics as RemoteWriteAheadLog
+    // @spec F17.R36 — pool exhaustion falls back to uncompressed
     /**
      * Encodes an entry with compression using the new record format (flags byte). Falls back to
      * uncompressed new-format encoding on buffer acquisition failure (R36). The new format is
@@ -568,9 +572,12 @@ public final class LocalWriteAheadLog implements WriteAheadLog {
         private int poolSize = DEFAULT_POOL_SIZE;
         private long bufferSize = DEFAULT_BUFFER_SIZE;
         private long acquireTimeoutMillis = DEFAULT_ACQUIRE_TIMEOUT_MILLIS;
-        private CompressionCodec codec = CompressionCodec.deflate(); // R27: default Deflate level 6
-        private int compressionMinSize = DEFAULT_COMPRESSION_MIN_SIZE; // R28: default 64
-        private int maxConsecutiveSkips = DEFAULT_MAX_CONSECUTIVE_SKIPS; // R35: default 10
+        // @spec F17.R27 — default DEFLATE level 6 if no codec provided
+        private CompressionCodec codec = CompressionCodec.deflate();
+        // @spec F17.R28 — default threshold 64 bytes
+        private int compressionMinSize = DEFAULT_COMPRESSION_MIN_SIZE;
+        // @spec F17.R35 — 10 consecutive skips threshold (configurable)
+        private int maxConsecutiveSkips = DEFAULT_MAX_CONSECUTIVE_SKIPS;
         private CompressionCodec[] recoveryCodecs;
 
         public Builder directory(Path directory) {

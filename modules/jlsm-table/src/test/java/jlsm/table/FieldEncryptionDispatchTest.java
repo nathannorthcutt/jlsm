@@ -214,4 +214,177 @@ class FieldEncryptionDispatchTest {
         assertFalse(Arrays.equals(ctA, ctB),
                 "Same value under different field names should produce different ciphertext");
     }
+
+    // ── OPE MAC wrapping ────────────────────────────────────────────────────
+    //
+    // F03.R39 amended: OPE ciphertext format is [1B length prefix][8B OPE ciphertext long]
+    // [16B detached HMAC-SHA256 tag] = 25 bytes total.
+    // F03.R78 amended: MAC binds ciphertext + field name. Wrong key / tampered ciphertext /
+    // cross-field substitution must throw SecurityException.
+    // F41.R22 amended: on-disk OPE layout matches (DEK version tag is F41 future work).
+
+    // @spec F03.R39,R78 — OPE ciphertext is exactly 25 bytes
+    @Test
+    void orderPreservingField_ciphertextIs25Bytes() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("level", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
+
+        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
+        byte[] plaintext = new byte[]{ (byte) 42 };
+        byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
+
+        assertEquals(25, ciphertext.length,
+                "OPE ciphertext must be 25 bytes (1 length + 8 OPE + 16 MAC tag)");
+    }
+
+    // @spec F03.R40,R78 — round-trip works when MAC verifies
+    @Test
+    void orderPreservingField_roundTrip() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("score", FieldType.Primitive.INT16, EncryptionSpec.orderPreserving())
+                .build();
+
+        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
+
+        byte[] plaintext = new byte[]{ 0x01, 0x23 };
+        byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
+        byte[] recovered = dispatch.decryptorFor(0).decrypt(ciphertext);
+
+        assertArrayEquals(plaintext, recovered);
+    }
+
+    // @spec F03.R78 — tampered MAC bytes rejected with SecurityException
+    @Test
+    void orderPreservingField_tamperedMacRejected() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("level", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
+
+        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
+        byte[] plaintext = new byte[]{ 17 };
+        byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
+
+        // Tag occupies bytes [9..24]; flip byte at position 20.
+        ciphertext[20] ^= (byte) 0xFF;
+
+        assertThrows(SecurityException.class, () -> dispatch.decryptorFor(0).decrypt(ciphertext),
+                "Tampered MAC must throw SecurityException");
+    }
+
+    // @spec F03.R78 — tampered OPE ciphertext bytes rejected with SecurityException
+    @Test
+    void orderPreservingField_tamperedOpePortionRejected() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("level", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
+
+        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
+        byte[] plaintext = new byte[]{ 5 };
+        byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
+
+        // OPE long occupies bytes [1..8]; flip byte at position 4.
+        ciphertext[4] ^= (byte) 0xFF;
+
+        assertThrows(SecurityException.class, () -> dispatch.decryptorFor(0).decrypt(ciphertext),
+                "Tampered OPE ciphertext must throw SecurityException");
+    }
+
+    // @spec F03.R78 — tampered length prefix byte rejected with SecurityException
+    @Test
+    void orderPreservingField_tamperedLengthPrefixRejected() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("level", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
+
+        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
+        byte[] plaintext = new byte[]{ 9 };
+        byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
+
+        ciphertext[0] = (byte) (ciphertext[0] ^ 0x01);
+
+        assertThrows(SecurityException.class, () -> dispatch.decryptorFor(0).decrypt(ciphertext),
+                "Tampered length prefix must throw SecurityException");
+    }
+
+    // @spec F03.R78 — decryption with a different key rejects via MAC
+    @Test
+    void orderPreservingField_wrongKeyRejected() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("level", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
+
+        var encryptDispatch = new FieldEncryptionDispatch(schema, keyHolder);
+        byte[] plaintext = new byte[]{ 22 };
+        byte[] ciphertext = encryptDispatch.encryptorFor(0).encrypt(plaintext);
+
+        byte[] otherKey = new byte[64];
+        Arrays.fill(otherKey, (byte) 0xCC);
+        try (var otherHolder = EncryptionKeyHolder.of(otherKey)) {
+            var decryptDispatch = new FieldEncryptionDispatch(schema, otherHolder);
+            assertThrows(SecurityException.class,
+                    () -> decryptDispatch.decryptorFor(0).decrypt(ciphertext),
+                    "Decryption with wrong key must throw SecurityException");
+        }
+    }
+
+    // @spec F03.R78 — cross-field substitution rejected (MAC binds to field name)
+    @Test
+    void orderPreservingField_crossFieldSubstitutionRejected() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("a", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving())
+                .field("b", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
+
+        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
+        byte[] plaintext = new byte[]{ 7 };
+        byte[] ctA = dispatch.encryptorFor(0).encrypt(plaintext);
+
+        assertThrows(SecurityException.class, () -> dispatch.decryptorFor(1).decrypt(ctA),
+                "Using field A's ciphertext on field B's decryptor must throw SecurityException");
+    }
+
+    // @spec F03.R78 — two encryptions of the same plaintext in the same field produce
+    // identical ciphertext (OPE + deterministic MAC = deterministic overall)
+    @Test
+    void orderPreservingField_deterministicAcrossCalls() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("level", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
+
+        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
+        byte[] plaintext = new byte[]{ 33 };
+        byte[] ct1 = dispatch.encryptorFor(0).encrypt(plaintext);
+        byte[] ct2 = dispatch.encryptorFor(0).encrypt(plaintext);
+
+        assertArrayEquals(ct1, ct2,
+                "OPE + deterministic MAC must produce identical ciphertext on repeated calls");
+    }
+
+    // @spec F03.R37 — OPE preserves ordering on the 8-byte OPE portion; MAC does not
+    // disturb this property because range comparisons operate on bytes [1..8].
+    @Test
+    void orderPreservingField_preservesOrderOnOpePortion() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("level", FieldType.Primitive.INT16, EncryptionSpec.orderPreserving())
+                .build();
+
+        var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
+        var enc = dispatch.encryptorFor(0);
+
+        byte[] p1 = new byte[]{ 0x00, 0x01 };
+        byte[] p2 = new byte[]{ 0x00, 0x42 };
+        byte[] p3 = new byte[]{ 0x7F, 0x00 };
+
+        long ope1 = readOpePortion(enc.encrypt(p1));
+        long ope2 = readOpePortion(enc.encrypt(p2));
+        long ope3 = readOpePortion(enc.encrypt(p3));
+
+        assertTrue(ope1 < ope2, "OPE must preserve p1 < p2 on the 8-byte portion");
+        assertTrue(ope2 < ope3, "OPE must preserve p2 < p3 on the 8-byte portion");
+    }
+
+    /**
+     * Extracts the 8-byte OPE ciphertext long (big-endian) from bytes [1..8] of the 25-byte format.
+     */
+    private static long readOpePortion(byte[] ciphertext) {
+        long v = 0;
+        for (int i = 0; i < 8; i++) {
+            v = (v << 8) | (ciphertext[1 + i] & 0xFFL);
+        }
+        return v;
+    }
 }

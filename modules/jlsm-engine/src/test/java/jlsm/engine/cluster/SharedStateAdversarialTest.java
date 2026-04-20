@@ -131,35 +131,34 @@ final class SharedStateAdversarialTest {
                 "At most 1 DEAD member should remain (the most recent departure)");
     }
 
-    // Finding: F-R1.ss.1.5
-    // Bug: handleViewChangeProposal uses !oldView.isMember(newMember.address()) to decide
-    // whether to fire notifyMemberJoined. isMember returns true for DEAD members, so
-    // DEAD→ALIVE transitions are never reported — listeners miss rejoins.
-    // Correct behavior: When a proposed view contains a member as ALIVE that was DEAD in
-    // the old view, onMemberJoined should be called for that member.
-    // Fix location: RapidMembership.handleViewChangeProposal join-notification loop (~line 475)
-    // Regression watch: Ensure truly new members (not in old view at all) still get notified
+    // @spec F04.R17,R82 — isMember excludes DEAD; a DEAD member cannot itself be the sender of a
+    // VIEW_CHANGE_PROPOSAL (the protocol-level flow for a DEAD node to rejoin is JOIN_REQUEST).
+    // This test validates that when an ALIVE proposer broadcasts a proposal transitioning a
+    // DEAD peer back to ALIVE, onMemberJoined fires for the rejoined member.
     @Test
     @Timeout(10)
     void test_RapidMembership_handleViewChangeProposal_deadToAliveNotifiesJoin() throws Exception {
-        // Start node 1 — forms a single-member cluster
         var membership1 = createMembership(ADDR_1);
         membership1.start(List.of());
 
         final var addr2 = new NodeAddress("node-2", "localhost", 9002);
+        final var addr3 = new NodeAddress("node-3", "localhost", 9003);
         final var transport2 = createTransport(addr2);
+        final var transport3 = createTransport(addr3);
 
-        // Node 2 joins
-        byte[] joinPayload = encodeJoinPayload(addr2);
-        var joinMsg = new Message(MessageType.VIEW_CHANGE, addr2, 1, joinPayload);
-        transport2.request(ADDR_1, joinMsg).get(5, TimeUnit.SECONDS);
+        // Node 2 joins, then node 3 joins (both ALIVE in node-1's view).
+        byte[] join2 = encodeJoinPayload(addr2);
+        transport2.request(ADDR_1, new Message(MessageType.VIEW_CHANGE, addr2, 1, join2)).get(5,
+                TimeUnit.SECONDS);
+        byte[] join3 = encodeJoinPayload(addr3);
+        transport3.request(ADDR_1, new Message(MessageType.VIEW_CHANGE, addr3, 1, join3)).get(5,
+                TimeUnit.SECONDS);
 
-        // Node 2 leaves — becomes DEAD in node-1's view
+        // Node 2 leaves — becomes DEAD in node-1's view. Node 3 remains ALIVE.
         byte[] leavePayload = new byte[]{ 0x03 }; // MSG_LEAVE
-        var leaveMsg = new Message(MessageType.VIEW_CHANGE, addr2, 2, leavePayload);
-        transport2.request(ADDR_1, leaveMsg).get(5, TimeUnit.SECONDS);
+        transport2.request(ADDR_1, new Message(MessageType.VIEW_CHANGE, addr2, 2, leavePayload))
+                .get(5, TimeUnit.SECONDS);
 
-        // Verify node-2 is DEAD in the current view
         MembershipView viewAfterLeave = membership1.currentView();
         boolean foundDead = false;
         for (Member m : viewAfterLeave.members()) {
@@ -169,8 +168,8 @@ final class SharedStateAdversarialTest {
         }
         assertTrue(foundDead, "Node-2 should be DEAD in the view after leaving");
 
-        // Register a listener to track onMemberJoined calls
         final List<Member> joinedMembers = new ArrayList<>();
+        final CountDownLatch joinLatch = new CountDownLatch(1);
         membership1.addListener(new MembershipListener() {
             @Override
             public void onViewChanged(MembershipView oldView, MembershipView newView) {
@@ -179,6 +178,7 @@ final class SharedStateAdversarialTest {
             @Override
             public void onMemberJoined(Member member) {
                 joinedMembers.add(member);
+                joinLatch.countDown();
             }
 
             @Override
@@ -190,20 +190,21 @@ final class SharedStateAdversarialTest {
             }
         });
 
-        // Send a view change proposal with higher epoch where node-2 is ALIVE again.
-        // Use the current view's epoch + 1 to ensure acceptance.
+        // Node 3 (ALIVE) proposes a view transitioning node 2 back to ALIVE.
         long proposalEpoch = membership1.currentView().epoch() + 1;
         Set<Member> proposedMembers = Set.of(new Member(ADDR_1, MemberState.ALIVE, 0),
-                new Member(addr2, MemberState.ALIVE, 1));
+                new Member(addr2, MemberState.ALIVE, 1), new Member(addr3, MemberState.ALIVE, 0));
         MembershipView proposedView = new MembershipView(proposalEpoch, proposedMembers,
                 Instant.now());
         byte[] proposalPayload = encodeViewChangeProposal(proposedView);
+        transport3.request(ADDR_1, new Message(MessageType.VIEW_CHANGE, addr3, 3, proposalPayload))
+                .get(5, TimeUnit.SECONDS);
 
-        // Sender must be a current member — addr2 is DEAD but isMember still returns true.
-        var proposalMsg = new Message(MessageType.VIEW_CHANGE, addr2, 3, proposalPayload);
-        transport2.request(ADDR_1, proposalMsg).get(5, TimeUnit.SECONDS);
+        // Listener dispatch is async (F04.R39) — wait for the dispatcher to deliver.
+        assertTrue(joinLatch.await(3, TimeUnit.SECONDS),
+                "onMemberJoined should be delivered by the dispatcher within 3s");
 
-        // Assert: onMemberJoined should have been called for node-2 (DEAD→ALIVE transition)
+        // onMemberJoined fires for node-2 (DEAD→ALIVE).
         assertEquals(1, joinedMembers.size(),
                 "onMemberJoined should be called once for DEAD→ALIVE transition of node-2. "
                         + "Got: " + joinedMembers);
@@ -699,34 +700,22 @@ final class SharedStateAdversarialTest {
                 "ClusteredTable should accept a shared RendezvousOwnership instance");
     }
 
-    // Finding: F-R1.shared_state.3.5
-    // Bug: InJvmTransport.send silently drops messages when no handler is registered
-    // for the message type on the target transport. The sender gets no indication
-    // that the message was lost — send() returns normally as if delivery succeeded.
-    // Correct behavior: send() should throw IOException when the target has no handler
-    // for the message type, consistent with request() which fails with
-    // "No handler registered for type" in the same scenario.
-    // Fix location: InJvmTransport.send (lines 63-71) — add IOException when handler is null
-    // Regression watch: Ensure send() still works normally when a handler IS registered
+    // @spec F04.R28 — fire-and-forget send: delivery failures (unreachable target or missing
+    // handler) must be silently absorbed by the transport. The failure detector is the mechanism
+    // for detecting unreachable nodes, so the send operation must not propagate delivery failures
+    // as exceptions to the sender. This supersedes the earlier audit finding
+    // F-R1.shared_state.3.5, which treated silent drop as a bug.
     @Test
     @Timeout(10)
-    void test_InJvmTransport_send_throwsWhenNoHandlerRegistered() throws Exception {
-        // Set up two transports: sender and receiver
+    void test_InJvmTransport_send_silentlyAbsorbsDeliveryFailure() throws Exception {
         final var senderAddr = ADDR_1;
         final var receiverAddr = new NodeAddress("receiver", "localhost", 9002);
         final var senderTransport = createTransport(senderAddr);
-        final var receiverTransport = createTransport(receiverAddr);
+        createTransport(receiverAddr);
 
-        // The receiver has NO handler registered for PING messages.
-        // send() should fail because the message cannot be delivered.
         final var msg = new Message(MessageType.PING, senderAddr, 1, new byte[0]);
-
-        // Without the fix, send() returns normally — message silently dropped.
-        // With the fix, send() throws IOException indicating no handler for the type.
-        assertThrows(IOException.class, () -> senderTransport.send(receiverAddr, msg),
-                "send() should throw IOException when target has no handler for the "
-                        + "message type — silent drop means the sender cannot distinguish "
-                        + "'delivered' from 'lost', breaking cluster protocol consistency");
+        // R28: must not throw on missing handler — failure detector handles unreachability.
+        senderTransport.send(receiverAddr, msg);
     }
 
     // Finding: F-R1.shared_state.3.6

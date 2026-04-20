@@ -1,9 +1,9 @@
 ---
 {
   "id": "F16",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["serialization", "storage"],
   "requires": ["F02"],
   "invalidates": [],
@@ -181,3 +181,55 @@ The ADR must be updated before implementation to maintain consistency.
 - ADR: per-block-checksums — CRC32C algorithm choice and entry format.
 - ADR: backend-optimal-block-size — named constants and validation rules.
 - ADR: sstable-block-compression-format — v2 format being extended.
+
+---
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-17
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `CompressionMap.java:46,65-99` — 5-field Entry, 21-byte wire layout |
+| R2 | SATISFIED | `CompressionMap.java:185,267` — long arithmetic with overflow checks |
+| R3 | SATISFIED | `CompressionMap.deserialize(data, version)` at L267 — 17B vs 21B by version |
+| R4 | SATISFIED | `TrieSSTableWriter.java:322-354` — CRC32C over post-fallback on-disk bytes |
+| R5 | SATISFIED | `java.util.zip.CRC32C` used in writer:346 and reader:593 |
+| R6 | SATISFIED | `TrieSSTableReader.java:480-494,557-561` — verify before decompress |
+| R7 | SATISFIED | cache-hit returns early at L464; streaming paths verify via NoCache helper |
+| R8 | SATISFIED | `hasChecksums = footer.version >= 3` at L237,305 — v2 skips entirely |
+| R9 | SATISFIED | `CorruptBlockException` extends IOException, carries 3 fields + msg |
+| R10 | SATISFIED | `Builder.blockSize(int)` at writer:722, default DEFAULT_BLOCK_SIZE |
+| R11 | SATISFIED | `SSTableFormat.validateBlockSize` rejects with descriptive IAE |
+| R12 | SATISFIED | writer:269 uses `blockSize` field (not a hardcoded constant) |
+| R13 | SATISFIED | DEFAULT=4096, HUGE_PAGE=2097152, REMOTE=8388608 — all pow2 in range |
+| R14 | SATISFIED | `writeFooterV3` at L510 — 9 BE longs totalling 72B, MAGIC_V3 last |
+| R15 | SATISFIED | Footer record carries blockSize; `reader.blockSize()` exposes it |
+| R16 | SATISFIED | 5-arg public ctor now sets `v3 = codec != null`; `writeFooterV2` removed |
+| R17 | SATISFIED | `readFooter` at L908 — magic-based dispatch, unknown → IOException |
+| R18 | SATISFIED | v2 uses 17B map, skips CRC; Footer carries DEFAULT_BLOCK_SIZE for v2 |
+| R19 | SATISFIED | v1 open at L154 — no map, no decompress, no CRC (matches F02.R15) |
+| R20 | SATISFIED | footer validate rejects bad blockSize with IOException |
+| R21 | SATISFIED | section-ordering enforced in readFooter v3 (L942-945) + Footer.validate |
+| R22 | SATISFIED | `Entry` record accepts full signed int range for checksum |
+| R23 | SATISFIED | `StandardLsmTree.Builder.blockSize` + `TypedStandardLsmTree.Builder.blockSize`; flows to `codecAwareWriterFactory` |
+| R24 | SATISFIED | compactor reuses tree's writerFactory (L514); reader auto-detects source version |
+
+**Overall: PASS**
+
+Amendments applied: 0 (all findings fixed in code — spec text already matched intent)
+Code fixes applied: 3 (R15: plumb blockSize into Footer; R16: force v3 in public ctor + remove writeFooterV2; R23: add blockSize() to tree Builder + propagate)
+Regression tests added: 7 (readerExposesStoredBlockSizeFromV3Footer, readerReportsDefaultBlockSizeForV1Files, v3ReaderReadsFileFromLegacyConstructor, v3FooterRejectsFlSectionOverlappingFooter, treeBlockSizePropagatesToFlushedSSTables, treeBlockSizeRejectsInvalidValues, plus tightened legacy-ctor magic assertion)
+Pre-existing tests updated: 6 (v2 footer offsets → v3 layout in adversarial suites; reflection ctor signatures updated for Footer.blockSize field)
+Obligations deferred: 0
+Undocumented behavior: 0
+
+#### Code fixes (details)
+
+- **R15** (plumb blockSize): Added `long blockSize` field to `Footer` record. Reader populates it from v3/v4 footer's blockSize field; v1/v2 populate with `SSTableFormat.DEFAULT_BLOCK_SIZE` (4096 — the value v2 writers hardcoded). New `TrieSSTableReader.blockSize()` accessor exposes it. `readFooterV1` now also recognises v3/v4 magic and emits a descriptive IOException guiding callers to the codec-aware `open/openLazy` overload.
+- **R16** (force v3 on codec-configured writers): Changed the public 5-arg constructor from `this.v3 = false` to `this.v3 = (codec != null)`, so any codec-configured writer produces v3 output. Removed `writeFooterV2` and the `else if (codec != null)` v2 branch in `finish()` — the v2 format is now a read-only path for backward compat. No production caller produced v2 (only test fixtures did), so this eliminates a parallel format path without breaking the public API shape.
+- **R23** (tree-level blockSize): Added `Builder.blockSize(int)` to `StandardLsmTree.Builder` and delegated from `TypedStandardLsmTree.Builder`. Threaded the value into the default `codecAwareWriterFactory` which applies it via `TrieSSTableWriter.Builder.blockSize(...)` when a codec is configured. The tree's compactor reuses the same `writerFactory`, so compacted SSTables inherit the block size (R24 follows).
+
+#### Adversarial test updates (details)
+
+Six pre-existing adversarial tests had hardcoded v2 footer offsets (`fileSize - 64 + N`) because they were written against the old codec-configured-ctor-produces-v2 contract. After R16 the same ctor produces v3 (72-byte footer). Offsets updated to v3 layout. One test (`v1_open_on_v2_file`) now asserts "v3" in the error message instead of "v2". Two reflection tests had `Footer`-record constructor signatures pinned to the old 10-arg shape; updated to the new 11-arg shape including blockSize.

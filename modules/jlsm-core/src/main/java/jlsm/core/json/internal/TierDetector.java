@@ -15,9 +15,8 @@ package jlsm.core.json.internal;
  * Detection catches all exceptions and falls through gracefully: if tier 1 detection throws, tier 2
  * is attempted; if tier 2 throws, tier 3 is used.
  *
- * @spec F15.R20 — three-tier detection
- * @spec F15.R21 — graceful fallback
- * @spec F15.R22 — Panama FFM tier 1
+ * @spec F15.R21 — one-time detection at class-load
+ * @spec F15.R22 — catches all exceptions, falls through to next tier
  */
 public final class TierDetector {
 

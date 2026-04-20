@@ -354,6 +354,8 @@ public final class StandardLsmTree implements LsmTree {
         private jlsm.core.bloom.BloomFilter.Deserializer bloomDeserializer;
         private CompressionCodec singleCodec;
         private Function<Level, CompressionCodec> compressionPolicy;
+        // @spec F16.R23 — tree-level block size configuration, default 4096
+        private int blockSize = jlsm.sstable.internal.SSTableFormat.DEFAULT_BLOCK_SIZE;
 
         public Builder wal(WriteAheadLog wal) {
             this.wal = Objects.requireNonNull(wal, "wal must not be null");
@@ -425,6 +427,8 @@ public final class StandardLsmTree implements LsmTree {
             return this;
         }
 
+        // @spec F02.R37 — tree builder accepts codec, propagates to writer/reader
+        // @spec F18.R23 — tree-builder compression() is single-codec equivalent of R23 policy
         /**
          * Sets a single compression codec for all levels. Equivalent to
          * {@code compressionPolicy(_ -> codec)}.
@@ -451,9 +455,37 @@ public final class StandardLsmTree implements LsmTree {
          * @param policy function from level to codec; must not be null
          * @return this builder
          */
+        // @spec F02.R39 — per-level compression policy via Function<Level, CompressionCodec>
+        // @spec F18.R23 — compressionPolicy(fn) evaluated once per writer creation
         public Builder compressionPolicy(Function<Level, CompressionCodec> policy) {
             this.compressionPolicy = Objects.requireNonNull(policy,
                     "compressionPolicy must not be null");
+            return this;
+        }
+
+        /**
+         * Sets the data-block size used by SSTables written by this tree. Must satisfy the
+         * constraints of {@link jlsm.sstable.internal.SSTableFormat#validateBlockSize(int)}:
+         * power-of-two in the range [1024, 33554432].
+         *
+         * <p>
+         * The block size only takes effect when a compression codec or policy is configured (v3
+         * format is required to record the block size in the footer). Combining a non-default block
+         * size with no codec fails at writer construction time per F16 R16.
+         *
+         * <p>
+         * When a caller supplies an explicit {@code sstableWriterFactory}, the tree-level block
+         * size does not automatically flow into that factory — the factory owns writer
+         * construction. The tree's block size applies only to the default codec-aware writer
+         * factory created when a compression policy is set.
+         *
+         * @param blockSize block size in bytes; default is 4096
+         * @return this builder
+         */
+        // @spec F16.R23 — tree builder accepts blockSize, propagates to default writer factory
+        public Builder blockSize(int blockSize) {
+            jlsm.sstable.internal.SSTableFormat.validateBlockSize(blockSize);
+            this.blockSize = blockSize;
             return this;
         }
 
@@ -470,7 +502,7 @@ public final class StandardLsmTree implements LsmTree {
             // These override any explicit factories since the tree must use codec-matched
             // writer/reader pairs.
             if (effectivePolicy != null) {
-                writerFactory = codecAwareWriterFactory(effectivePolicy);
+                writerFactory = codecAwareWriterFactory(effectivePolicy, blockSize);
                 readerFactory = codecAwareReaderFactory(effectivePolicy);
             }
 
@@ -479,6 +511,9 @@ public final class StandardLsmTree implements LsmTree {
             Objects.requireNonNull(readerFactory, "readerFactory must not be null — "
                     + "set sstableReaderFactory or compression/compressionPolicy");
 
+            // @spec F16.R24 — compactor reuses tree's writerFactory (with configured blockSize)
+            // so compacted SSTables inherit the tree-level block size. Reader version detection
+            // (R17) handles mixed-version source SSTables.
             if (compactor == null) {
                 SpookyCompactor.Builder compactorBuilder = SpookyCompactor.builder()
                         .idSupplier(idSupplier).pathFn(pathFn).writerFactory(writerFactory);
@@ -503,12 +538,21 @@ public final class StandardLsmTree implements LsmTree {
         }
 
         /**
-         * Resolves the effective compression policy. Returns null if neither compression nor
-         * compressionPolicy was set (backward compatible: use the explicit writerFactory).
+         * Resolves the effective compression policy.
          *
          * <p>
-         * R24: compressionPolicy takes precedence over compression, regardless of set order.
+         * Precedence (R24, R25):
+         * <ol>
+         * <li>{@code compressionPolicy} if set</li>
+         * <li>{@code compression} if set — equivalent to {@code _ -> compression}</li>
+         * <li>explicit {@code sstableWriterFactory}/{@code sstableReaderFactory} if either is set —
+         * return {@code null} so caller factories are used as-is</li>
+         * <li>default {@code _ -> CompressionCodec.none()} — applies when no factories and no
+         * compression configuration are supplied (R25)</li>
+         * </ol>
          */
+        // @spec F18.R24 — policy beats single codec, regardless of set order
+        // @spec F18.R25 — default none() policy only when caller provided no factories either
         private Function<Level, CompressionCodec> resolveCompressionPolicy() {
             if (compressionPolicy != null) {
                 return compressionPolicy;
@@ -516,22 +560,30 @@ public final class StandardLsmTree implements LsmTree {
             if (singleCodec != null) {
                 return _ -> singleCodec;
             }
+            if (writerFactory == null && readerFactory == null) {
+                return _ -> CompressionCodec.none();
+            }
             return null;
         }
 
         /**
-         * Creates an SSTableWriterFactory that applies the given compression policy to each writer
-         * it creates. The factory creates a {@link jlsm.sstable.TrieSSTableWriter} via its builder,
-         * configuring the level-appropriate codec.
+         * Creates an SSTableWriterFactory that applies the given compression policy and block size
+         * to each writer it creates. The factory creates a {@link jlsm.sstable.TrieSSTableWriter}
+         * via its builder, configuring the level-appropriate codec.
          */
+        // @spec F16.R23 — block size is propagated from tree builder through the factory closure
         private static SSTableWriterFactory codecAwareWriterFactory(
-                Function<Level, CompressionCodec> policy) {
+                Function<Level, CompressionCodec> policy, int blockSize) {
             return (id, level, path) -> {
                 CompressionCodec codec = policy.apply(level);
                 var builder = jlsm.sstable.TrieSSTableWriter.builder().id(id).level(level)
                         .path(path);
                 if (codec != null && codec.codecId() != 0x00) {
                     builder.codec(codec);
+                    // Non-default blockSize requires a codec (F16 R16); only apply when codec set.
+                    if (blockSize != jlsm.sstable.internal.SSTableFormat.DEFAULT_BLOCK_SIZE) {
+                        builder.blockSize(blockSize);
+                    }
                 }
                 return builder.build();
             };

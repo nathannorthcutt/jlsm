@@ -25,6 +25,7 @@ class ScoredEntryAdversarialTest {
      * more relevant" which is meaningless for NaN. NaN should be rejected at construction to
      * prevent undefined ordering in any downstream consumer.
      */
+    // @spec F11.R25 — reject NaN score
     @Test
     void constructor_nanScore_throwsIllegalArgumentException() {
         var doc = minimalDoc();

@@ -625,14 +625,18 @@ class SharedStateAdversarialTest {
     }
 
     // Finding: F-R1.shared_state.6.2
-    // Bug: keyBytes used only in constructor but retained as field — key material persists
-    // in cleartext on the heap until close() is called, widening the exposure window
-    // Correct behavior: keyBytes should be zeroed at the end of the constructor since
-    // scaleFactor and seedRng are the only derived values needed post-construction
-    // Fix location: DcpeSapEncryptor.java:43-51 — zero keyBytes after deriving scaleFactor and
-    // seedRng
-    // Regression watch: ensure encrypt/decrypt round-trip still works after zeroing keyBytes in
-    // constructor
+    // Original bug: keyBytes used only in constructor but retained as field — key material
+    // persisted in cleartext on the heap until close() was called, widening the exposure window.
+    //
+    // Current impl (F03 v2 / 2026-04-17): DcpeSapEncryptor no longer has a keyBytes field at all.
+    // Key material is method-local and zeroed in the constructor's finally block (F03.R81).
+    // The MAC sub-key lives inside a SecretKeySpec whose raw bytes are zeroed immediately after
+    // the spec is constructed.
+    //
+    // This test now asserts the stricter invariant: the field simply does not exist, which is
+    // a structural guarantee that nothing to zero out could leak.
+    //
+    // Regression watch: ensure encrypt/decrypt round-trip still works with the field-free impl.
     @Test
     void test_DcpeSapEncryptor_keyBytesZeroedAfterConstruction_notRetainedUnnecessarily()
             throws Exception {
@@ -643,36 +647,24 @@ class SharedStateAdversarialTest {
         var keyHolder = EncryptionKeyHolder.of(keyBytes);
         var encryptor = new DcpeSapEncryptor(keyHolder, 128);
 
-        // Use reflection to access the keyBytes field
-        var keyBytesField = DcpeSapEncryptor.class.getDeclaredField("keyBytes");
-        keyBytesField.setAccessible(true);
-        byte[] storedKeyBytes = (byte[]) keyBytesField.get(encryptor);
+        // Assert no keyBytes field exists on DcpeSapEncryptor — stronger than "field zeroed".
+        assertThrows(NoSuchFieldException.class,
+                () -> DcpeSapEncryptor.class.getDeclaredField("keyBytes"),
+                "DcpeSapEncryptor must not retain raw key bytes in a field — current impl "
+                        + "zeros key material in the constructor's finally block and keeps only "
+                        + "derived values (scaleFactor, seedRng, MAC SecretKeySpec)");
 
-        // After construction, keyBytes should already be zeroed because the constructor
-        // only needs them to derive scaleFactor and seed the RNG. Retaining non-zero
-        // key material widens the exposure window unnecessarily.
-        boolean allZero = true;
-        for (byte b : storedKeyBytes) {
-            if (b != 0) {
-                allZero = false;
-                break;
-            }
-        }
-        assertTrue(allZero,
-                "keyBytes must be zeroed immediately after constructor derives scaleFactor and "
-                        + "seedRng. The field retains sensitive key material with no post-construction "
-                        + "purpose — widening the exposure window until close() is called.");
-
-        // Verify encrypt/decrypt still works after key material is zeroed
+        // Verify encrypt/decrypt round-trip still works with the field-free implementation
         float[] plaintext = new float[128];
         for (int i = 0; i < plaintext.length; i++) {
             plaintext[i] = (float) i / 128.0f;
         }
-        var encrypted = encryptor.encrypt(plaintext);
-        float[] decrypted = encryptor.decrypt(encrypted.values(), encrypted.seed());
+        byte[] ad = "embedding".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var encrypted = encryptor.encrypt(plaintext, ad);
+        float[] decrypted = encryptor.decrypt(encrypted, ad);
         for (int i = 0; i < plaintext.length; i++) {
             assertEquals(plaintext[i], decrypted[i], 0.01f,
-                    "Encrypt/decrypt round-trip must still work after keyBytes zeroed in constructor");
+                    "Encrypt/decrypt round-trip must still work with field-free key handling");
         }
 
         encryptor.close();

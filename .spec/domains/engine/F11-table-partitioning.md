@@ -1,9 +1,9 @@
 ---
 {
   "id": "F11",
-  "version": 2,
+  "version": 3,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["engine"],
   "requires": ["F10"],
   "invalidates": [],
@@ -305,3 +305,72 @@ Add range-based table partitioning to jlsm-table so that documents can be distri
 - **Cross-partition transactions:** 2PC, Calvin, or Percolator-style coordination is out of scope. Each partition operates independently.
 - **Vector query partition pruning:** At moderate partition counts (<100), scatter-gather to all partitions is acceptable. Pruning based on partition-level vector metadata (centroid summaries) is deferred until partition count makes fan-out expensive.
 - **Rebalancing:** Moving partitions between nodes requires transport, state transfer, and grace period handling. Deferred to the rebalancing spec.
+
+---
+
+## Verification Notes
+
+### Verified: v3 — 2026-04-17
+
+**Overall: PASS_WITH_NOTES**
+
+Code fixes applied: 2
+Regression tests added: 10
+Amendments applied: 0
+Obligations deferred: 0
+
+| Scope | Count |
+|-------|-------|
+| SATISFIED | 101 |
+| UNTESTABLE (design-level) | 7 |
+| VIOLATED | 0 |
+
+#### Repairs
+
+**R98 — inverted-range check (code fix)**
+`PartitionedTable.getRange` previously used `String.compareTo` (UTF-16 char
+order) for the inverted-range guard; spec requires unsigned byte-lexicographic
+order. The two orderings diverge for strings containing UTF-16 surrogate pairs
+(Unicode code points U+10000+). Replaced with `compareSegments(fromSeg, toSeg)`
+after encoding both keys to UTF-8 bytes, keeping the guard consistent with
+`RangeMap.overlapping` which was already byte-lex. Regression test
+`getRange_invertedBySurrogatePair_rejectedWithByteLexCompare` exercises a
+supplementary-character inversion that `String.compareTo` accepts but byte-lex
+correctly rejects.
+
+**R46 / R85 / R86 — query scatter-gather (code fix)**
+`PartitionedTable.query` and `InProcessPartitionClient.doQuery` previously
+threw `UnsupportedOperationException`. Implemented scatter-gather:
+- `InProcessPartitionClient.doQuery` scans the partition's `[lowKey, highKey)`
+  range via `table.getAllInRange`, evaluates each entry against the predicate
+  via a new `PartitionPredicateEvaluator` helper (scalar + And/Or), and
+  returns matches as `ScoredEntry` with score `1.0`, stopping at `limit`.
+  `FullTextMatch` and `VectorNearest` still throw
+  `UnsupportedOperationException` — those require per-partition indices which
+  are not wired through `JlsmTable.StringKeyed` today.
+- `PartitionedTable.query` calls each partition client's `query` with the
+  **full** limit (R86), collects per-partition results, and merges via
+  `ResultMerger.mergeTopK(results, limit)` (R85). The check-not-closed gate
+  now covers `query` as well, satisfying R100 for the query entry point.
+
+Regression tests added in both `PartitionedTableTest` and
+`InProcessPartitionClientTest` covering scatter-gather mechanics, the
+full-limit-per-partition contract (`LimitCapturingClient`), `IOException`
+propagation (R89), after-close rejection, null-predicate rejection,
+non-positive limit rejection, and vector/full-text UOE paths.
+
+#### UNTESTABLE entries
+
+R11/R12/R13 (byte-lex semantics — verified structurally via `compareKeys`
+helpers; behaviorally exercised by every routing/overlap test). R95/R96/R97
+(thread-safety claims — verified structurally: final + immutable records, no
+mutable shared state, `volatile boolean closed`, unmodifiable client map).
+
+#### Annotation coverage
+
+Added `@spec F11.RN` annotations to all enforcement points across
+`PartitionDescriptor`, `PartitionConfig`, `ScoredEntry`, `PartitionClient`,
+`InProcessPartitionClient`, `RangeMap`, `ResultMerger`, `PartitionedTable`,
+plus linked tests. Structural/class-level requirements (R39, R48, R53, R67,
+R92) are annotated on the declaring type; thread-safety (R95-R97) and JPMS
+boundary claims (R91-R92) are design-level and not directly testable.

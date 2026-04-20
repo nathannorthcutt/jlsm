@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * accessors.
  * </p>
  */
+// @spec F16.R9 — CorruptBlockException contract: extends IOException, carries 3 fields + message
 class CorruptBlockExceptionTest {
 
     @Test

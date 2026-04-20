@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -92,6 +93,7 @@ class DocumentSerializerAdversarialTest {
     // deserialization works correctly with sliced heap segments.
     // =====================================================================
 
+    // @spec F06.R2,R3,R4 — sliced heap segment flows through toArray() fallback with offset=0
     @Test
     void deserialize_slicedHeapSegment_producesCorrectResult() {
         // DS-01: A sliced heap segment has heapBase().isPresent() but
@@ -115,6 +117,7 @@ class DocumentSerializerAdversarialTest {
         assertEquals(42, result.getInt("val"));
     }
 
+    // @spec F06.R3,R13,R14 — off-heap fallback path decodes every field type correctly
     @Test
     void deserialize_offHeapSegment_allFieldTypes_producesCorrectResult() {
         // DS-01: Comprehensive off-heap test with all primitive types to verify
@@ -157,6 +160,7 @@ class DocumentSerializerAdversarialTest {
     // prefixBoolCount precomputation handles edge cases correctly.
     // =====================================================================
 
+    // @spec F06.R7,R8,R15 — prefixBoolCount correctly handles added fields incl. booleans
     @Test
     void schemaEvolution_writerHasBooleansReaderHasMore_prefixBoolCountCorrect() {
         // Writer: [STRING, BOOLEAN, INT32] — 1 boolean at position 1
@@ -246,10 +250,91 @@ class DocumentSerializerAdversarialTest {
     }
 
     // =====================================================================
+    // Schema evolution with tail-field removal — R16 requires that trailing
+    // serialized fields be skipped without error even when the removed tail
+    // contains boolean fields.
+    // =====================================================================
+
+    // @spec F06.R16 — tail-field removal with booleans must not throw
+    @Test
+    void schemaEvolution_writerHasTrailingBoolean_readerRemovedIt_deserializesCleanly() {
+        // Writer: [INT32, BOOLEAN, STRING] — 1 trailing boolean
+        // Reader: [INT32] — trailing BOOLEAN + STRING removed
+        JlsmSchema writerSchema = JlsmSchema.builder("test", 1)
+                .field("a", FieldType.Primitive.INT32).field("b", FieldType.Primitive.BOOLEAN)
+                .field("c", FieldType.Primitive.STRING).build();
+        JlsmSchema readerSchema = JlsmSchema.builder("test", 1)
+                .field("a", FieldType.Primitive.INT32).build();
+
+        JlsmDocument doc = JlsmDocument.of(writerSchema, "a", 42, "b", true, "c", "trailing");
+
+        MemorySerializer<JlsmDocument> writerSer = DocumentSerializer.forSchema(writerSchema);
+        MemorySegment bytes = writerSer.serialize(doc);
+
+        MemorySerializer<JlsmDocument> readerSer = DocumentSerializer.forSchema(readerSchema);
+        JlsmDocument result = readerSer.deserialize(bytes);
+
+        assertEquals(42, result.getInt("a"),
+                "overlap INT32 field must decode correctly when trailing boolean fields are removed");
+    }
+
+    // @spec F06.R16 — tail-field removal with multiple trailing booleans must not throw
+    @Test
+    void schemaEvolution_writerHasMultipleTrailingBooleans_readerKeepsOnlyPrefix() {
+        // Writer: [STRING, INT32, BOOLEAN, BOOLEAN, BOOLEAN] — 3 trailing bools
+        // Reader: [STRING, INT32] — all trailing bools removed
+        JlsmSchema writerSchema = JlsmSchema.builder("test", 1)
+                .field("s", FieldType.Primitive.STRING).field("n", FieldType.Primitive.INT32)
+                .field("b1", FieldType.Primitive.BOOLEAN).field("b2", FieldType.Primitive.BOOLEAN)
+                .field("b3", FieldType.Primitive.BOOLEAN).build();
+        JlsmSchema readerSchema = JlsmSchema.builder("test", 1)
+                .field("s", FieldType.Primitive.STRING).field("n", FieldType.Primitive.INT32)
+                .build();
+
+        JlsmDocument doc = JlsmDocument.of(writerSchema, "s", "hello", "n", 7, "b1", true, "b2",
+                false, "b3", true);
+
+        MemorySerializer<JlsmDocument> writerSer = DocumentSerializer.forSchema(writerSchema);
+        MemorySegment bytes = writerSer.serialize(doc);
+
+        MemorySerializer<JlsmDocument> readerSer = DocumentSerializer.forSchema(readerSchema);
+        JlsmDocument result = readerSer.deserialize(bytes);
+
+        assertEquals("hello", result.getString("s"));
+        assertEquals(7, result.getInt("n"));
+    }
+
+    // @spec F06.R16 — tail-field removal preserving interior booleans must not throw
+    @Test
+    void schemaEvolution_writerInteriorBool_readerDropsTrailingBool_deserializesCleanly() {
+        // Writer: [BOOLEAN, INT32, BOOLEAN] — interior bool kept, trailing bool removed
+        // Reader: [BOOLEAN, INT32] — only interior bool remains
+        JlsmSchema writerSchema = JlsmSchema.builder("test", 1)
+                .field("flag1", FieldType.Primitive.BOOLEAN).field("n", FieldType.Primitive.INT32)
+                .field("flag2", FieldType.Primitive.BOOLEAN).build();
+        JlsmSchema readerSchema = JlsmSchema.builder("test", 1)
+                .field("flag1", FieldType.Primitive.BOOLEAN).field("n", FieldType.Primitive.INT32)
+                .build();
+
+        JlsmDocument doc = JlsmDocument.of(writerSchema, "flag1", true, "n", 99, "flag2", false);
+
+        MemorySerializer<JlsmDocument> writerSer = DocumentSerializer.forSchema(writerSchema);
+        MemorySegment bytes = writerSer.serialize(doc);
+
+        MemorySerializer<JlsmDocument> readerSer = DocumentSerializer.forSchema(readerSchema);
+        JlsmDocument result = readerSer.deserialize(bytes);
+
+        assertTrue(result.getBoolean("flag1"),
+                "retained interior boolean must decode from correct bit position");
+        assertEquals(99, result.getInt("n"));
+    }
+
+    // =====================================================================
     // Null booleans with schema evolution — ensures null boolean fields
     // still advance boolIdx correctly during deserialization.
     // =====================================================================
 
+    // @spec F06.R17,R18 — null booleans advance boolIdx without mask read under evolution
     @Test
     void schemaEvolution_nullBooleansInterspersed_correctDeserialization() {
         // Writer: [BOOLEAN(null), STRING, BOOLEAN(true), INT32]
@@ -334,5 +419,119 @@ class DocumentSerializerAdversarialTest {
         JlsmDocument result = ser.deserialize(ser.serialize(doc));
 
         assertEquals("", result.getString("code"));
+    }
+
+    // =====================================================================
+    // R21 — SchemaSerializer must remain safe for concurrent use after
+    // construction (precomputed arrays and dispatch table effectively immutable)
+    // =====================================================================
+
+    // @spec F06.R21 — deserialize is safe under concurrent invocation from multiple threads
+    @Test
+    void concurrentDeserialize_multipleThreads_allProduceSameResult() throws Exception {
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
+                .field("n", FieldType.Primitive.INT64).field("flag", FieldType.Primitive.BOOLEAN)
+                .build();
+        JlsmDocument doc = JlsmDocument.of(schema, "s", "shared", "n", 12345L, "flag", true);
+
+        MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema);
+        MemorySegment bytes = ser.serialize(doc);
+
+        final int threads = 8;
+        final int iterations = 500;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors
+                .newFixedThreadPool(threads);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.List<java.util.concurrent.Future<Boolean>> results = new java.util.ArrayList<>();
+        for (int t = 0; t < threads; t++) {
+            results.add(pool.submit(() -> {
+                start.await();
+                for (int i = 0; i < iterations; i++) {
+                    JlsmDocument r = ser.deserialize(bytes);
+                    if (!"shared".equals(r.getString("s")) || r.getLong("n") != 12345L
+                            || !r.getBoolean("flag")) {
+                        return false;
+                    }
+                }
+                return true;
+            }));
+        }
+        start.countDown();
+        for (java.util.concurrent.Future<Boolean> f : results) {
+            assertTrue(f.get(30, java.util.concurrent.TimeUnit.SECONDS),
+                    "concurrent deserialize produced unexpected result");
+        }
+        pool.shutdownNow();
+    }
+
+    // =====================================================================
+    // R24 — zero-byte segment must produce same error behavior as the
+    // current implementation (IllegalArgumentException with descriptive msg)
+    // =====================================================================
+
+    // @spec F06.R24 — zero-byte segment throws IllegalArgumentException with header-size message
+    @Test
+    void deserialize_zeroByteSegment_throwsIllegalArgumentException() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)
+                .build();
+        MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema);
+
+        MemorySegment empty = MemorySegment.ofArray(new byte[0]);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> ser.deserialize(empty));
+        assertTrue(ex.getMessage().contains("too small"),
+                "error must describe insufficient header bytes");
+    }
+
+    // @spec F06.R24 — zero-byte off-heap segment has same behavior as zero-byte heap segment
+    @Test
+    void deserialize_zeroByteOffHeapSegment_throwsIllegalArgumentException() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)
+                .build();
+        MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema);
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment empty = arena.allocate(0);
+            assertThrows(IllegalArgumentException.class, () -> ser.deserialize(empty));
+        }
+    }
+
+    // =====================================================================
+    // R23 — corrupt serialized data produces the same exception mode as
+    // the current implementation (truncated segments, truncated headers)
+    // =====================================================================
+
+    // @spec F06.R23 — truncated segment (fewer than 6 header bytes) produces IAE
+    @Test
+    void deserialize_truncatedHeader_throwsIllegalArgumentException() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)
+                .build();
+        MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema);
+
+        // Only 3 bytes — cannot hold the 6-byte header
+        MemorySegment truncated = MemorySegment.ofArray(new byte[]{ 0x00, 0x01, 0x00 });
+        assertThrows(IllegalArgumentException.class, () -> ser.deserialize(truncated));
+    }
+
+    // @spec F06.R23 — malformed variable-length integer surfaces as an exception (not silent)
+    @Test
+    void deserialize_malformedVarInt_throwsIllegalArgumentException() {
+        JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
+                .build();
+        MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema);
+        JlsmDocument doc = JlsmDocument.of(schema, "s", "hello");
+        byte[] good = ser.serialize(doc).toArray(ValueLayout.JAVA_BYTE);
+
+        // Corrupt the length-prefix varint bytes of the string payload with all-continuation bytes.
+        // Header is 7 bytes (v2 + fc2 + bc2 + nullmask1), then varint starts. Fill with 0x80s so
+        // the varint reader runs off the end of a short buffer (or overflows shift).
+        byte[] corrupt = new byte[7 + 10];
+        System.arraycopy(good, 0, corrupt, 0, 7);
+        for (int i = 7; i < corrupt.length; i++) {
+            corrupt[i] = (byte) 0x80;
+        }
+        MemorySegment bad = MemorySegment.ofArray(corrupt);
+        assertThrows(Exception.class, () -> ser.deserialize(bad),
+                "malformed varint must surface as an exception");
     }
 }

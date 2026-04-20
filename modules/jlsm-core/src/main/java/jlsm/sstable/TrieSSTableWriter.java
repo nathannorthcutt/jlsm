@@ -47,6 +47,12 @@ import java.util.zip.CRC32C;
  * State machine: {@code OPEN → FINISHED → CLOSED} and {@code OPEN → CLOSED}. Calling
  * {@link #close()} without {@link #finish()} deletes the partial file.
  */
+// @spec F02.R22 — single codec per file
+// @spec F02.R23 — if compressed >= uncompressed, store as NONE
+// @spec F02.R24 — map built during write, serialized after all blocks
+// @spec F02.R32 — intra-block offsets may use int
+// @spec F18.R10,R11,R12,R13,R13a,R14,R18,R19,R27 — dictionary-aware writer lifecycle:
+// buffer → train → compress-with-dict → v4 meta-block; graceful degradation paths
 public final class TrieSSTableWriter implements SSTableWriter {
 
     private enum State {
@@ -160,7 +166,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.bloomFactory = bloomFactory;
         this.codec = codec;
         this.blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
-        this.v3 = false;
+        // @spec F16.R16 — codec-configured writers produce v3 format; no-codec writers stay v1
+        this.v3 = codec != null;
         this.dictionaryTrainingEnabled = false;
         this.dictionaryBlockThreshold = 64;
         this.dictionaryMaxBufferBytes = 256L * 1024 * 1024;
@@ -261,7 +268,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
         lastKeyBytes = keyBytes;
         entryCount++;
 
-        // Flush block if it exceeds the target size
+        // @spec F16.R12 — flush threshold reads configured field, not a hardcoded constant
         if (currentBlock.byteSize() >= blockSize) {
             flushCurrentBlock();
         }
@@ -276,7 +283,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
             // Dictionary training mode: buffer the raw block for later compression
             long newTotal = dictBufferedBytes + blockBytes.length;
             if (newTotal > dictionaryMaxBufferBytes) {
-                // R14: buffer limit exceeded — abandon dictionary training
+                // @spec F18.R14 — buffer limit exceeded: abandon training, continue streaming
                 dictBufferAbandoned = true;
                 // Compress and write all previously buffered blocks with plain codec
                 for (byte[] buffered : dictBufferedBlocks) {
@@ -310,12 +317,13 @@ public final class TrieSSTableWriter implements SSTableWriter {
         compressAndWriteBlock(blockBytes, codec);
     }
 
+    // @spec F17.R37 — MemorySegment compress, no byte[] conversion
     /**
      * Compresses a single serialized block with the specified codec and writes it to the channel.
      */
+    // @spec F16.R4,R5 — CRC32C over exact on-disk bytes (compressed or raw post-fallback)
     private void compressAndWriteBlock(byte[] blockBytes, CompressionCodec useCodec)
             throws IOException {
-        // v2/v3/v4: compress the block via native MemorySegment API (F17.R37)
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment blockSeg = arena.allocate(blockBytes.length);
             MemorySegment.copy(blockBytes, 0, blockSeg, ValueLayout.JAVA_BYTE, 0,
@@ -391,8 +399,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
             if (dictEligible && !dictBufferAbandoned && dictBufferedBlocks != null) {
                 // Dictionary training lifecycle
                 finishWithDictionaryTraining();
-            } else if (codec != null && v3) {
+            } else if (codec != null) {
+                // @spec F16.R16 — codec-configured writers always produce v3 (never v2)
                 // v3 layout: [data blocks][compression map v3][key index][bloom filter][footer 72]
+                assert v3 : "codec-configured writers must always set v3=true";
                 if (dictionaryTrainingEnabled && !dictEligible) {
                     // Training was requested but not eligible (non-ZSTD or native unavailable)
                     trainingResult = new DictionaryTrainingResult(false, false, null, 0);
@@ -401,25 +411,6 @@ public final class TrieSSTableWriter implements SSTableWriter {
                             "buffer limit exceeded", 0);
                 }
                 finishV3Layout();
-            } else if (codec != null) {
-                // v2 layout: [data blocks][compression map][key index][bloom filter][footer 64]
-                long mapOffset = writePosition;
-                CompressionMap compressionMap = new CompressionMap(compressionMapEntries);
-                writeBytes(compressionMap.serialize());
-                long mapLength = writePosition - mapOffset;
-
-                long indexOffset = writePosition;
-                writeKeyIndexV2();
-                long indexLength = writePosition - indexOffset;
-
-                long filterOffset = writePosition;
-                MemorySegment filterBytes = bloomFilter.serialize();
-                byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
-                writeBytes(filterArray);
-                long filterLength = writePosition - filterOffset;
-
-                writeFooterV2(mapOffset, mapLength, indexOffset, indexLength, filterOffset,
-                        filterLength);
             } else {
                 // v1 layout: [data blocks][key index][bloom filter][footer 48]
                 long indexOffset = writePosition;
@@ -518,21 +509,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeBytes(buf);
     }
 
-    private void writeFooterV2(long mapOffset, long mapLength, long idxOffset, long idxLength,
-            long fltOffset, long fltLength) throws IOException {
-        byte[] buf = new byte[SSTableFormat.FOOTER_SIZE_V2];
-        int off = 0;
-        off = writeLong(buf, off, mapOffset);
-        off = writeLong(buf, off, mapLength);
-        off = writeLong(buf, off, idxOffset);
-        off = writeLong(buf, off, idxLength);
-        off = writeLong(buf, off, fltOffset);
-        off = writeLong(buf, off, fltLength);
-        off = writeLong(buf, off, entryCount);
-        writeLong(buf, off, SSTableFormat.MAGIC_V2);
-        writeBytes(buf);
-    }
-
+    // @spec F16.R14,R15 — 72-byte v3 footer: 9 BE longs ending with MAGIC_V3; blockSize stored
     private void writeFooterV3(long mapOffset, long mapLength, long idxOffset, long idxLength,
             long fltOffset, long fltLength) throws IOException {
         byte[] buf = new byte[SSTableFormat.FOOTER_SIZE_V3];
@@ -587,6 +564,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeFooterV3(mapOffset, mapLength, indexOffset, indexLength, filterOffset, filterLength);
     }
 
+    // @spec F18.R11,R11a — train on all buffered blocks, emit v4 with dictionary meta-block
+    // @spec F18.R12 — below-threshold: plain codec, v3, no dictionary stored
+    // @spec F18.R18 — dictionary written after compression map, before key index
+    // @spec F18.R27 — training failure: fall back to plain ZSTD, no SSTable-write failure
     /**
      * Finishes the SSTable with dictionary training. Buffered blocks are either compressed with a
      * trained dictionary (v4 format) or with plain ZSTD (v3 format) depending on block count and
@@ -741,6 +722,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
             return this;
         }
 
+        // @spec F16.R10,R11 — Builder.blockSize(int) validates and stores; default
+        // DEFAULT_BLOCK_SIZE
         public Builder blockSize(int blockSize) {
             SSTableFormat.validateBlockSize(blockSize);
             this.blockSize = blockSize;
@@ -829,6 +812,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
             if (bloomFactory == null) {
                 bloomFactory = n -> new BlockedBloomFilter(n, 0.01);
             }
+            // @spec F16.R16 — non-default blockSize without codec rejected at construction
             if (blockSize != SSTableFormat.DEFAULT_BLOCK_SIZE && codec == null) {
                 throw new IllegalArgumentException(
                         "non-default blockSize requires a compression codec");
@@ -882,6 +866,7 @@ public final class TrieSSTableWriter implements SSTableWriter {
      *
      * @return the training result, or {@code null}
      */
+    // @spec F18.R13a — observable notification path for training skip/failure events
     public DictionaryTrainingResult dictionaryTrainingResult() {
         return trainingResult;
     }

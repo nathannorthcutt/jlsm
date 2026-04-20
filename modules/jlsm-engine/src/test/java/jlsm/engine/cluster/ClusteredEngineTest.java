@@ -198,10 +198,11 @@ final class ClusteredEngineTest {
 
     // --- Input validation ---
 
+    // @spec F04.R78 — null arguments must be rejected with NullPointerException
     @Test
     void createTable_nullName_throws() {
         final ClusteredEngine engine = buildEngine(stubEngine());
-        assertThrows(IllegalArgumentException.class, () -> engine.createTable(null, SCHEMA));
+        assertThrows(NullPointerException.class, () -> engine.createTable(null, SCHEMA));
     }
 
     @Test
@@ -210,10 +211,11 @@ final class ClusteredEngineTest {
         assertThrows(IllegalArgumentException.class, () -> engine.createTable("", SCHEMA));
     }
 
+    // @spec F04.R78 — null arguments must be rejected with NullPointerException
     @Test
     void createTable_nullSchema_throws() {
         final ClusteredEngine engine = buildEngine(stubEngine());
-        assertThrows(IllegalArgumentException.class, () -> engine.createTable("users", null));
+        assertThrows(NullPointerException.class, () -> engine.createTable("users", null));
     }
 
     // --- Helper methods ---

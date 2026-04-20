@@ -17,6 +17,7 @@ class SqlParserAdversarialTest {
 
     // ── FINDING-10: Unbounded recursion depth in parser ───────────────
 
+    // @spec F07.R32
     /**
      * FINDING-10: deeply nested parentheses should throw SqlParseException, not StackOverflowError
      */
@@ -33,6 +34,7 @@ class SqlParserAdversarialTest {
                 "Deeply nested expressions should fail with SqlParseException, not StackOverflowError");
     }
 
+    // @spec F07.R32,R36
     /** FINDING-10: moderate nesting should still work — regression check */
     @Test
     void moderateNestingStillWorks() throws SqlParseException {
@@ -44,6 +46,34 @@ class SqlParserAdversarialTest {
 
     // ── FINDING-11: SqlParser mutable state ───────────────────────────
 
+    // @spec F07.R103 — parser must consume all tokens up to EOF; trailing tokens after a
+    // complete SELECT must produce a SqlParseException. Without this check, a malformed
+    // query like "SELECT * FROM t GARBAGE" silently succeeds and the extra tokens are lost.
+    @Test
+    void trailingTokensAfterSelectRejected() {
+        assertThrows(SqlParseException.class,
+                () -> parser.parse(lexer.tokenize("SELECT * FROM t EXTRA")),
+                "Trailing tokens after a complete SELECT must throw SqlParseException");
+    }
+
+    // @spec F07.R103 — trailing junk after LIMIT/OFFSET must also be rejected
+    @Test
+    void trailingTokensAfterLimitRejected() {
+        assertThrows(SqlParseException.class,
+                () -> parser.parse(lexer.tokenize("SELECT * FROM t LIMIT 5 BOGUS")),
+                "Trailing tokens after LIMIT must throw SqlParseException");
+    }
+
+    // @spec F07.R103 — well-formed SELECT with no trailing tokens must still parse (regression)
+    @Test
+    void noTrailingTokensParsesCleanly() throws SqlParseException {
+        var stmt = parser.parse(lexer.tokenize("SELECT * FROM t WHERE x = 1 LIMIT 5 OFFSET 10"));
+        assertTrue(stmt.where().isPresent());
+        assertEquals(5, stmt.limit().orElseThrow());
+        assertEquals(10, stmt.offset().orElseThrow());
+    }
+
+    // @spec F07.R97
     /** FINDING-11: sequential reuse of SqlParser should produce correct results */
     @Test
     void sequentialReuseProducesCorrectResults() throws SqlParseException {

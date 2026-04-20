@@ -26,6 +26,7 @@ class SqlTranslatorTest {
 
     // ── Happy path ───────────────────────────────────────────────
 
+    // @spec F07.R75
     @Test
     void translatesSelectStar() throws SqlParseException {
         var query = translate("SELECT * FROM test");
@@ -35,6 +36,7 @@ class SqlTranslatorTest {
         assertTrue(query.predicate().isEmpty());
     }
 
+    // @spec F07.R57
     @Test
     void translatesColumnProjection() throws SqlParseException {
         var query = translate("SELECT name, age FROM test");
@@ -42,6 +44,7 @@ class SqlTranslatorTest {
         assertEquals(List.of("name", "age"), query.projections());
     }
 
+    // @spec F07.R76
     @Test
     void translatesColumnAliases() throws SqlParseException {
         var query = translate("SELECT name AS n, age AS a FROM test");
@@ -50,6 +53,7 @@ class SqlTranslatorTest {
         assertEquals(List.of("n", "a"), query.aliases());
     }
 
+    // @spec F07.R62
     @Test
     void translatesWhereEquals() throws SqlParseException {
         var query = translate("SELECT * FROM test WHERE name = 'Alice'");
@@ -60,6 +64,7 @@ class SqlTranslatorTest {
         assertEquals("Alice", eq.value());
     }
 
+    // @spec F07.R62
     @Test
     void translatesWhereNotEquals() throws SqlParseException {
         var query = translate("SELECT * FROM test WHERE name != 'Bob'");
@@ -69,6 +74,7 @@ class SqlTranslatorTest {
         assertEquals("Bob", ne.value());
     }
 
+    // @spec F07.R62
     @Test
     void translatesWhereComparisons() throws SqlParseException {
         var gt = translate("SELECT * FROM test WHERE age > 30");
@@ -84,6 +90,7 @@ class SqlTranslatorTest {
         assertInstanceOf(Predicate.Lte.class, lte.predicate().get());
     }
 
+    // @spec F07.R63
     @Test
     void translatesWhereBetween() throws SqlParseException {
         var query = translate("SELECT * FROM test WHERE age BETWEEN 20 AND 40");
@@ -92,6 +99,7 @@ class SqlTranslatorTest {
         assertEquals("age", between.field());
     }
 
+    // @spec F07.R64
     @Test
     void translatesWhereAndOr() throws SqlParseException {
         var query = translate("SELECT * FROM test WHERE name = 'Alice' AND age > 30");
@@ -106,6 +114,7 @@ class SqlTranslatorTest {
         assertEquals(2, or.children().size());
     }
 
+    // @spec F07.R65
     @Test
     void translatesMatchFunction() throws SqlParseException {
         var query = translate("SELECT * FROM test WHERE MATCH(name, 'search text')");
@@ -115,6 +124,7 @@ class SqlTranslatorTest {
         assertEquals("search text", match.query());
     }
 
+    // @spec F07.R59
     @Test
     void translatesOrderBy() throws SqlParseException {
         var query = translate("SELECT * FROM test ORDER BY age DESC, name ASC");
@@ -126,6 +136,7 @@ class SqlTranslatorTest {
         assertTrue(query.orderBy().get(1).ascending());
     }
 
+    // @spec F07.R54
     @Test
     void translatesLimitAndOffset() throws SqlParseException {
         var query = translate("SELECT * FROM test LIMIT 10 OFFSET 20");
@@ -134,6 +145,7 @@ class SqlTranslatorTest {
         assertEquals(20, query.offset().orElse(-1));
     }
 
+    // @spec F07.R69,R84
     @Test
     void translatesVectorDistanceInOrderBy() throws SqlParseException {
         // Need a schema with a vector-compatible field for this test
@@ -153,6 +165,7 @@ class SqlTranslatorTest {
         assertEquals(10, query.limit().orElse(-1));
     }
 
+    // @spec F07.R62
     @Test
     void translatesStringLiteralValue() throws SqlParseException {
         var query = translate("SELECT * FROM test WHERE name = 'hello world'");
@@ -161,6 +174,7 @@ class SqlTranslatorTest {
         assertEquals("hello world", eq.value());
     }
 
+    // @spec F07.R77
     @Test
     void translatesNumericLiteralValues() throws SqlParseException {
         var intQuery = translate("SELECT * FROM test WHERE age = 42");
@@ -172,6 +186,7 @@ class SqlTranslatorTest {
         assertInstanceOf(Number.class, gtDec.value());
     }
 
+    // @spec F07.R61
     @Test
     void translatesBindParameter() throws SqlParseException {
         // Bind parameters are preserved in the predicate as-is —
@@ -181,6 +196,7 @@ class SqlTranslatorTest {
         assertTrue(query.predicate().isPresent());
     }
 
+    // @spec F07.R54,R64
     @Test
     void translatesFullComplexQuery() throws SqlParseException {
         var query = translate("""
@@ -200,17 +216,20 @@ class SqlTranslatorTest {
 
     // ── Error cases ──────────────────────────────────────────────
 
+    // @spec F07.R58
     @Test
     void rejectsUnknownColumnInWhere() {
         assertThrows(SqlParseException.class,
                 () -> translate("SELECT * FROM test WHERE nonexistent = 1"));
     }
 
+    // @spec F07.R57
     @Test
     void rejectsUnknownColumnInSelect() {
         assertThrows(SqlParseException.class, () -> translate("SELECT nonexistent FROM test"));
     }
 
+    // @spec F07.R59
     @Test
     void rejectsUnknownColumnInOrderBy() {
         assertThrows(SqlParseException.class,

@@ -512,11 +512,12 @@ class ResourceLifecycleAdversarialTest {
 
         // Verify the encryptor works before close
         float[] plaintext = { 1.0f, 2.0f, 3.0f, 4.0f };
-        DcpeSapEncryptor.EncryptedVector encrypted = encryptor.encrypt(plaintext);
+        byte[] ad = "embedding".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        DcpeSapEncryptor.EncryptedVector encrypted = encryptor.encrypt(plaintext, ad);
         assertNotNull(encrypted, "encrypt should succeed before close");
 
         // Verify decryption works
-        float[] decrypted = encryptor.decrypt(encrypted.values(), encrypted.seed());
+        float[] decrypted = encryptor.decrypt(encrypted, ad);
         assertEquals(plaintext.length, decrypted.length,
                 "decrypted vector should have same dimensions");
 
@@ -531,12 +532,11 @@ class ResourceLifecycleAdversarialTest {
         closeMethod.invoke(encryptor);
 
         // After close, encrypt must throw IllegalStateException (use-after-close guard)
-        assertThrows(IllegalStateException.class, () -> encryptor.encrypt(plaintext),
+        assertThrows(IllegalStateException.class, () -> encryptor.encrypt(plaintext, ad),
                 "encrypt after close() should throw IllegalStateException");
 
         // After close, decrypt must also throw IllegalStateException
-        assertThrows(IllegalStateException.class,
-                () -> encryptor.decrypt(encrypted.values(), encrypted.seed()),
+        assertThrows(IllegalStateException.class, () -> encryptor.decrypt(encrypted, ad),
                 "decrypt after close() should throw IllegalStateException");
 
         holder.close();

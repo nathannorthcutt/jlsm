@@ -4,6 +4,8 @@ import jlsm.core.cache.BlockCache;
 import org.junit.jupiter.api.Test;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -15,18 +17,21 @@ class StripedBlockCacheTest {
 
     // --- Builder validation ---
 
+    // @spec F09.R17
     @Test
     void zeroStripeCountRejected() {
         assertThrows(IllegalArgumentException.class,
                 () -> StripedBlockCache.builder().stripeCount(0).capacity(10).build());
     }
 
+    // @spec F09.R17
     @Test
     void negativeStripeCountRejected() {
         assertThrows(IllegalArgumentException.class,
                 () -> StripedBlockCache.builder().stripeCount(-1).capacity(10).build());
     }
 
+    // @spec F09.R9 — capacity formula uses effectiveStripeCount (rounded-up)
     @Test
     void nonPowerOfTwoStripeCountRoundedUp() {
         // 3 rounds up to 4, capacity must accommodate the effective count
@@ -43,6 +48,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R19 — power-of-2 stripe counts (including MAX_STRIPE_COUNT) are accepted
     @Test
     void powerOfTwoStripeCountsAccepted() {
         for (int count : new int[]{ 1, 2, 4, 8, 16, 32, 64 }) {
@@ -53,6 +59,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R45 — static stripeIndex rejects non-power-of-2 stripeCount
     @Test
     void stripeIndexRejectsNonPowerOfTwo() {
         // The static stripeIndex method requires power-of-2
@@ -62,18 +69,21 @@ class StripedBlockCacheTest {
                 () -> StripedBlockCache.stripeIndex(1L, 0L, 7));
     }
 
+    // @spec F09.R21
     @Test
     void capacityLessThanStripeCountRejected() {
         assertThrows(IllegalArgumentException.class,
                 () -> StripedBlockCache.builder().stripeCount(4).capacity(3).build());
     }
 
+    // @spec F09.R24
     @Test
     void capacityNotSetRejected() {
         assertThrows(IllegalArgumentException.class,
                 () -> StripedBlockCache.builder().stripeCount(2).build());
     }
 
+    // @spec F09.R1
     @Test
     void validBuilderConstructsCache() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -84,6 +94,7 @@ class StripedBlockCacheTest {
 
     // --- Stripe index ---
 
+    // @spec F09.R10
     @Test
     void stripeIndexInRange() {
         int stripeCount = 8;
@@ -96,6 +107,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R10,R13 — bitmask bound and determinism for power-of-2 stripeCount
     @Test
     void stripeIndexUsesBitmaskForPowerOfTwo() {
         // Verify the bitmask produces the same result as manual computation
@@ -109,6 +121,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R12 — sequential 4096-aligned offsets distribute across ≥ half of 8 stripes
     @Test
     void stripeIndexDistributesSequentialOffsets() {
         // Sequential 4096-aligned offsets (typical SSTable block offsets) should not all
@@ -124,6 +137,7 @@ class StripedBlockCacheTest {
 
     // --- get / put delegation ---
 
+    // @spec F09.R2,R4
     @Test
     void putThenGetReturnsBlock() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -133,6 +147,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R3
     @Test
     void getMissReturnsEmpty() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -140,6 +155,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R3
     @Test
     void getWrongKeyMisses() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -149,6 +165,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R4
     @Test
     void putOverwritesExisting() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -162,6 +179,7 @@ class StripedBlockCacheTest {
 
     // --- Input validation ---
 
+    // @spec F09.R25
     @Test
     void getNegativeBlockOffsetRejected() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -169,6 +187,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R26
     @Test
     void putNegativeBlockOffsetRejected() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -177,6 +196,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R27
     @Test
     void putNullBlockRejected() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -186,6 +206,7 @@ class StripedBlockCacheTest {
 
     // --- evict across stripes ---
 
+    // @spec F09.R5,R16
     @Test
     void evictRemovesAllBlocksForSstable() {
         // Use many offsets so entries are likely distributed across multiple stripes
@@ -203,6 +224,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R5
     @Test
     void evictDoesNotAffectOtherSstables() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -213,6 +235,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R5
     @Test
     void evictNonexistentSstableIsNoOp() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -224,6 +247,7 @@ class StripedBlockCacheTest {
 
     // --- size / capacity ---
 
+    // @spec F09.R6,R7
     @Test
     void initialSizeIsZero() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -231,6 +255,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R6
     @Test
     void sizeReflectsInsertions() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -241,6 +266,7 @@ class StripedBlockCacheTest {
         }
     }
 
+    // @spec F09.R9
     @Test
     void capacityReturnsTotalCapacity() {
         try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
@@ -250,6 +276,7 @@ class StripedBlockCacheTest {
 
     // --- LRU eviction through stripes ---
 
+    // @spec F09.R15
     @Test
     void lruEvictionWorksPerStripe() {
         // With 1 stripe and capacity 2, third insert should evict the LRU entry
@@ -267,12 +294,14 @@ class StripedBlockCacheTest {
 
     // --- close ---
 
+    // @spec F09.R32,R33
     @Test
     void closeDoesNotThrow() {
         var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build();
         assertDoesNotThrow(cache::close);
     }
 
+    // @spec F09.R46
     // Updated by audit block-cache-hardening: close() now rejects use-after-close on all methods
     // including size(). The old test asserted size()==0 after close, but the correct behavior is
     // that size() throws IllegalStateException on a closed cache.
@@ -288,11 +317,13 @@ class StripedBlockCacheTest {
 
     // --- Factory methods on LruBlockCache ---
 
+    // @spec F09.R41
     @Test
     void getMultiThreadedReturnsStripedBuilder() {
         assertInstanceOf(StripedBlockCache.Builder.class, LruBlockCache.getMultiThreaded());
     }
 
+    // @spec F09.R42
     @Test
     void getSingleThreadedReturnsLruBuilder() {
         assertInstanceOf(LruBlockCache.Builder.class, LruBlockCache.getSingleThreaded());
@@ -300,6 +331,7 @@ class StripedBlockCacheTest {
 
     // --- Concurrent correctness ---
 
+    // @spec F09.R34,R35,R36 — concurrent put/get is safe and doesn't lose entries within capacity
     @Test
     void concurrentPutGetDoesNotLoseEntries() throws InterruptedException {
         int threads = 8;
@@ -352,5 +384,85 @@ class StripedBlockCacheTest {
             // All entries should be present — no eviction with over-provisioned capacity
             assertEquals((long) threads * entriesPerThread, cache.size());
         }
+    }
+
+    // --- Algorithm pin tests ---
+
+    // @spec F09.R11 — pins the Splitmix64 finalizer (Stafford variant 13) constants and the
+    // golden-ratio input combining. If any multiplier or shift drifts, this test
+    // fails with a deterministic mismatch.
+    @Test
+    void stripeIndexMatchesSplitmix64StaffordReference() {
+        int stripeCount = 1024;
+        long[] sstableIds = { 1L, 42L, 0xDEADBEEFL, -1L, Long.MIN_VALUE };
+        long[] offsets = { 0L, 4096L, 1L << 30, Long.MAX_VALUE };
+        for (long sstableId : sstableIds) {
+            for (long offset : offsets) {
+                long h = sstableId * 0x9E3779B97F4A7C15L + offset;
+                h = (h ^ (h >>> 30)) * 0xBF58476D1CE4E5B9L;
+                h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
+                h = h ^ (h >>> 31);
+                int expected = (int) (h & (stripeCount - 1));
+                assertEquals(expected,
+                        StripedBlockCache.stripeIndex(sstableId, offset, stripeCount),
+                        "sstableId=" + sstableId + ", offset=" + offset);
+            }
+        }
+    }
+
+    // @spec F09.R14 — stripeIndex must be package-private static (not exposed on the public API)
+    @Test
+    void stripeIndexIsPackagePrivateStatic() throws NoSuchMethodException {
+        Method m = StripedBlockCache.class.getDeclaredMethod("stripeIndex", long.class, long.class,
+                int.class);
+        int mods = m.getModifiers();
+        assertTrue(Modifier.isStatic(mods), "stripeIndex must be static");
+        assertFalse(Modifier.isPublic(mods), "stripeIndex must not be public");
+        assertFalse(Modifier.isProtected(mods), "stripeIndex must not be protected");
+        assertFalse(Modifier.isPrivate(mods), "stripeIndex must not be private");
+    }
+
+    // @spec F09.R23 — default stripeCount = min(availableProcessors, 16), rounded up to next
+    // power of 2 by the Builder
+    @Test
+    void defaultStripeCountMatchesSpec() throws Exception {
+        int expected = Math.min(Runtime.getRuntime().availableProcessors(), 16);
+        int expectedEffective = Integer.bitCount(expected) == 1 ? expected
+                : Integer.highestOneBit(expected) << 1;
+        try (var cache = StripedBlockCache.builder().capacity(1024).build()) {
+            var field = StripedBlockCache.class.getDeclaredField("stripeCount");
+            field.setAccessible(true);
+            assertEquals(expectedEffective, field.getInt(cache),
+                    "default stripeCount must match min(availableProcessors, 16) "
+                            + "rounded up to power of 2");
+        }
+    }
+
+    // --- getOrLoad validation ---
+
+    // @spec F09.R38
+    @Test
+    void getOrLoadNegativeBlockOffsetRejected() {
+        try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> cache.getOrLoad(1L, -1L, () -> MemorySegment.ofArray(new byte[]{ 1 })));
+        }
+    }
+
+    // @spec F09.R39
+    @Test
+    void getOrLoadNullLoaderRejected() {
+        try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
+            assertThrows(NullPointerException.class, () -> cache.getOrLoad(1L, 0L, null));
+        }
+    }
+
+    // @spec F09.R40
+    @Test
+    void getOrLoadAfterCloseThrows() {
+        var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build();
+        cache.close();
+        assertThrows(IllegalStateException.class,
+                () -> cache.getOrLoad(1L, 0L, () -> MemorySegment.ofArray(new byte[]{ 1 })));
     }
 }

@@ -25,6 +25,9 @@ import jlsm.table.Predicate;
  * <p>
  * Governed by: domains.md § Full-Text Index Integration
  */
+// @spec F10.R79 — final class in jlsm.table.internal implementing SecondaryIndex
+// @spec F10.R5,R80,R81,R82,R83,R84 — STUB: all operations throw UnsupportedOperationException;
+// deferred to OBL-F10-fulltext (LsmFullTextIndex wiring)
 public final class FullTextFieldIndex implements SecondaryIndex {
 
     /**

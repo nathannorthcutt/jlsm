@@ -183,10 +183,12 @@ public final class ClusteredTable implements Table {
         final Set<NodeAddress> liveNodes = collectLiveNodes(view);
 
         if (liveNodes.isEmpty()) {
-            lastPartialResult = new PartialResultMetadata(Set.of("all"), false);
+            // @spec F04.R73 — record total=0 and responding=0 when no partitions are reachable.
+            lastPartialResult = new PartialResultMetadata(0, 0, Set.of("all"), false);
             return Collections.emptyIterator();
         }
 
+        final int totalQueried = liveNodes.size();
         final List<Iterator<TableEntry<String>>> iterators = new ArrayList<>();
         final Set<String> unavailable = new HashSet<>();
 
@@ -203,8 +205,10 @@ public final class ClusteredTable implements Table {
             }
         }
 
-        lastPartialResult = new PartialResultMetadata(Set.copyOf(unavailable),
-                unavailable.isEmpty());
+        // @spec F04.R64,R73 — expose total queried, responding count, and unavailable set.
+        final int responding = totalQueried - unavailable.size();
+        lastPartialResult = new PartialResultMetadata(totalQueried, responding,
+                Set.copyOf(unavailable), unavailable.isEmpty());
 
         // K-way merge the iterators by key order
         return mergeOrdered(iterators);

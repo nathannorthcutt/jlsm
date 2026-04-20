@@ -95,6 +95,9 @@ class EncryptionAdversarialTest {
 
     // ── C2-4: DcpeSapEncryptor.decrypt() does not validate dimensions ────────────
 
+    private static final byte[] AD = "adversarial"
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
     @Test
     void dcpeSapEncryptor_decrypt_wrongDimensions_throws() {
         // Vector: C2-4 — decrypt with wrong-sized array should throw, not silently corrupt
@@ -103,11 +106,13 @@ class EncryptionAdversarialTest {
                 EncryptionKeyHolder.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 8);
 
         final float[] vector = new float[]{ 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f };
-        final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector);
+        final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector, AD);
 
-        // Decrypt with a vector that has the wrong number of dimensions
-        final float[] wrongSize = Arrays.copyOf(ev.values(), 4); // truncated to 4 dims
-        assertThrows(IllegalArgumentException.class, () -> enc.decrypt(wrongSize, ev.seed()),
+        // Construct a wrong-sized EncryptedVector (truncated to 4 dims, tag copied as-is)
+        final float[] wrongSize = Arrays.copyOf(ev.values(), 4);
+        final DcpeSapEncryptor.EncryptedVector wrongEv = new DcpeSapEncryptor.EncryptedVector(
+                ev.seed(), wrongSize, ev.tag());
+        assertThrows(IllegalArgumentException.class, () -> enc.decrypt(wrongEv, AD),
                 "decrypt with wrong dimensions must throw, not silently produce wrong results");
     }
 
@@ -119,12 +124,13 @@ class EncryptionAdversarialTest {
                 EncryptionKeyHolder.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 4);
 
         final float[] vector = new float[]{ 1.0f, 2.0f, 3.0f, 4.0f };
-        final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector);
+        final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector, AD);
 
-        // Pad with extra elements
         final float[] tooLong = new float[8];
         System.arraycopy(ev.values(), 0, tooLong, 0, 4);
-        assertThrows(IllegalArgumentException.class, () -> enc.decrypt(tooLong, ev.seed()),
+        final DcpeSapEncryptor.EncryptedVector tooLongEv = new DcpeSapEncryptor.EncryptedVector(
+                ev.seed(), tooLong, ev.tag());
+        assertThrows(IllegalArgumentException.class, () -> enc.decrypt(tooLongEv, AD),
                 "decrypt with too many elements must throw");
     }
 
@@ -138,7 +144,7 @@ class EncryptionAdversarialTest {
                 EncryptionKeyHolder.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 4);
 
         final float[] vector = new float[]{ 1.0f, 2.0f, 3.0f, 4.0f };
-        final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector);
+        final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector, AD);
 
         final float[] original = Arrays.copyOf(ev.values(), ev.values().length);
 

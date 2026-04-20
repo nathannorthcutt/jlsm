@@ -39,6 +39,7 @@ class PartitionConfigAdversarialTest {
      * first client, leaking it. The builder catches this, but PartitionConfig itself should reject
      * it at the validation layer.
      */
+    // @spec F11.R18 — duplicate partition IDs rejected
     @Test
     void of_duplicatePartitionIds_throwsIllegalArgumentException() {
         // Two contiguous descriptors with the SAME ID (1L)

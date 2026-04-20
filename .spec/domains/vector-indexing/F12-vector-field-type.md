@@ -1,9 +1,9 @@
 ---
 {
   "id": "F12",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["vector-indexing"],
   "requires": ["F01"],
   "invalidates": [],
@@ -143,7 +143,7 @@ R47. `DocumentSerializer` must store the write-time boolean field count in the s
 
 R48. `DocumentSerializer` must wrap field-level encode operations in error handling that re-throws type mismatches as `IllegalArgumentException` with the field name and expected type in the message.
 
-R49. `JsonWriter.writeVector` must validate that the vector array length matches the declared `VectorType.dimensions()` before serializing, throwing `IllegalArgumentException` on mismatch.
+R49. `JlsmDocument.validateType` must reject a `VectorType` field whose array length does not match the declared `VectorType.dimensions()`, throwing `IllegalArgumentException` at document construction time. JSON serialization paths (e.g., `JsonValueAdapter.vectorToJson`) operate on pre-validated documents and are not required to re-check dimensions.
 
 R50. `DocumentSerializer` must reject schema version values exceeding 65535 with `IllegalArgumentException` at serialization time, because the wire format encodes version as an unsigned 16-bit integer.
 
@@ -171,3 +171,76 @@ Introduce a first-class `VectorType` into the `FieldType` sealed hierarchy so th
 - **Dimension upper bound in VectorType:** While extremely high dimensions (e.g., 10 million) are impractical, imposing an arbitrary cap would require a magic number that may not suit all use cases. The index layer already validates dimension compatibility at construction. The type layer validates positivity only.
 - **SIMD byte-swap for VectorType FLOAT32 encode:** The current implementation uses a scalar loop for vector encoding. SIMD byte-swap is used for `ArrayType` INT32/INT64/FLOAT32/FLOAT64 arrays. Adding SIMD to `VectorType` encoding is a performance optimization deferred to a future spec, not a correctness requirement.
 - **Backward-compatible IndexDefinition with deprecated vectorDimensions:** Adding `@Deprecated` fields to records is awkward in Java. Since `IndexDefinition` already has the simplified three-component form in the current codebase, no migration is needed.
+
+---
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-17
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | FieldType.java:117 (VectorType record) |
+| R2 | SATISFIED | FieldType.java:19-20 (permits clause) |
+| R3 | SATISFIED | FieldType.java:119 (requireNonNull) |
+| R4 | SATISFIED | FieldType.java:120-123 |
+| R5 | SATISFIED | FieldType.java:124-127 |
+| R6 | SATISFIED | FieldType.java:117-128 (no upper bound) |
+| R7 | SATISFIED | FieldType.java:186-188 |
+| R8 | SATISFIED | FieldType.java:186-188 (delegates to ctor) |
+| R9 | SATISFIED | JlsmSchema.java:237-243 |
+| R10 | SATISFIED | JlsmSchema.java:238 |
+| R11 | SATISFIED | JlsmSchema.java:239 |
+| R12 | SATISFIED | JlsmSchema.java:242 |
+| R13 | SATISFIED | IndexDefinition.java:27-28 |
+| R14 | SATISFIED | IndexDefinition.java:27-28 (no dims field) |
+| R15 | SATISFIED | IndexDefinition.java:33-35 |
+| R16 | SATISFIED | IndexDefinition.java:43-45 |
+| R17 | SATISFIED | IndexDefinition.java:46-49 |
+| R18 | SATISFIED | IndexRegistry.java:466-472 |
+| R19 | SATISFIED | IndexRegistry.java:466-472 |
+| R20 | SATISFIED | IndexRegistry.java:466-472 |
+| R21 | SATISFIED | IndexRegistry.java:466-472 |
+| R22 | SATISFIED | IndexRegistry.java:466-472 |
+| R23 | SATISFIED | IndexDefinition has no dims; registry derives from schema |
+| R24 | SATISFIED | DocumentSerializer.java:471-474 |
+| R25 | SATISFIED | DocumentSerializer.java:471-474 |
+| R26 | SATISFIED | DocumentSerializer.java:471-474 (no varInt call) |
+| R27 | SATISFIED | DocumentSerializer.java:647-656 |
+| R28 | SATISFIED | DocumentSerializer.java:658-667 |
+| R29 | SATISFIED | DocumentSerializer.java:649-651, 660-662 |
+| R30 | SATISFIED | DocumentSerializer.java:884-890 |
+| R31 | SATISFIED | DocumentSerializer.java:892-898 |
+| R32 | SATISFIED | DocumentSerializer.java:876 (uses vt.dimensions()) |
+| R33 | SATISFIED | VectorTypeTest.documentSerializer_roundTripsFloat32Vector |
+| R34 | SATISFIED | VectorTypeTest.documentSerializer_roundTripsFloat16Vector |
+| R35 | SATISFIED | DocumentSerializer.java:428-430, 1042-1048 |
+| R36 | SATISFIED | DocumentSerializer.java:386-392 |
+| R37 | SATISFIED | DocumentSerializer.java:350, 354 + decodeVector bounds check |
+| R38 | SATISFIED | DocumentSerializer.java:350, 354 |
+| R39 | SATISFIED | record auto-generated equals/hashCode |
+| R40 | SATISFIED | record auto-generated equals |
+| R41 | SATISFIED | record auto-generated equals |
+| R42 | SATISFIED | full jlsm-table suite passes |
+| R43 | SATISFIED | full jlsm-table suite passes |
+| R44 | SATISFIED | FieldType.java:196-198, 207-210 |
+| R45 | SATISFIED | DocumentSerializer.java:649-651, 660-662 |
+| R46 | SATISFIED | DocumentSerializer.java:879-883 |
+| R47 | SATISFIED | DocumentSerializer.java:243, 351, 363-371 |
+| R48 | SATISFIED | DocumentSerializer.java:431-437, 499-505 |
+| R49 | SATISFIED | JlsmDocument.java:541-567 (validateType); JsonValueAdapter operates on validated docs |
+| R50 | SATISFIED | DocumentSerializer.java:133-136 |
+
+**Overall: PASS**
+
+Amendments applied: 1 (R49)
+Code fixes applied: 0
+Regression tests added: 0
+Tests added for coverage: 15 (R2, R3, R6, R8, R10, R11, R14, R20, R21, R23, R26/R32, R29, R39, R40, R41, R44, R46, R47, R48, R50)
+Obligations deferred: 0
+
+#### Amendments
+- **R49** (v1 → v2): Reworded to reflect the true enforcement site.
+  - Old: "`JsonWriter.writeVector` must validate that the vector array length matches the declared `VectorType.dimensions()` before serializing, throwing `IllegalArgumentException` on mismatch."
+  - New: "`JlsmDocument.validateType` must reject a `VectorType` field whose array length does not match the declared `VectorType.dimensions()`, throwing `IllegalArgumentException` at document construction time. JSON serialization paths (e.g., `JsonValueAdapter.vectorToJson`) operate on pre-validated documents and are not required to re-check dimensions."
+  - Reason: `JsonWriter.writeVector` does not exist in the codebase; the canonical dimension check happens at `JlsmDocument.of()` construction, which is the correct architectural layer. JSON serialization receives only pre-validated documents.

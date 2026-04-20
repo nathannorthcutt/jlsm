@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Covers spec requirements F18.R23, R24, R25, and F02.R38.
  */
+// @spec F18.R23,R24,R25
 class CompressionPolicyTest {
 
     @TempDir
@@ -111,6 +112,31 @@ class CompressionPolicyTest {
             tree.put(seg("key"), seg("value"));
             Optional<MemorySegment> result = tree.get(seg("key"));
             assertTrue(result.isPresent());
+            assertEquals("value", str(result.get()));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // R25: when neither compression nor sstableWriterFactory is supplied, the
+    // tree must still build and default to CompressionCodec.none()
+    // -----------------------------------------------------------------------
+
+    // @spec F18.R25 — precedence: compressionPolicy > compression > user factories > default none
+    @Test
+    void treeWithNoCompressionAndNoFactoriesDefaultsToNone() throws IOException {
+        // Nothing configured: no compression/compressionPolicy, no sstableWriterFactory,
+        // no sstableReaderFactory. Tree must build with an implicit _ -> none() policy.
+        Path walDir = Files.createDirectory(tempDir.resolve("default-wal"));
+        try (StandardLsmTree tree = StandardLsmTree.builder()
+                .wal(LocalWriteAheadLog.builder().directory(walDir).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .idSupplier(idCounter::getAndIncrement)
+                .pathFn((id, level) -> tempDir
+                        .resolve("default-sst-" + id + "-L" + level.index() + ".sst"))
+                .recoverFromWal(false).memTableFlushThresholdBytes(1L).build()) {
+            tree.put(seg("key"), seg("value"));
+            Optional<MemorySegment> result = tree.get(seg("key"));
+            assertTrue(result.isPresent(), "default-configured tree must remain functional");
             assertEquals("value", str(result.get()));
         }
     }
@@ -321,6 +347,68 @@ class CompressionPolicyTest {
                 assertTrue(result.isPresent(), "key-" + i + " should be readable");
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // F16 R23: tree builder blockSize propagates to SSTables produced by the tree
+    // -----------------------------------------------------------------------
+
+    // @spec F16.R23,R24 — blockSize propagates via the shared writerFactory; SpookyCompactor
+    // inherits this writerFactory (StandardLsmTree.Builder.build wires it in), so any SSTable
+    // produced by compaction gets the same blockSize as flushed SSTables
+    @Test
+    void treeBlockSizePropagatesToFlushedSSTables() throws IOException {
+        int chosen = 8192;
+        Path dataPath = tempDir.resolve("tree-blocksize");
+        Files.createDirectories(dataPath);
+        Path walPath = tempDir.resolve("wal-blocksize");
+        Files.createDirectories(walPath);
+        AtomicLong localCounter = new AtomicLong(0);
+        List<Path> writtenPaths = new CopyOnWriteArrayList<>();
+
+        try (StandardLsmTree tree = StandardLsmTree.builder()
+                .wal(LocalWriteAheadLog.builder().directory(walPath).build())
+                .memTableFactory(ConcurrentSkipListMemTable::new)
+                .sstableReaderFactory(
+                        path -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                                null, CompressionCodec.none(), CompressionCodec.deflate()))
+                .idSupplier(localCounter::getAndIncrement).pathFn((id, level) -> {
+                    Path p = dataPath.resolve("sst-" + id + "-L" + level.index() + ".sst");
+                    writtenPaths.add(p);
+                    return p;
+                }).compression(CompressionCodec.deflate()).blockSize(chosen)
+                .memTableFlushThresholdBytes(1L).recoverFromWal(false).build()) {
+            tree.put(seg("alpha"), seg("first"));
+            tree.put(seg("beta"), seg("second"));
+        }
+
+        assertFalse(writtenPaths.isEmpty(), "at least one SSTable must have been flushed");
+        boolean sawBlockSize = false;
+        for (Path p : writtenPaths) {
+            if (!Files.exists(p)) {
+                continue;
+            }
+            try (TrieSSTableReader r = TrieSSTableReader.open(p, BlockedBloomFilter.deserializer(),
+                    null, CompressionCodec.none(), CompressionCodec.deflate())) {
+                assertEquals((long) chosen, r.blockSize(),
+                        "tree-configured blockSize must appear in each flushed SSTable's v3 footer");
+                sawBlockSize = true;
+            }
+        }
+        assertTrue(sawBlockSize, "expected at least one readable SSTable to verify blockSize");
+    }
+
+    // @spec F16.R11 — invalid blockSize at tree builder rejected with IllegalArgumentException
+    @Test
+    void treeBlockSizeRejectsInvalidValues() {
+        assertThrows(IllegalArgumentException.class, () -> StandardLsmTree.builder().blockSize(0),
+                "zero is below the minimum block size");
+        assertThrows(IllegalArgumentException.class,
+                () -> StandardLsmTree.builder().blockSize(6000),
+                "non-power-of-two must be rejected");
+        assertThrows(IllegalArgumentException.class,
+                () -> StandardLsmTree.builder().blockSize(64 * 1024 * 1024),
+                "64 MiB exceeds max block size (32 MiB)");
     }
 
     // -----------------------------------------------------------------------

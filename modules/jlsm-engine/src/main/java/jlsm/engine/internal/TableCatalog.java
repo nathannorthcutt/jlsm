@@ -9,9 +9,11 @@ import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -59,6 +61,7 @@ final class TableCatalog implements Closeable {
      *
      * @throws IOException if the root directory cannot be read or is corrupt
      */
+    // @spec F05.R4,R5,R52,R53,R55,R57,R58,R59,R60,R85,R86 — startup scan + recovery
     void open() throws IOException {
         if (!Files.exists(rootDir)) {
             Files.createDirectories(rootDir);
@@ -121,6 +124,7 @@ final class TableCatalog implements Closeable {
      * @return the metadata for the newly registered table
      * @throws IOException if the table already exists or the directory cannot be created
      */
+    // @spec F05.R14,R15,R16,R17,R56,R67,R84,R87,R88 — register is the catalog write contract
     TableMetadata register(String name, JlsmSchema schema) throws IOException {
         ensureReady();
         Objects.requireNonNull(name, "name must not be null");
@@ -162,7 +166,9 @@ final class TableCatalog implements Closeable {
     }
 
     /**
-     * Unregisters a table by removing its subdirectory and all contained files.
+     * Unregisters a table by removing its subdirectory and all contained files. Used only for
+     * creation rollback (the table was never served) — for user-initiated drop, see
+     * {@link #markDropped(String)}.
      *
      * @param name the table name; must not be null or empty
      * @throws IOException if the table does not exist or cannot be removed
@@ -186,6 +192,74 @@ final class TableCatalog implements Closeable {
     }
 
     /**
+     * Drops a table by atomically transitioning its persisted metadata to DROPPED state. The
+     * metadata file is preserved as a tombstone; all other files under the table's subdirectory are
+     * removed on a best-effort basis.
+     *
+     * <p>
+     * On restart, the DROPPED tombstone tells the engine the table was explicitly dropped (vs.
+     * never created), so {@link LocalEngine#getTable(String)} can distinguish the two.
+     *
+     * @param name the table name; must not be null or empty
+     * @throws IOException if the table does not exist or the DROPPED-state write fails
+     */
+    // @spec F05.R26,R27 — persist DROPPED via atomic write-then-rename before any deletion
+    void markDropped(String name) throws IOException {
+        ensureOpen();
+        Objects.requireNonNull(name, "name must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+
+        final TableMetadata existing = tables.get(name);
+        if (existing == null) {
+            throw new IOException("Table does not exist: " + name);
+        }
+
+        final TableMetadata tombstone = new TableMetadata(existing.name(), existing.schema(),
+                existing.createdAt(), TableMetadata.TableState.DROPPED);
+
+        final Path metaPath = rootDir.resolve(name).resolve(METADATA_FILE);
+        writeMetadata(metaPath, tombstone);
+        tables.put(name, tombstone);
+
+        // @spec F05.R31 — best-effort cleanup; the tombstone must remain even if deletion fails
+        final Path tableDir = rootDir.resolve(name);
+        deleteDataFilesPreservingTombstone(tableDir, metaPath);
+    }
+
+    /**
+     * Walks the table directory and deletes every file except the tombstone metadata. Swallows
+     * IOExceptions individually so that a single un-deletable file does not prevent other files
+     * from being cleaned up and does not propagate failure to the caller.
+     */
+    private static void deleteDataFilesPreservingTombstone(Path tableDir, Path tombstone) {
+        if (!Files.exists(tableDir)) {
+            return;
+        }
+        final List<Path> victims = new ArrayList<>();
+        try (final var walker = Files.walk(tableDir)) {
+            walker.forEach(p -> {
+                if (!p.equals(tombstone) && !p.equals(tableDir)) {
+                    victims.add(p);
+                }
+            });
+        } catch (IOException ignored) {
+            // walk itself failed — best-effort, nothing to clean up
+            return;
+        }
+        // Delete deepest entries first so directories become empty before we try to remove them
+        victims.sort((a, b) -> Integer.compare(b.getNameCount(), a.getNameCount()));
+        for (final Path v : victims) {
+            try {
+                Files.deleteIfExists(v);
+            } catch (IOException ignored) {
+                // swallow per R31 — cleanup is best-effort
+            }
+        }
+    }
+
+    /**
      * Returns metadata for a specific table, or empty if not registered.
      *
      * @param name the table name; must not be null
@@ -198,13 +272,33 @@ final class TableCatalog implements Closeable {
     }
 
     /**
-     * Returns metadata for all known tables.
+     * Returns metadata for all known tables, including DROPPED / ERROR / LOADING. Used by callers
+     * that need the full catalog view. External consumers should prefer {@link #listReady()}.
      *
      * @return an unmodifiable collection of table metadata; never null
      */
     Collection<TableMetadata> list() {
         ensureOpen();
         return Collections.unmodifiableCollection(tables.values());
+    }
+
+    /**
+     * Returns an independent snapshot of tables whose state is
+     * {@link TableMetadata.TableState#READY}. The returned collection does not reflect subsequent
+     * catalog mutations.
+     *
+     * @return an unmodifiable snapshot of READY tables; never null
+     */
+    // @spec F05.R20 — READY-only snapshot copy (not a live view)
+    Collection<TableMetadata> listReady() {
+        ensureOpen();
+        final List<TableMetadata> snapshot = new ArrayList<>();
+        for (final TableMetadata m : tables.values()) {
+            if (m.state() == TableMetadata.TableState.READY) {
+                snapshot.add(m);
+            }
+        }
+        return Collections.unmodifiableList(snapshot);
     }
 
     /**
@@ -245,13 +339,20 @@ final class TableCatalog implements Closeable {
     private static final byte TYPE_BOUNDED_STRING = 4;
 
     /**
-     * Writes table metadata to a binary file. Format: magic (4 bytes) | schema-name (UTF) |
-     * schema-version (int) | field-count (int) | field-definitions (variable) | created-at-millis
-     * (long) | state-ordinal (int)
+     * Writes table metadata to a binary file atomically via write-then-rename. Format: magic (4
+     * bytes) | schema-name (UTF) | schema-version (int) | field-count (int) | field-definitions
+     * (variable) | created-at-millis (long) | state-ordinal (int).
+     *
+     * <p>
+     * A sibling temp file is written fully, then moved into place with ATOMIC_MOVE +
+     * REPLACE_EXISTING. Falls back to a non-atomic REPLACE_EXISTING move on filesystems where
+     * atomic rename is not supported.
      */
+    // @spec F05.R54 — write-then-rename atomic metadata write
     private static void writeMetadata(Path path, TableMetadata metadata) throws IOException {
         assert metadata != null : "metadata must not be null";
-        try (final DataOutputStream out = new DataOutputStream(Files.newOutputStream(path))) {
+        final Path temp = path.resolveSibling(path.getFileName().toString() + ".tmp");
+        try (final DataOutputStream out = new DataOutputStream(Files.newOutputStream(temp))) {
             out.writeInt(MAGIC);
             out.writeUTF(metadata.schema().name());
             out.writeInt(metadata.schema().version());
@@ -262,6 +363,20 @@ final class TableCatalog implements Closeable {
             }
             out.writeLong(metadata.createdAt().toEpochMilli());
             out.writeInt(metadata.state().ordinal());
+        }
+        try {
+            Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            // Surface the rename failure but try to clean up the temp file to avoid clutter
+            try {
+                Files.deleteIfExists(temp);
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
         }
     }
 
@@ -299,6 +414,7 @@ final class TableCatalog implements Closeable {
      * Reads table metadata from a binary file, reconstructing the full schema including field
      * definitions and persisted table state.
      */
+    // @spec F05.R55,R84 — read full schema + state from a single per-table metadata file
     private static TableMetadata readMetadata(String tableName, Path path) throws IOException {
         assert tableName != null : "tableName must not be null";
         assert path != null : "path must not be null";

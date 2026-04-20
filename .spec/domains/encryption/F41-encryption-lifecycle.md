@@ -1,9 +1,9 @@
 ---
 {
   "id": "F41",
-  "version": 3,
+  "version": 4,
   "status": "ACTIVE",
-  "state": "APPROVED",
+  "state": "DRAFT",
   "domains": ["encryption", "engine"],
   "requires": ["F03", "F14"],
   "invalidates": ["F03.R20", "F03.R22"],
@@ -11,7 +11,7 @@
   "amended_by": null,
   "decision_refs": ["per-field-pre-encryption", "per-field-key-binding", "encryption-key-rotation", "unencrypted-to-encrypted-migration", "index-access-pattern-leakage"],
   "kb_refs": ["systems/security/encryption-key-rotation-patterns", "systems/security/jvm-key-handling-patterns", "systems/security/client-side-encryption-patterns", "algorithms/encryption/index-access-pattern-leakage"],
-  "open_obligations": []
+  "open_obligations": ["implement-f41-lifecycle"]
 }
 ---
 
@@ -95,7 +95,14 @@ R21. At any point in time, exactly one DEK version must be designated as the cur
 
 ### Ciphertext format with version tag
 
-R22. Every encrypted field value must be prefixed with a 4-byte big-endian DEK version tag in plaintext. The reader must use this tag to look up the correct DEK before decryption. The ciphertext layout per encryption variant is: `[4B DEK version | 12B IV/nonce | encrypted payload | 16B GCM auth tag]` for AES-GCM (Opaque), `[4B DEK version | 16B synthetic IV | ciphertext]` for AES-SIV (Deterministic), `[4B DEK version | 9B OPE ciphertext]` for OPE (OrderPreserving), and `[4B DEK version | N*4B encrypted floats]` for DCPE (DistancePreserving).
+R22. Every encrypted field value must be prefixed with a 4-byte big-endian DEK version tag in plaintext. The reader must use this tag to look up the correct DEK before decryption. The ciphertext layout per encryption variant is:
+
+- `[4B DEK version | 12B IV/nonce | encrypted payload | 16B GCM auth tag]` for AES-GCM (Opaque). The GCM tag provides inline authentication.
+- `[4B DEK version | 16B synthetic IV | ciphertext]` for AES-SIV (Deterministic). The S2V synthetic IV provides inline authentication.
+- `[4B DEK version | 1B length prefix | 8B OPE ciphertext long | 16B detached HMAC-SHA256 tag]` for OPE (OrderPreserving) — total 29 bytes. The 16-byte detached tag is computed per F03.R78 and binds the OPE ciphertext to the UTF-8 field name and the DEK version. MAC verification must run before the OPE inverse.
+- `[4B DEK version | 8B perturbation seed | N*4B encrypted floats | 16B detached HMAC-SHA256 tag]` for DCPE (DistancePreserving) — total `8 + N*4 + 20` bytes (4 version + 8 seed + 4N ciphertext + 16 tag). The 16-byte detached tag is computed per F03.R79 and binds the seed and encrypted vector to the UTF-8 field name and the DEK version. MAC verification must run before the DCPE inverse.
+
+Detached MAC tags for OPE and DCPE close the authenticity gap identified in F03 v1 where wrong-key decryption produced plausible but incorrect values. Tags for GCM and SIV are inherent to those schemes and require no additional wrapping.
 
 R22a. The 4-byte version tag must contain a positive integer (1 or greater). If the reader encounters a version tag of 0 or a negative value (when interpreted as signed big-endian int), it must throw IOException indicating corrupt ciphertext. This applies to both normal reads and compaction re-encryption reads. The version-0/negative check must be performed as part of the same lookup path as the hash map check (R64) — the implementation must not branch to a separate error path before performing the map lookup. Version 0 is never inserted into the map, so both version-0 and version-not-found follow the same code path, preserving the constant-time property of R64.
 
@@ -335,3 +342,48 @@ requiredKeyBits 0 for None (R16c amended), R22a timing side channel (R22a amende
 Zero critical findings. All 10 Pass 3 fixes verified for internal consistency,
 cross-fix interactions, and dangling dependencies. Low: R25a cross-reference to R40
 added for schema version tag handling in compaction write path.
+
+---
+
+## Verification Notes
+
+### Amended: v4 — 2026-04-17 — state demotion APPROVED → DRAFT
+
+Discovered during F03 spec-verify: F41 has zero code coverage.
+
+Searched codebase for `deriveFieldKey`, `HKDF`, `preEncryptedBitset`, `keyRegistry`, `DekVersion`, `LeakageProfile` — only match is a single comment in `DataTransformationAdversarialTest.java` flagging that the GCM key truncation lacks HKDF (not an implementation). The full F41 surface area — per-field HKDF derivation, KEK/DEK envelope hierarchy, key registry with atomic updates, 4-byte DEK version tag on ciphertext, compaction-driven re-encryption, schema version tag in SSTable footer, `leakageProfile()` method, power-of-2 response padding, KEK rotation, dual-read rotation window, online encryption migration — is architecture captured as spec text but not implemented.
+
+F41's APPROVED state was misleading: the spec passed three adversarial review passes but was never verified against implementation. The state is demoted to DRAFT to reflect that no code backs these contracts. A new obligation `implement-f41-lifecycle` is registered to track the full implementation project.
+
+#### Amendments applied in v4
+
+- **R22** — Ciphertext format amended to specify detached 16-byte HMAC-SHA256 authentication tags for OPE and DCPE. This closes the authenticity gap identified in F03 v1 where wrong-key OPE/DCPE decryption produced plausible but incorrect values. New OPE on-disk format is 29 bytes; new DCPE on-disk format is `8 + N*4 + 20` bytes. GCM and SIV layouts unchanged (inline authentication is inherent to those schemes). See F03.R78 and F03.R79 for MAC derivation details.
+
+#### Partial code implementation scheduled in F03 verification (Phase 5)
+
+The F03 verification (2026-04-17) includes code changes that partially implement F41 under the current single-key model (no DEK version tag, no KEK hierarchy):
+
+- **MAC wrapping for OPE/DCPE** — implements F41.R22's detached tag requirement for OPE and DCPE ciphertext.
+- **DCPE serializer integration** — implements F03.R50/R51 by moving DCPE encryption into `DocumentSerializer`, with per-vector perturbation seed and MAC stored in the serialized format.
+- **Finally-block key zeroing** — implements F03.R81 / F41.R16 / F41.R68 zeroization discipline for intermediate key arrays.
+
+When the full F41 is implemented, the on-disk ciphertext format will need a migration pass to add the 4-byte DEK version tag prefix specified in R22. Existing data written in the interim will need to be re-encrypted via the compaction-driven migration mechanism (R25, R38). This migration is tracked under `implement-f41-lifecycle`.
+
+#### Known gaps remaining in DRAFT state
+
+All of F41 except the MAC-wrapping portion of R22 remains unimplemented. The full list:
+
+- R1–R8 — per-field pre-encryption bitset on JlsmDocument
+- R9–R16c — HKDF-SHA256 key derivation (code currently uses single-pass HMAC-Expand)
+- R17–R24 — KEK/DEK hierarchy, key registry, DEK version tag prefix, CRC-32C checksum
+- R25–R28 — compaction-driven re-encryption
+- R29–R31 — DEK lifecycle and pruning
+- R32–R34a — KEK rotation
+- R35–R37 — dual-read rotation window + DET/OPE index rebuild
+- R38–R43 — online encryption migration
+- R44–R50 — leakage profile documentation
+- R51–R54 — power-of-2 response padding
+- R55–R65 — various validation and concurrency requirements
+- R66–R70a — resource lifecycle requirements beyond R16/R68 finally-block zeroing
+
+Obligations registered: `implement-f41-lifecycle`.

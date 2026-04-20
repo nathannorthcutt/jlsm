@@ -46,4 +46,32 @@ class PartialResultMetadataTest {
         assertThrows(UnsupportedOperationException.class,
                 () -> meta.unavailablePartitions().add("p2"));
     }
+
+    // @spec F04.R73 — metadata must expose total queried and responding counts
+    @Test
+    void canonicalConstructorExposesCounts() {
+        var meta = new PartialResultMetadata(5, 3, Set.of("p4", "p5"), false);
+        assertEquals(5, meta.totalPartitionsQueried());
+        assertEquals(3, meta.respondingPartitions());
+        assertEquals(Set.of("p4", "p5"), meta.unavailablePartitions());
+        assertFalse(meta.isComplete());
+    }
+
+    @Test
+    void negativeTotalPartitionsQueriedThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new PartialResultMetadata(-1, 0, Set.of(), true));
+    }
+
+    @Test
+    void respondingExceedsTotalThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new PartialResultMetadata(3, 5, Set.of(), true));
+    }
+
+    @Test
+    void negativeRespondingThrows() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new PartialResultMetadata(3, -1, Set.of(), true));
+    }
 }

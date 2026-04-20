@@ -16,10 +16,10 @@ import java.util.stream.Stream;
  * Instances are created via the static factory {@link #of(List)}. The factory validates that no
  * elements are null and makes a defensive copy.
  *
- * @spec F15.R12 — List-like access and Stream composability
- * @spec F15.R13 — deep immutability
- * @spec F15.R14 — deep equality
- * @spec F15.R15 — composable with Stream APIs
+ * @spec F15.R12 — List-like access: get, size, stream
+ * @spec F15.R13 — deeply immutable
+ * @spec F15.R14 — structural deep equality
+ * @spec F15.R15 — static factory only
  */
 public final class JsonArray implements JsonValue {
 

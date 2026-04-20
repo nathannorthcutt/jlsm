@@ -143,6 +143,7 @@ work_fm_artifact_deps() {
             if (kv[1] == "type") dep_type = val
             else if (kv[1] == "path") dep_path = val
             else if (kv[1] == "slug") dep_slug = val
+            else if (kv[1] == "ref") dep_path = val
             else if (kv[1] == "required_state") req_state = val
             else if (kv[1] == "required_status") req_state = val
             else if (kv[1] == "kind") kind = val

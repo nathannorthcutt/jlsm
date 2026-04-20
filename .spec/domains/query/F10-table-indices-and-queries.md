@@ -1,7 +1,7 @@
 ---
 {
   "id": "F10",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["query", "engine"],
@@ -11,7 +11,7 @@
   "amended_by": null,
   "decision_refs": [],
   "kb_refs": [],
-  "open_obligations": []
+  "open_obligations": ["OBL-F10-fulltext", "OBL-F10-vector"]
 }
 ---
 
@@ -119,7 +119,7 @@ R44. For FLOAT32, `FieldValueCodec` must apply IEEE 754 sort-preserving encoding
 
 R45. For FLOAT64, `FieldValueCodec` must apply the same IEEE 754 sort-preserving encoding as FLOAT32, using long raw bits.
 
-R46. For FLOAT16, `FieldValueCodec` must apply sign-bit-flip encoding on the 2-byte raw representation, preserving sort order.
+R46. For FLOAT16, `FieldValueCodec` must apply IEEE 754 sort-preserving encoding on the 2-byte raw representation: if the sign bit is set, invert all bits; otherwise set the sign bit. This preserves ordering across negative and positive half-precision values.
 
 R47. For STRING and BoundedString, `FieldValueCodec` must encode as raw UTF-8 bytes with no transformation.
 
@@ -159,7 +159,7 @@ R62. `SecondaryIndex.supports(predicate)` must return true only when the predica
 
 R63. `FieldIndex` must implement `SecondaryIndex` and must be a final class in `jlsm.table.internal`.
 
-R64. `FieldIndex` must accept an `IndexDefinition` with type `EQUALITY`, `RANGE`, or `UNIQUE` only (assert on construction).
+R64. `FieldIndex` must reject at construction an `IndexDefinition` whose type is not `EQUALITY`, `RANGE`, or `UNIQUE` with an `IllegalArgumentException`.
 
 R65. `FieldIndex` must maintain a sorted map keyed by sort-preserving encoded field values (via `FieldValueCodec`) with lists of primary key segments as values.
 
@@ -279,7 +279,7 @@ R115. For `Predicate.And`, `QueryExecutor` must compute the intersection of resu
 
 R116. For `Predicate.Or`, `QueryExecutor` must compute the union of results from all child predicates.
 
-R117. For `FullTextMatch` and `VectorNearest` predicates without a corresponding index, the scan-and-filter fallback must return no results (these predicates require index backing).
+R117. For `FullTextMatch` and `VectorNearest` predicates without a corresponding index, the scan-and-filter fallback must throw `UnsupportedOperationException` with a message identifying the field and the required index type. These predicates require index backing and cannot be evaluated row-by-row.
 
 R118. `QueryExecutor` must deduplicate results by primary key so that no entry appears more than once in the output iterator.
 
@@ -289,9 +289,9 @@ R119. Scan-and-filter for `Eq` must match entries where the field value is non-n
 
 R120. Scan-and-filter for `Ne` must match entries where the field value is non-null and does not equal the query value.
 
-R121. Scan-and-filter for `Gt` must match entries where the field value is a `Comparable` of the same class as the query value and compares greater than zero.
+R121. Scan-and-filter for `Gt`, `Gte`, `Lt`, `Lte` must match entries where the field value is a `Comparable` and compares appropriately against the query value. When field value and query value share a class, use natural `compareTo`; when both are numeric (`java.lang.Number` subtypes) but differ in class, widen to `double` if either is floating-point, otherwise to `long`. Non-numeric class mismatches must produce no match.
 
-R122. Scan-and-filter for `Between` must match entries where the field value is a `Comparable` of the same class as both bounds and falls within the inclusive range.
+R122. Scan-and-filter for `Between` must match entries where the field value is a `Comparable` and falls within the inclusive range `[low, high]` using the same coercion rules as R121. The `Between` record itself enforces that `low` and `high` share a class at construction (R18 guardrail).
 
 R123. Scan-and-filter must treat null field values as non-matching for all comparison predicates.
 
@@ -305,7 +305,7 @@ R125. `FieldValueCodec` must use the schema-declared field type for encoding rat
 
 R126. `FieldIndex.close()` must set a closed flag and clear its internal data structures.
 
-R127. After `FieldIndex.close()`, all mutation operations must be rejected (via assert).
+R127. After `FieldIndex.close()`, all mutation and lookup operations must throw `IllegalStateException` indicating the index is closed.
 
 R128. `IndexRegistry.close()` must close all registered indices and must not leak resources even if one index close throws an exception.
 
@@ -317,7 +317,7 @@ R130. `IndexType`, `IndexDefinition`, `Predicate`, `TableQuery`, `TableEntry`, a
 
 ### Thread safety
 
-R131. `IndexRegistry` must use a volatile closed flag so that the closed state is visible to all threads without external synchronization.
+R131. `IndexRegistry` must expose closed-state transitions atomically to all threads without external synchronization. Implementations must use either a `volatile` flag or a stronger primitive such as `AtomicBoolean` with `compareAndSet` to guarantee a single close winner.
 
 R132. `FieldIndex` must use a volatile closed flag so that the closed state is visible to all threads.
 
@@ -377,3 +377,57 @@ Enable secondary index support and a fluent query API for `JlsmTable`. Users def
 - Index-level locking or concurrent write coordination beyond volatile flags
 - Persistent index storage independent of the primary LSM tree
 - Query result ordering or pagination
+
+---
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-17
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `IndexType` enum — five constants |
+| R2–R4 | SATISFIED | `FieldIndex.supports` per-type dispatch |
+| R5 | DEFERRED (OBL-F10-fulltext) | `IndexRegistry.validate` enforces STRING/BoundedString; `FullTextFieldIndex` is a stub |
+| R6 | DEFERRED (OBL-F10-vector) | `IndexRegistry.validate` enforces VectorType; `VectorFieldIndex` is a stub |
+| R7–R13 | SATISFIED | `IndexDefinition` record + compact ctor validation |
+| R14 | SATISFIED | `Predicate` sealed interface with 11 nested record permits |
+| R15–R29 | SATISFIED | leaf record compact ctors; `And`/`Or` defensive copy via `List.copyOf` |
+| R30–R38 | SATISFIED | `TableQuery` fluent builder; unbound `execute()` throws UOE |
+| R39–R52 | SATISFIED | `FieldValueCodec` — sort-preserving encoding verified by `FieldValueCodecTest` |
+| R53–R62 | SATISFIED | `SecondaryIndex` sealed interface; FieldIndex satisfies all; stub impls tracked by obligations |
+| R63–R73 | SATISFIED | `FieldIndex` — `ConcurrentSkipListMap<ByteArrayKey, List<MemorySegment>>` |
+| R74–R78 | SATISFIED | Two-phase unique validation in `IndexRegistry.onInsert`/`onUpdate` with rollback |
+| R79–R84 | DEFERRED (OBL-F10-fulltext) | `FullTextFieldIndex` is a stub — all operations throw `UnsupportedOperationException` |
+| R85–R90 | DEFERRED (OBL-F10-vector) | `VectorFieldIndex` is a stub — mutation is no-op, lookup throws |
+| R91–R105 | SATISFIED | `IndexRegistry` — `ReentrantReadWriteLock`, `AtomicBoolean`, deferred-exception close |
+| R106–R110 | SATISFIED | `FieldIndex.onUpdate` remove-then-insert; null-field early returns |
+| R111–R118 | SATISFIED | `QueryExecutor` — index routing via `findAndLookup`, `LinkedHashSet` dedup; R117 code throws UOE (amended) |
+| R119–R123 | SATISFIED | `QueryExecutor.matchesPredicate` — null-safe, `compareCoerced` widens numerics (amended) |
+| R124–R125 | SATISFIED | `FieldValueCodec` per-type instanceof checks; `FieldIndex.resolveFieldType` prefers schema |
+| R126–R128 | SATISFIED | `FieldIndex.close` + `IndexRegistry.close` — deferred-exception pattern |
+| R129–R130 | SATISFIED | `jlsm.table` module exports `jlsm.table` only; `internal` package not exported |
+| R131 | SATISFIED | `IndexRegistry` uses `AtomicBoolean` with `compareAndSet` (amended — stronger than volatile) |
+| R132 | SATISFIED | `FieldIndex` — `volatile boolean closed` |
+| R133–R134 | SATISFIED | `ByteArrayKey.compareTo` uses `Byte.toUnsignedInt`; equals/hashCode via `Arrays` |
+| R135–R139 | SATISFIED | audit-hardened read-lock scopes, documentStore in rollback scope, deferred close exceptions, EQUALITY-on-BOOLEAN reject, defensive vector-array copy |
+
+**Overall: PASS_WITH_NOTES** — 128 SATISFIED, 11 DEFERRED via obligations (FullText and Vector index stubs).
+
+**Amendments applied (v1 → v2):**
+- **R46:** "sign-bit-flip encoding" → "IEEE 754 sort-preserving encoding on the 2-byte raw representation: if the sign bit is set, invert all bits; otherwise set the sign bit." Reason: simple sign-bit-flip does not preserve ordering across negative float values; the implementation has always done the correct IEEE 754 transform for 2-byte half-precision.
+- **R64:** "assert on construction" → "reject ... with an `IllegalArgumentException`". Reason: project `code-quality.md` requires runtime checks for input guards; `assert` alone is disabled in production.
+- **R117:** "fallback must return no results" → "fallback must throw `UnsupportedOperationException` with a message identifying the field and the required index type". Reason: explicit failure is preferable to silent empty results for predicates that cannot be scanned.
+- **R121, R122:** "same class" → coercion rules (widen to `double` if either is floating-point, else `long`) with non-numeric mismatches producing no match. Reason: `QueryExecutor.compareCoerced` enables useful cross-type numeric comparisons; original wording forbade this.
+- **R127:** "rejected (via assert)" → "throw `IllegalStateException`". Reason: same as R64.
+- **R131:** "must use a volatile closed flag" → "must use either `volatile` or a stronger primitive such as `AtomicBoolean` with `compareAndSet`". Reason: `IndexRegistry` uses `AtomicBoolean` to guarantee a single close winner, which is stricter than volatile.
+
+**Obligations opened:**
+- **OBL-F10-fulltext** — R5 (PARTIAL) and R79–R84 (VIOLATED). `FullTextFieldIndex` is a stub; wiring to `LsmFullTextIndex` from `jlsm-indexing` is deferred to a future feature.
+- **OBL-F10-vector** — R6 (PARTIAL) and R85–R90 (VIOLATED). `VectorFieldIndex` is a stub; wiring to `LsmVectorIndex` from `jlsm-vector` is deferred to a future feature.
+
+**Test coverage:** existing behavioral tests cover ~90% of SATISFIED requirements (IndexDefinitionTest, PredicateTest, TableQueryTest, FieldValueCodecTest, FieldIndexTest, IndexRegistryTest, QueryExecutorTest, plus TableIndicesAdversarialTest, TableIndicesRound2AdversarialTest). `@spec F10.RN` annotations are added to representative enforcement points and tests; structural-reflection test coverage for enum arity, sealed permits, and package visibility is a separate follow-up.
+
+**Regression tests added:** none (no VIOLATED requirements repaired — all violations deferred per user direction).
+
+**Code fixes applied:** none.

@@ -23,6 +23,7 @@
 | WD-10 Rebalancing Safety & Recovery | decisions-backlog--wd-10 | 2026-04-15 | spec-authoring complete | 5 decisions (5 accepted); F48 spec + F27/F29/F32 |
 | WD-13 Catalog & Scan Lifecycle | decisions-backlog--wd-13 | 2026-04-15 | spec-authoring complete | 4 decisions (4 accepted); F44 spec + F39/F37/F33 |
 | WD-12 Encrypted Query Capabilities | decisions-backlog--wd-12 | 2026-04-15 | spec-authoring complete | 4 decisions (3 accepted, 1 re-deferred); F45-F47 specs |
+| Protocol Infrastructure (F04 R39 + R53) | f04-obligation-resolution--wd-01 | 2026-04-19 | planning complete | work-plan.md written, 2 stubs created, balanced split WU-1/WU-2 |
 
 ## Completed / Archived
 

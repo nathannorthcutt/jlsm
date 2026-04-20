@@ -127,6 +127,12 @@ public final class WalRecord {
     /** Overhead of the compression header: codecId(1) + uncompressedSize(4). */
     private static final int COMPRESSION_HEADER_SIZE = 5;
 
+    // @spec F17.R18 — flags byte after frame length (bit 0 = compressed)
+    // @spec F17.R19 — compressed header: codec ID (1) + uncompressed size (4)
+    // @spec F17.R20 — uncompressed: no header, payload follows flags
+    // @spec F17.R21 — CRC32 over uncompressed payload
+    // @spec F17.R22 — frame length includes flags + header + payload + CRC
+    // @spec F17.R23 — all fields use byteAlignment(1), big-endian
     /**
      * Encodes {@code entry} into {@code dst} starting at offset 0, applying compression when the
      * payload exceeds the minimum threshold and compression reduces size.
@@ -284,6 +290,12 @@ public final class WalRecord {
         }
     }
 
+    // @spec F17.R24 — old-format detection
+    // @spec F17.R30 — recovery codec map from codec set
+    // @spec F17.R31 — mixed compressed/uncompressed records
+    // @spec F17.R32 — unknown codec ID throws IOException
+    // @spec F17.R33 — decompression failure treated as corrupt, skip
+    // @spec F17.R34 — CRC verification after decompression
     /**
      * Decodes one record from {@code src} at {@code offset} given {@code available} bytes, using
      * the new compressed format when a codec map is provided.

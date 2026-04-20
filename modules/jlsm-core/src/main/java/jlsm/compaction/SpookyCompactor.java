@@ -32,6 +32,8 @@ import jlsm.tree.SSTableWriterFactory;
  * boundaries to define groups across all levels. Achieves ~2x lower space amplification than Full
  * Merge and ~2x lower write amplification than Partial Merge simultaneously.
  */
+// @spec F02.R38 — compactor uses SSTableWriterFactory
+// @spec F02.R39a — compactor writers independent, no shared state
 public final class SpookyCompactor implements Compactor, AutoCloseable {
 
     private final LongSupplier idSupplier;

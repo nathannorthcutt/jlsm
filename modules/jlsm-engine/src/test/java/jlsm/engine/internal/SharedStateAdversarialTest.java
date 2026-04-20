@@ -52,6 +52,7 @@ class SharedStateAdversarialTest {
     // after close, mutating operations must throw IllegalStateException (R8)
     // Fix location: LocalEngine — add closed field, check in close() and all public methods
     // Regression watch: Ensure close() is idempotent and doesn't throw on double-close
+    // @spec F05.R7,R8,R9 — idempotent close; post-close mutating/read ops throw ISE
     @Test
     @Timeout(10)
     void test_LocalEngine_sharedState_doubleCloseRetriesCleanup() throws Exception {
@@ -283,6 +284,7 @@ class SharedStateAdversarialTest {
     // per-source-per-table limits are enforced independently.
     // Fix location: LocalEngine.java lines 117, 168 — replace getName() with threadId()
     // Regression watch: Ensure sourceId is still non-null and usable as a map key
+    // @spec F05.R42,R91 — source identifier must be thread ID (unique per JVM thread)
     @Test
     @Timeout(30)
     void test_LocalEngine_sharedState_threadNameSourceIdNotUnique() throws Exception {

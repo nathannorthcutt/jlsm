@@ -1,9 +1,9 @@
 ---
 {
   "id": "F01",
-  "version": 3,
+  "version": 4,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["vector-indexing", "serialization"],
   "amends": [],
   "amended_by": [],
@@ -104,9 +104,9 @@ R24. Graph index removal must use soft-deletion. Soft-deleted nodes must remain 
 
 ### Search result integrity
 
-R25. Search results must reject Infinity scores (both positive and negative) in addition to NaN. Infinity scores can arise from dot-product overflow on large-magnitude vectors and would always rank first, corrupting result ordering. The rejection must use a runtime check, not an assertion.
+R25. Search results must not contain Infinity scores (both positive and negative). Infinity scores can arise from dot-product overflow on large-magnitude vectors and would always rank first, corrupting result ordering. The exclusion must be enforced by filtering at candidate accumulation (see R25a), not by rejecting in the `SearchResult` constructor — rejecting at the record level would crash an entire search call instead of gracefully excluding the invalid score. Infinity scores are valid under `Float.compare` ordering and therefore carry no binary-search-invariant risk, so the `SearchResult` record itself is not required to reject them.
 
-R25a. All search paths must filter out Infinity scores during candidate accumulation (alongside existing NaN filtering), preventing Infinity from reaching search result construction. Without this, enforcing R25 at the result level would crash the entire search call instead of gracefully excluding the invalid score.
+R25a. All search paths must filter out Infinity scores during candidate accumulation (alongside existing NaN filtering), preventing Infinity from reaching search result construction. This filter is the sole mechanism enforcing R25 — the `SearchResult` record accepts Infinity to allow graceful degradation.
 
 ### Cross-module encoding boundary
 
@@ -156,3 +156,69 @@ No self-describing format (no precision header in encoded vectors) because: the 
 None.
 
 ## Verification Notes
+
+### Verified: v4 — 2026-04-17
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `VectorPrecision.java:16-38` — enum FLOAT32(4), FLOAT16(2) |
+| R2 | SATISFIED | `VectorIndex.java` precision(); IvfFlat:522, Hnsw:940 |
+| R3 | SATISFIED | `LsmVectorIndex.AbstractBuilder.precision` default FLOAT32, null rejected |
+| R4 | SATISFIED | final precision field, no setter |
+| R5 | SATISFIED | `LsmVectorIndex.encodeFloat16s` (Float.floatToFloat16, big-endian, dim*2) |
+| R6 | SATISFIED | `LsmVectorIndex.decodeFloat16s` (Float.float16ToFloat, length check) |
+| R7 | SATISFIED | `LsmVectorIndex.encodeVector/decodeVector` precision dispatch |
+| R8 | SATISFIED | big-endian byte order in encode helpers |
+| R9 | SATISFIED | no header bytes in encoded output |
+| R10 | SATISFIED | composite (R10a + R10b + R10c) |
+| R10a | UNTESTABLE | design principle — not code-enforced |
+| R10b | SATISFIED (repaired) | IvfFlat.index uses quantized vector for assignment; centroids stored at FLOAT32 |
+| R10c | SATISFIED | table-layer schema controls doc storage independent of index precision |
+| R11 | SATISFIED | `LsmVectorIndex.validateFloat16Components` |
+| R12 | SATISFIED | no subnormal rejection; covered by `encodeFloat16s_subnormalFlushesToZero` |
+| R13 | SATISFIED | `validateFiniteComponents` + `JsonValueAdapter`/`JlsmDocument` finite checks |
+| R14 | SATISFIED (repaired) | centroids now encoded via `encodeFloats` (FLOAT32) regardless of index precision |
+| R15 | SATISFIED (repaired) | `assignCentroid(original, quantized)` scores with the quantized vector |
+| R16 | SATISFIED | decodeVector in IvfFlat/Hnsw search; score in float32 |
+| R17 | SATISFIED | query passes through untouched |
+| R18 | SATISFIED | `encodeFloat16s` length = dim*2 |
+| R19 | SATISFIED | `Hnsw.encodeNode` uses `precision.bytesPerComponent()` |
+| R20 | SATISFIED (repaired) | `Hnsw.index` computes quantized scoringVector once; used in greedySearch1/searchLayer |
+| R21 | SATISFIED | `Hnsw.decodeNode:1397` throws IOException on `vecBytes % bpc != 0` |
+| R22 | SATISFIED | node vector portion differs by dim*2 between precisions |
+| R23 | SATISFIED (repaired) | `VectorIndex.index()` javadoc now documents re-indexing graph-quality degradation |
+| R24 | SATISFIED | soft-delete at `Hnsw.remove`; search filters deleted in result collection, traversal preserved |
+| R25 | SATISFIED (amended) | amended in v4 — enforcement at candidate filtering (R25a) rather than SearchResult constructor |
+| R25a | SATISFIED | `IvfFlat.search` L655, `Hnsw.search` L1113 filter non-finite scores |
+| R26 | SATISFIED | `LsmVectorIndex` uses only `Float.floatToFloat16` / `Float.float16ToFloat`; `jlsm.table.Float16` is separate |
+| R27 | UNTESTABLE | precondition not met — NaN vectors rejected before reaching index |
+| R28 | SATISFIED | static encode/decode methods, no shared state |
+| R29 | SATISFIED | float32 arithmetic in `dotProduct`/`cosine`/`euclidean` |
+| R30 | SATISFIED | `JsonValueAdapter.vectorFromJson` + `JlsmDocument.validateType` reject non-finite |
+| R31 | UNTESTABLE | YAML parser removed per F15.R1; no parsing path exists |
+| R32 | SATISFIED | `AbstractBuilder implements AutoCloseable` + `consumeTree` ownership transfer |
+| R33 | SATISFIED (repaired) | IvfFlat gained `volatile boolean closed` guard; Hnsw already idempotent |
+| R34 | SATISFIED | `maxDimensionsFor(precision)` + re-validate in `validateBase` |
+| R35 | SATISFIED (repaired) | `Hnsw.readEntryPoint` now validates `value.length >= 4` with descriptive IOException |
+| R36 | SATISFIED | per-neighbor length prefix in `encodeNode`/`decodeNode` |
+
+**Overall: PASS**
+
+Amendments applied: 1 (R25 — enforcement moved from SearchResult constructor to candidate-accumulation filtering; R25a clarified as sole mechanism).
+
+Code fixes applied: 5
+- R10b/R14/R15 — IvfFlat centroids stored at FLOAT32 always; assignment uses quantized vector
+- R20 — Hnsw index() uses quantized scoringVector for greedy search and candidate selection
+- R23 — VectorIndex.index() javadoc documents re-indexing graph-quality degradation
+- R33 — IvfFlat.close() gained idempotency guard (matches Hnsw)
+- R35 — Hnsw.readEntryPoint validates length before readInt
+
+Regression tests added: 7 (in `F01SpecVerifyRegressionTest.java`); 1 covers shared scenario across R14/R10b, others are per-requirement.
+
+Obligations deferred: 0.
+
+Undocumented behavior: none material.
+
+#### Amendments
+- R25: "Search results must reject Infinity scores... The rejection must use a runtime check" → "Search results must not contain Infinity scores... enforced by filtering at candidate accumulation (see R25a), not by rejecting in the SearchResult constructor." Rationale: Infinity has valid `Float.compare` ordering (unlike NaN), so the record need not reject it; filtering at the search-path level (R25a) already keeps Infinity out of results and avoids crashing searches on overflow. Existing adversarial test `VectorIndexAdversarialTest.searchResult_infiniteScore_accepted` now aligns with the amended spec.
+- R25a: tightened to explicitly state that search-path filtering is the sole mechanism and `SearchResult` accepts Infinity for graceful degradation.

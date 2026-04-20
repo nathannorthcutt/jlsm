@@ -24,6 +24,11 @@ import java.util.Optional;
  * Governed by: .decisions/table-partitioning/adr.md — remote-capable interface designed for future
  * network transport.
  */
+// @spec F11.R39,R40,R47,R107 — public interface in jlsm.table extending Closeable (R39);
+// descriptor()
+// exposes the partition (R40); method signatures use only serializable-friendly types (R47);
+// default
+// methods enforce null-rejection before delegating to doXxx hooks (R107)
 public interface PartitionClient extends Closeable {
 
     /**
@@ -42,6 +47,7 @@ public interface PartitionClient extends Closeable {
      * @throws IOException if the write fails
      * @throws DuplicateKeyException if the key already exists
      */
+    // @spec F11.R41 — create throws IOException on write failure, DuplicateKeyException if exists
     default void create(String key, JlsmDocument doc) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(doc, "doc must not be null");
@@ -62,6 +68,8 @@ public interface PartitionClient extends Closeable {
      * @throws NullPointerException if key is null
      * @throws IOException if the read fails
      */
+    // @spec F11.R42 — get returns Optional<JlsmDocument> (empty if missing); IOException on read
+    // failure
     default Optional<JlsmDocument> get(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         return doGet(key);
@@ -83,6 +91,7 @@ public interface PartitionClient extends Closeable {
      * @throws IOException if the write fails
      * @throws KeyNotFoundException if the key does not exist
      */
+    // @spec F11.R43 — update throws IOException on write failure, KeyNotFoundException if missing
     default void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(doc, "doc must not be null");
@@ -103,6 +112,7 @@ public interface PartitionClient extends Closeable {
      * @throws NullPointerException if key is null
      * @throws IOException if the write fails
      */
+    // @spec F11.R44 — delete throws IOException on write failure
     default void delete(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         doDelete(key);
@@ -123,6 +133,7 @@ public interface PartitionClient extends Closeable {
      * @throws NullPointerException if fromKey or toKey is null
      * @throws IOException if the read fails
      */
+    // @spec F11.R45 — getRange returns Iterator over [fromKey, toKey); IOException on read failure
     default Iterator<TableEntry<String>> getRange(String fromKey, String toKey) throws IOException {
         Objects.requireNonNull(fromKey, "fromKey must not be null");
         Objects.requireNonNull(toKey, "toKey must not be null");

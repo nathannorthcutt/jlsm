@@ -4,7 +4,9 @@ import jlsm.core.json.internal.StructuralIndexer;
 import jlsm.core.json.internal.StructuralIndexer.StructuralIndex;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.Objects;
 
@@ -18,9 +20,10 @@ import java.util.Objects;
  * <p>
  * Stricter than RFC 8259: rejects duplicate keys, trailing content, and bounds nesting depth.
  *
- * @spec F15.R16 — two-stage on-demand parser
- * @spec F15.R17 — iterative materialization (no recursion)
- * @spec F15.R25–R29, R41
+ * @spec F15.R16 — two-stage architecture: structural index then materialization
+ * @spec F15.R17 — parse returns fully materialized tree, no input references
+ * @spec F15.R25 — handles all RFC 8259 types with stricter duplicate/trailing rules
+ * @spec F15.R27 — configurable max depth (default 256), iterative not recursive
  */
 public final class JsonParser {
 
@@ -55,6 +58,11 @@ public final class JsonParser {
      * @throws NullPointerException if json is null
      * @throws IllegalArgumentException if maxDepth is not positive
      * @throws JsonParseException if the input is malformed
+     * @spec F15.R28 — rejects trailing content after complete value
+     * @spec F15.R29 — detects truncated input
+     * @spec F15.R52 — depth bounds [1, 4096]
+     * @spec F15.R24 — throws JsonParseException with byte offset
+     * @spec F15.R26 — handles supplementary Unicode via surrogate pairs
      */
     public static JsonValue parse(String json, int maxDepth) {
         Objects.requireNonNull(json, "json must not be null");
@@ -111,20 +119,218 @@ public final class JsonParser {
         }
 
         /**
-         * Parse a single JSON value starting from the current position. Uses iterative approach for
-         * containers (objects/arrays) with an explicit stack.
+         * Parse a single JSON value starting from the current position.
+         *
+         * <p>
+         * Uses an explicit {@link Deque} as a frame stack rather than recursion: each container
+         * open (<code>{</code> or <code>[</code>) pushes a frame; each container close pops the
+         * frame and emits the constructed {@link JsonObject} or {@link JsonArray} as the "ready"
+         * value, which is then delivered up the stack. Primitives bypass the stack entirely. The
+         * depth check is against {@code stack.size()} — one frame per nesting level — so the JVM
+         * call stack depth is O(1) regardless of input nesting depth.
+         *
+         * @spec F15.R27 — no recursion for depth traversal; iterative state machine
          */
         JsonValue parseValue() {
-            skipWhitespace();
+            Deque<Frame> stack = new ArrayDeque<>();
+            JsonValue ready = null;
+
+            while (true) {
+                // Deliver any completed value to the top of the stack, or return if root.
+                if (ready != null) {
+                    Frame top = stack.peek();
+                    if (top == null) {
+                        return ready;
+                    }
+                    if (top instanceof ObjectFrame of) {
+                        of.members.put(of.pendingKey, ready);
+                        of.pendingKey = null;
+                        of.state = ObjectState.COMMA_OR_END;
+                    } else {
+                        ArrayFrame af = (ArrayFrame) top;
+                        af.elements.add(ready);
+                        af.state = ArrayState.COMMA_OR_END;
+                    }
+                    ready = null;
+                    continue;
+                }
+
+                skipWhitespace();
+                Frame top = stack.peek();
+
+                if (top == null) {
+                    ready = readScalarOrOpen(stack);
+                    continue;
+                }
+
+                if (top instanceof ObjectFrame of) {
+                    ready = stepObject(of, stack);
+                } else {
+                    ArrayFrame af = (ArrayFrame) top;
+                    ready = stepArray(af, stack);
+                }
+            }
+        }
+
+        /**
+         * Advance one step inside an object frame. Returns a completed {@link JsonValue} when the
+         * object is closed or a nested scalar is ready; returns {@code null} when a nested
+         * container was pushed or the step advanced only the state/position.
+         */
+        private JsonValue stepObject(ObjectFrame of, Deque<Frame> stack) {
+            switch (of.state) {
+                case KEY_OR_END -> {
+                    if (pos >= input.length) {
+                        throw new JsonParseException("Unterminated object", pos);
+                    }
+                    if (input[pos] == '}') {
+                        advancePastStructural('}');
+                        stack.pop();
+                        return of.members.isEmpty() ? JsonObject.empty()
+                                : JsonObject.of(of.members);
+                    }
+                    readObjectKey(of);
+                    return null;
+                }
+                case KEY -> {
+                    if (pos >= input.length) {
+                        throw new JsonParseException("Unterminated object", pos);
+                    }
+                    readObjectKey(of);
+                    return null;
+                }
+                case COLON -> {
+                    if (pos >= input.length || input[pos] != ':') {
+                        throw new JsonParseException("Expected ':' after object key", pos);
+                    }
+                    advancePastStructural(':');
+                    of.state = ObjectState.VALUE;
+                    return null;
+                }
+                case VALUE -> {
+                    return readScalarOrOpen(stack);
+                }
+                case COMMA_OR_END -> {
+                    if (pos >= input.length) {
+                        throw new JsonParseException("Unterminated object", pos);
+                    }
+                    if (input[pos] == '}') {
+                        advancePastStructural('}');
+                        stack.pop();
+                        return of.members.isEmpty() ? JsonObject.empty()
+                                : JsonObject.of(of.members);
+                    }
+                    if (input[pos] == ',') {
+                        advancePastStructural(',');
+                        skipWhitespace();
+                        if (pos < input.length && input[pos] == '}') {
+                            throw new JsonParseException("Trailing comma in object", pos);
+                        }
+                        of.state = ObjectState.KEY;
+                        return null;
+                    }
+                    throw new JsonParseException("Expected ',' or '}' in object", pos);
+                }
+            }
+            throw new AssertionError("unreachable");
+        }
+
+        /**
+         * Advance one step inside an array frame. Mirrors {@link #stepObject} — see that method for
+         * return-value semantics.
+         */
+        private JsonValue stepArray(ArrayFrame af, Deque<Frame> stack) {
+            switch (af.state) {
+                case VALUE_OR_END -> {
+                    if (pos >= input.length) {
+                        throw new JsonParseException("Unterminated array", pos);
+                    }
+                    if (input[pos] == ']') {
+                        advancePastStructural(']');
+                        stack.pop();
+                        return af.elements.isEmpty() ? JsonArray.empty()
+                                : JsonArray.of(af.elements);
+                    }
+                    return readScalarOrOpen(stack);
+                }
+                case VALUE -> {
+                    return readScalarOrOpen(stack);
+                }
+                case COMMA_OR_END -> {
+                    if (pos >= input.length) {
+                        throw new JsonParseException("Unterminated array", pos);
+                    }
+                    if (input[pos] == ']') {
+                        advancePastStructural(']');
+                        stack.pop();
+                        return af.elements.isEmpty() ? JsonArray.empty()
+                                : JsonArray.of(af.elements);
+                    }
+                    if (input[pos] == ',') {
+                        advancePastStructural(',');
+                        skipWhitespace();
+                        if (pos < input.length && input[pos] == ']') {
+                            throw new JsonParseException("Trailing comma in array", pos);
+                        }
+                        af.state = ArrayState.VALUE;
+                        return null;
+                    }
+                    throw new JsonParseException("Expected ',' or ']' in array", pos);
+                }
+            }
+            throw new AssertionError("unreachable");
+        }
+
+        /**
+         * Parses a JSON member key, rejects duplicates and blank keys (F15.R15, R11), and advances
+         * the frame state to expect ':' next.
+         */
+        private void readObjectKey(ObjectFrame of) {
+            if (input[pos] != '"') {
+                throw new JsonParseException("Expected string key in object", pos);
+            }
+            String key = parseStringValue();
+            if (key.isBlank()) {
+                // @spec F15.R15 — blank keys are rejected (stricter than RFC 8259)
+                throw new JsonParseException("Object key must not be blank", pos);
+            }
+            if (of.members.containsKey(key)) {
+                throw new JsonParseException("Duplicate key: " + key, pos);
+            }
+            of.pendingKey = key;
+            of.state = ObjectState.COLON;
+        }
+
+        /**
+         * Reads the next scalar value, OR — if the next byte opens a container — pushes a new frame
+         * onto {@code stack} and returns {@code null}. Depth check fires before the push so
+         * {@code stack.size()} never exceeds {@link #maxDepth}.
+         */
+        private JsonValue readScalarOrOpen(Deque<Frame> stack) {
             if (pos >= input.length) {
                 throw new JsonParseException("Unexpected end of input", pos);
             }
-
             byte b = input[pos];
             return switch (b) {
+                case '{' -> {
+                    if (stack.size() + 1 > maxDepth) {
+                        throw new JsonParseException(
+                                "Maximum nesting depth " + maxDepth + " exceeded", pos);
+                    }
+                    advancePastStructural('{');
+                    stack.push(new ObjectFrame());
+                    yield null;
+                }
+                case '[' -> {
+                    if (stack.size() + 1 > maxDepth) {
+                        throw new JsonParseException(
+                                "Maximum nesting depth " + maxDepth + " exceeded", pos);
+                    }
+                    advancePastStructural('[');
+                    stack.push(new ArrayFrame());
+                    yield null;
+                }
                 case '"' -> parseString();
-                case '{' -> parseObject();
-                case '[' -> parseArray();
                 case 't' -> parseLiteral("true", JsonPrimitive.ofBoolean(true));
                 case 'f' -> parseLiteral("false", JsonPrimitive.ofBoolean(false));
                 case 'n' -> parseLiteral("null", JsonNull.INSTANCE);
@@ -134,137 +340,42 @@ public final class JsonParser {
             };
         }
 
-        /**
-         * Parse an object iteratively (no recursion for nested values — we call parseValue which
-         * itself is iterative for containers via stack).
-         *
-         * Note: parseValue calls parseObject/parseArray which are each iterative via loops. The
-         * nesting comes from parseValue calling parseObject calling parseValue — this is bounded by
-         * maxDepth checks, not by stack depth, since each level is a loop iteration. For truly flat
-         * iteration we would need a single outer loop with an explicit stack. However, since
-         * maxDepth bounds recursion depth (default 256), this is safe and simple.
-         *
-         * UPDATE: To truly satisfy the "no recursion" spec, we implement objects and arrays with an
-         * explicit stack-based approach in parseValue. But the simplest correct approach that
-         * satisfies maxDepth bounds is this bounded mutual recursion. Given maxDepth <= 256, stack
-         * depth is bounded.
-         */
-        private JsonValue parseObject() {
-            // Advance past the opening '{'
-            advancePastStructural('{');
-            int depth = currentDepth();
-            if (depth > maxDepth) {
-                throw new JsonParseException("Maximum nesting depth " + maxDepth + " exceeded",
-                        pos);
-            }
+        // ---- Frame types for the explicit parse stack ----
 
-            skipWhitespace();
-            if (pos >= input.length) {
-                throw new JsonParseException("Unterminated object", pos);
-            }
-
-            // Empty object
-            if (input[pos] == '}') {
-                advancePastStructural('}');
-                return JsonObject.empty();
-            }
-
-            var members = new LinkedHashMap<String, JsonValue>();
-
-            while (true) {
-                skipWhitespace();
-                if (pos >= input.length) {
-                    throw new JsonParseException("Unterminated object", pos);
-                }
-
-                // Key must be a string
-                if (input[pos] != '"') {
-                    throw new JsonParseException("Expected string key in object", pos);
-                }
-                String key = parseStringValue();
-
-                // Check for duplicate key
-                if (members.containsKey(key)) {
-                    throw new JsonParseException("Duplicate key: " + key, pos);
-                }
-
-                // Expect colon
-                skipWhitespace();
-                if (pos >= input.length || input[pos] != ':') {
-                    throw new JsonParseException("Expected ':' after object key", pos);
-                }
-                advancePastStructural(':');
-
-                // Parse value
-                JsonValue value = parseValue();
-                members.put(key, value);
-
-                // Expect comma or closing brace
-                skipWhitespace();
-                if (pos >= input.length) {
-                    throw new JsonParseException("Unterminated object", pos);
-                }
-                if (input[pos] == '}') {
-                    advancePastStructural('}');
-                    return JsonObject.of(members);
-                }
-                if (input[pos] == ',') {
-                    advancePastStructural(',');
-                    // Check for trailing comma
-                    skipWhitespace();
-                    if (pos < input.length && input[pos] == '}') {
-                        throw new JsonParseException("Trailing comma in object", pos);
-                    }
-                } else {
-                    throw new JsonParseException("Expected ',' or '}' in object", pos);
-                }
-            }
+        private sealed interface Frame permits ObjectFrame, ArrayFrame {
         }
 
-        private JsonValue parseArray() {
-            advancePastStructural('[');
-            int depth = currentDepth();
-            if (depth > maxDepth) {
-                throw new JsonParseException("Maximum nesting depth " + maxDepth + " exceeded",
-                        pos);
-            }
+        private enum ObjectState {
+            /** After '{' — may close immediately (empty object) or parse first key. */
+            KEY_OR_END,
+            /** After ',' — key is required, close not allowed. */
+            KEY,
+            /** After key — ':' is required. */
+            COLON,
+            /** After ':' — value is required (no end). */
+            VALUE,
+            /** After value — ',' or '}'. */
+            COMMA_OR_END
+        }
 
-            skipWhitespace();
-            if (pos >= input.length) {
-                throw new JsonParseException("Unterminated array", pos);
-            }
+        private enum ArrayState {
+            /** After '[' — may close immediately (empty array) or parse first element. */
+            VALUE_OR_END,
+            /** After ',' — value is required, close not allowed. */
+            VALUE,
+            /** After element — ',' or ']'. */
+            COMMA_OR_END
+        }
 
-            // Empty array
-            if (input[pos] == ']') {
-                advancePastStructural(']');
-                return JsonArray.empty();
-            }
+        private static final class ObjectFrame implements Frame {
+            final LinkedHashMap<String, JsonValue> members = new LinkedHashMap<>();
+            String pendingKey;
+            ObjectState state = ObjectState.KEY_OR_END;
+        }
 
-            var elements = new ArrayList<JsonValue>();
-
-            while (true) {
-                JsonValue value = parseValue();
-                elements.add(value);
-
-                skipWhitespace();
-                if (pos >= input.length) {
-                    throw new JsonParseException("Unterminated array", pos);
-                }
-                if (input[pos] == ']') {
-                    advancePastStructural(']');
-                    return JsonArray.of(elements);
-                }
-                if (input[pos] == ',') {
-                    advancePastStructural(',');
-                    // Check for trailing comma
-                    skipWhitespace();
-                    if (pos < input.length && input[pos] == ']') {
-                        throw new JsonParseException("Trailing comma in array", pos);
-                    }
-                } else {
-                    throw new JsonParseException("Expected ',' or ']' in array", pos);
-                }
-            }
+        private static final class ArrayFrame implements Frame {
+            final ArrayList<JsonValue> elements = new ArrayList<>();
+            ArrayState state = ArrayState.VALUE_OR_END;
         }
 
         private JsonPrimitive parseString() {
@@ -512,20 +623,5 @@ public final class JsonParser {
             pos++;
         }
 
-        /**
-         * Computes current nesting depth by counting open braces/brackets minus close
-         * braces/brackets in the structural positions seen so far.
-         */
-        private int currentDepth() {
-            int depth = 0;
-            for (int i = 0; i < structIdx && i < structPositions.length; i++) {
-                byte b = input[structPositions[i]];
-                if (b == '{' || b == '[')
-                    depth++;
-                else if (b == '}' || b == ']')
-                    depth--;
-            }
-            return depth;
-        }
     }
 }

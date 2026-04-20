@@ -54,6 +54,7 @@ class PartitionConfigTest {
         assertEquals(input.get(1), descs.get(1));
     }
 
+    // @spec F11.R20 — returned list is unmodifiable
     @Test
     void descriptorListIsUnmodifiable() {
         var config = PartitionConfig.of(twoPartitions());
@@ -65,11 +66,13 @@ class PartitionConfigTest {
         assertDoesNotThrow(() -> PartitionConfig.of(threePartitions()));
     }
 
+    // @spec F11.R15
     @Test
     void rejectsNullList() {
         assertThrows(NullPointerException.class, () -> PartitionConfig.of(null));
     }
 
+    // @spec F11.R16
     @Test
     void rejectsEmptyList() {
         var ex = assertThrows(IllegalArgumentException.class, () -> PartitionConfig.of(List.of()));
@@ -77,6 +80,7 @@ class PartitionConfigTest {
                 || ex.getMessage().toLowerCase().contains("at least"));
     }
 
+    // @spec F11.R19 — gap rejected as boundary mismatch
     @Test
     void rejectsGapBetweenPartitions() {
         // Gap: first ends at 0x40, second starts at 0x80
@@ -84,6 +88,7 @@ class PartitionConfigTest {
         assertThrows(IllegalArgumentException.class, () -> PartitionConfig.of(gapped));
     }
 
+    // @spec F11.R19 — overlap rejected as boundary mismatch
     @Test
     void rejectsOverlappingPartitions() {
         // Overlap: first ends at 0x80, second starts at 0x40
@@ -91,6 +96,7 @@ class PartitionConfigTest {
         assertThrows(IllegalArgumentException.class, () -> PartitionConfig.of(overlapping));
     }
 
+    // @spec F11.R17
     @Test
     void rejectsNullElementInList() {
         var withNull = new ArrayList<PartitionDescriptor>();
@@ -106,6 +112,7 @@ class PartitionConfigTest {
         assertEquals(1, config.partitionCount());
     }
 
+    // @spec F11.R21
     @Test
     void partitionCountMatchesDescriptorListSize() {
         var config = PartitionConfig.of(threePartitions());

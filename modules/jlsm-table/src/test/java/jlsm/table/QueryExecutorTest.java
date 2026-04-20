@@ -13,6 +13,10 @@ import jlsm.table.internal.IndexRegistry;
 import jlsm.table.internal.QueryExecutor;
 import org.junit.jupiter.api.Test;
 
+// @spec F10.R111,R112,R113,R114,R115,R116,R118,R119,R120,R121,R122,R123
+//       — covers QueryExecutor planning and execution: null predicate rejection, index-backed
+//         leaf lookup via findAndLookup, scan-and-filter fallback, And intersection and Or union,
+//         deduplication across predicates, null field non-matching, numeric-coercion comparison.
 class QueryExecutorTest {
 
     private static JlsmSchema testSchema() {

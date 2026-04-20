@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -273,6 +274,7 @@ final class DispatchRoutingAdversarialTest {
 
         // Step 2: Register a listener to capture onMemberLeft events
         List<Member> leftMembers = new ArrayList<>();
+        CountDownLatch leftLatch = new CountDownLatch(1);
         membership1.addListener(new MembershipListener() {
             @Override
             public void onViewChanged(MembershipView oldView, MembershipView newView) {
@@ -285,6 +287,7 @@ final class DispatchRoutingAdversarialTest {
             @Override
             public void onMemberLeft(Member member) {
                 leftMembers.add(member);
+                leftLatch.countDown();
             }
 
             @Override
@@ -300,6 +303,10 @@ final class DispatchRoutingAdversarialTest {
 
         var proposalMsg = new Message(MessageType.VIEW_CHANGE, ADDR_2, 4, proposalPayload);
         transport2.request(ADDR_1, proposalMsg).get(5, TimeUnit.SECONDS);
+
+        // Listener dispatch is async (F04.R39) — wait for delivery before asserting.
+        assertTrue(leftLatch.await(3, TimeUnit.SECONDS),
+                "onMemberLeft should be delivered by the dispatcher within 3s");
 
         // The critical assertion: onMemberLeft should have fired for Node 2
         // because it transitioned from ALIVE to DEAD

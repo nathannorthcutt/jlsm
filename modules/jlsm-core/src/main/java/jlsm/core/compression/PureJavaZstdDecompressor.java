@@ -31,6 +31,8 @@ import java.util.Objects;
  * @see <a href="../../../../.spec/domains/serialization/F18-zstd-dictionary-compression.md">F18 R6,
  *      R8, R9</a>
  */
+// @spec F18.R6 — Tier 2 pure-Java ZSTD decompressor (plain + dictionary frames, no compression)
+// @spec F18.R8 — cross-tier: Tier 1 output decompresses here (plain and dict-bound)
 final class PureJavaZstdDecompressor {
 
     private static final int ZSTD_MAGIC = 0xFD2FB528;

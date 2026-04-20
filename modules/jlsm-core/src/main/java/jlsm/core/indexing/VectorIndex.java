@@ -30,10 +30,20 @@ public sealed interface VectorIndex<D> extends Closeable
      * Indexes {@code vector} under {@code docId}. If {@code docId} was previously indexed, the old
      * vector is replaced.
      *
+     * <p>
+     * Re-indexing caveat for graph-based implementations (HNSW): calling {@code index} on a
+     * {@code docId} that is already present, without a prior {@link #remove} call, replaces the
+     * stored vector but does not retire the bidirectional edges that former neighbors still hold
+     * pointing at the old vector content. Those stale backlinks may degrade graph quality and
+     * recall over time. For accuracy-sensitive workloads, call {@code remove(docId)} before
+     * re-indexing a document. This degradation does not affect correctness of individual search
+     * results — it only reduces recall.
+     *
      * @param docId the document identifier; must not be null
      * @param vector the float vector; must not be null and must match the configured dimensions
      * @throws IOException if an I/O error occurs writing to backing storage
      */
+    // @spec F01.R23 — document re-indexing graph-quality degradation in public API
     void index(D docId, float[] vector) throws IOException;
 
     /**
@@ -60,6 +70,8 @@ public sealed interface VectorIndex<D> extends Closeable
      *
      * @return the configured {@link VectorPrecision}; never null
      */
+    // @spec F01.R2 — precision is queryable after construction and never null
+    // @spec F01.R4 — precision is chosen at build time and does not change after construction
     VectorPrecision precision();
 
     @Override
@@ -72,6 +84,9 @@ public sealed interface VectorIndex<D> extends Closeable
      * @param score the similarity score (higher = more similar)
      * @param <D> the document ID type
      */
+    // @spec F01.R25,R25a — SearchResult accepts Infinity scores; Infinity exclusion is
+    // enforced by candidate-accumulation filtering in implementations (see LsmVectorIndex
+    // IvfFlat.search and Hnsw.search), not by this record.
     record SearchResult<D>(D docId, float score) {
 
         /**

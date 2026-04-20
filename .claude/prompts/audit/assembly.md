@@ -10,7 +10,10 @@ You work ONLY with structured data. DO NOT read source code files.
 
 ## Inputs
 
-Read these files:
+Read ALL of these files ONCE at the start. Do not re-read any file during
+processing — work from what you already loaded. Re-reading wastes tokens
+(analysis-cards.yaml alone is ~1000 lines).
+
 - `.feature/<slug>/analysis-cards.yaml` — full reconciled construct cards
   (execution, state, contracts, reconciliation data)
 - `.feature/<slug>/active-lenses.md` — confirmed-active domain lenses
@@ -20,7 +23,7 @@ Read these files:
 - `.feature/<slug>/exploration-graph.md` — for boundary contracts and
   domain signals only
 
-Read the lens-specific card projections:
+Then read the lens-specific card projections:
 - `.feature/<slug>/lens-<domain>-cards.yaml` — one per confirmed-active
   lens, containing only the card fields relevant to that domain
 

@@ -18,6 +18,7 @@ class SqlParserTest {
 
     // ── Happy path ───────────────────────────────────────────────
 
+    // @spec F07.R38
     @Test
     void parsesSelectStarFromTable() throws SqlParseException {
         var stmt = parse("SELECT * FROM users");
@@ -31,6 +32,7 @@ class SqlParserTest {
         assertTrue(stmt.offset().isEmpty());
     }
 
+    // @spec F07.R39
     @Test
     void parsesColumnProjectionList() throws SqlParseException {
         var stmt = parse("SELECT a, b, c FROM t");
@@ -44,6 +46,7 @@ class SqlParserTest {
         assertEquals("c", col2.name());
     }
 
+    // @spec F07.R39
     @Test
     void parsesColumnWithAlias() throws SqlParseException {
         var stmt = parse("SELECT name AS n, age AS a FROM t");
@@ -57,6 +60,7 @@ class SqlParserTest {
         assertEquals(Optional.of("a"), col1.alias());
     }
 
+    // @spec F07.R33
     @Test
     void parsesWhereEquals() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE x = 1");
@@ -70,6 +74,7 @@ class SqlParserTest {
         assertEquals("1", right.text());
     }
 
+    // @spec F07.R17,R33
     @Test
     void parsesWhereNotEquals() throws SqlParseException {
         var stmt1 = parse("SELECT * FROM t WHERE x != 1");
@@ -81,6 +86,7 @@ class SqlParserTest {
         assertEquals(SqlAst.ComparisonOp.NE, cmp2.op());
     }
 
+    // @spec F07.R33
     @Test
     void parsesWhereComparisons() throws SqlParseException {
         var gt = parse("SELECT * FROM t WHERE x > 1");
@@ -100,6 +106,7 @@ class SqlParserTest {
                 ((SqlAst.Expression.Comparison) lte.where().get()).op());
     }
 
+    // @spec F07.R33
     @Test
     void parsesWhereAndOr() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE a = 1 AND b = 2 OR c = 3");
@@ -114,6 +121,7 @@ class SqlParserTest {
         assertInstanceOf(SqlAst.Expression.Comparison.class, or.right());
     }
 
+    // @spec F07.R34
     @Test
     void parsesWhereBetween() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE x BETWEEN 1 AND 10");
@@ -125,6 +133,7 @@ class SqlParserTest {
         assertInstanceOf(SqlAst.Expression.NumberLiteral.class, between.high());
     }
 
+    // @spec F07.R35
     @Test
     void parsesWhereIsNull() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE x IS NULL");
@@ -135,6 +144,7 @@ class SqlParserTest {
         assertEquals("x", col.name());
     }
 
+    // @spec F07.R35
     @Test
     void parsesWhereIsNotNull() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE x IS NOT NULL");
@@ -143,6 +153,7 @@ class SqlParserTest {
         assertTrue(isNull.negated());
     }
 
+    // @spec F07.R36
     @Test
     void parsesParenthesizedExpressions() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE (a = 1 OR b = 2) AND c = 3");
@@ -155,6 +166,7 @@ class SqlParserTest {
         assertEquals(SqlAst.LogicalOp.OR, or.op());
     }
 
+    // @spec F07.R42
     @Test
     void parsesMatchFunction() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE MATCH(title, 'search text')");
@@ -168,6 +180,7 @@ class SqlParserTest {
         assertEquals("search text", query.value());
     }
 
+    // @spec F07.R42,R43
     @Test
     void parsesVectorDistanceInOrderBy() throws SqlParseException {
         var stmt = parse("SELECT * FROM t ORDER BY VECTOR_DISTANCE(emb, ?, 'cosine')");
@@ -180,6 +193,7 @@ class SqlParserTest {
         assertEquals(3, fn.arguments().size());
     }
 
+    // @spec F07.R40
     @Test
     void parsesOrderByAscDesc() throws SqlParseException {
         var stmt = parse("SELECT * FROM t ORDER BY a ASC, b DESC");
@@ -196,6 +210,7 @@ class SqlParserTest {
         assertEquals("b", col1.name());
     }
 
+    // @spec F07.R41
     @Test
     void parsesLimitAndOffset() throws SqlParseException {
         var stmt = parse("SELECT * FROM t LIMIT 10 OFFSET 20");
@@ -204,6 +219,7 @@ class SqlParserTest {
         assertEquals(Optional.of(20), stmt.offset());
     }
 
+    // @spec F07.R37
     @Test
     void parsesBindParametersIndexed() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE a = ? AND b = ?");
@@ -218,6 +234,7 @@ class SqlParserTest {
         assertEquals(1, param1.index());
     }
 
+    // @spec F07.R50
     @Test
     void parsesBooleanLiterals() throws SqlParseException {
         var stmt = parse("SELECT * FROM t WHERE active = TRUE");
@@ -227,6 +244,7 @@ class SqlParserTest {
         assertTrue(bool.value());
     }
 
+    // @spec F07.R28
     @Test
     void parsesFullComplexQuery() throws SqlParseException {
         var stmt = parse("""
@@ -262,6 +280,7 @@ class SqlParserTest {
 
     // ── Error cases ──────────────────────────────────────────────
 
+    // @spec F07.R31
     @Test
     void rejectsInsertStatement() {
         var ex = assertThrows(SqlParseException.class, () -> parse("INSERT INTO t VALUES (1)"));
@@ -269,6 +288,7 @@ class SqlParserTest {
                 "Error should mention SELECT requirement");
     }
 
+    // @spec F07.R31
     @Test
     void rejectsUpdateStatement() {
         var ex = assertThrows(SqlParseException.class, () -> parse("UPDATE t SET x = 1"));
@@ -276,6 +296,7 @@ class SqlParserTest {
                 "Error should mention SELECT requirement");
     }
 
+    // @spec F07.R31
     @Test
     void rejectsDeleteStatement() {
         var ex = assertThrows(SqlParseException.class, () -> parse("DELETE FROM t"));
@@ -283,11 +304,13 @@ class SqlParserTest {
                 "Error should mention SELECT requirement");
     }
 
+    // @spec F07.R44
     @Test
     void rejectsMissingFromClause() {
         assertThrows(SqlParseException.class, () -> parse("SELECT *"));
     }
 
+    // @spec F07.R30
     @Test
     void rejectsEmptyTokenList() {
         assertThrows(SqlParseException.class, () -> parser.parse(List.of()));

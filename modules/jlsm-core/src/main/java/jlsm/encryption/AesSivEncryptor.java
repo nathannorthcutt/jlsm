@@ -49,15 +49,28 @@ public final class AesSivEncryptor implements AutoCloseable {
             throw new IllegalArgumentException(
                     "AES-SIV requires a 512-bit (64-byte) key, got " + keyHolder.keyLength());
         }
-        final byte[] fullKey = keyHolder.getKeyBytes();
-        final byte[] cmacKey = Arrays.copyOfRange(fullKey, 0, 32);
-        final byte[] ctrKey = Arrays.copyOfRange(fullKey, 32, 64);
-        Arrays.fill(fullKey, (byte) 0);
+        // @spec F03.R81, F41.R16 — zero intermediate key material in finally, even on exception
+        byte[] fullKey = null;
+        byte[] cmacKey = null;
+        byte[] ctrKey = null;
+        try {
+            fullKey = keyHolder.getKeyBytes();
+            cmacKey = Arrays.copyOfRange(fullKey, 0, 32);
+            ctrKey = Arrays.copyOfRange(fullKey, 32, 64);
 
-        this.cmacKeySpec = new SecretKeySpec(cmacKey, "AES");
-        this.ctrKeySpec = new SecretKeySpec(ctrKey, "AES");
-        Arrays.fill(cmacKey, (byte) 0);
-        Arrays.fill(ctrKey, (byte) 0);
+            this.cmacKeySpec = new SecretKeySpec(cmacKey, "AES");
+            this.ctrKeySpec = new SecretKeySpec(ctrKey, "AES");
+        } finally {
+            if (fullKey != null) {
+                Arrays.fill(fullKey, (byte) 0);
+            }
+            if (cmacKey != null) {
+                Arrays.fill(cmacKey, (byte) 0);
+            }
+            if (ctrKey != null) {
+                Arrays.fill(ctrKey, (byte) 0);
+            }
+        }
 
         this.cmacCipher = ThreadLocal.withInitial(() -> {
             try {

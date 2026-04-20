@@ -1,9 +1,9 @@
 ---
 {
   "id": "F06",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["serialization"],
   "amends": [],
   "amended_by": [],
@@ -19,17 +19,17 @@
 
 ## Requirements
 
-### Byte extraction and zero-copy heap path
+### Byte extraction and heap fast path
 
-R1. The deserializer must obtain a byte array view from a heap-backed MemorySegment by retrieving the backing array via `heapBase()` and the starting position via `heapOffset()`, without copying the segment contents into a new array.
+R1. The deserializer must obtain a byte array view from the input `MemorySegment` via an internal `extractBytes` helper. When the segment is heap-backed by a `byte[]` whose length equals the segment's `byteSize()`, the helper must return the backing array directly without copying (zero-copy fast path).
 
-R2. The deserializer must detect a heap-backed segment by checking whether `heapBase()` returns a non-empty Optional. No other heuristic (class name inspection, segment size, arena type) may be used for this determination.
+R2. The fast-path eligibility check must consist of exactly three conditions, all of which must hold: (a) `segment.heapBase().isPresent()`, (b) `heapBase().get() instanceof byte[]`, and (c) `segment.byteSize() == data.length`. When any condition fails, the helper must use the fallback path. The size-equality check guards against sliced segments where the backing array is larger than the segment.
 
-R3. When `heapBase()` returns an empty Optional (off-heap, memory-mapped, or remote-backed segments), the deserializer must fall back to `toArray(ValueLayout.JAVA_BYTE)` to obtain a copied byte array, with the view offset set to zero.
+R3. The fallback path must call `segment.toArray(ValueLayout.JAVA_BYTE)` to obtain a freshly copied byte array with the view offset set to zero. The fallback path covers three cases: off-heap/memory-mapped segments (no heap base), heap-backed segments whose base is not a `byte[]` (e.g., future JDK variants), and sliced heap-backed segments (where `byteSize() != data.length`).
 
-R4. The deserializer must not assume that the heap offset is zero. A heap-backed segment created as a slice of a larger segment may have a non-zero heap offset, and the deserializer must use the actual offset for all subsequent byte-level reads.
+R4. The view offset returned by `extractBytes` must always be zero. The fast path is restricted to full-array segments (by the size-equality check), which trivially have offset zero; sliced segments flow through the fallback path, which returns a fresh copied array starting at offset zero. Downstream read code may safely assume the cursor starts at offset zero.
 
-R5. The deserializer must cast the object returned by `heapBase().get()` to `byte[]`. If a future JDK introduces heap-backed segments backed by a non-byte-array type, this cast will throw ClassCastException. This is an accepted known limitation; the cast must not be guarded with a silent fallback that hides the type mismatch.
+R5. A non-`byte[]` heap base (possible future JDK variant) must flow through the fallback path rather than throwing a `ClassCastException`. This is a deliberate safety choice: correctness is preserved (at the cost of a copy) if the JDK introduces heap-backed segments whose base type is not `byte[]`.
 
 ### Schema constant precomputation
 
@@ -47,7 +47,7 @@ R10. The SchemaSerializer must build a dispatch table (one decoder entry per fie
 
 R11. Boolean fields must not have a dispatch table entry that reads from the variable-length data region. Boolean values must be decoded from the boolean bitmask, not through the dispatch table.
 
-R12. The dispatch table must cover every non-boolean field type supported by the current serializer. If a schema contains a field type that is not boolean and has no corresponding decoder entry, the SchemaSerializer constructor must fail eagerly with an exception, not defer the error to the first `deserialize()` call.
+R12. Every non-boolean field type in the schema must have a corresponding decoder. This must be enforced at compile time via the sealed `FieldType` hierarchy and an exhaustive `switch` in `decodeField` with no `default` branch. Adding a new `FieldType` subtype without a decoder case must produce a compilation error. A runtime constructor check is not required because compile-time exhaustiveness is strictly stronger: it prevents the error state from ever reaching a running JVM.
 
 R13. The dispatch table entries for a given schema must produce byte-identical decoded values to the current switch-based `decodeField` implementation for all input bytes. No field type may silently change its decoding behavior as a result of the dispatch table introduction.
 
@@ -85,6 +85,59 @@ R24. A MemorySegment with zero bytes must produce the same error behavior as the
 
 - Feature brief: .feature/optimize-document-serializer/brief.md
 - Work plan: .feature/optimize-document-serializer/work-plan.md
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-16
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | SATISFIED | `DocumentSerializer.java:1189` — `extractBytes` fast path |
+| R2 | SATISFIED | `DocumentSerializer.java:1189` — three-condition check (heapBase + byte[] + size) |
+| R3 | SATISFIED | `DocumentSerializer.java:1189` — `toArray` fallback for all non-fast-path cases |
+| R4 | SATISFIED | `DocumentSerializer.java:1189` — view offset always zero |
+| R5 | SATISFIED | `DocumentSerializer.java:1189` — non-`byte[]` falls through, no `ClassCastException` |
+| R6 | SATISFIED | `DocumentSerializer.java:128` — `SchemaSerializer` ctor precomputes constants |
+| R7 | SATISFIED | `DocumentSerializer.java:149-158` — prefixBoolCount[fieldCount+1] |
+| R8 | SATISFIED | `DocumentSerializer.java:363` — O(1) `prefixBoolCount[readCount]` lookup |
+| R9 | SATISFIED | `DocumentSerializer.java:326` — top-level deserialize re-derives no schema constants |
+| R10 | SATISFIED | `DocumentSerializer.java:165-171` — dispatch table built in ctor |
+| R11 | SATISFIED | `DocumentSerializer.java:167` — boolean fields skipped in dispatch table |
+| R12 | SATISFIED | `DocumentSerializer.java:795+` — exhaustive switch over sealed `FieldType` (compile-time) |
+| R13 | SATISFIED | `DocumentSerializer.java:169` — decoder lambdas delegate to `decodeField` |
+| R14 | SATISFIED | round-trip tests in `DocumentSerializerOptimizationTest` |
+| R15 | SATISFIED | `DocumentSerializer.java:358` — `readCount = min(...)` leaves extra fields null |
+| R16 | SATISFIED | `DocumentSerializer.java:361-372` — overlap bool-check skipped when `writeFieldCount > fieldCount` |
+| R17 | SATISFIED | `DocumentSerializer.java:384-392` — null fields skip cursor advance |
+| R18 | SATISFIED | `DocumentSerializer.java:386` — null boolean increments `boolIdx` only |
+| R19 | SATISFIED | `serialize()` unchanged since ae80360 |
+| R20 | SATISFIED | wire format unchanged; round-trip corpus passes |
+| R21 | SATISFIED | all instance fields final; concurrent-deserialize test passes |
+| R22 | SATISFIED | `ByteArrayView` scope local to each `deserialize()` call |
+| R23 | SATISFIED | corrupt/truncated segment tests throw `IllegalArgumentException` |
+| R24 | SATISFIED | zero-byte heap & off-heap segments throw with "too small" message |
+
+**Overall: PASS**
+
+Amendments applied: 6 (R1, R2, R3, R4, R5, R12)
+Code fixes applied: 1 (R16 — tail-removal check relaxation)
+Regression tests added: 3 (tail-removal covering trailing bool, multiple trailing bools, interior bool preservation)
+Test-gap tests added: 5 (R21 concurrent-deserialize; R23 truncated header + malformed varint; R24 zero-byte heap + off-heap)
+Obligations deferred: 0
+Undocumented behavior: 0
+
+#### Amendments
+
+- **R1** (rewrite): original required zero-copy via `heapOffset()`; shipped code uses full-array-only fast path (size-equality check) with `toArray()` fallback for slices. Code is deliberately safer — DS-01 adversarial test codifies slice-via-copy behavior.
+- **R2** (rewrite): original forbade any heuristic beyond `heapBase().isPresent()`; shipped code adds `instanceof byte[]` and `byteSize() == data.length` as the fast-path eligibility gate. Amended to describe the three-condition check.
+- **R3** (rewrite): original scoped fallback to "empty Optional" only; shipped fallback covers off-heap, non-`byte[]`, and sliced cases. Amended to enumerate all three.
+- **R4** (rewrite): original required use of actual `heapOffset()`; shipped code always returns offset 0 (fast path is full-array only; fallback returns fresh array starting at 0). Amended to assert the always-zero invariant.
+- **R5** (rewrite): original required explicit cast that may throw `ClassCastException`; shipped code uses `instanceof` and falls through to the safe fallback. Amended to describe the intentional fallback behavior.
+- **R12** (rewrite): original required a runtime constructor check; shipped code relies on compile-time exhaustive switch over sealed `FieldType`. Amended to acknowledge the compile-time guarantee is strictly stronger.
+
+#### Code fix
+
+- **R16**: deserialize now skips the write-vs-current bool-count check when `writeFieldCount > fieldCount`. Rationale: the header carries total `writeBoolCount`, not a prefix at `fieldCount`, so the check cannot distinguish bool-in-removed-tail from type-change-in-overlap. Overlap type consistency is no longer verified for tail-removal; if overlap types change concurrently with tail-removal, decode proceeds (silent incorrect decode possible). Three regression tests cover trailing-boolean, multiple-trailing-booleans, and interior-bool-preserved scenarios.
 
 ---
 

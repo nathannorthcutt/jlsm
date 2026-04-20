@@ -42,6 +42,8 @@ import java.util.Set;
  * @see <a href="../../.decisions/sstable-block-compression-format/adr.md">ADR: SSTable Block
  *      Compression Format</a>
  */
+// @spec F02.R13 — 17-byte entries: offset(8) + compressedSize(4) + uncompressedSize(4) + codecId(1)
+// @spec F16.R1,R3,R22 — v3 adds 4-byte CRC32C checksum; entry record accepts full signed int range
 public final class CompressionMap {
 
     /** Size in bytes of a single compression map entry. */
@@ -59,6 +61,8 @@ public final class CompressionMap {
      * @param codecId identifier of the codec used (0x00 = none, 0x02 = deflate)
      * @param checksum CRC32C checksum of the on-disk block bytes (v3 only; 0 for v2)
      */
+    // @spec F02.R25 — rejects negative offset, sizes
+    // @spec F02.R26 — rejects impossible size combinations
     public record Entry(long blockOffset, int compressedSize, int uncompressedSize, byte codecId,
             int checksum) {
         public Entry {
@@ -150,6 +154,7 @@ public final class CompressionMap {
      *
      * @return byte array in the format described in the class javadoc
      */
+    // @spec F02.R27 — long arithmetic for size calc, rejects overflow
     public byte[] serialize() {
         long longSize = 4L + (long) entries.size() * ENTRY_SIZE;
         if (longSize > Integer.MAX_VALUE) {
@@ -177,6 +182,7 @@ public final class CompressionMap {
      *
      * @return byte array in v3 format
      */
+    // @spec F16.R1,R2 — v3 serialization: 21-byte entries with CRC32C, long arithmetic on overflow
     public byte[] serializeV3() {
         long longSize = 4L + (long) entries.size() * SSTableFormat.COMPRESSION_MAP_ENTRY_SIZE_V3;
         if (longSize > Integer.MAX_VALUE) {
@@ -207,6 +213,7 @@ public final class CompressionMap {
      * @throws IllegalArgumentException if the data is malformed
      * @throws NullPointerException if data is null
      */
+    // @spec F02.R28 — rejects negative block count
     public static CompressionMap deserialize(byte[] data) {
         Objects.requireNonNull(data, "data must not be null");
         if (data.length < 4) {
@@ -259,6 +266,7 @@ public final class CompressionMap {
      * @throws IllegalArgumentException if the data is malformed or version is unsupported
      * @throws NullPointerException if data is null
      */
+    // @spec F16.R2,R3 — version-aware deserialize: 17-byte v2 or 21-byte v3 entries
     public static CompressionMap deserialize(byte[] data, int version) {
         if (version == 2) {
             return deserialize(data);

@@ -17,6 +17,7 @@ class SqlLexerAdversarialTest {
 
     // ── FINDING-4: Trailing-dot numeric literal ──────────────────────
 
+    // @spec F07.R101
     /**
      * FINDING-4: "42." (trailing dot, no fractional part) must be rejected as malformed. Updated by
      * audit F-R1.cb.1.4 — lexer now throws SqlParseException for trailing-dot literals
@@ -29,6 +30,7 @@ class SqlLexerAdversarialTest {
 
     // ── FINDING-6: SQL keywords as field names ───────────────────────
 
+    // @spec F07.R11
     /** FINDING-6: field named "order" (SQL keyword) is tokenized as keyword, not identifier */
     @Test
     void keywordAsFieldNameTokenizedAsKeyword() throws SqlParseException {
@@ -38,6 +40,7 @@ class SqlLexerAdversarialTest {
         assertEquals(TokenType.ORDER, tokens.get(0).type());
     }
 
+    // @spec F07.R10,R11
     /** FINDING-6: common field names that collide with SQL keywords */
     @Test
     void commonFieldNameKeywordCollisions() throws SqlParseException {

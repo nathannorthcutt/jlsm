@@ -45,10 +45,16 @@ import java.util.function.Supplier;
  * files.
  *
  * <p>
+ * This class is declared {@code public} so that {@link Engine#builder()} (in the exported
+ * {@code jlsm.engine} package) can reach it within the same module. The enclosing package
+ * {@code jlsm.engine.internal} is not exported, so external modules still cannot see it.
+ *
+ * <p>
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md},
  * {@code .decisions/table-catalog-persistence/adr.md}
  */
-final class LocalEngine implements Engine {
+// @spec F05.R1 — the builder indirection behind Engine.builder()
+public final class LocalEngine implements Engine {
 
     private final Path rootDirectory;
     private final TableCatalog catalog;
@@ -84,13 +90,14 @@ final class LocalEngine implements Engine {
      *
      * @return a new builder; never null
      */
-    static Builder builder() {
+    public static Builder builder() {
         return new Builder();
     }
 
     /**
      * Throws {@link IllegalStateException} if the engine has been closed.
      */
+    // @spec F05.R8,R9 — post-close mutating and read operations throw ISE
     private void ensureOpen() {
         if (closed.get()) {
             throw new IllegalStateException("Engine is closed");
@@ -98,6 +105,7 @@ final class LocalEngine implements Engine {
     }
 
     @Override
+    // @spec F05.R10,R11,R12,R13,R14,R15,R16,R17,R70 — create-table API surface
     public Table createTable(String name, JlsmSchema schema) throws IOException {
         ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
@@ -107,6 +115,7 @@ final class LocalEngine implements Engine {
         }
 
         // Register in catalog (throws if already exists)
+        // @spec F05.R14 — duplicate-name check throws IOException
         final TableMetadata metadata = catalog.register(name, schema);
 
         // Atomically get or create the live table — computeIfAbsent ensures only one
@@ -170,6 +179,15 @@ final class LocalEngine implements Engine {
         final TableMetadata metadata = catalog.get(name)
                 .orElseThrow(() -> new IOException("Table does not exist: " + name));
 
+        // @spec F05.R19,R23,R24,R25 — only READY tables are served; other states throw IOException
+        switch (metadata.state()) {
+            case READY -> {
+                /* fall through to normal retrieval */ }
+            case DROPPED -> throw new IOException("Table was dropped: " + name);
+            case LOADING -> throw new IOException("Table is still loading: " + name);
+            case ERROR -> throw new IOException("Table is in error state: " + name);
+        }
+
         // Atomically get or lazily create the live table — computeIfAbsent ensures
         // only one thread creates the JlsmTable (WAL + tree) per table name
         final JlsmTable.StringKeyed jlsmTable;
@@ -186,6 +204,7 @@ final class LocalEngine implements Engine {
         }
 
         // Register handle — use threadId() for unique per-thread identity
+        // @spec F05.R42,R91 — sourceId is the JVM thread ID
         final String sourceId = String.valueOf(Thread.currentThread().threadId());
         final HandleRegistration registration = handleTracker.register(name, sourceId);
 
@@ -193,6 +212,7 @@ final class LocalEngine implements Engine {
     }
 
     @Override
+    // @spec F05.R28,R29,R70 — drop-table API surface; drop of unknown table throws IOException
     public void dropTable(String name) throws IOException {
         ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
@@ -200,7 +220,8 @@ final class LocalEngine implements Engine {
             throw new IllegalArgumentException("name must not be empty");
         }
 
-        // Close the live table if it exists
+        // Close the live table if it exists — must happen before we delete data files so that
+        // mmap'd segments and open channels release before rm.
         final JlsmTable.StringKeyed removed = liveTables.remove(name);
         if (removed != null) {
             removed.close();
@@ -209,8 +230,10 @@ final class LocalEngine implements Engine {
         // Invalidate all handles for this table
         handleTracker.invalidateTable(name, HandleEvictedException.Reason.TABLE_DROPPED);
 
-        // Unregister from catalog (deletes directory; throws if not found)
-        catalog.unregister(name);
+        // @spec F05.R26,R27,R31 — mark DROPPED (atomic write-then-rename), preserve tombstone,
+        // best-effort cleanup of data files. Throws IOException only if the DROPPED-state
+        // metadata write itself fails or the table was never registered.
+        catalog.markDropped(name);
 
         // Clean up ID counter
         idCounters.remove(name);
@@ -219,10 +242,12 @@ final class LocalEngine implements Engine {
     @Override
     public Collection<TableMetadata> listTables() {
         ensureOpen();
-        return catalog.list();
+        // @spec F05.R20 — READY-only snapshot (not a live view)
+        return catalog.listReady();
     }
 
     @Override
+    // @spec F05.R18,R21,R70 — tableMetadata returns full metadata or null for unknown
     public TableMetadata tableMetadata(String name) {
         ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
@@ -233,13 +258,14 @@ final class LocalEngine implements Engine {
     public EngineMetrics metrics() {
         ensureOpen();
         final EngineMetrics snapshot = handleTracker.snapshot();
-        // Override tableCount with actual catalog count
-        final int catalogTableCount = catalog.list().size();
+        // @spec F05.R62 — tableCount metric reflects READY tables only
+        final int catalogTableCount = catalog.listReady().size();
         return new EngineMetrics(catalogTableCount, snapshot.totalOpenHandles(),
                 snapshot.handlesPerTable(), snapshot.handlesPerSourcePerTable());
     }
 
     @Override
+    // @spec F05.R6,R7,R78,R79 — idempotent close; accumulate errors from closing multiple tables
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) {
             return; // already closed — idempotent
@@ -351,7 +377,7 @@ final class LocalEngine implements Engine {
     /**
      * Builder for {@link LocalEngine}.
      */
-    static final class Builder {
+    public static final class Builder {
 
         private Path rootDirectory;
         private int maxHandlesPerSourcePerTable = 16;
@@ -363,13 +389,14 @@ final class LocalEngine implements Engine {
         private Builder() {
         }
 
-        Builder rootDirectory(Path rootDirectory) {
+        // @spec F05.R2 — reject null rootDirectory with NPE identifying the parameter
+        public Builder rootDirectory(Path rootDirectory) {
             this.rootDirectory = Objects.requireNonNull(rootDirectory,
                     "rootDirectory must not be null");
             return this;
         }
 
-        Builder maxHandlesPerSourcePerTable(int max) {
+        public Builder maxHandlesPerSourcePerTable(int max) {
             if (max <= 0) {
                 throw new IllegalArgumentException(
                         "maxHandlesPerSourcePerTable must be positive: " + max);
@@ -379,7 +406,7 @@ final class LocalEngine implements Engine {
             return this;
         }
 
-        Builder maxHandlesPerTable(int max) {
+        public Builder maxHandlesPerTable(int max) {
             if (max <= 0) {
                 throw new IllegalArgumentException("maxHandlesPerTable must be positive: " + max);
             }
@@ -388,7 +415,7 @@ final class LocalEngine implements Engine {
             return this;
         }
 
-        Builder maxTotalHandles(int max) {
+        public Builder maxTotalHandles(int max) {
             if (max <= 0) {
                 throw new IllegalArgumentException("maxTotalHandles must be positive: " + max);
             }
@@ -397,12 +424,12 @@ final class LocalEngine implements Engine {
             return this;
         }
 
-        Builder allocationTracking(AllocationTracking tracking) {
+        public Builder allocationTracking(AllocationTracking tracking) {
             this.allocationTracking = Objects.requireNonNull(tracking, "tracking must not be null");
             return this;
         }
 
-        Builder memTableFlushThresholdBytes(long bytes) {
+        public Builder memTableFlushThresholdBytes(long bytes) {
             if (bytes <= 0) {
                 throw new IllegalArgumentException(
                         "memTableFlushThresholdBytes must be positive: " + bytes);
@@ -412,10 +439,16 @@ final class LocalEngine implements Engine {
             return this;
         }
 
-        LocalEngine build() throws IOException {
+        public LocalEngine build() throws IOException {
             if (rootDirectory == null) {
                 throw new IllegalStateException("rootDirectory must be set");
             }
+            // @spec F05.R3 — rootDirectory must be absolute
+            if (!rootDirectory.isAbsolute()) {
+                throw new IllegalArgumentException(
+                        "rootDirectory must be absolute: " + rootDirectory);
+            }
+            // @spec F05.R72,R73,R90 — handle-limit hierarchy
             if (maxHandlesPerSourcePerTable > maxHandlesPerTable) {
                 throw new IllegalArgumentException("maxHandlesPerSourcePerTable ("
                         + maxHandlesPerSourcePerTable + ") must not exceed maxHandlesPerTable ("

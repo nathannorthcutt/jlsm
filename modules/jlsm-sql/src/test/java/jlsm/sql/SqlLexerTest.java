@@ -16,6 +16,7 @@ class SqlLexerTest {
 
     // ── Happy path ───────────────────────────────────────────────
 
+    // @spec F07.R8,R10,R18
     @Test
     void tokenizesSelectStar() throws SqlParseException {
         var tokens = tokenize("SELECT * FROM users");
@@ -28,6 +29,7 @@ class SqlLexerTest {
         assertEquals(TokenType.EOF, tokens.getLast().type());
     }
 
+    // @spec F07.R16,R18
     @Test
     void tokenizesColumnProjection() throws SqlParseException {
         var tokens = tokenize("SELECT a, b FROM t");
@@ -41,6 +43,7 @@ class SqlLexerTest {
         assertEquals(TokenType.FROM, tokens.get(4).type());
     }
 
+    // @spec F07.R10,R17
     @Test
     void tokenizesWhereWithComparison() throws SqlParseException {
         var tokens = tokenize("SELECT * FROM t WHERE age > 30");
@@ -53,6 +56,7 @@ class SqlLexerTest {
         assertEquals("30", tokens.get(7).text());
     }
 
+    // @spec F07.R17
     @Test
     void tokenizesAllComparisonOperators() throws SqlParseException {
         var tokens = tokenize("= != <> < <= > >=");
@@ -66,6 +70,7 @@ class SqlLexerTest {
         assertEquals(TokenType.GTE, tokens.get(6).type());
     }
 
+    // @spec F07.R12
     @Test
     void tokenizesStringLiteral() throws SqlParseException {
         var tokens = tokenize("'hello'");
@@ -74,6 +79,7 @@ class SqlLexerTest {
         assertEquals("hello", tokens.get(0).text());
     }
 
+    // @spec F07.R13
     @Test
     void tokenizesStringLiteralWithEscapedQuote() throws SqlParseException {
         var tokens = tokenize("'it''s'");
@@ -82,6 +88,7 @@ class SqlLexerTest {
         assertEquals("it's", tokens.get(0).text());
     }
 
+    // @spec F07.R15,R53
     @Test
     void tokenizesNumericLiterals() throws SqlParseException {
         var intTokens = tokenize("42");
@@ -93,6 +100,7 @@ class SqlLexerTest {
         assertEquals("3.14", decTokens.get(0).text());
     }
 
+    // @spec F07.R19
     @Test
     void tokenizesBindParameter() throws SqlParseException {
         var tokens = tokenize("?");
@@ -101,6 +109,7 @@ class SqlLexerTest {
         assertEquals("?", tokens.get(0).text());
     }
 
+    // @spec F07.R10,R11
     @Test
     void tokenizesKeywordsCaseInsensitive() throws SqlParseException {
         var lower = tokenize("select * from t");
@@ -112,6 +121,7 @@ class SqlLexerTest {
         assertEquals(TokenType.FROM, mixed.get(2).type());
     }
 
+    // @spec F07.R10
     @Test
     void tokenizesBooleanAndNull() throws SqlParseException {
         var tokens = tokenize("TRUE FALSE NULL");
@@ -121,6 +131,7 @@ class SqlLexerTest {
         assertEquals(TokenType.NULL, tokens.get(2).type());
     }
 
+    // @spec F07.R10
     @Test
     void tokenizesOrderByLimitOffset() throws SqlParseException {
         var tokens = tokenize("ORDER BY x DESC LIMIT 10 OFFSET 5");
@@ -135,6 +146,7 @@ class SqlLexerTest {
         assertEquals(TokenType.NUMBER_LITERAL, tokens.get(7).type());
     }
 
+    // @spec F07.R10
     @Test
     void tokenizesBetween() throws SqlParseException {
         var tokens = tokenize("age BETWEEN 1 AND 10");
@@ -146,6 +158,7 @@ class SqlLexerTest {
         assertEquals(TokenType.NUMBER_LITERAL, tokens.get(4).type());
     }
 
+    // @spec F07.R10,R42
     @Test
     void tokenizesMatchFunction() throws SqlParseException {
         var tokens = tokenize("MATCH(title, 'search text')");
@@ -159,6 +172,7 @@ class SqlLexerTest {
         assertEquals(TokenType.RPAREN, tokens.get(5).type());
     }
 
+    // @spec F07.R10,R42
     @Test
     void tokenizesVectorDistanceFunction() throws SqlParseException {
         var tokens = tokenize("VECTOR_DISTANCE(embedding, ?, 'cosine')");
@@ -174,6 +188,7 @@ class SqlLexerTest {
         assertEquals(TokenType.RPAREN, tokens.get(7).type());
     }
 
+    // @spec F07.R10
     @Test
     void tokenizesColumnAlias() throws SqlParseException {
         var tokens = tokenize("SELECT name AS n FROM t");
@@ -185,6 +200,7 @@ class SqlLexerTest {
         assertEquals("n", tokens.get(3).text());
     }
 
+    // @spec F07.R8,R27
     @Test
     void alwaysEndsWithEof() throws SqlParseException {
         var empty = tokenize("");
@@ -195,6 +211,7 @@ class SqlLexerTest {
         assertEquals(TokenType.EOF, nonEmpty.getLast().type());
     }
 
+    // @spec F07.R23
     @Test
     void tracksPositionCorrectly() throws SqlParseException {
         var tokens = tokenize("SELECT *");
@@ -204,16 +221,19 @@ class SqlLexerTest {
 
     // ── Error cases ──────────────────────────────────────────────
 
+    // @spec F07.R14
     @Test
     void rejectsUnterminatedStringLiteral() {
         assertThrows(SqlParseException.class, () -> tokenize("'unterminated"));
     }
 
+    // @spec F07.R21
     @Test
     void rejectsUnrecognisedCharacter() {
         assertThrows(SqlParseException.class, () -> tokenize("SELECT @invalid"));
     }
 
+    // @spec F07.R9
     @Test
     void rejectsNullInput() {
         assertThrows(NullPointerException.class, () -> tokenize(null));

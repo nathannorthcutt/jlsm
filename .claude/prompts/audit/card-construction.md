@@ -121,8 +121,20 @@ shared state.
 **thread_sharing** — determines whether this construct's mutable state
 could be accessed from multiple threads. This field is critical for
 downstream concurrency analysis — it prevents false positives on
-single-threaded constructs. Assess by examining the construct's API
-surface and lifecycle:
+single-threaded constructs.
+
+**Spec contracts take precedence.** If the feature has a resolved spec
+bundle, check whether the spec declares a concurrency contract for this
+construct. Spec declarations override code-inferred values:
+- Spec says "thread-safe" or "concurrent access must be safe" → `explicit`
+- Spec says "not thread-safe" or "callers must not share across threads" → `none`
+- Spec says nothing about this construct → infer from code (below)
+
+When the spec and code disagree (spec says thread-safe but code has no
+synchronization), that is a finding — record it in the card's
+`guarantees` section as a gap.
+
+**Code inference (when spec is silent):**
 
 - **`none`** — the construct is designed for single-threaded use. Evidence
   includes: private constructor with no public factory, builder pattern

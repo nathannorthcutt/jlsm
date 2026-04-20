@@ -181,6 +181,35 @@ For each conflict and fragile assumption, ask:
 - Should a new requirement be added to the extracted spec to make the
   guarantee explicit?
 
+### Absent requirement decisions
+
+After presenting conflicts, present all `[ABSENT]` requirements grouped by
+impact (how many consuming specs depend on the missing behavior).
+
+For each `[ABSENT]` requirement, the user chooses one of:
+
+- **promote** — The absence is a gap that needs filling. Rewrite as a
+  positive requirement describing what the code SHOULD do. Remove the
+  `[ABSENT]` tag. The extracted spec records it as a new requirement with
+  an `[UNIMPLEMENTED]` tag, which creates an open obligation that blocks
+  APPROVED status until the behavior is implemented.
+
+- **preserve** — The absence is intentional. Rewrite as a negative
+  requirement documenting the design choice ("Document MUST NOT implement
+  Serializable" instead of "Document does not implement Serializable
+  [ABSENT]"). Remove the `[ABSENT]` tag. This locks in the decision so
+  future specs don't assume the behavior exists.
+
+- **defer** — Leave `[ABSENT]` for now, decide later. The tag stays in
+  the spec. `/curate` will surface deferred `[ABSENT]` requirements as
+  undecided items that need explicit decisions.
+
+After all `[ABSENT]` requirements are decided, any **promoted** requirements
+appear in a "New work needed" section of the conflict report, listing:
+- The promoted requirement ID and text
+- Which consuming specs assumed this behavior
+- Suggested scope for implementation (what code needs to change)
+
 ---
 
 ## Output

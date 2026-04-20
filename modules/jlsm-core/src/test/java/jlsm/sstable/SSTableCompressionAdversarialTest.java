@@ -255,16 +255,12 @@ class SSTableCompressionAdversarialTest {
         assertTrue(iter.hasNext(), "iterator should have entries before close");
         r.close();
 
-        // C2-F11: After close, hasNext() returns stale true (it cached the next entry)
-        // but next() calls advance() which checks closed and throws ISE.
-        // This inconsistency should be documented or fixed.
-        boolean hasNextAfterClose = iter.hasNext();
-        if (hasNextAfterClose) {
-            // If hasNext() still returns true after close, next() should throw
-            assertThrows(Exception.class, iter::next,
-                    "C2-F11: hasNext()=true but next() throws after close — inconsistent");
-        }
-        // Either way, the behavior is inconsistent (hasNext=true but next throws)
+        // C2-F11 / F08.R19 (v3): after mid-iteration close, hasNext() must throw
+        // IllegalStateException rather than returning a stale value. Previously this
+        // inconsistency (hasNext=true / next throws) was documented as a bug; the
+        // resolution is to make hasNext() symmetric with next() — both throw on close.
+        assertThrows(IllegalStateException.class, iter::hasNext,
+                "C2-F11: hasNext() must throw after close, not return a stale value");
     }
 
     @Test
@@ -294,6 +290,121 @@ class SSTableCompressionAdversarialTest {
             assertThrows(Exception.class, iter::next,
                     "C2-F14: hasNext()=true but next() throws after close — inconsistent");
         }
+    }
+
+    // ---- F02.R33: v2 key-index entries must reject invalid blockIndex / intraBlockOffset ----
+
+    /**
+     * Writes a valid v2 SSTable, then overwrites the first key-index entry's blockIndex field with
+     * {@code patchedBlockIndex} (and optionally intraBlockOffset with {@code patchedIntraOffset}).
+     * Returns the resulting path.
+     */
+    private Path writeAndPatchFirstKeyIndexEntry(Path dir, String name, int patchedBlockIndex,
+            Integer patchedIntraOffset) throws IOException {
+        List<Entry> entries = basicEntries();
+        Path path = dir.resolve(name);
+        try (TrieSSTableWriter w = new TrieSSTableWriter(1L, Level.L0, path,
+                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.deflate())) {
+            for (Entry e : entries) {
+                w.append(e);
+            }
+            w.finish();
+        }
+
+        // Locate key index via footer. Writer now produces v3 when a codec is configured:
+        // v3 layout is [mapOffset, mapLength, idxOffset, idxLength, fltOffset, fltLength,
+        // entryCount, blockSize, MAGIC_V3]. idxOffset lives at footerStart+16 (bytes 16..23).
+        long fileSize = Files.size(path);
+        long idxOffset;
+        int keyLen;
+        try (SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.READ)) {
+            long footerStart = fileSize - SSTableFormat.FOOTER_SIZE_V3;
+            ByteBuffer footer = ByteBuffer.allocate(SSTableFormat.FOOTER_SIZE_V3);
+            ch.position(footerStart);
+            while (footer.hasRemaining()) {
+                if (ch.read(footer) < 0)
+                    break;
+            }
+            footer.flip();
+            footer.position(16);
+            idxOffset = footer.getLong();
+
+            // Read the first key-index entry header to find keyLen (idxOffset + 4 skips numKeys)
+            ByteBuffer header = ByteBuffer.allocate(4);
+            ch.position(idxOffset + 4);
+            while (header.hasRemaining()) {
+                if (ch.read(header) < 0)
+                    break;
+            }
+            header.flip();
+            keyLen = header.getInt();
+        }
+
+        // blockIndex field = idxOffset + 4 (numKeys) + 4 (keyLen) + keyLen
+        long blockIndexPos = idxOffset + 4L + 4L + keyLen;
+        try (SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.WRITE)) {
+            ByteBuffer patch = ByteBuffer.allocate(4);
+            patch.putInt(patchedBlockIndex).flip();
+            ch.position(blockIndexPos);
+            while (patch.hasRemaining()) {
+                ch.write(patch);
+            }
+            if (patchedIntraOffset != null) {
+                ByteBuffer intra = ByteBuffer.allocate(4);
+                intra.putInt(patchedIntraOffset).flip();
+                ch.position(blockIndexPos + 4);
+                while (intra.hasRemaining()) {
+                    ch.write(intra);
+                }
+            }
+        }
+        return path;
+    }
+
+    // @spec F02.R33 — blockIndex out of [0, blockCount) must produce IOException at key-index
+    // read time, not IndexOutOfBoundsException later when accessing the compression map.
+    @Test
+    void v2KeyIndexRejectsBlockIndexOutOfRange_F02R33(@TempDir Path dir) throws IOException {
+        Path path = writeAndPatchFirstKeyIndexEntry(dir, "bad-block-index.sst",
+                Integer.MAX_VALUE /* clearly >= blockCount */, null);
+
+        Exception ex = assertThrows(Exception.class, () -> TrieSSTableReader.open(path,
+                BlockedBloomFilter.deserializer(), null, CompressionCodec.deflate()));
+        assertInstanceOf(IOException.class, ex,
+                "R33: corrupt blockIndex must surface as IOException, got: "
+                        + ex.getClass().getName() + " — " + ex.getMessage());
+        assertTrue(
+                ex.getMessage() != null && (ex.getMessage().contains("blockIndex")
+                        || ex.getMessage().contains("block index")),
+                "R33: expected descriptive message naming blockIndex, got: " + ex.getMessage());
+    }
+
+    // @spec F02.R33 — negative blockIndex must produce IOException at key-index read time.
+    @Test
+    void v2KeyIndexRejectsNegativeBlockIndex_F02R33(@TempDir Path dir) throws IOException {
+        Path path = writeAndPatchFirstKeyIndexEntry(dir, "neg-block-index.sst", -1, null);
+
+        Exception ex = assertThrows(Exception.class, () -> TrieSSTableReader.open(path,
+                BlockedBloomFilter.deserializer(), null, CompressionCodec.deflate()));
+        assertInstanceOf(IOException.class, ex,
+                "R33: negative blockIndex must surface as IOException, got: "
+                        + ex.getClass().getName() + " — " + ex.getMessage());
+    }
+
+    // @spec F02.R33 — negative intraBlockOffset must produce IOException at key-index read time.
+    @Test
+    void v2KeyIndexRejectsNegativeIntraBlockOffset_F02R33(@TempDir Path dir) throws IOException {
+        Path path = writeAndPatchFirstKeyIndexEntry(dir, "neg-intra-offset.sst", 0, -1);
+
+        Exception ex = assertThrows(Exception.class, () -> TrieSSTableReader.open(path,
+                BlockedBloomFilter.deserializer(), null, CompressionCodec.deflate()));
+        assertInstanceOf(IOException.class, ex,
+                "R33: negative intraBlockOffset must surface as IOException, got: "
+                        + ex.getClass().getName() + " — " + ex.getMessage());
+        assertTrue(ex.getMessage() != null
+                && (ex.getMessage().contains("intra") || ex.getMessage().contains("offset")),
+                "R33: expected descriptive message naming intra-block offset, got: "
+                        + ex.getMessage());
     }
 
     // ---- C2-F18: readBytes position-then-read race on lazy channel ----

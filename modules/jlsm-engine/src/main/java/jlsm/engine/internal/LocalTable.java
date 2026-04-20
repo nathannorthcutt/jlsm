@@ -26,6 +26,7 @@ import java.util.Optional;
  * <p>
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
  */
+// @spec F05.R22,R32,R33,R34,R35,R36,R38,R39,R47,R48,R70,R77,R83 — delegating handle surface
 final class LocalTable implements Table {
 
     private final JlsmTable.StringKeyed delegate;
@@ -111,6 +112,7 @@ final class LocalTable implements Table {
     }
 
     @Override
+    // @spec F05.R37 — query pass-through deferred to OBL-F05-R37 (pending jlsm-table binding)
     public TableQuery<String> query() {
         synchronized (registration) {
             checkValid();

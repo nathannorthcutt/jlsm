@@ -110,6 +110,7 @@ class PartitionedTableTest {
     // Builder validation
     // -------------------------------------------------------------------------
 
+    // @spec F11.R71
     @Test
     void builder_missingConfig_throwsIllegalStateException() {
         final JlsmSchema schema = testSchema();
@@ -117,6 +118,7 @@ class PartitionedTableTest {
                 .partitionClientFactory(desc -> null).build());
     }
 
+    // @spec F11.R72
     @Test
     void builder_missingFactory_throwsIllegalStateException() {
         final PartitionDescriptor desc = new PartitionDescriptor(1L, seg("a"), seg("z"), "local",
@@ -126,12 +128,14 @@ class PartitionedTableTest {
                 () -> PartitionedTable.builder().partitionConfig(config).build());
     }
 
+    // @spec F11.R69
     @Test
     void builder_nullConfig_throwsNullPointerException() {
         assertThrows(NullPointerException.class,
                 () -> PartitionedTable.builder().partitionConfig(null));
     }
 
+    // @spec F11.R70
     @Test
     void builder_nullFactory_throwsNullPointerException() {
         assertThrows(NullPointerException.class,
@@ -157,6 +161,7 @@ class PartitionedTableTest {
     // CRUD routing — single-key operations
     // -------------------------------------------------------------------------
 
+    // @spec F11.R75,R76,R79 — create routes by UTF-8 key, get routes correctly
     @Test
     void create_and_get_routesToCorrectPartition() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -209,6 +214,7 @@ class PartitionedTableTest {
         }
     }
 
+    // @spec F11.R77 — update routes by key
     @Test
     void update_routesToCorrectPartition() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -227,6 +233,7 @@ class PartitionedTableTest {
         }
     }
 
+    // @spec F11.R78 — delete routes by key
     @Test
     void delete_routesToCorrectPartition() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -241,6 +248,7 @@ class PartitionedTableTest {
         }
     }
 
+    // @spec F11.R30,R31 — key outside all partitions rejected by RangeMap via IAE
     @Test
     void create_keyOutsideAllRanges_throwsIllegalArgumentException() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -272,6 +280,7 @@ class PartitionedTableTest {
         }
     }
 
+    // @spec F11.R80,R99 — multi-partition range with clipped boundaries, merged in key order
     @Test
     void getRange_acrossPartitions_mergesInKeyOrder() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -297,6 +306,7 @@ class PartitionedTableTest {
         }
     }
 
+    // @spec F11.R82 — no partition overlap returns empty iterator
     @Test
     void getRange_emptyResult_returnsEmptyIterator() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -310,23 +320,108 @@ class PartitionedTableTest {
     }
 
     // -------------------------------------------------------------------------
-    // query — throws UnsupportedOperationException
+    // query — scatter-gather across partitions, top-k merge
     // -------------------------------------------------------------------------
 
+    // @spec F11.R85,R86 — scatter to all partitions, merge via ResultMerger.mergeTopK,
+    // full limit per partition
     @Test
-    void query_throwsUnsupportedOperationException() throws IOException {
+    void query_scatterGatherAcrossPartitions_mergesGlobalTopK() throws IOException {
         final JlsmSchema schema = testSchema();
-        final Path baseDir = tempDir.resolve("query_unsupported");
+        final Path baseDir = tempDir.resolve("query_scatter_gather");
+        try (var table = buildTwoPartitionTable(baseDir, schema)) {
+            // Partition 1 [a, m): "alice" matches; "bob" does not
+            table.create("alice", JlsmDocument.of(schema, "name", "Target", "value", 1));
+            table.create("bob", JlsmDocument.of(schema, "name", "Miss", "value", 2));
+            // Partition 2 [m, {): "mallory" matches; "nina" does not
+            table.create("mallory", JlsmDocument.of(schema, "name", "Target", "value", 3));
+            table.create("nina", JlsmDocument.of(schema, "name", "Miss", "value", 4));
+
+            final List<ScoredEntry<String>> results = table
+                    .query(new Predicate.Eq("name", "Target"), 10);
+
+            assertEquals(2, results.size(),
+                    "scatter-gather should find matches in both partitions");
+            final var keys = results.stream().map(ScoredEntry::key).toList();
+            assertTrue(keys.contains("alice"), "partition 1 match should be included");
+            assertTrue(keys.contains("mallory"), "partition 2 match should be included");
+        }
+    }
+
+    // @spec F11.R86 — each partition receives the full limit (not limit/P)
+    @Test
+    void query_eachPartitionReceivesFullLimit() throws IOException {
+        final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
+                0L);
+        final PartitionDescriptor desc2 = new PartitionDescriptor(2L, seg("m"), seg("{"), "local",
+                0L);
+        final PartitionConfig config = PartitionConfig.of(List.of(desc1, desc2));
+
+        final int[] limitsReceived = { -1, -1 };
+        try (var table = PartitionedTable.builder().partitionConfig(config)
+                .partitionClientFactory(desc -> new LimitCapturingClient(desc, limitsReceived))
+                .build()) {
+            table.query(new Predicate.Eq("name", "x"), 7);
+            assertEquals(7, limitsReceived[0], "partition 1 must receive the full limit");
+            assertEquals(7, limitsReceived[1], "partition 2 must receive the full limit");
+        }
+    }
+
+    // @spec F11.R83 — null predicate rejected with NPE
+    @Test
+    void query_nullPredicate_throwsNullPointerException() throws IOException {
+        final JlsmSchema schema = testSchema();
+        final Path baseDir = tempDir.resolve("query_null_pred");
+        try (var table = buildTwoPartitionTable(baseDir, schema)) {
+            assertThrows(NullPointerException.class, () -> table.query(null, 10));
+        }
+    }
+
+    // @spec F11.R84 — non-positive limit rejected with IAE
+    @Test
+    void query_nonPositiveLimit_throwsIllegalArgumentException() throws IOException {
+        final JlsmSchema schema = testSchema();
+        final Path baseDir = tempDir.resolve("query_bad_limit");
         try (var table = buildTwoPartitionTable(baseDir, schema)) {
             final Predicate pred = new Predicate.Eq("name", "Alice");
-            assertThrows(UnsupportedOperationException.class, () -> table.query(pred, 10));
+            assertThrows(IllegalArgumentException.class, () -> table.query(pred, 0));
+            assertThrows(IllegalArgumentException.class, () -> table.query(pred, -1));
         }
+    }
+
+    // @spec F11.R100 — CRUD and range operations rejected after close()
+    @Test
+    void query_afterClose_throwsIllegalStateException() throws IOException {
+        final JlsmSchema schema = testSchema();
+        final Path baseDir = tempDir.resolve("query_after_close");
+        final PartitionedTable table = buildTwoPartitionTable(baseDir, schema);
+        table.close();
+        final Predicate pred = new Predicate.Eq("name", "Alice");
+        assertThrows(IllegalStateException.class, () -> table.query(pred, 10));
+    }
+
+    // @spec F11.R89 — partition IOException propagates to caller; partial results not returned
+    @Test
+    void query_partitionThrowsIOException_propagates() {
+        final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
+                0L);
+        final PartitionDescriptor desc2 = new PartitionDescriptor(2L, seg("m"), seg("{"), "local",
+                0L);
+        final PartitionConfig config = PartitionConfig.of(List.of(desc1, desc2));
+
+        assertThrows(IOException.class, () -> {
+            try (var table = PartitionedTable.builder().partitionConfig(config)
+                    .partitionClientFactory(desc -> new IOExceptionOnQueryClient(desc)).build()) {
+                table.query(new Predicate.Eq("name", "x"), 10);
+            }
+        });
     }
 
     // -------------------------------------------------------------------------
     // Lifecycle — close()
     // -------------------------------------------------------------------------
 
+    // @spec F11.R87
     @Test
     void close_closesAllPartitionClients() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -336,6 +431,7 @@ class PartitionedTableTest {
         assertDoesNotThrow(table::close);
     }
 
+    // @spec F11.R87,R88 — deferred close pattern; first exception thrown, others suppressed
     @Test
     void close_withFailingClient_accumulatesAndThrows() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -381,6 +477,105 @@ class PartitionedTableTest {
             keys.add(it.next().key());
         }
         return keys;
+    }
+
+    /**
+     * Stub client that records the {@code limit} value passed to {@code doQuery} into a shared
+     * int[] indexed by descriptor id (1L → index 0, 2L → index 1).
+     */
+    private static final class LimitCapturingClient implements PartitionClient {
+
+        private final PartitionDescriptor descriptor;
+        private final int[] limitsByIndex;
+
+        LimitCapturingClient(PartitionDescriptor descriptor, int[] limitsByIndex) {
+            this.descriptor = descriptor;
+            this.limitsByIndex = limitsByIndex;
+        }
+
+        @Override
+        public PartitionDescriptor descriptor() {
+            return descriptor;
+        }
+
+        @Override
+        public void doCreate(String key, JlsmDocument doc) {
+        }
+
+        @Override
+        public Optional<JlsmDocument> doGet(String key) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void doUpdate(String key, JlsmDocument doc, UpdateMode mode) {
+        }
+
+        @Override
+        public void doDelete(String key) {
+        }
+
+        @Override
+        public Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey) {
+            return List.<TableEntry<String>>of().iterator();
+        }
+
+        @Override
+        public List<ScoredEntry<String>> doQuery(Predicate predicate, int limit) {
+            limitsByIndex[(int) (descriptor.id() - 1L)] = limit;
+            return List.of();
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    /** Stub client whose {@code doQuery} always fails with an {@link IOException}. */
+    private static final class IOExceptionOnQueryClient implements PartitionClient {
+
+        private final PartitionDescriptor descriptor;
+
+        IOExceptionOnQueryClient(PartitionDescriptor descriptor) {
+            this.descriptor = descriptor;
+        }
+
+        @Override
+        public PartitionDescriptor descriptor() {
+            return descriptor;
+        }
+
+        @Override
+        public void doCreate(String key, JlsmDocument doc) {
+        }
+
+        @Override
+        public Optional<JlsmDocument> doGet(String key) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void doUpdate(String key, JlsmDocument doc, UpdateMode mode) {
+        }
+
+        @Override
+        public void doDelete(String key) {
+        }
+
+        @Override
+        public Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey) {
+            return List.<TableEntry<String>>of().iterator();
+        }
+
+        @Override
+        public List<ScoredEntry<String>> doQuery(Predicate predicate, int limit)
+                throws IOException {
+            throw new IOException("simulated partition query failure");
+        }
+
+        @Override
+        public void close() {
+        }
     }
 
     /**

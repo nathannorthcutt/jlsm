@@ -98,6 +98,7 @@ class StreamingBlockDecompressionTest {
 
     // ---- Happy path ----
 
+    // @spec F08.R1,R3,R4 — lazy scan returns all entries in ascending order across blocks
     @Test
     void testStreamingScanMultiBlockReturnsAllEntriesInOrder(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(500);
@@ -119,6 +120,7 @@ class StreamingBlockDecompressionTest {
         }
     }
 
+    // @spec F08.R4,R13 — scan entries match point-get reads; get() uses cache path
     @Test
     void testStreamingScanMatchesEntryByEntryWithDirectReads(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(200);
@@ -141,6 +143,7 @@ class StreamingBlockDecompressionTest {
         }
     }
 
+    // @spec F08.R5,R23 — range scan within single block reuses cached decompressed block
     @Test
     void testRangeScanSameBlockReusesDecompression(@TempDir Path dir) throws IOException {
         // Write entries that will all fit in a single block (few small entries)
@@ -160,6 +163,8 @@ class StreamingBlockDecompressionTest {
         }
     }
 
+    // @spec F08.R5,R6,R15 — range scan crossing blocks replaces cached block, decodes at
+    // intra-block offset
     @Test
     void testRangeScanCrossBlockBoundary(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(500);
@@ -186,6 +191,7 @@ class StreamingBlockDecompressionTest {
         }
     }
 
+    // @spec F08.R1,R27 — lazy reader scan uses synchronized channel reads
     @Test
     void testLazyReaderStreamingScan(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(300);
@@ -204,6 +210,7 @@ class StreamingBlockDecompressionTest {
 
     // ---- Error and edge cases ----
 
+    // @spec F08.R19 — closed reader throws IllegalStateException on scan
     @Test
     void testStreamingScanOnClosedReaderThrows(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(10);
@@ -216,8 +223,30 @@ class StreamingBlockDecompressionTest {
                 "scan on closed reader must throw IllegalStateException");
     }
 
+    // @spec F08.R19 — full-scan iterator must signal mid-iteration close via hasNext(), not
+    // silently return false. A for-each loop must terminate loudly so callers cannot miss a
+    // reader close that happened while their iteration was in progress.
+    @Test
+    void testStreamingFullScanHasNextThrowsAfterMidIterationClose(@TempDir Path dir)
+            throws IOException {
+        List<Entry> entries = multiBlockEntries(50); // spans multiple blocks
+        Path path = writeV2(dir, "mid-close-full.sst", entries);
+
+        TrieSSTableReader r = openV2Lazy(path);
+        Iterator<Entry> iter = r.scan();
+        assertTrue(iter.hasNext(), "iterator must have entries before close");
+        iter.next(); // consume one entry
+
+        r.close();
+
+        assertThrows(IllegalStateException.class, iter::hasNext,
+                "R19: hasNext() must throw IllegalStateException after mid-iteration close, "
+                        + "not silently return false");
+    }
+
     // ---- Boundary values ----
 
+    // @spec F08.R22 — single-block SSTable decompresses, yields all entries, then exhausts
     @Test
     void testStreamingScanSingleBlockSSTable(@TempDir Path dir) throws IOException {
         // Few small entries that fit in a single 4096-byte block
@@ -235,6 +264,7 @@ class StreamingBlockDecompressionTest {
         }
     }
 
+    // @spec F08.R16 — empty range produces hasNext()==false immediately
     @Test
     void testRangeScanEmptyRange(@TempDir Path dir) throws IOException {
         List<Entry> entries = List.of(put("aaa", "v1", 1), put("bbb", "v2", 2),
@@ -248,6 +278,7 @@ class StreamingBlockDecompressionTest {
         }
     }
 
+    // @spec F08.R22,R16 — single entry: decompress, yield, exhaust
     @Test
     void testStreamingScanSingleEntry(@TempDir Path dir) throws IOException {
         List<Entry> entries = List.of(put("only", "one", 1));
@@ -263,6 +294,8 @@ class StreamingBlockDecompressionTest {
 
     // ---- Structural (iterator patterns) ----
 
+    // @spec F08.R16,R17 — exhausted iterator: hasNext()==false, next() throws
+    // NoSuchElementException
     @Test
     void testScanIteratorExhaustion(@TempDir Path dir) throws IOException {
         List<Entry> entries = List.of(put("first", "v1", 1), put("second", "v2", 2));
@@ -278,6 +311,7 @@ class StreamingBlockDecompressionTest {
         }
     }
 
+    // @spec F08.R11 — v1 scan path unchanged, uses DataRegionIterator
     @Test
     void testV1ScanPathUnchanged(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(100);

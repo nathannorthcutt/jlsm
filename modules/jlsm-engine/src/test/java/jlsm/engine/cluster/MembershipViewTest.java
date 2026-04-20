@@ -45,16 +45,38 @@ class MembershipViewTest {
         assertFalse(view.isMember(A2));
     }
 
+    // @spec F04.R17,R82 — isMember must report DEAD as non-member
     @Test
-    void isMemberIncludesDeadMembers() {
+    void isMemberExcludesDeadMembers() {
         var view = new MembershipView(0, Set.of(new Member(A1, MemberState.DEAD, 0)), NOW);
+        assertFalse(view.isMember(A1));
+    }
+
+    // @spec F04.R17 — SUSPECTED counts as a current member
+    @Test
+    void isMemberIncludesSuspectedMembers() {
+        var view = new MembershipView(0, Set.of(new Member(A1, MemberState.SUSPECTED, 0)), NOW);
         assertTrue(view.isMember(A1));
+    }
+
+    // @spec F04.R82 — isKnown exposes DEAD records distinctly from isMember
+    @Test
+    void isKnownIncludesDeadMembers() {
+        var view = new MembershipView(0, Set.of(new Member(A1, MemberState.DEAD, 0)), NOW);
+        assertTrue(view.isKnown(A1));
+        assertFalse(view.isMember(A1));
     }
 
     @Test
     void isMemberNullThrows() {
         var view = new MembershipView(0, Set.of(), NOW);
         assertThrows(NullPointerException.class, () -> view.isMember(null));
+    }
+
+    @Test
+    void isKnownNullThrows() {
+        var view = new MembershipView(0, Set.of(), NOW);
+        assertThrows(NullPointerException.class, () -> view.isKnown(null));
     }
 
     @Test
@@ -75,6 +97,26 @@ class MembershipViewTest {
         assertFalse(view.hasQuorum(75));
         // but quorum at 50% should pass
         assertTrue(view.hasQuorum(50));
+    }
+
+    // @spec F04.R16 — DEAD members must not factor into quorum calculation
+    @Test
+    void hasQuorumExcludesDeadFromDenominator() {
+        // 2 ALIVE + 1 DEAD: under R16, denominator is 2 (excluding DEAD), not 3.
+        // 2/2 = 100%, so quorum at 75% and at 100% must both pass.
+        var members = Set.of(new Member(A1, MemberState.ALIVE, 0),
+                new Member(A2, MemberState.ALIVE, 0), new Member(A3, MemberState.DEAD, 0));
+        var view = new MembershipView(0, members, NOW);
+        assertTrue(view.hasQuorum(75));
+        assertTrue(view.hasQuorum(100));
+    }
+
+    @Test
+    void hasQuorumAllDeadReturnsFalse() {
+        var members = Set.of(new Member(A1, MemberState.DEAD, 0),
+                new Member(A2, MemberState.DEAD, 0));
+        var view = new MembershipView(0, members, NOW);
+        assertFalse(view.hasQuorum(1));
     }
 
     @Test

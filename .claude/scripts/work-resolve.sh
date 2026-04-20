@@ -92,8 +92,28 @@ while IFS= read -r wd_file; do
   fi
 
   if [[ "$wd_status" == "SPECIFIED" ]]; then
-    WD_STATUS["$wd_id"]="SPECIFIED"
-    ((SPECIFIED_COUNT++)) || true
+    # Check wd-type deps — SPECIFIED WDs may be blocked by predecessor WDs
+    spec_blockers=""
+    spec_dep_count=0
+    while IFS='|' read -r dep_type dep_ref dep_req_state dep_kind; do
+      [[ -z "$dep_type" ]] && continue
+      ((spec_dep_count++)) || true
+      if [[ "$dep_type" == "wd" ]]; then
+        ref_status="${WD_STATUS[$dep_ref]:-}"
+        if [[ -z "$ref_status" || "$ref_status" != "$dep_req_state" ]]; then
+          spec_blockers+="wd:$dep_ref — need $dep_req_state, currently ${ref_status:-not found}"$'\n'
+        fi
+      fi
+    done < <(work_fm_artifact_deps "$wd_file")
+    WD_DEP_COUNT["$wd_id"]=$spec_dep_count
+    if [[ -z "$spec_blockers" ]]; then
+      WD_STATUS["$wd_id"]="SPECIFIED"
+      ((SPECIFIED_COUNT++)) || true
+    else
+      WD_STATUS["$wd_id"]="BLOCKED"
+      WD_BLOCKERS["$wd_id"]="$spec_blockers"
+      ((BLOCKED_COUNT++)) || true
+    fi
     continue
   fi
 
@@ -115,6 +135,12 @@ while IFS= read -r wd_file; do
         ;;
       kb)
         reason=$(work_check_kb_dep "$PROJECT_ROOT" "$dep_ref") || true
+        ;;
+      wd)
+        ref_wd_status="${WD_STATUS[$dep_ref]:-}"
+        if [[ -z "$ref_wd_status" || "$ref_wd_status" != "$dep_req_state" ]]; then
+          reason="WD $dep_ref is ${ref_wd_status:-not found} (need $dep_req_state)"
+        fi
         ;;
       *)
         reason="unknown dependency type: $dep_type"
@@ -165,6 +191,22 @@ for wd_id in "${!WD_FILE[@]}"; do
       done < <(work_fm_artifact_deps "${WD_FILE[$other_id]}")
     done
   done < <(work_fm_produces "${WD_FILE[$wd_id]}")
+done
+
+# ── Add wd-type dep edges to the graph ──────────────────────────────────────
+# wd-type deps create direct WD-to-WD edges without needing produces/artifact
+# matching.
+
+for wd_id in "${!WD_FILE[@]}"; do
+  while IFS='|' read -r dep_type dep_ref dep_req_state dep_kind; do
+    [[ -z "$dep_type" || "$dep_type" != "wd" ]] && continue
+    [[ -z "${WD_FILE[$dep_ref]+x}" ]] && continue
+    if [[ -z "${WD_UNBLOCKS[$dep_ref]+x}" ]]; then
+      WD_UNBLOCKS["$dep_ref"]="$wd_id"
+    else
+      WD_UNBLOCKS["$dep_ref"]="${WD_UNBLOCKS[$dep_ref]},$wd_id"
+    fi
+  done < <(work_fm_artifact_deps "${WD_FILE[$wd_id]}")
 done
 
 # ── Sync manifest table (single source of truth: WD frontmatter) ────────────

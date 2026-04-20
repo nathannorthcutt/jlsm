@@ -135,6 +135,7 @@ class ConcurrencyAdversarialTest {
     // and the original reason is preserved.
     // Fix location: HandleRegistration.invalidate (lines 55-59)
     // Regression watch: Ensure invalidate() still sets both fields on first call
+    // @spec F05.R50 — invalidate() is idempotent; first-write wins on the reason
     @Test
     @Timeout(10)
     void test_HandleRegistration_concurrency_nonIdempotentInvalidationReasonOverwrite()
@@ -288,6 +289,7 @@ class ConcurrencyAdversarialTest {
     // silently execute on an invalidated handle.
     // Fix location: LocalTable.checkValid (lines 123-129) and each delegate call site
     // Regression watch: Ensure non-invalidated handles still work correctly
+    // @spec F05.R83 — checkValid and delegate execute atomically w.r.t. concurrent invalidation
     @Test
     @Timeout(30)
     void test_LocalTable_concurrency_checkThenActRaceBetweenCheckValidAndInvalidation()
@@ -408,6 +410,7 @@ class ConcurrencyAdversarialTest {
     // Correct behavior: register() must throw IllegalStateException after close()
     // Fix location: HandleTracker.register (lines 83-101)
     // Regression watch: Ensure register still works correctly before close
+    // @spec F05.R89 — register after tracker close must throw IllegalStateException
     @Test
     @Timeout(10)
     void test_HandleTracker_concurrency_registerAfterCloseAccepted() throws Exception {

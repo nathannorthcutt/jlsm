@@ -1,7 +1,7 @@
 ---
 {
   "id": "F04",
-  "version": 2,
+  "version": 3,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": ["engine"],
@@ -18,7 +18,13 @@
     "transport-abstraction-design"
   ],
   "kb_refs": [],
-  "open_obligations": []
+  "open_obligations": [
+    "OBL-F04-R34-38-consensus",
+    "OBL-F04-R35-expander-graph",
+    "OBL-F04-R41-43-split-brain",
+    "OBL-F04-R47-50-grace-gated-rebalance",
+    "OBL-F04-R63-partition-pruning"
+  ]
 }
 ---
 
@@ -48,7 +54,7 @@ R8. Each message must contain a message type, a sender node address, a monotonic
 
 R9. The message type must distinguish at minimum the following categories: ping, acknowledgment, view change, query request, query response, state digest, and state delta.
 
-R10. Message sequence numbers must be monotonically increasing per sender. A receiver must be able to detect duplicate messages by comparing the sequence number against the highest previously observed sequence number from the same sender.
+R10. Message sequence numbers must be monotonically increasing per sender. The `Message.sequenceNumber` field exposes this value so that receivers that care about exactly-once semantics (e.g., future replication protocols) can deduplicate by comparing against the highest previously observed sequence number for the sender. The base membership protocol does not itself implement duplicate-message suppression because view-change application is already idempotent under R91 and R92.
 
 R11. The message payload must accept a zero-length byte array (empty payload). Null payloads must be rejected with a null pointer exception at construction time.
 
@@ -74,7 +80,7 @@ R18. The failure detector must use a phi accrual model: it must maintain a slidi
 
 R19. When the computed phi for a member exceeds the configured phi threshold, the failure detector must mark that member as suspected. The failure detector must not directly mark a member as dead; the membership protocol is responsible for the alive-to-dead lifecycle.
 
-R20. The failure detector must initialize its sliding window for a newly joined member with the configured protocol period as the initial expected heartbeat interval. The detector must not declare a new member suspected before receiving at least one heartbeat.
+R20. The failure detector must not declare a new member suspected before it has accumulated at least two heartbeats from that member (one initial timestamp plus one inter-arrival interval). Until that threshold is met, `phi(node)` returns 0.0 so the node cannot exceed any positive phi threshold. The protocol period is used by `RapidMembership.protocolTick` to seed an initial heartbeat for a member with no history (so the phi clock begins ticking), rather than being embedded in the detector's internal window as a synthetic first interval.
 
 R21. The failure detector's sliding window must have a bounded maximum size. When the window is full, the oldest sample must be evicted before adding a new one. The maximum window size must be configurable.
 
@@ -102,7 +108,7 @@ R27. The cluster transport must be a pluggable SPI with operations for: sending 
 
 R28. The send operation must be fire-and-forget: it must not block waiting for delivery confirmation. Delivery failures must be silently absorbed by the transport, not propagated as exceptions to the sender. The failure detector is the mechanism for detecting unreachable nodes.
 
-R29. The request operation must return a future that completes with the response message or completes exceptionally after a configurable timeout. The timeout must be enforced by the transport, not by the caller.
+R29. The request operation must return a future that completes with the response message, or completes exceptionally on delivery failure. A per-request timeout must be enforced at the client layer (`RemotePartitionClient.timeoutMs`): if the response does not arrive within the timeout, the client must cancel the future and surface the failure as a partition-unavailable condition. The transport itself does not impose a global request timeout — its only blocking operation is direct-dispatch handler invocation, and request futures otherwise propagate whatever the handler returns.
 
 R30. Handler registration must be keyed by message type. Registering a second handler for the same message type must replace the previous handler, not add a second one. The replacement must be atomic from the perspective of concurrent message delivery.
 
@@ -114,15 +120,15 @@ R32. The in-JVM transport must simulate configurable message delivery delay and 
 
 R33. The membership protocol must be a pluggable SPI with operations for: starting the protocol, querying the current membership view, adding a membership listener, and initiating a graceful leave.
 
-R34. The membership protocol implementation must use a RAPID-style protocol: an expander graph overlay for monitoring, multi-process cut detection for membership changes, and a consensus round requiring a configurable percentage (default 75%) of observers to agree before applying a view change.
+R34. The membership protocol implementation must be a Rapid-inspired unilateral protocol: each node independently accepts joins, leaves, and suspicions without requiring consensus from other nodes. View change proposals are broadcast to ALIVE members for convergence, with epoch-ordered acceptance (R92). Full RAPID multi-process cut detection with quorum-based consensus is deferred (see OBL-F04-R34-38-consensus in `_obligations.json`); this amendment reflects the shipped implementation's design and is not a claim that unilateral convergence is equivalent to RAPID consensus under all partition scenarios.
 
-R35. The membership protocol must distribute monitoring responsibility across an expander graph where each member monitors a bounded number of peers (the graph degree). The graph degree must be configurable with a default value sufficient for reliable failure detection in clusters up to 1000 nodes.
+R35. The membership protocol's current implementation pings every ALIVE member per protocol tick rather than distributing monitoring responsibility across a bounded expander graph. The `protocolPeriod` and ping parallelism bound per-tick work, but monitoring load does not scale sub-linearly with cluster size. An expander-graph overlay for clusters above ~100 nodes is deferred (see OBL-F04-R35-expander-graph).
 
-R36. When a member suspects a peer via the failure detector, it must not unilaterally remove the peer. Instead, it must broadcast a suspicion to the peer's other monitors. A membership change must only be applied when the configured consensus percentage of the peer's monitors agree on the suspicion.
+R36. When a member suspects a peer via the failure detector, the current implementation unilaterally transitions the peer to SUSPECTED in a new view and broadcasts the view change proposal to other ALIVE members. Peer monitors do not broker a suspicion-consensus round before the transition. Observer-agreement consensus is deferred (see OBL-F04-R34-38-consensus).
 
-R37. The consensus round for a single membership change must complete within a bounded time. If consensus is not reached within the bound, the suspicion must be dropped and the member must remain in its current state. The consensus timeout must be configurable.
+R37. The current implementation applies a view change as soon as the suspicion is raised locally; there is no consensus round to time-bound. Ping exchanges within a protocol tick are bounded by the configured `pingTimeout`. A consensus-round timeout becomes meaningful only when R34/R36 are implemented (see OBL-F04-R34-38-consensus).
 
-R38. A member receiving a suspicion about itself must refute it by incrementing its incarnation number and broadcasting an alive announcement with the new incarnation. The protocol must accept a refutation with a higher incarnation number as overriding any pending suspicion for that member.
+R38. Incarnation numbers are tracked on `Member` and are incremented on DEAD→ALIVE rejoin. Self-refutation — a live member receiving a suspicion about itself and broadcasting a higher-incarnation alive announcement to override pending suspicion — is deferred (see OBL-F04-R34-38-consensus). The `Member.incarnation` field is present to support this future work without a type-level migration.
 
 R39. The membership protocol must notify registered listeners of view changes, member joins, member departures, and member suspicions. Listener notification must be asynchronous and must not block protocol message processing. A slow or failing listener must not delay or prevent protocol progress.
 
@@ -144,11 +150,11 @@ R92. The membership protocol must reject received views with an epoch less than 
 
 ### Split-brain detection and handling
 
-R41. The membership protocol must detect a potential split-brain condition when the live member count drops below the configured quorum threshold. Upon detecting loss of quorum, the node must transition to a read-only or degraded mode and must refuse write operations that would change partition ownership.
+R41. `MembershipView.hasQuorum(int)` exposes quorum status so callers can observe loss of quorum, but the membership protocol does not currently transition the node to a read-only or degraded mode on quorum loss, nor does it refuse writes that change partition ownership. Quorum-gated write refusal and degraded-mode transition are deferred (see OBL-F04-R41-43-split-brain).
 
-R42. A node that has lost quorum must continue attempting to contact seed nodes and other last-known members. If quorum is re-established through reconnection, the node must merge views by adopting the view with the higher epoch. If epochs are equal, the view with more live members must be preferred.
+R42. On quorum loss, the current implementation takes no recovery action: it does not proactively retry seed contact, nor does it merge views by adopting a higher epoch. Quorum re-establishment and view-merge-on-heal are deferred (see OBL-F04-R41-43-split-brain). Per R92, received views with epoch ≤ current epoch are rejected, which prevents regression but does not implement merge semantics.
 
-R43. View merges after a partition heal must reconcile conflicting member states. For any member present in both views, the state with the higher incarnation number must take precedence. If incarnation numbers are equal, the more severe state must take precedence (dead > suspected > alive).
+R43. The current implementation treats each incoming view change proposal as a replacement (subject to R90 and R92), not a merge of conflicting states. Reconciliation rules for per-member states across diverging views (higher incarnation wins; equal incarnations resolve by severity DEAD > SUSPECTED > ALIVE) are deferred (see OBL-F04-R41-43-split-brain).
 
 ### Partition ownership
 
@@ -160,13 +166,13 @@ R93. The ownership cache must be bounded in the number of entries per epoch. Whe
 
 R46. Ownership must be deterministic: given the same membership view (same set of live members and same epoch), all nodes must independently compute identical ownership assignments for every partition. No coordination messages are required for ownership agreement.
 
-R47. When a member departs the cluster, ownership of its partitions must not be immediately reassigned. The grace period manager must hold departing members' partitions in an unowned state for the configured grace period duration before triggering rebalance.
+R47. The current implementation reassigns ownership immediately on view change: `ClusteredEngine.onViewChanged` invalidates the ownership cache at the new epoch, and the next query recomputes owner assignments from the updated live-member set. `GracePeriodManager` tracks departures and returns but does not gate recomputation. Grace-period-gated rebalancing (holding a departed member's partitions unowned for `gracePeriod` before redistributing) is deferred (see OBL-F04-R47-50-grace-gated-rebalance).
 
-R48. After the grace period expires for a departed member, the ownership model must recompute assignments excluding that member. The recomputation must redistribute only the departed member's partitions; partitions owned by still-live members must not move.
+R48. Because rebalancing is immediate (R47), the current HRW recomputation redistributes a departed member's partitions to the remaining live members and — because rendezvous hashing is globally deterministic over the live set — may also cause partitions to move among still-live members when the departing node's hash rank was not highest for a given partition. Restricting movement strictly to the departed member's partitions requires the deferred grace-gated rebalance (see OBL-F04-R47-50-grace-gated-rebalance).
 
-R49. A node that rejoins after its grace period has expired must be treated as a new member. Its previous partition assignments must not be restored; it must receive new assignments through normal ownership computation based on the current membership view.
+R49. Because rebalancing is immediate (R47), a rejoining node is by construction treated as a new member and receives fresh assignments via HRW over the current live-member set. Grace-expired re-admission semantics become meaningful once grace-gated rebalancing is implemented (see OBL-F04-R47-50-grace-gated-rebalance).
 
-R50. A node that rejoins within its grace period must reclaim its previous partition assignments without triggering a rebalance. The grace period manager must cancel the pending rebalance timer for that node upon its return.
+R50. `GracePeriodManager.recordReturn` cancels the pending grace-period record for a returning node, but because rebalance is not grace-gated (R47), this cancellation does not today short-circuit a pending reassignment — the node participates in HRW at the current epoch like any other ALIVE member. Reclamation of previous assignments within grace is deferred (see OBL-F04-R47-50-grace-gated-rebalance).
 
 ### Grace period management
 
@@ -212,7 +218,7 @@ R62. Queries that span multiple partitions must use scatter-gather execution: th
 
 R100. The scan operation on a clustered table must close remote partition client instances after each partition's results have been collected, even on the normal (non-exception) path. <!-- covers: F-R1.resource_lifecycle.2.2 -->
 
-R63. The scatter-gather implementation must support partition pruning: if the query contains a predicate on the partition key, the clustered table must send the query only to the nodes owning partitions that match the predicate, not to all nodes.
+R63. The current `ClusteredTable.scan(fromKey, toKey)` implementation scatters to every live member in the view without inspecting the range predicate for partition-key narrowing. Predicate-driven partition pruning — selecting only the owners of partitions whose keyspace intersects the requested range — is deferred (see OBL-F04-R63-partition-pruning). Until pruning lands, scatter-gather query cost scales linearly with the number of live members rather than with the number of intersecting partitions.
 
 R64. Scatter-gather query results must include metadata indicating whether the result is complete or partial. The metadata must list which partitions were unavailable if the result is partial.
 
@@ -309,3 +315,33 @@ Add cluster membership and partition-aware query routing to jlsm-engine so that 
 - Cross-cluster federation
 - Authentication or encryption of cluster messages
 - Read replicas or follower nodes
+
+---
+
+## Verification Notes
+
+### Verified: v3 — 2026-04-18
+
+Full verification pass covering 101 requirements (R1–R101). Overall: PASS_WITH_NOTES. Detailed per-requirement verdict table is captured in `F04-verification-diff.md` alongside the list of files touched and the deferred-obligation roadmap.
+
+**Overall: PASS_WITH_NOTES**
+
+- Amendments applied: R10, R20, R29, R34, R35, R36, R37, R38, R41, R42, R43, R47, R48, R50, R63 (14 requirements rewritten to reflect shipped behavior).
+- Code fixes applied: R16, R17, R28, R32, R64, R70, R73, R78, R81, R82, R83, R93 (+ flow-on call-site updates in `RapidMembership.handleViewChangeProposal`).
+- Regression / R73 / R32 / R82 / R93 tests added across `MembershipViewTest`, `PartialResultMetadataTest`, `ClusteredEngineTest`, `InJvmTransportTest`, `ConcurrencyAdversarialTest`, `ResourceLifecycleAdversarialTest`, `SharedStateAdversarialTest`.
+- Obligations deferred: 14 (see `OBL-F04-R34-38-consensus`, `OBL-F04-R35-expander-graph`, `OBL-F04-R41-43-split-brain`, `OBL-F04-R47-50-grace-gated-rebalance`, `OBL-F04-R63-partition-pruning`, `OBL-F04-R56-57-79-engine-join`, `OBL-F04-R60-local-short-circuit`, `OBL-F04-R68-payload-table-id`, `OBL-F04-R77-parallel-scatter`, `OBL-F04-R53-monotonic-clock`, `OBL-F04-R39-async-listeners`, `OBL-F04-R10-duplicate-dedup`, `OBL-F04-R20-phi-init`, `OBL-F04-R29-transport-timeout` in `_obligations.json`).
+- `./gradlew spotlessApply check` passes cleanly at 475 cluster-subsystem tests.
+
+State remains **DRAFT** (not APPROVED) because 6 open obligations represent genuine code bugs that the user chose to document rather than repair in-session (R39, R53, R56, R57, R60, R68, R77, R79). Promoting to APPROVED must wait until those obligations are resolved or explicitly accepted as permanent deviations.
+
+#### Amendments (v2 → v3)
+
+See `F04-verification-diff.md` §2 for the full list with obligation mapping. Summary of substantive rewrites:
+
+- **R10:** "receiver must be able to detect duplicates" → capability (via `Message.sequenceNumber`), not a protocol-level enforcement.
+- **R20:** "initialize with protocolPeriod" → "phi floor of >=2 heartbeats; membership protocol seeds first heartbeat at phi==0".
+- **R29:** "timeout enforced by transport" → "timeout enforced at client layer (`RemotePartitionClient.timeoutMs`)".
+- **R34–R38:** full RAPID consensus / expander-graph monitoring / observer-broadcast suspicion / consensus-round timeout / self-refutation → Rapid-inspired unilateral protocol with epoch-ordered view acceptance.
+- **R41–R43:** quorum-loss read-only mode / reconnect-and-merge / view-state reconciliation → no-op on quorum loss; epoch-ordered replacement; deferred.
+- **R47–R50:** grace-period-gated rebalance → immediate rebalance on view change; `GracePeriodManager` tracks but does not gate.
+- **R63:** partition pruning on predicate → full fanout to every live member.

@@ -1,15 +1,15 @@
 ---
 {
   "id": "F09",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": ["storage"],
   "requires": [],
   "invalidates": [],
   "amends": null,
   "amended_by": null,
-  "decision_refs": ["stripe-hash-function", "cross-stripe-eviction"],
+  "decision_refs": ["stripe-hash-function", "cross-stripe-eviction", "power-of-two-stripe-optimization"],
   "kb_refs": [],
   "open_obligations": []
 }
@@ -37,11 +37,11 @@ R7. StripedBlockCache.size must never return a negative value.
 
 R8. StripedBlockCache.size must never exceed StripedBlockCache.capacity.
 
-R9. StripedBlockCache.capacity must return the effective total capacity, computed as (configuredCapacity / stripeCount) * stripeCount, not the raw configured value.
+R9. StripedBlockCache.capacity must return the effective total capacity, computed as (configuredCapacity / effectiveStripeCount) * effectiveStripeCount, where effectiveStripeCount is the configured stripeCount rounded up to the next power of 2 per ADR power-of-two-stripe-optimization.
 
 ### Stripe selection
 
-R10. The stripeIndex function must accept (sstableId, blockOffset, stripeCount) and return an integer in [0, stripeCount).
+R10. The stripeIndex function must accept (sstableId, blockOffset, stripeCount) and return an integer in [0, stripeCount) when stripeCount is a positive power of 2.
 
 R11. The stripeIndex function must use the Splitmix64 finalizer (Stafford variant 13) with golden-ratio combining of sstableId and blockOffset as input.
 
@@ -95,7 +95,7 @@ R30. StripedBlockCache.evict must throw IllegalStateException when called after 
 
 R31. StripedBlockCache.close must close all stripes, accumulating exceptions via the deferred exception pattern: if multiple stripes throw on close, the first exception is thrown with subsequent exceptions added as suppressed.
 
-R32. StripedBlockCache.close must clear all entries from all stripes, such that size returns zero after close completes.
+R32. StripedBlockCache.close must invoke close on every stripe, releasing per-stripe resources and clearing all cached entries from each stripe.
 
 R33. StripedBlockCache.close must be safe to call on a newly constructed cache with no entries.
 
@@ -109,7 +109,7 @@ R36. Each stripe must hold its own independent lock so that operations on differ
 
 ### getOrLoad atomicity
 
-R37. StripedBlockCache.getOrLoad must invoke the loader at most once for a given (sstableId, blockOffset) pair when multiple threads call getOrLoad concurrently for the same key.
+R37. StripedBlockCache.getOrLoad must release the stripe lock before invoking loader.get(), so that loader execution (which may perform I/O) does not block other cache operations on the same stripe.
 
 R38. StripedBlockCache.getOrLoad must throw IllegalArgumentException when blockOffset is negative.
 
@@ -129,6 +129,18 @@ R43. LruBlockCache.Builder.build must reject capacity values exceeding Integer.M
 
 R44. LruBlockCache.Builder.capacity must reject values less than or equal to zero eagerly (at the setter call) with an IllegalArgumentException.
 
+### Power-of-two stripe count enforcement
+
+R45. The static stripeIndex function must reject stripeCount values that are not a positive power of 2 with an IllegalArgumentException (per ADR power-of-two-stripe-optimization; the fast-path bitmask requires stripeCount to be a power of 2).
+
+### Size after close
+
+R46. StripedBlockCache.size must throw IllegalStateException when called after close, consistent with R28, R29, R30, R40.
+
+### getOrLoad caller consistency
+
+R47. When multiple threads invoke StripedBlockCache.getOrLoad concurrently for the same (sstableId, blockOffset) key, all callers must return the same MemorySegment reference, equal to the value held in the cache after all callers complete.
+
 ---
 
 ## Design Narrative
@@ -147,6 +159,10 @@ Eliminate single-lock contention in LruBlockCache under concurrent read workload
 
 **Capacity truncation:** When capacity is not evenly divisible by stripeCount, each stripe gets floor(capacity / stripeCount) entries. The effective capacity may be less than the configured value. capacity() reports the effective value to prevent callers from relying on phantom capacity that no stripe can honor.
 
+**Power-of-two stripe counts:** Per ADR power-of-two-stripe-optimization, non-power-of-2 stripeCount values passed to the Builder are rounded up to the next power of 2 so that stripe selection can use a single bitmask (`hash & (stripeCount - 1)`) instead of modulo. The static `stripeIndex` utility method validates its `stripeCount` argument and rejects non-power-of-2 inputs, because external callers bypass the Builder's rounding. The capacity formula in R9 is computed against the effective (rounded-up) stripeCount.
+
+**Released-lock getOrLoad with double-checked insertion:** Per audit block-cache-hardening, getOrLoad releases the stripe lock before invoking the loader so that loader I/O does not block other operations on the same stripe. Under concurrency this means multiple callers for the same key may each invoke their own loader, but the cache retains exactly one result via double-checked locking: when a caller reacquires the lock to commit its loaded value, it first re-reads the map and returns any value committed by a faster thread, discarding its own loaded value. All concurrent callers observe the same committed MemorySegment reference.
+
 ### What was ruled out
 
 - **ReadWriteLock per stripe:** LinkedHashMap.get with accessOrder=true mutates internal ordering, making it a write-equivalent operation. ReadWriteLock offers no benefit because every access is effectively a write.
@@ -163,7 +179,25 @@ This spec incorporates fixes from adversarial audit findings:
 | CAPACITY-TRUNCATION | R9 |
 | LONG-CAPACITY-UNBOUNDED | R22, R43 |
 | BUILDER-EAGER-VALIDATION | R20, R44 |
-| USE-AFTER-CLOSE | R28, R29, R30, R40 |
-| GETORLOAD-ATOMICITY | R37 |
+| USE-AFTER-CLOSE | R28, R29, R30, R40, R46 |
+| GETORLOAD-RELEASED-LOCK | R37, R47 |
 | EXCESSIVE-STRIPE-COUNT | R18, R19 |
 | SIZE-INVARIANTS | R7, R8 |
+| POWER-OF-TWO-STRIPE | R9, R10, R45 |
+
+## Verification Notes
+
+### Verified: v2 — 2026-04-17
+
+All requirements SATISFIED against current implementation after the v1→v2 amendments below. See table in `/spec-verify` report for per-requirement evidence.
+
+#### Amendments
+- R9: "(configuredCapacity / stripeCount) * stripeCount" → "(configuredCapacity / effectiveStripeCount) * effectiveStripeCount, where effectiveStripeCount is the configured stripeCount rounded up to the next power of 2" — aligns spec text with ADR power-of-two-stripe-optimization (2026-04-10).
+- R10: added precondition "when stripeCount is a positive power of 2" — reflects the power-of-2 precondition enforced by the static stripeIndex method.
+- R32: "must clear all entries from all stripes, such that size returns zero after close completes" → "must invoke close on every stripe, releasing per-stripe resources and clearing all cached entries from each stripe" — removes the claim that size() returns zero, because the post-audit behavior (R28/R29/R30/R40) is that size() throws IllegalStateException after close.
+- R37: rewritten from "must invoke the loader at most once" to "must release the stripe lock before invoking loader.get()" — reflects the audit block-cache-hardening decision to release the lock during I/O. Caller consistency is preserved by the new R47.
+
+#### New requirements
+- R45: stripeIndex must reject non-power-of-2 stripeCount with IAE.
+- R46: size must throw IllegalStateException after close.
+- R47: concurrent getOrLoad callers observe the same cached MemorySegment reference.

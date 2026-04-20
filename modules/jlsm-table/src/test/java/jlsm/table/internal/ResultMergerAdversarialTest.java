@@ -45,6 +45,7 @@ class ResultMergerAdversarialTest {
      * Finding RM-3: Null element in partitionResults only checked by assert, not runtime
      * validation. Should throw a descriptive exception, not raw NPE from addAll(null).
      */
+    // @spec F11.R57,R108 — null inner list → NPE with descriptive message
     @Test
     void mergeTopK_nullInnerList_throwsDescriptiveException() {
         final List<List<ScoredEntry<String>>> input = new ArrayList<>();

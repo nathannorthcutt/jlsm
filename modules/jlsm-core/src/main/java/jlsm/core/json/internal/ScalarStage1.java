@@ -10,7 +10,7 @@ import java.util.Objects;
  * boundaries while tracking backslash-parity to correctly handle escaped characters within string
  * literals.
  *
- * @spec F15.R20 — tier 3 scalar structural scanning
+ * @spec F15.R20 — Tier 3: pure scalar byte-by-byte fallback
  */
 public final class ScalarStage1 {
 

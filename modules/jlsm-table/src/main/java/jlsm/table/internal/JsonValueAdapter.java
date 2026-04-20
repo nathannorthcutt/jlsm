@@ -39,8 +39,9 @@ import java.util.Objects;
  * <li>Type mismatches are rejected with descriptive error messages</li>
  * </ul>
  *
- * @spec F15.R42 — bidirectional JsonValue to JlsmDocument conversion
- * @spec F15.R44 — schema-typed validation matching JlsmDocument.of()
+ * @spec F15.R44 — type validation and range checking matching JlsmDocument.of()
+ * @spec F15.R57 — FLOAT64 rejects NaN/Infinity
+ * @spec F15.R58 — distinct overflow vs format error messages
  */
 public final class JsonValueAdapter {
 
@@ -159,6 +160,8 @@ public final class JsonValueAdapter {
         return JsonArray.of(list);
     }
 
+    // @spec F12.R49 — operates on pre-validated JlsmDocument; dimension check enforced upstream
+    // by JlsmDocument.validateType at construction time
     private static JsonArray vectorToJson(FieldType.VectorType vt, Object value) {
         final List<JsonValue> list;
         if (vt.elementType() == FieldType.Primitive.FLOAT32) {

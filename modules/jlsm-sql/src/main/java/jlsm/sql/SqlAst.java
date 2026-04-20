@@ -15,6 +15,8 @@ import java.util.Optional;
  * <p>
  * Governed by: brief.md — Architecture section (SQL AST intermediate representation).
  */
+// @spec F07.R46 — SqlAst is a sealed interface; all AST nodes are records implementing it or a
+// sub-interface
 public sealed interface SqlAst {
 
     // ── Top-level statement ──────────────────────────────────────
@@ -29,6 +31,8 @@ public sealed interface SqlAst {
      * @param limit optional LIMIT value
      * @param offset optional OFFSET value
      */
+    // @spec F07.R47,R48,R51 — required fields; defensively copied lists; null-reject in compact
+    // ctor
     record SelectStatement(List<Column> columns, String table, Optional<Expression> where,
             List<OrderByClause> orderBy, Optional<Integer> limit,
             Optional<Integer> offset) implements SqlAst {
@@ -49,6 +53,7 @@ public sealed interface SqlAst {
 
     // ── Column projections ───────────────────────────────────────
 
+    // @spec F07.R49 — Column permits exactly Wildcard and Named
     sealed interface Column extends SqlAst {
 
         /** {@code SELECT *} */
@@ -71,6 +76,8 @@ public sealed interface SqlAst {
 
     // ── Expressions (WHERE clause) ───────────────────────────────
 
+    // @spec F07.R50,R51 — Expression permits exactly 11 impls; all reference-typed fields
+    // null-rejected
     sealed interface Expression extends SqlAst {
 
         /** Binary comparison: {@code field op value} */
@@ -129,7 +136,7 @@ public sealed interface SqlAst {
             }
         }
 
-        /** Numeric literal: integer or decimal */
+        // @spec F07.R53 — NumberLiteral stores the raw text, not a parsed numeric value
         record NumberLiteral(String text) implements Expression {
             public NumberLiteral {
                 Objects.requireNonNull(text, "text");
@@ -154,6 +161,7 @@ public sealed interface SqlAst {
          * @param name the function name (e.g. "MATCH", "VECTOR_DISTANCE")
          * @param arguments the function arguments
          */
+        // @spec F07.R52 — FunctionCall defensively copies its arguments list
         record FunctionCall(String name, List<Expression> arguments) implements Expression {
             public FunctionCall {
                 Objects.requireNonNull(name, "name");

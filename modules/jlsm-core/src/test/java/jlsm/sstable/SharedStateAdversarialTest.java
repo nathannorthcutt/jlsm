@@ -196,7 +196,8 @@ class SharedStateAdversarialTest {
                 long.class, // idxLength
                 long.class, // fltOffset
                 long.class, // fltLength
-                long.class // entryCount
+                long.class, // entryCount
+                long.class // blockSize
         );
         footerCtor.setAccessible(true);
 
@@ -216,7 +217,8 @@ class SharedStateAdversarialTest {
                 200L, // idxLength — idx spans [100, 300)
                 200L, // fltOffset — flt starts at 200, inside idx
                 100L, // fltLength — flt spans [200, 300)
-                10L // entryCount
+                10L, // entryCount
+                4096L // blockSize
         );
 
         InvocationTargetException ex = assertThrows(InvocationTargetException.class,
@@ -248,7 +250,8 @@ class SharedStateAdversarialTest {
                 long.class, // idxLength
                 long.class, // fltOffset
                 long.class, // fltLength
-                long.class // entryCount
+                long.class, // entryCount
+                long.class // blockSize
         );
         footerCtor.setAccessible(true);
 
@@ -269,7 +272,8 @@ class SharedStateAdversarialTest {
                 100L, // idxLength
                 oversizedMapLength + 100L, // fltOffset — after idx section
                 64L, // fltLength
-                10L // entryCount
+                10L, // entryCount
+                4096L // blockSize
         );
 
         InvocationTargetException ex = assertThrows(InvocationTargetException.class,
@@ -813,12 +817,13 @@ class SharedStateAdversarialTest {
         // Close the reader — sets closed = true
         reader.close();
 
-        // Bug: hasNext() returns true because it only checks `next != null` and ignores
-        // the closed flag. IndexRangeIterator correctly returns `!closed && next != null`.
-        // After fix: hasNext() should return false for a closed reader.
-        assertFalse(iter.hasNext(),
-                "CompressedBlockIterator.hasNext() returned true after reader was closed "
-                        + "— should return false, consistent with IndexRangeIterator");
+        // F08.R19 (v3): hasNext() must signal the close rather than silently returning
+        // false. Original finding assumed "return false" was the fix, but that lets a
+        // for-each loop terminate without the caller noticing the close. The authoritative
+        // signal is IllegalStateException, symmetric with next() / advance().
+        assertThrows(IllegalStateException.class, iter::hasNext,
+                "CompressedBlockIterator.hasNext() must throw IllegalStateException after "
+                        + "reader close, not silently return true or false");
     }
 
 }
