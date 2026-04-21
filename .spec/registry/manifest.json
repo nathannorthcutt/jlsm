@@ -229,8 +229,8 @@
     {
       "id": "encryption.primitives-lifecycle",
       "path": ".spec/domains/encryption/primitives-lifecycle.md",
-      "state": "DRAFT",
-      "version": 5,
+      "state": "APPROVED",
+      "version": 6,
       "domains": [
         "encryption"
       ],

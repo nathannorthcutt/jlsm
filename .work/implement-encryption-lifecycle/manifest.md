@@ -9,7 +9,7 @@
 
 | WD | Title | Status | Domains | Deps | Produces |
 |----|-------|--------|---------|------|----------|
-| WD-01 | Key hierarchy (root KEK, data KEKs, DEKs) | READY | encryption | 0 | — |
+| WD-01 | Key hierarchy (root KEK, data KEKs, DEKs) | SPECIFIED | encryption | 0 | — |
 | WD-02 | Ciphertext format + signalling | BLOCKED | encryption | 1 | — |
 | WD-03 | DEK lifecycle + KEK rotation | BLOCKED | encryption | 2 | — |
 | WD-04 | Compaction-driven migration | BLOCKED | encryption | 1 | — |

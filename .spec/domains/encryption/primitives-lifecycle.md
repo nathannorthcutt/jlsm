@@ -1,9 +1,9 @@
 ---
 {
   "id": "encryption.primitives-lifecycle",
-  "version": 5,
+  "version": 6,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "encryption"
   ],
@@ -101,7 +101,7 @@ R16a. For encryption variants that require keys longer than 256 bits (e.g., AES-
 
 R16c. EncryptionSpec must expose a `requiredKeyBits()` method returning the key length in bits needed for that variant. Deterministic (AES-SIV) must return 512. Opaque (AES-GCM) must return 256. OrderPreserving (Boldyreva OPE) must return 256. DistancePreserving (DCPE/SAP) must return 256. None must return 0. The key derivation routine must call `requiredKeyBits()` to determine how many HKDF-Expand steps to perform. When `requiredKeyBits()` returns 0 (None variant), the key derivation routine must return null and must not invoke HKDF. Callers must check the return value before using the derived key.
 
-R16b. The per-field derived key (from HKDF) serves as the data encryption key for that field. In the envelope encryption model (R17–R21 as amended by R71–R85), the DEK resolved from the DekHandle is used as the input keying material to HKDF. When the DEK rotates, all per-field derived keys change because the IKM and the `dekVersion` info component both change. Callers provide a KmsClient (R86+) that unwraps the tenant KEK, which unwraps the domain KEK, which unwraps the DEK; the unwrapped DEK is then used as the HKDF master key input.
+R16b. The per-field derived key (from HKDF) serves as the data encryption key for that field. In the envelope encryption model (R17–R21 as amended by R71–R82b), the DEK resolved from the DekHandle is used as the input keying material to HKDF. When the DEK rotates, all per-field derived keys change because the IKM and the `dekVersion` info component both change. Callers provide a KmsClient (R80+) that unwraps the tenant KEK, which unwraps the domain KEK, which unwraps the DEK; the unwrapped DEK is then used as the HKDF master key input.
 
 ### Key hierarchy: three-tier envelope
 
@@ -144,7 +144,7 @@ Detached MAC tags for OPE and DCPE close the authenticity gap identified in F03 
 
 R22a. The 4-byte version tag must contain a positive integer (1 or greater). If the reader encounters a version tag of 0 or a negative value (when interpreted as signed big-endian int), it must throw IOException indicating corrupt ciphertext. This applies to both normal reads and compaction re-encryption reads. The version-0/negative check must be performed as part of the same lookup path as the hash map check (R64) — the implementation must not branch to a separate error path before performing the map lookup. Version 0 is never inserted into the map, so both version-0 and version-not-found follow the same code path, preserving the constant-time property of R64.
 
-R22b. The reader must resolve the DEK by the tuple `(tenantId, domainId, tableId, dekVersion)` where the first three components are derived from the SSTable's footer metadata (R23a) and the fourth from the ciphertext's version tag. If the SSTable's declared `(tenantId, domainId, tableId)` does not match the reader's expected scope (i.e., the SSTable was mis-routed to a different tenant's or domain's read path), decryption must throw IllegalStateException before any DEK lookup. This enforces per-tenant isolation at the read boundary.
+R22b. The reader must resolve the DEK by the tuple `(tenantId, domainId, tableId, dekVersion)` where the first three components are derived from the SSTable's footer metadata (R23a) and the fourth from the ciphertext's version tag. The reader's **expected scope** must be materialised from the caller's `Table` handle obtained via catalog lookup — not inferred from the same SSTable footer it is validating (which would be tautological). If the SSTable's declared `(tenantId, domainId, tableId)` does not match the `Table` handle's scope (i.e., the SSTable was mis-routed to a different tenant's or domain's read path), decryption must throw IllegalStateException before any DEK lookup. This enforces per-tenant isolation at the read boundary.
 
 R23. The 4-byte version tag must be readable without decryption. No part of the version tag may be encrypted.
 
@@ -184,9 +184,13 @@ R31. When a DEK entry is pruned from the registry, the unwrapped key material (i
 
 R32. KEK rotation at any tier must follow the cascading lazy rewrap model per `three-tier-key-hierarchy` ADR: a rotation at tier N produces a new tier-N reference; wrapped entries at tier N+1 are rewrapped opportunistically on next access (not synchronously). No rotation imposes a global barrier or synchronous O(domains) or O(DEKs) rewrap.
 
-R32a. **Tenant KEK rotation** (tier 1, flavor 3: tenant-driven via `rekey` API from `tenant-key-revocation-and-external-rotation` ADR): on invocation, re-wraps the tenant's domain KEKs under the new Tenant KEK in streaming per-shard batches (R85). Does not re-wrap DEKs (tier 3) or touch data on disk. Domain KEK blobs remain valid under both old and new Tenant KEK during the migration window (dual-reference per R84).
+R32a. **Tenant KEK rotation** (tier 1, flavor 3: tenant-driven via `rekey` API from `tenant-key-revocation-and-external-rotation` ADR): on invocation, re-wraps the tenant's domain KEKs under the new Tenant KEK in streaming per-shard batches (R78b). Does not re-wrap DEKs (tier 3) or touch data on disk. Domain KEK blobs remain valid under both old and new Tenant KEK during the migration window (dual-reference per R78d).
 
-R32b. **Domain KEK rotation** (tier 2): on invocation, unwraps the domain KEK from the Tenant KEK, generates a fresh domain KEK, re-wraps every DEK within that domain under the new domain KEK, and persists the updated shard. DEK cipher material on disk is not touched. This is O(DEKs-in-domain), bounded by the domain's size.
+R32c. Streaming rekey per R32a / R78b must release the exclusive shard lock between batches. Each batch must complete within a configurable max-hold-time budget (default 250 ms). If a batch does not complete within the budget, the implementation must split the batch, commit the processed prefix, release the lock, and reacquire before continuing. This prevents rotation from starving DEK creation (R34a shared lock) for unbounded time.
+
+R32b. **Domain KEK rotation** (tier 2): on invocation, unwraps the domain KEK from the Tenant KEK, generates a fresh domain KEK, re-wraps every DEK within the rotating domain under the new domain KEK, and persists the updated shard. DEK cipher material on disk is not touched. This is O(DEKs-in-domain), bounded by the domain's size.
+
+R32b-1. Domain KEK rotation must hold an exclusive lock scoped to the specific `(tenantId, domainId)` being rotated. The lock must cover **every DEK entry in the rotating domain** — concurrent DEK creation (R29) for the rotating `(tenantId, domainId)` must be rejected or queued for the rotation's duration. DEK creation in other `(tenantId, domainId)` scopes (same tenant, different domain; different tenant entirely) must not be blocked by this lock.
 
 R33. After any tier rotation, the retired reference must be added to a retired-references set in the registry. The retired reference must not be deleted from the KMS or zeroized in memory until the rewrap cascade has completed for at least one access cycle — old wrapped entries require the old reference to unwrap during the migration window.
 
@@ -306,7 +310,7 @@ R71. The encryption system must support three tenant encryption flavors per `thr
 
 R71a. The flavor selection is per-tenant. A single jlsm deployment may serve tenants with different flavors simultaneously; jlsm's internal code paths branch only on the `KmsClient` implementation behavior, not on the flavor label.
 
-R71b. The `LocalKmsClient` implementation must be annotated `@ApiStatus.Experimental` (or equivalent) and its Javadoc must state that it is not for production.
+R71b. The `LocalKmsClient` implementation's Javadoc must begin with a `@implNote` block stating "NOT FOR PRODUCTION. This reference implementation supports rotation mechanics for test rigour but provides no HSM, no audit trail, and no hardware-protected keys. Production deployments must use a flavor-3 `KmsClient` backed by a real KMS (AWS KMS, GCP KMS, HashiCorp Vault, KMIP, etc.)." The class must also expose a runtime property `isProductionReady()` returning `false`; production harnesses may check this and refuse to start.
 
 ### Encrypt-once-at-ingress invariant
 
@@ -327,6 +331,10 @@ R75. For WAL encryption per F42 (`wal.encryption`), each tenant carries a synthe
 R75a. F42's "KEK" input parameter at WAL builder construction must resolve internally to the tenant's `_wal` domain DEK-resolver. No F42 spec amendment is required; the mapping is an implementation-level resolution documented in this spec and in a Verification Note on `wal.encryption`.
 
 R75b. Retiring a retired Tenant KEK (R33a) must not precede the replay or compaction of WAL segments encrypted under the `_wal` domain's DEKs whose wrapping chain depends on the retired Tenant KEK. This is the grace-period invariant from `three-tier-key-hierarchy` ADR enforced at WAL retention.
+
+R75c. The grace-period invariant in R75b is enforced via the **on-disk liveness witness** mechanism of R78e: the per-tenant counter of SSTables and WAL segments whose wrapping chain depends on `oldKekRef` includes `_wal` domain WAL segments. Rekey completion (R78e, R78f) cannot complete — and therefore the old Tenant KEK cannot be marked eligible for tenant-side deletion — until that counter reaches zero. This gives the invariant a mechanical enforcement path: tenant operators relying on the `rekey` API to signal "safe to delete old KEK" inherit the protection automatically.
+
+R75d. For the polling path (R79) that does NOT invoke a rekey (transient outage detection, not migration), no grace-period enforcement is required — polling does not transition the tenant KEK to retired.
 
 ### Three-state failure machine (flavor 3)
 
@@ -350,15 +358,26 @@ R77. Recovery from `grace-read-only` or `failed` to `healthy` occurs when:
 
 R78. `EncryptionKeyHolder` must expose a `rekey(TenantId, KekRef oldKekRef, KekRef newKekRef, RekeySentinel proofOfControl, ContinuationToken token)` API per `tenant-key-revocation-and-external-rotation` ADR.
 
-R78a. `proofOfControl` must contain: a nonce-bound plaintext unwrapped under `oldKekRef`, the same nonce re-wrapped under `newKekRef`, and a timestamp. jlsm must verify both operations before accepting the rekey — independently invoking the `KmsClient` to unwrap the old sentinel and to re-wrap (or verify the provided re-wrap) under the new KEK. Freshness window is 5 minutes maximum.
+R78a. `proofOfControl` must contain: a nonce-bound plaintext wrapped under `oldKekRef` (the "old sentinel"), the same nonce wrapped under `newKekRef` (the "new sentinel"), and a timestamp. jlsm must verify both operations by **independently invoking `KmsClient.unwrapKek(oldSentinel, oldKekRef, ctx)` AND `KmsClient.unwrapKek(newSentinel, newKekRef, ctx)` — comparing the unwrapped nonce bytes for byte-for-byte equality**. A structural inspection of the provided wrapped bytes without an actual KMS unwrap call is insufficient; both unwraps are required. Freshness window is 5 minutes maximum (timestamp must be within `now - 5min` and `now`).
 
 R78b. The rekey operation must be streaming and paginated: a single invocation processes a bounded batch of domains (default 100, configurable) and returns a `ContinuationToken`. Callers iterate until the token is null.
 
 R78c. Rekey execution must be resumable across crashes. A per-tenant rekey-progress file records `{oldKekRef, newKekRef, nextShardIndex, startedAt}` and is updated after each shard commit. A crashed rekey resumes at the next uncompleted shard. Stale progress files (>24h) must emit an observable event.
 
+R78c-1. The rekey-progress file and any temporary files created during its atomic updates must be created with owner-only permissions (0600 on POSIX systems, equivalent on other platforms). Although `oldKekRef` and `newKekRef` are references (ARNs / paths / IDs) rather than key material, they identify KMS resources that a reader could probe to infer tenant-specific key-management topology; permission discipline matches R70a for registry shards.
+
 R78d. During an in-progress rekey, each affected registry shard carries dual-reference entries `(kekRef, wrappedBlob)`: the existing entry under `oldKekRef` plus a new entry under `newKekRef`. Reads prefer `newKekRef`, falling back to `oldKekRef` if unwrap fails (shard not yet migrated). Writes always use `newKekRef` once rekey has started for the tenant.
 
-R78e. Rekey completes when all shards for the tenant carry `newKekRef` entries only. At that point, the `oldKekRef` entries may be garbage-collected from the registry shard; the tenant operator may then disable/delete the old KEK in the tenant's KMS.
+R78e. Rekey completes when **BOTH** of the following are true:
+
+1. **Registry migration**: every registry shard for the tenant carries `newKekRef` entries only (no `oldKekRef` entries remain); AND
+2. **On-disk liveness witness**: no live SSTable in the manifest and no unreplayed WAL segment for the tenant references a DEK whose wrapping chain transitively depends on `oldKekRef`. "Transitively depends" means: the DEK's wrapping entry in the registry at the time that SSTable or WAL was written recorded a domain KEK that was itself wrapped under `oldKekRef`.
+
+The implementation must track the on-disk liveness witness by maintaining, for each tenant, a monotonic counter of SSTables and WAL segments whose wrapping chain depends on `oldKekRef`; the counter decrements on SSTable compaction completion and WAL segment retirement. R78e is satisfied only when the counter reaches zero.
+
+Before R78e is satisfied, the `rekey` API must not return a null `continuationToken`. Instead it must return a `continuationToken` with an explicit "awaiting on-disk witness" marker so the caller polls to completion. Once R78e is satisfied, the API returns null, and only then may the `oldKekRef` entries be garbage-collected from the registry shard and the tenant operator may disable/delete the old KEK in the tenant's KMS.
+
+R78f. Rekey completion must be recorded atomically via a `rekey-complete` marker written to the tenant's shard (via the same atomic commit mechanism per R20). The marker records `{completedKekRef, timestamp}`. On crash recovery, the presence of the marker means rekey is complete for that KekRef; its absence (even when all shards appear migrated) means the on-disk witness was never confirmed and rekey remains incomplete. The marker makes the "rekey complete" transition idempotent and crash-safe; retries of R78e after recovery must be O(1) registry reads, not a full rescan.
 
 ### Opt-in polling (flavor 3)
 
@@ -379,7 +398,18 @@ R80. The `KmsClient` SPI must expose the following operations:
 
 Detailed method contracts, exception hierarchy (`KmsTransientException`, `KmsPermanentException`, `KmsRateLimitExceededException`), timeout / retry / cache defaults, encryption-context contents, and observability contract live in `kms-integration-model` ADR. This spec references that ADR as normative.
 
-R80a. `encryptionContext` passed on every wrap/unwrap must include at minimum: `tenantId`, `domainId`, `purpose` (one of `domain_kek`, `rekey_sentinel`, or other reserved values). jlsm must not include plaintext key material in the context. The KMS binds these as AAD; the wrap cannot be cross-wired between tenants or domains even if an attacker obtains wrapped bytes.
+R80a. `encryptionContext` passed on every wrap/unwrap must include at minimum: `tenantId`, `domainId`, and `purpose`. The `purpose` field is an enumerated value from a closed set defined by this spec:
+
+- `domain_kek` — wrapping of a data-domain KEK under the tenant KEK (tier 1 → tier 2)
+- `dek` — wrapping of a DEK under its domain KEK (tier 2 → tier 3)
+- `rekey_sentinel` — proof-of-control sentinel for rekey (R78a)
+- `health_check` — sentinel blob for opt-in polling (R79)
+
+jlsm must **reject** any `purpose` value not in this closed set with IllegalArgumentException before invoking the `KmsClient`. Third-party `KmsClient` implementations must not add `purpose` values of their own. Extending the set requires a spec amendment. Additional context keys (e.g., `tableId`, `dekVersion` per R80a-1) are permitted and extensible, but `purpose` is closed.
+
+R80a-1. For `purpose=dek` wraps and unwraps, the `encryptionContext` must additionally include `tableId` and `dekVersion` (the latter as decimal UTF-8 of the version integer) so the KMS AAD binding prevents cross-table DEK-blob swap within the same `(tenant, domain)`. For `purpose=domain_kek`, `purpose=rekey_sentinel`, and `purpose=health_check`, `tableId` and `dekVersion` are not applicable and must not be included.
+
+jlsm must not include plaintext key material in the context. The KMS binds these as AAD; a wrap under one context cannot be unwrapped under another — the wrap cannot be cross-wired between tenants, domains, purposes, or (for `dek` wraps) tables.
 
 R80b. `KmsClient` implementations must be thread-safe. Connection pooling is the implementation's responsibility — jlsm does not manage KMS connection state, retry queues, or circuit-breaker logic (`kms-integration-model` R88).
 
@@ -395,7 +425,12 @@ R82. The per-tenant registry is organised as one or more shard files per tenant 
 
 R82a. Shards for different tenants must be stored in separate files, never interleaved, so a filesystem-level corruption or permission error affecting one tenant's shard does not leak into any other tenant's key material.
 
-R82b. Tenant shard file paths must be derivable from `(tenantId, domainId?)` via a deterministic, documented function so operational tools (backup, compliance scans) can locate a tenant's shards without maintaining a separate index.
+R82b. Each tenant's shard file(s) must be derivable from `tenantId` alone via a deterministic, documented function, so operational tools (backup, compliance scans, tenant-decommission) can locate all of a tenant's shards without maintaining a separate index. Per-domain addressability within a tenant's shards is layout-dependent:
+
+- **Per-domain file layout** (one file per `(tenantId, domainId)`): the function also derives per-domain paths from `(tenantId, domainId)`. Layout satisfies R30c atomic manifest-snapshot+compaction-set coordination via per-file rename semantics.
+- **Log-structured layout** (one append-only log per tenant across domains): per-domain addressability is provided by an internal index rather than filesystem paths. Layout satisfies R30c via atomic commit markers; operational tools navigate via the index.
+
+Both layouts must satisfy: tenant-level file discovery by `tenantId` without a separate index (R82b as stated), atomic per-shard commit (R20), independent per-tenant fault domains (R82a), and lazy-load (R19b). R19b's layout optionality is constrained by this requirement — a layout that does not support tenant-level discovery-by-`tenantId` is not permitted.
 
 ## Cross-References
 
@@ -492,11 +527,50 @@ The 4-byte DEK version tag added to every encrypted field value is a wire format
 
 **Pass 4 — 2026-04-15** (verification): zero critical findings; cross-fix interactions validated.
 
-**Pass 5 — 2026-04-21 (in-progress)**: v5 amendments introduce three-tier structure, per-tenant sharded registry, cascading lazy rewrap, plaintext-bounded-to-ingress, `_wal` domain mapping, three-state failure machine, rekey API, and normative `KmsClient` SPI. Adversarial review of the v5 amendment surface is pending before state promotion DRAFT → APPROVED.
+**Pass 5 — 2026-04-21**: v5 amendments (three-tier structure, per-tenant sharded registry, cascading lazy rewrap, plaintext-bounded-to-ingress, `_wal` domain mapping, three-state failure machine, rekey API, normative `KmsClient` SPI). 3 Critical + 7 High + 6 Medium + 7 Low findings identified. All Critical and High fixes applied in v6 (see v6 amendment notes below).
 
 ---
 
 ## Verification Notes
+
+### Amended: v6 — 2026-04-21 — Pass 5 adversarial findings addressed (promoted DRAFT → APPROVED)
+
+Pass 5 adversarial review of the v5 amendment surface identified 3 Critical, 7 High, 6 Medium, and 7 Low findings. The 3 Critical and 7 High findings are addressed in v6; plus cleanup of Low-priority stale references (L1, L2, L7). Medium findings are tracked for a future v6.1 amendment but are not blocking for APPROVED.
+
+**Critical fixes:**
+
+- **C1 — Grace-period invariant enforcement (R75b).** R75c added: the invariant is enforced via the on-disk liveness witness of R78e. The per-tenant counter of SSTables + WAL segments depending on `oldKekRef` includes `_wal` domain WAL segments, so rekey completion (and tenant-side KEK deletion eligibility) is mechanically gated on WAL retention.
+- **C2 — Rekey completion witnessing (R78e).** R78e rewritten: rekey completes only when BOTH registry shards are fully migrated AND the on-disk liveness witness counter reaches zero. The `rekey` API returns a "awaiting on-disk witness" continuation token until the counter drains, preventing premature "complete" signalling to tenant operators.
+- **C3 — `purpose` reserved-values list (R80a).** R80a rewritten with a closed enum: `domain_kek` / `dek` / `rekey_sentinel` / `health_check`. jlsm rejects any value outside this set. Third-party `KmsClient` implementations are prohibited from adding values; extension requires a spec amendment. R80a-1 added: `tableId` and `dekVersion` are required in the encryption context for `purpose=dek` specifically, preventing cross-table DEK-blob swap within the same `(tenant, domain)`.
+
+**High fixes:**
+
+- **H1 — Lock starvation under cascading rewrap.** R32c added: streaming rekey per R32a / R78b must release the exclusive shard lock between batches; each batch capped by a configurable max-hold-time budget (default 250 ms). Prevents rotation from starving DEK creation unboundedly.
+- **H2 — R19b vs R82b layout consistency.** R82b rewritten: tenant-level file discovery by `tenantId` is mandatory for both per-domain-file and log-structured layouts. Per-domain addressability within a tenant is layout-dependent (filesystem path for per-domain-file; internal index for log-structured). R19b's layout optionality is constrained by this invariant.
+- **H3 — "Reader's expected scope" source of truth.** R22b rewritten: expected scope is materialised from the caller's `Table` handle obtained via catalog lookup; tautological derivation from the same SSTable footer is explicitly forbidden.
+- **H4 — Proof-of-control unwrap ambiguity.** R78a rewritten: jlsm must independently invoke `KmsClient.unwrapKek` for BOTH old and new sentinels and compare nonces byte-for-byte. The "or verify the provided re-wrap" alternative is deleted.
+- **H5 — New DEK during domain rotation.** R32b-1 added: rotation exclusive lock is scoped to the specific `(tenantId, domainId)` being rotated; concurrent DEK creation within the rotating domain is rejected or queued; other domains and tenants are not blocked.
+- **H6 — `rekey-progress` file permissions.** R78c-1 added: 0600 permissions mandated, matching R70a for registry shards.
+- **H7 — Atomic "rekey complete" marker.** R78f added: a `rekey-complete` marker is written atomically to the tenant's shard recording `{completedKekRef, timestamp}`. Crash recovery uses the marker as the single source of truth for rekey completion.
+
+**Low fixes:**
+
+- **L1** — R32a's reference to "R85" corrected to R78b.
+- **L2** — R16b's reference to "R71–R85" corrected to R71–R82b; "R86+" corrected to R80+.
+- **L7** — R71b's `@ApiStatus.Experimental` (JetBrains-specific) replaced with Javadoc `@implNote` + runtime `isProductionReady()` property.
+
+**Medium findings (tracked for v6.1):**
+
+- **M1** — Extend R30a to cover captured DEK versions held by in-flight compactions.
+- **M2** — R5c pre-encryption lookup path needs DekHandle/table-handle resolution.
+- **M3** — Verification Note on `wal.encryption` was added in v5; M3 is effectively resolved.
+- **M4** — R64 wait-free semantics should be amended to describe per-shard immutable-map swap cadence.
+- **M5** — R80a-1 addresses the `tableId` / `dekVersion` gap for `purpose=dek` (addressed in v6; M5 effectively resolved for the critical case).
+- **M6** — R76 transition-to-`failed` ambiguity on partial cache state.
+
+These Medium items do not block APPROVED state; they are minor contract clarifications that can be resolved in a v6.1 amendment during implementation if they surface.
+
+**Post-fix disposition:** State promoted DRAFT → APPROVED. Implementation tracking: obligation `implement-f41-lifecycle` now encompasses the full v6 surface.
 
 ### Amended: v5 — 2026-04-21 — three-tier hierarchy + tenant-aware registry
 
