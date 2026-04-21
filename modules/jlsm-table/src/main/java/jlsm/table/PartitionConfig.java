@@ -46,7 +46,8 @@ public final class PartitionConfig {
      * @param descriptors the partition descriptors in key order
      * @return a validated partition configuration
      */
-    // @spec partitioning.table-partitioning.R15,R16,R17,R18,R19 — null list→NPE (R15); empty→IAE (R16); null element→NPE with
+    // @spec partitioning.table-partitioning.R15,R16,R17,R18,R19 — null list→NPE (R15); empty→IAE
+    // (R16); null element→NPE with
     // index (R17); duplicate id→IAE with id+index (R18); gap/overlap→IAE identifying index (R19)
     public static PartitionConfig of(List<PartitionDescriptor> descriptors) {
         Objects.requireNonNull(descriptors, "descriptors must not be null");
@@ -82,7 +83,8 @@ public final class PartitionConfig {
      *
      * @return partition descriptors
      */
-    // @spec partitioning.table-partitioning.R20 — returns unmodifiable list via List.copyOf in constructor
+    // @spec partitioning.table-partitioning.R20 — returns unmodifiable list via List.copyOf in
+    // constructor
     public List<PartitionDescriptor> descriptors() {
         return descriptors;
     }

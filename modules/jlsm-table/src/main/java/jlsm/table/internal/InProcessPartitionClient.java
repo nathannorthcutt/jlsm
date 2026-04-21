@@ -34,7 +34,8 @@ import java.util.Optional;
  * Governed by: .decisions/table-partitioning/adr.md — in-process execution, remote-capable
  * interface.
  */
-// @spec partitioning.table-partitioning.R48 — final class in jlsm.table.internal implementing PartitionClient
+// @spec partitioning.table-partitioning.R48 — final class in jlsm.table.internal implementing
+// PartitionClient
 public final class InProcessPartitionClient implements PartitionClient {
 
     private final PartitionDescriptor descriptor;
@@ -55,7 +56,8 @@ public final class InProcessPartitionClient implements PartitionClient {
      * @param descriptor the partition descriptor; must not be null
      * @param table the backing table for this partition; must not be null
      */
-    // @spec partitioning.table-partitioning.R49 — accepts descriptor + table, rejects null for either with NPE
+    // @spec partitioning.table-partitioning.R49 — accepts descriptor + table, rejects null for
+    // either with NPE
     public InProcessPartitionClient(PartitionDescriptor descriptor, JlsmTable.StringKeyed table) {
         Objects.requireNonNull(descriptor, "descriptor must not be null");
         Objects.requireNonNull(table, "table must not be null");
@@ -68,7 +70,8 @@ public final class InProcessPartitionClient implements PartitionClient {
         return descriptor;
     }
 
-    // @spec partitioning.table-partitioning.R50 — doCreate delegates to wrapped JlsmTable.StringKeyed
+    // @spec partitioning.table-partitioning.R50 — doCreate delegates to wrapped
+    // JlsmTable.StringKeyed
     @Override
     public void doCreate(String key, JlsmDocument doc) throws IOException {
         assert key != null : "key must not be null";
@@ -97,7 +100,8 @@ public final class InProcessPartitionClient implements PartitionClient {
     }
 
     @Override
-    // @spec partitioning.table-partitioning.R51 — getRange delegates to wrapped table's getAllInRange
+    // @spec partitioning.table-partitioning.R51 — getRange delegates to wrapped table's
+    // getAllInRange
     public Iterator<TableEntry<String>> doGetRange(String fromKey, String toKey)
             throws IOException {
         assert fromKey != null : "fromKey must not be null";
@@ -123,8 +127,10 @@ public final class InProcessPartitionClient implements PartitionClient {
      *             VectorNearest leaf
      * @throws IOException on scan failure
      */
-    // @spec partitioning.table-partitioning.R46 — PartitionClient.query returns List<ScoredEntry<String>> of at most limit
-    // @spec partitioning.table-partitioning.R48 — scan-and-filter via wrapped JlsmTable.StringKeyed within partition range
+    // @spec partitioning.table-partitioning.R46 — PartitionClient.query returns
+    // List<ScoredEntry<String>> of at most limit
+    // @spec partitioning.table-partitioning.R48 — scan-and-filter via wrapped JlsmTable.StringKeyed
+    // within partition range
     @Override
     public List<ScoredEntry<String>> doQuery(Predicate predicate, int limit) throws IOException {
         assert predicate != null : "predicate must not be null";
@@ -148,7 +154,8 @@ public final class InProcessPartitionClient implements PartitionClient {
         return new String(seg.toArray(ValueLayout.JAVA_BYTE), StandardCharsets.UTF_8);
     }
 
-    // @spec partitioning.table-partitioning.R52,R102 — close() closes wrapped table (R52) and is idempotent (R102)
+    // @spec partitioning.table-partitioning.R52,R102 — close() closes wrapped table (R52) and is
+    // idempotent (R102)
     @Override
     public void close() throws IOException {
         if (closed) {

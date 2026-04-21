@@ -20,6 +20,14 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
+ *
+ * @spec engine.clustering.R18 — phi accrual model: sliding window + phi = -log10(1 - CDF(delay))
+ * @spec engine.clustering.R19 — when phi exceeds threshold the detector reports suspicion
+ *       (membership protocol handles alive→dead lifecycle; the detector only flags suspicion)
+ * @spec engine.clustering.R20 — phi returns 0.0 until at least 2 heartbeats recorded
+ * @spec engine.clustering.R21 — sliding window has bounded max size; oldest samples evicted on
+ *       overflow
+ * @spec engine.clustering.R83 — evicting heartbeat history on member departure (see evict() method)
  */
 public final class PhiAccrualFailureDetector {
 

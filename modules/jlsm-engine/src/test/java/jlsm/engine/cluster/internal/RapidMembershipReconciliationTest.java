@@ -29,6 +29,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * The protocol must not wholesale-replace the local view with the proposed view — it must merge
  * per-address records using incarnation/severity rules.
+ *
+ * @spec engine.clustering.R43 — per-member reconciliation on greater-epoch proposals
+ * @spec engine.clustering.R90 — view change proposals must not drop currently-ALIVE members
+ * @spec engine.clustering.R92 — epoch regression rejected
  */
 final class RapidMembershipReconciliationTest {
 
@@ -64,7 +68,8 @@ final class RapidMembershipReconciliationTest {
             throw first;
     }
 
-    // @spec engine.clustering.R43 — on view-change acceptance, per-member reconciliation preserves the
+    // @spec engine.clustering.R43 — on view-change acceptance, per-member reconciliation preserves
+    // the
     // dominant per-member record. The proposal must satisfy R90 (no-drop-alive). Within that
     // constraint, reconciliation must pick the higher-incarnation record per address rather
     // than wholesale-replacing the local view.

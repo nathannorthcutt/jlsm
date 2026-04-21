@@ -11,6 +11,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link InJvmDiscoveryProvider} — register, discover, deregister.
+ *
+ * @spec engine.clustering.R22 — pluggable SPI: discover / register / deregister
+ * @spec engine.clustering.R23 — empty seed set is valid (solo cluster bootstrap)
+ * @spec engine.clustering.R24 — register idempotent
+ * @spec engine.clustering.R25 — deregister idempotent
+ * @spec engine.clustering.R26 — in-JVM discovery implementation with thread-safe shared registry
  */
 class InJvmDiscoveryProviderTest {
 

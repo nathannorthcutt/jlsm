@@ -130,7 +130,8 @@ public final class EntryCodec {
      * @param offset start position within buf
      * @return decoded entry
      */
-    // @spec sstable.writer.R7 — offset guard must be a runtime check; asserts are stripped in production
+    // @spec sstable.writer.R7 — offset guard must be a runtime check; asserts are stripped in
+    // production
     // and would leave corrupt on-disk bytes (reachable via TrieSSTableReader's block decode
     // paths) to surface as ArrayIndexOutOfBoundsException instead of a descriptive error.
     public static Entry decode(byte[] buf, int offset) {

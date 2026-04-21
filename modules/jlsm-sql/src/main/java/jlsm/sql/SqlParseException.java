@@ -11,7 +11,8 @@ package jlsm.sql;
  * <li>Checked exception — callers must handle parse failures explicitly</li>
  * </ul>
  */
-// @spec query.sql-query-support.R85,R86,R87 — checked exception; zero-based position or -1 sentinel; (message,pos) and
+// @spec query.sql-query-support.R85,R86,R87 — checked exception; zero-based position or -1
+// sentinel; (message,pos) and
 // (message,pos,cause) constructors
 public final class SqlParseException extends Exception {
 

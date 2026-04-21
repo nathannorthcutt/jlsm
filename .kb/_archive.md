@@ -4,6 +4,10 @@ Overflow entries from `.kb/CLAUDE.md` Recently Added table.
 
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-13 | distributed-systems | cluster-membership | fail-slow-detection |
+| 2026-04-13 | distributed-systems | query-execution | distributed-scan-cursors |
+| 2026-04-13 | systems | database-engines | schema-type-systems |
+| 2026-04-13 | systems | database-engines | cross-table-transaction-patterns |
 | 2026-04-13 | systems | security | wal-encryption-approaches |
 | 2026-04-13 | systems | database-engines | wal-group-commit |
 | 2026-04-13 | systems | database-engines | corruption-detection-repair |

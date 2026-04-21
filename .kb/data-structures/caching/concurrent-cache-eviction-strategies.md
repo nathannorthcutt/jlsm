@@ -15,6 +15,7 @@ applies_to: []
 related:
   - "data-structures/caching/striped-block-cache.md"
   - "data-structures/caching/concurrent-lru-caches.md"
+  - "data-structures/caching/byte-budget-cache-variable-size-entries.md"
 decision_refs: ["atomic-cross-stripe-eviction", "parallel-large-cache-eviction"]
 sources:
   - url: "https://github.com/ben-manes/caffeine/wiki/Design"

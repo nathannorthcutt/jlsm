@@ -20,7 +20,8 @@ class JlsmDocumentTest {
                 .field("tsField", FieldType.Primitive.TIMESTAMP).build();
     }
 
-    // @spec schema.document-construction.R6,R10,R21,R22 — of() primitive round-trip through typed getters
+    // @spec schema.document-construction.R6,R10,R21,R22 — of() primitive round-trip through typed
+    // getters
     // @spec schema.document-field-access.R5,R6 — of() primitive round-trip through typed getters
     @Test
     void of_allPrimitiveTypes_getRoundTrip() {
@@ -37,8 +38,10 @@ class JlsmDocumentTest {
         assertEquals(1700000000000L, doc.getTimestamp("tsField"));
     }
 
-    // @spec schema.document-construction.R22 — FLOAT16 accepts Short; getFloat16Bits returns raw short bits
-    // @spec schema.document-field-access.R7 — FLOAT16 accepts Short; getFloat16Bits returns raw short bits
+    // @spec schema.document-construction.R22 — FLOAT16 accepts Short; getFloat16Bits returns raw
+    // short bits
+    // @spec schema.document-field-access.R7 — FLOAT16 accepts Short; getFloat16Bits returns raw
+    // short bits
     @Test
     void of_float16_storesRawBits() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -48,8 +51,10 @@ class JlsmDocumentTest {
         assertEquals(bits, doc.getFloat16Bits("halfFloat"));
     }
 
-    // @spec schema.document-construction.R10,R11 — null values accepted, unassigned fields default to null, isNull
-    // @spec schema.document-field-access.R11 — null values accepted, unassigned fields default to null, isNull
+    // @spec schema.document-construction.R10,R11 — null values accepted, unassigned fields default
+    // to null, isNull
+    // @spec schema.document-field-access.R11 — null values accepted, unassigned fields default to
+    // null, isNull
     // reports it
     @Test
     void of_nullField_isNull() {
@@ -59,8 +64,10 @@ class JlsmDocumentTest {
         assertTrue(doc.isNull("name"));
     }
 
-    // @spec schema.document-construction.R24 — ArrayType accepts Object[] and getArray returns defensive clone
-    // @spec schema.document-field-access.R8 — ArrayType accepts Object[] and getArray returns defensive clone
+    // @spec schema.document-construction.R24 — ArrayType accepts Object[] and getArray returns
+    // defensive clone
+    // @spec schema.document-field-access.R8 — ArrayType accepts Object[] and getArray returns
+    // defensive clone
     @Test
     void of_arrayField_getsArray() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -70,8 +77,10 @@ class JlsmDocumentTest {
         assertArrayEquals(tags, doc.getArray("tags"));
     }
 
-    // @spec schema.document-construction.R28 — ObjectType accepts nested JlsmDocument; getObject returns reference
-    // @spec schema.document-field-access.R9 — ObjectType accepts nested JlsmDocument; getObject returns reference
+    // @spec schema.document-construction.R28 — ObjectType accepts nested JlsmDocument; getObject
+    // returns reference
+    // @spec schema.document-field-access.R9 — ObjectType accepts nested JlsmDocument; getObject
+    // returns reference
     // directly
     @Test
     void of_nestedObject_getsSubDocument() {
@@ -105,8 +114,10 @@ class JlsmDocumentTest {
                 () -> JlsmDocument.of(schema, "unknown", "value"));
     }
 
-    // @spec schema.document-construction.R22 — TIMESTAMP accepts Long; getLong works for INT64/TIMESTAMP
-    // @spec schema.document-field-access.R6 — TIMESTAMP accepts Long; getLong works for INT64/TIMESTAMP
+    // @spec schema.document-construction.R22 — TIMESTAMP accepts Long; getLong works for
+    // INT64/TIMESTAMP
+    // @spec schema.document-field-access.R6 — TIMESTAMP accepts Long; getLong works for
+    // INT64/TIMESTAMP
     @Test
     void of_timestamp_getLong() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -127,7 +138,8 @@ class JlsmDocumentTest {
         assertEquals("jlsm.table", JlsmDocument.class.getPackage().getName());
     }
 
-    // @spec schema.document-construction.R2 — all declared constructors are package-private (no public/protected/private)
+    // @spec schema.document-construction.R2 — all declared constructors are package-private (no
+    // public/protected/private)
     @Test
     void structural_allConstructorsArePackagePrivate() {
         Constructor<?>[] ctors = JlsmDocument.class.getDeclaredConstructors();
@@ -140,7 +152,8 @@ class JlsmDocumentTest {
         }
     }
 
-    // (formerly @spec F14.R48,R49 — dropped during migration) — no toYaml/fromYaml methods (YAML support removed per F15.R1)
+    // (formerly @spec F14.R48,R49 — dropped during migration) — no toYaml/fromYaml methods (YAML
+    // support removed per F15.R1)
     @Test
     void structural_noYamlMethods() {
         for (Method m : JlsmDocument.class.getDeclaredMethods()) {
@@ -150,7 +163,8 @@ class JlsmDocumentTest {
         }
     }
 
-    // @spec schema.document-field-access.R16 — no toString() override; default Object.toString is used
+    // @spec schema.document-field-access.R16 — no toString() override; default Object.toString is
+    // used
     @Test
     void structural_doesNotOverrideToString() {
         assertThrows(NoSuchMethodException.class,
@@ -178,8 +192,10 @@ class JlsmDocumentTest {
         }
     }
 
-    // @spec schema.document-construction.R5 — package-private ctor does not defensively copy the values array;
-    // @spec schema.document-invariants.R5 — package-private ctor does not defensively copy the values array;
+    // @spec schema.document-construction.R5 — package-private ctor does not defensively copy the
+    // values array;
+    // @spec schema.document-invariants.R5 — package-private ctor does not defensively copy the
+    // values array;
     // the final reference points at the caller's array (document internal state = that array)
     @Test
     void trustBoundary_packagePrivateCtorDoesNotCopyValuesArray() {
@@ -196,7 +212,8 @@ class JlsmDocumentTest {
         assertEquals("mutated", doc.getString("b"));
     }
 
-    // @spec schema.document-construction.R31 — scalars, Strings, and nested JlsmDocument pass through without copy
+    // @spec schema.document-construction.R31 — scalars, Strings, and nested JlsmDocument pass
+    // through without copy
     @Test
     void identity_scalarAndNestedDocumentPassThroughWithoutCopy() {
         JlsmSchema addrSchema = JlsmSchema.builder("addr", 1)
@@ -218,7 +235,8 @@ class JlsmDocumentTest {
         assertEquals(i.intValue(), doc.getInt("i"), "int round-trip");
     }
 
-    // @spec schema.document-invariants.R7 — effectively immutable for primitive + String fields via public API
+    // @spec schema.document-invariants.R7 — effectively immutable for primitive + String fields via
+    // public API
     @Test
     void immutability_primitiveAndStringStateStableAcrossGetters() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
@@ -244,7 +262,8 @@ class JlsmDocumentTest {
         assertThrows(IllegalArgumentException.class, () -> JlsmDocument.of(schema, "name"));
     }
 
-    // @spec schema.document-construction.R8 — of() non-String at even index → IAE with the offending index
+    // @spec schema.document-construction.R8 — of() non-String at even index → IAE with the
+    // offending index
     @Test
     void of_nonStringAtEvenIndex_throwsIAEWithIndex() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
@@ -266,7 +285,8 @@ class JlsmDocumentTest {
                 "exception message must mention duplicate, got: " + ex.getMessage());
     }
 
-    // @spec schema.document-construction.R23 — BoundedString rejects values exceeding UTF-8 byte length
+    // @spec schema.document-construction.R23 — BoundedString rejects values exceeding UTF-8 byte
+    // length
     @Test
     void of_boundedStringExceedsMaxByteLength_throwsIAE() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -276,7 +296,8 @@ class JlsmDocumentTest {
                 () -> JlsmDocument.of(schema, "code", "héllo"));
     }
 
-    // @spec schema.document-construction.R23 — BoundedString accepts values at or below the UTF-8 byte limit
+    // @spec schema.document-construction.R23 — BoundedString accepts values at or below the UTF-8
+    // byte limit
     @Test
     void of_boundedStringWithinByteLength_accepts() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -285,7 +306,8 @@ class JlsmDocumentTest {
         assertEquals("héllo", doc.getString("code"));
     }
 
-    // @spec schema.document-construction.R34 — validateType enforces MAX_ARRAY_NESTING_DEPTH (32) for nested ArrayType
+    // @spec schema.document-construction.R34 — validateType enforces MAX_ARRAY_NESTING_DEPTH (32)
+    // for nested ArrayType
     @Test
     void of_deeplyNestedArrayExceedsDepth_throwsIAE() {
         FieldType leaf = FieldType.Primitive.INT32;
@@ -309,7 +331,8 @@ class JlsmDocumentTest {
                 "exception must mention nesting/depth, got: " + ex.getMessage());
     }
 
-    // @spec schema.document-construction.R35 — deepCopyArray copies nested Object[] levels; inner mutations must not leak
+    // @spec schema.document-construction.R35 — deepCopyArray copies nested Object[] levels; inner
+    // mutations must not leak
     @Test
     void of_nestedArrayInnerMutationDoesNotLeakIntoDocument() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -343,7 +366,8 @@ class JlsmDocumentTest {
         assertThrows(NullPointerException.class, () -> doc.getString(null));
     }
 
-    // @spec schema.document-field-access.R3,R20 — typed getter throws NPE with field name when value is null
+    // @spec schema.document-field-access.R3,R20 — typed getter throws NPE with field name when
+    // value is null
     @Test
     void getLong_nullValue_throwsDescriptiveNPE() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("n", FieldType.Primitive.INT64)
@@ -354,7 +378,8 @@ class JlsmDocumentTest {
                 "NPE message must include field name, got: " + ex.getMessage());
     }
 
-    // @spec schema.document-field-access.R12 — isNull rejects null field name with NPE and unknown name with IAE
+    // @spec schema.document-field-access.R12 — isNull rejects null field name with NPE and unknown
+    // name with IAE
     @Test
     void isNull_nullOrUnknownField_rejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("a", FieldType.Primitive.INT32)
@@ -373,7 +398,8 @@ class JlsmDocumentTest {
         assertSame(schema, doc.schema(), "schema() must return the same reference, not a copy");
     }
 
-    // @spec schema.document-field-access.R14 — getFloat32Vector clones; wrong-type field → IAE; null value → NPE
+    // @spec schema.document-field-access.R14 — getFloat32Vector clones; wrong-type field → IAE;
+    // null value → NPE
     @Test
     void getFloat32Vector_guardsAndClone() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -394,7 +420,8 @@ class JlsmDocumentTest {
                 "null value must be rejected with NPE");
     }
 
-    // @spec schema.document-field-access.R15 — getFloat16Vector clones; wrong-type field → IAE; null value → NPE
+    // @spec schema.document-field-access.R15 — getFloat16Vector clones; wrong-type field → IAE;
+    // null value → NPE
     @Test
     void getFloat16Vector_guardsAndClone() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -417,7 +444,8 @@ class JlsmDocumentTest {
 
     // ── equals / hashCode ────────────────────────────────────────────────
 
-    // @spec schema.document-invariants.R8 — equals based on schema + preEncrypted + deep array equality
+    // @spec schema.document-invariants.R8 — equals based on schema + preEncrypted + deep array
+    // equality
     @Test
     void equals_structuralEquality() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
@@ -457,7 +485,8 @@ class JlsmDocumentTest {
 
     // ── Package-private constructor behavior ──────────────────────────────
 
-    // @spec schema.document-construction.R3 — 2-arg ctor delegates to 3-arg with preEncrypted = false
+    // @spec schema.document-construction.R3 — 2-arg ctor delegates to 3-arg with preEncrypted =
+    // false
     @Test
     void packagePrivateCtor_twoArg_producesNotPreEncrypted() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("a", FieldType.Primitive.INT32)
@@ -483,7 +512,8 @@ class JlsmDocumentTest {
 
     // ── DocumentAccess bridge (R52, R53) ──────────────────────────────────
 
-    // @spec schema.document-invariants.R2,R3 — DocumentAccess.Accessor is registered; create() produces
+    // @spec schema.document-invariants.R2,R3 — DocumentAccess.Accessor is registered; create()
+    // produces
     // non-pre-encrypted
     @Test
     void documentAccess_bridgeWiredAndCreateProducesNonPreEncrypted() {

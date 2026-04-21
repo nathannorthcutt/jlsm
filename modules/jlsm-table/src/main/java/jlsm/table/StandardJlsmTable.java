@@ -138,7 +138,8 @@ public final class StandardJlsmTable {
             if (!indexDefinitions.isEmpty() && schema == null) {
                 throw new IllegalStateException("indexDefinitions require a schema on the builder");
             }
-            // @spec engine.in-process-database-engine.R37 — when a schema is configured, always materialise an IndexRegistry
+            // @spec engine.in-process-database-engine.R37 — when a schema is configured, always
+            // materialise an IndexRegistry
             // so table.query() can route through QueryExecutor even with zero secondary indices.
             // The registry's documentStore acts as the schema-aware mirror used for
             // scan-and-filter fallback. When no schema is configured, no registry is created and

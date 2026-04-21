@@ -25,8 +25,10 @@ class JsonRoundTripTest {
         assertEquals(1700000000000L, out.getTimestamp("ts"));
     }
 
-    // @spec schema.document-field-access.R11 — JSON round-trip preserves null field; isNull reports it
-    // @spec schema.document-serialization.R1,R3 — JSON round-trip preserves null field; isNull reports it
+    // @spec schema.document-field-access.R11 — JSON round-trip preserves null field; isNull reports
+    // it
+    // @spec schema.document-serialization.R1,R3 — JSON round-trip preserves null field; isNull
+    // reports it
     @Test
     void roundTrip_nullField() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
@@ -86,7 +88,8 @@ class JsonRoundTripTest {
         assertArrayEquals(new Object[]{ "a", "b", "c" }, out.getArray("tags"));
     }
 
-    // @spec schema.document-serialization.R2,R3 — toJson(boolean) and fromJson round-trip both formats identically
+    // @spec schema.document-serialization.R2,R3 — toJson(boolean) and fromJson round-trip both
+    // formats identically
     @Test
     void roundTrip_prettyVsCompact_equivalent() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)

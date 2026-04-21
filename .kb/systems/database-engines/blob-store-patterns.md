@@ -15,6 +15,7 @@ applies_to: []
 related:
   - "systems/database-engines/schema-type-systems.md"
   - "systems/database-engines/corruption-detection-repair.md"
+  - "systems/database-engines/pool-aware-sstable-block-sizing.md"
 decision_refs: ["binary-field-type"]
 sources:
   - url: "https://github.com/facebook/rocksdb/wiki/BlobDB"

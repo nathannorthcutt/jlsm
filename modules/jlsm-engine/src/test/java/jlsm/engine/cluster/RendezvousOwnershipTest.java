@@ -15,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link RendezvousOwnership} — deterministic partition-to-node assignment via Rendezvous
  * (Highest Random Weight) hashing.
+ *
+ * @spec engine.clustering.R44 — HRW assignment — node with highest score wins
+ * @spec engine.clustering.R45 — cache keyed by epoch; invalidated on epoch change
+ * @spec engine.clustering.R46 — deterministic across nodes given the same view
+ * @spec engine.clustering.R48 — differentialAssign recomputes only departed-member partitions
+ * @spec engine.clustering.R49 — rejoining members go through normal admission + HRW
  */
 final class RendezvousOwnershipTest {
 

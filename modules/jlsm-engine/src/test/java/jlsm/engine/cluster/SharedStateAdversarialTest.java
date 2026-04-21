@@ -44,6 +44,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Adversarial tests for shared-state concerns in the clustering subsystem.
+ *
+ * @spec engine.clustering.R74 — membership view safe for concurrent reads + serialized writes
+ * @spec engine.clustering.R99 — ownership instance shared (not duplicated) across engine +
+ *       clustered tables
+ * @spec engine.clustering.R105 — listener callbacks after close are no-ops (no shared-state
+ *       mutation)
  */
 final class SharedStateAdversarialTest {
 
@@ -142,7 +148,8 @@ final class SharedStateAdversarialTest {
                 "At most 1 DEAD member should remain (the most recent departure)");
     }
 
-    // @spec engine.clustering.R17,R82 — isMember excludes DEAD; a DEAD member cannot itself be the sender of a
+    // @spec engine.clustering.R17,R82 — isMember excludes DEAD; a DEAD member cannot itself be the
+    // sender of a
     // VIEW_CHANGE_PROPOSAL (the protocol-level flow for a DEAD node to rejoin is JOIN_REQUEST).
     // This test validates that when an ALIVE proposer broadcasts a proposal transitioning a
     // DEAD peer back to ALIVE, onMemberJoined fires for the rejoined member.
@@ -711,7 +718,8 @@ final class SharedStateAdversarialTest {
                 "ClusteredTable should accept a shared RendezvousOwnership instance");
     }
 
-    // @spec engine.clustering.R28 — fire-and-forget send: delivery failures (unreachable target or missing
+    // @spec engine.clustering.R28 — fire-and-forget send: delivery failures (unreachable target or
+    // missing
     // handler) must be silently absorbed by the transport. The failure detector is the mechanism
     // for detecting unreachable nodes, so the send operation must not propagate delivery failures
     // as exceptions to the sender. This supersedes the earlier audit finding

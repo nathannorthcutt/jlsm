@@ -270,7 +270,8 @@ class FieldEncryptionDispatchTest {
                 "Tampered MAC must throw SecurityException");
     }
 
-    // @spec encryption.primitives-variants.R54 — tampered OPE ciphertext bytes rejected with SecurityException
+    // @spec encryption.primitives-variants.R54 — tampered OPE ciphertext bytes rejected with
+    // SecurityException
     @Test
     void orderPreservingField_tamperedOpePortionRejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -287,7 +288,8 @@ class FieldEncryptionDispatchTest {
                 "Tampered OPE ciphertext must throw SecurityException");
     }
 
-    // @spec encryption.primitives-variants.R54 — tampered length prefix byte rejected with SecurityException
+    // @spec encryption.primitives-variants.R54 — tampered length prefix byte rejected with
+    // SecurityException
     @Test
     void orderPreservingField_tamperedLengthPrefixRejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -323,7 +325,8 @@ class FieldEncryptionDispatchTest {
         }
     }
 
-    // @spec encryption.primitives-variants.R54 — cross-field substitution rejected (MAC binds to field name)
+    // @spec encryption.primitives-variants.R54 — cross-field substitution rejected (MAC binds to
+    // field name)
     @Test
     void orderPreservingField_crossFieldSubstitutionRejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -338,7 +341,8 @@ class FieldEncryptionDispatchTest {
                 "Using field A's ciphertext on field B's decryptor must throw SecurityException");
     }
 
-    // @spec encryption.primitives-variants.R54 — two encryptions of the same plaintext in the same field produce
+    // @spec encryption.primitives-variants.R54 — two encryptions of the same plaintext in the same
+    // field produce
     // identical ciphertext (OPE + deterministic MAC = deterministic overall)
     @Test
     void orderPreservingField_deterministicAcrossCalls() {
@@ -354,7 +358,8 @@ class FieldEncryptionDispatchTest {
                 "OPE + deterministic MAC must produce identical ciphertext on repeated calls");
     }
 
-    // @spec encryption.primitives-variants.R19 — OPE preserves ordering on the 8-byte OPE portion; MAC does not
+    // @spec encryption.primitives-variants.R19 — OPE preserves ordering on the 8-byte OPE portion;
+    // MAC does not
     // disturb this property because range comparisons operate on bytes [1..8].
     @Test
     void orderPreservingField_preservesOrderOnOpePortion() {

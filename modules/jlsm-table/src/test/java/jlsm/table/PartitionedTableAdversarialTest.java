@@ -27,7 +27,8 @@ class PartitionedTableAdversarialTest {
      * Finding PT-1: If the factory throws for partition N, clients 0..N-1 are leaked. KB match:
      * multi-index-atomicity — sequential operations leave inconsistent state on Nth failure.
      */
-    // @spec partitioning.table-partitioning.R74 — factory failure closes previously created clients via deferred pattern
+    // @spec partitioning.table-partitioning.R74 — factory failure closes previously created clients
+    // via deferred pattern
     @Test
     void build_factoryThrowsOnSecondPartition_closesAlreadyCreatedClients() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -108,7 +109,8 @@ class PartitionedTableAdversarialTest {
      * throws RuntimeException, remaining clients are never closed — resource leak. project-rule:
      * coding-guidelines (deferred close pattern must accumulate all exceptions).
      */
-    // @spec partitioning.table-partitioning.R87,R88 — RuntimeException wrapped into IOException; others still closed
+    // @spec partitioning.table-partitioning.R87,R88 — RuntimeException wrapped into IOException;
+    // others still closed
     @Test
     void close_clientThrowsRuntimeException_remainingClientsStillClosed() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -161,7 +163,8 @@ class PartitionedTableAdversarialTest {
      * starts with 0xF0 and toKey starts with 0xEF, so fromKey > toKey — this IS an inverted range
      * and must be rejected.
      */
-    // @spec partitioning.table-partitioning.R98 — inverted-range check must use unsigned byte-lexicographic order
+    // @spec partitioning.table-partitioning.R98 — inverted-range check must use unsigned
+    // byte-lexicographic order
     @Test
     void getRange_invertedBySurrogatePair_rejectedWithByteLexCompare() throws IOException {
         final PartitionDescriptor desc = new PartitionDescriptor(1L, seg(" "), seg("\uFFFF"),
@@ -194,7 +197,8 @@ class PartitionedTableAdversarialTest {
      * added as suppressed exceptions to the original failure. project-rule: coding-guidelines
      * (deferred close pattern).
      */
-    // @spec partitioning.table-partitioning.R74 — close exceptions during cleanup added as suppressed
+    // @spec partitioning.table-partitioning.R74 — close exceptions during cleanup added as
+    // suppressed
     @Test
     void build_factoryFails_closeExceptionsAddedAsSuppressed() {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",

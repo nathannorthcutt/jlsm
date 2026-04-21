@@ -66,7 +66,8 @@ class ZstdNativeBindingsTest {
         assertNotNull(ZstdNativeBindings.trainFromBuffer());
     }
 
-    // @spec compression.zstd-codec.R1 — tier detection must select PURE_JAVA_DECOMPRESSOR when native is
+    // @spec compression.zstd-codec.R1 — tier detection must select PURE_JAVA_DECOMPRESSOR when
+    // native is
     // unavailable; DEFLATE_FALLBACK is reserved for cases where the pure-Java decoder itself
     // is not loadable, which cannot happen in this codebase (pure-Java class is always on the
     // classpath).

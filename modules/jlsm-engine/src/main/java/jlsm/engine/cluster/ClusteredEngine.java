@@ -40,6 +40,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code .decisions/scatter-gather-query-execution/adr.md},
  * {@code .decisions/discovery-spi-design/adr.md},
  * {@code .decisions/transport-abstraction-design/adr.md}
+ *
+ * @spec engine.clustering.R55 — wraps local engine; local engine remains usable for locally-owned
+ *       partitions
+ * @spec engine.clustering.R80 — closeable lifecycle; shutdown sequence (leave → deregister → stop
+ *       transport) accumulates errors then surfaces after all resources released
+ * @spec engine.clustering.R98 — createTable closes previous proxy with same name; on failure local
+ *       table rolled back
+ * @spec engine.clustering.R99 — ownership instance shared with ClusteredTable (not per-table copy)
+ * @spec engine.clustering.R102 — final fields assigned before any listener/handler registration
+ *       (safe publication)
+ * @spec engine.clustering.R103 — constructor unwinds registration steps if a later step throws
+ * @spec engine.clustering.R104 — join rollback attaches rollback exceptions as suppressed on the
+ *       original cause
+ * @spec engine.clustering.R105 — membership listener callbacks after close are observable as no-ops
  */
 public final class ClusteredEngine implements Engine {
 
@@ -55,9 +69,9 @@ public final class ClusteredEngine implements Engine {
     private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     /**
-     * Engine-level operational mode (@spec engine.clustering.R41). Transitions between NORMAL and READ_ONLY on
-     * membership-view changes based on quorum. Exposed via {@link #operationalMode()} and consumed
-     * by {@link ClusteredTable} to gate mutating operations.
+     * Engine-level operational mode (@spec engine.clustering.R41). Transitions between NORMAL and
+     * READ_ONLY on membership-view changes based on quorum. Exposed via {@link #operationalMode()}
+     * and consumed by {@link ClusteredTable} to gate mutating operations.
      */
     private volatile ClusterOperationalMode operationalMode = ClusterOperationalMode.NORMAL;
 
@@ -70,7 +84,8 @@ public final class ClusteredEngine implements Engine {
         this.transport = Objects.requireNonNull(builder.transport, "transport");
         this.config = Objects.requireNonNull(builder.config, "config");
         this.localAddress = Objects.requireNonNull(builder.localAddress, "localAddress");
-        // @spec engine.clustering.R56,R79 — discovery is a mandatory builder parameter rejected at build time.
+        // @spec engine.clustering.R56,R79 — discovery is a mandatory builder parameter rejected at
+        // build time.
         this.discovery = Objects.requireNonNull(builder.discovery, "discovery");
 
         // H-RL-10 / Finding F-R1.concurrency.1.2 — publish `this` to the membership protocol
@@ -141,7 +156,8 @@ public final class ClusteredEngine implements Engine {
         final ClusteredTable clustered;
         try {
             final TableMetadata metadata = localTable.metadata();
-            // @spec engine.clustering.R60 — supply the local engine so ClusteredTable can short-circuit
+            // @spec engine.clustering.R60 — supply the local engine so ClusteredTable can
+            // short-circuit
             // locally-owned partitions.
             clustered = new ClusteredTable(metadata, transport, membership, localAddress, ownership,
                     localEngine);
@@ -235,15 +251,16 @@ public final class ClusteredEngine implements Engine {
      *
      * <p>
      *
-     * @spec engine.clustering.R57 — the join orchestration registers with discovery first and then starts
-     *       membership. If {@code membership.start(seeds)} throws, the completed discovery
+     * @spec engine.clustering.R57 — the join orchestration registers with discovery first and then
+     *       starts membership. If {@code membership.start(seeds)} throws, the completed discovery
      *       registration is rolled back via {@code discovery.deregister(localAddress)} and the
      *       original failure is rethrown. Any exception thrown by the rollback deregister is
      *       attached via {@link Throwable#addSuppressed(Throwable)} on the original failure.
      *
      *       <p>
-     * @spec engine.clustering.R78 — null {@code seeds} is rejected with {@link NullPointerException}; seeds
-     *       containing a null element are rejected with {@link IllegalArgumentException}.
+     * @spec engine.clustering.R78 — null {@code seeds} is rejected with
+     *       {@link NullPointerException}; seeds containing a null element are rejected with
+     *       {@link IllegalArgumentException}.
      *
      * @param seeds the seed addresses forwarded to the membership protocol; must not be null,
      *            elements must not be null
@@ -267,7 +284,8 @@ public final class ClusteredEngine implements Engine {
         try {
             membership.start(seeds);
         } catch (IOException | RuntimeException failure) {
-            // @spec engine.clustering.R57 — rollback catches any Exception from discovery.deregister (mirroring
+            // @spec engine.clustering.R57 — rollback catches any Exception from
+            // discovery.deregister (mirroring
             // the symmetric defence in close() at the deregister call site) so a non-compliant
             // DiscoveryProvider impl that leaks a checked exception cannot hide the original
             // membership.start failure. The rollback failure is attached via addSuppressed and
@@ -337,7 +355,8 @@ public final class ClusteredEngine implements Engine {
             }
         }
 
-        // @spec engine.clustering.R58 — deregister from discovery symmetrically with register during join.
+        // @spec engine.clustering.R58 — deregister from discovery symmetrically with register
+        // during join.
         // Deregister errors are accumulated into the deferred-exception pattern so the remaining
         // resources still close.
         try {
@@ -357,7 +376,8 @@ public final class ClusteredEngine implements Engine {
             errors.add(e);
         }
 
-        // @spec engine.clustering.R68 — deregister the QUERY_REQUEST handler symmetrically with registration.
+        // @spec engine.clustering.R68 — deregister the QUERY_REQUEST handler symmetrically with
+        // registration.
         // H-RL-8: deregister MUST happen before transport.close so we don't call deregister on a
         // closed transport. Any exception is accumulated into the deferred-exception pattern so
         // remaining resources still close.
@@ -422,7 +442,8 @@ public final class ClusteredEngine implements Engine {
             return;
         }
 
-        // @spec engine.clustering.R41 — transition operational mode based on quorum status of the new view.
+        // @spec engine.clustering.R41 — transition operational mode based on quorum status of the
+        // new view.
         // Empty views (no members) cannot satisfy quorum; hasQuorum returns false in that case
         // which correctly leaves us in READ_ONLY if we enter it.
         final Set<Member> newMembers = newView.members();
@@ -550,8 +571,9 @@ public final class ClusteredEngine implements Engine {
          *
          * <p>
          *
-         * @spec engine.clustering.R56,R79 — discovery is a mandatory builder parameter; both the setter and
-         *       {@link #build()} reject a missing/null discovery with {@link NullPointerException}.
+         * @spec engine.clustering.R56,R79 — discovery is a mandatory builder parameter; both the
+         *       setter and {@link #build()} reject a missing/null discovery with
+         *       {@link NullPointerException}.
          *
          * @param discovery the discovery provider; must not be null
          * @return this builder

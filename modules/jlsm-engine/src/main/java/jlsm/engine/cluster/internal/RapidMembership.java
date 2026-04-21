@@ -60,6 +60,41 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
+ *
+ * @spec engine.clustering.R33 — pluggable MembershipProtocol implementation
+ *       (start/currentView/addListener/leave)
+ * @spec engine.clustering.R34 — multi-process cut detection with observer-quorum consensus before
+ *       SUSPECT view change
+ * @spec engine.clustering.R35 — expander-graph overlay distributes monitoring responsibility
+ *       sub-linearly
+ * @spec engine.clustering.R36 — observers receiving a SUSPICION_PROPOSAL vote independently (or
+ *       self-refute if targeted)
+ * @spec engine.clustering.R37 — consensusRoundTimeout bounds a round; expired rounds are abandoned
+ *       silently
+ * @spec engine.clustering.R38 — live node receiving SUSPICION_PROPOSAL about self refutes by
+ *       bumping incarnation
+ * @spec engine.clustering.R39 — view change listeners notified asynchronously (listenerDispatcher)
+ *       with bounded queue
+ * @spec engine.clustering.R40 — graceful leave broadcasts LEAVE message then ceases protocol
+ *       participation
+ * @spec engine.clustering.R71 — currentView exposes the live member count, epoch and quorum status
+ * @spec engine.clustering.R72 — listener notifications carry old + new epoch
+ * @spec engine.clustering.R74 — view updates serialized via viewLock; reads concurrent
+ * @spec engine.clustering.R84 — membership protocol records a heartbeat for newly joined members
+ * @spec engine.clustering.R85 — heartbeats recorded from probe acknowledgments (bidirectional
+ *       reachability)
+ * @spec engine.clustering.R86 — start() rolls back completed initialization steps on failure
+ * @spec engine.clustering.R87 — start/close lifecycle transitions atomic (AtomicBoolean guard)
+ * @spec engine.clustering.R88 — view change proposals validate sender; non-member rejected;
+ *       malformed payload rejected
+ * @spec engine.clustering.R89 — protocol-level locks not held during I/O or listener callbacks
+ *       (listenerDispatcher decoupled)
+ * @spec engine.clustering.R91 — duplicate leave for already-DEAD member does not advance epoch
+ *       (idempotent)
+ * @spec engine.clustering.R92 — received views with epoch <= current epoch rejected as epoch
+ *       regression
+ * @spec engine.clustering.R97 — close() deregisters from discovery and deregisters transport
+ *       handlers before other cleanup
  */
 public final class RapidMembership implements MembershipProtocol {
 
@@ -622,7 +657,8 @@ public final class RapidMembership implements MembershipProtocol {
 
         // Notify listeners outside viewLock — callbacks must not block view mutations
         if (oldViewForNotify != null) {
-            // @spec engine.clustering.R83 — evict heartbeat history for the departed node so the failure
+            // @spec engine.clustering.R83 — evict heartbeat history for the departed node so the
+            // failure
             // detector does not accumulate records for members that have left the view.
             if (leftMember != null) {
                 failureDetector.remove(leftMember.address());
@@ -650,7 +686,8 @@ public final class RapidMembership implements MembershipProtocol {
             final MembershipView oldView = currentView;
             assert oldView != null : "view should not be null";
 
-            // @spec engine.clustering.R90 — reject proposals that drop ALIVE members from the membership set.
+            // @spec engine.clustering.R90 — reject proposals that drop ALIVE members from the
+            // membership set.
             // A member present in the proposed view with state DEAD is not "dropped" — it is
             // still known (isKnown=true) and carries the required DEAD record. Using isKnown
             // here rather than isMember preserves R90 intent now that isMember excludes DEAD.
@@ -664,7 +701,8 @@ public final class RapidMembership implements MembershipProtocol {
                     }
                 }
                 if (!dropsAlive) {
-                    // @spec engine.clustering.R43 — per-member reconciliation. Instead of a wholesale replace,
+                    // @spec engine.clustering.R43 — per-member reconciliation. Instead of a
+                    // wholesale replace,
                     // merge by incarnation / severity rules so higher-incarnation local records
                     // survive conflicting proposed records.
                     currentView = ViewReconciler.reconcile(oldView, proposedView);
@@ -699,7 +737,8 @@ public final class RapidMembership implements MembershipProtocol {
                 if (!proposedView.isMember(oldMember.address())) {
                     // Previously ALIVE or SUSPECTED, now absent or DEAD in proposed view —
                     // this is a departure transition.
-                    // @spec engine.clustering.R83 — evict heartbeat history on ALIVE/SUSPECTED → DEAD.
+                    // @spec engine.clustering.R83 — evict heartbeat history on ALIVE/SUSPECTED →
+                    // DEAD.
                     failureDetector.remove(oldMember.address());
                     notifyMemberLeft(oldMember);
                 }

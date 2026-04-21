@@ -45,7 +45,8 @@ import java.util.Objects;
  *      R1-R3a, R7, R7a, R8, R9, R17a-R17c, R26, R28</a>
  */
 // @spec compression.zstd-dictionary.R7,R7a — tiered detection + fixed codec ID at class-load time
-// @spec compression.zstd-dictionary.R17a — dict-bound codec: CDict/DDict in shared Arena, AutoCloseable
+// @spec compression.zstd-dictionary.R17a — dict-bound codec: CDict/DDict in shared Arena,
+// AutoCloseable
 // @spec compression.zstd-dictionary.R17b — closed codec throws ISE on compress/decompress
 // @spec compression.zstd-dictionary.R17c — no long-lived resources for plain (no-dict) codecs
 // @spec compression.codec-contract.R16,R17 — dictionary bytes immutable, safe for concurrent use
@@ -196,8 +197,10 @@ final class ZstdCodec implements CompressionCodec, AutoCloseable {
         }
     }
 
-    // @spec compression.zstd-dictionary.R3 — native ZSTD_compressBound when Tier 1, conservative default otherwise
-    // @spec compression.zstd-dictionary.R3a — overflow guard: IAE if computed bound exceeds int range
+    // @spec compression.zstd-dictionary.R3 — native ZSTD_compressBound when Tier 1, conservative
+    // default otherwise
+    // @spec compression.zstd-dictionary.R3a — overflow guard: IAE if computed bound exceeds int
+    // range
     @Override
     public int maxCompressedLength(int inputLength) {
         if (inputLength < 0) {
@@ -264,7 +267,8 @@ final class ZstdCodec implements CompressionCodec, AutoCloseable {
 
     // ---- Native compression ----
 
-    // @spec compression.zstd-dictionary.R26 — Tier-1 downcall failure produces UncheckedIOException, no silent fallback
+    // @spec compression.zstd-dictionary.R26 — Tier-1 downcall failure produces
+    // UncheckedIOException, no silent fallback
     private MemorySegment compressNative(MemorySegment src, MemorySegment dst, long srcSize) {
         try {
             long compressedSize;
@@ -388,7 +392,8 @@ final class ZstdCodec implements CompressionCodec, AutoCloseable {
     /**
      * Checks if a ZSTD return code indicates an error and throws with the error name.
      */
-    // @spec compression.zstd-dictionary.R28 — decompression errors include ZSTD_getErrorName in the message
+    // @spec compression.zstd-dictionary.R28 — decompression errors include ZSTD_getErrorName in the
+    // message
     private static void checkZstdError(long code) throws IOException {
         try {
             int err = (int) ZstdNativeBindings.isError().invokeExact(code);

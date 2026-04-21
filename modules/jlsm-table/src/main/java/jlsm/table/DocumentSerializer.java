@@ -36,17 +36,23 @@ import java.util.Optional;
  * Contiguous numeric arrays (INT32, INT64, FLOAT32, FLOAT64) use SIMD byte-swap acceleration via
  * {@code jdk.incubator.vector}.
  */
-// @spec vector.field-type.R24,R25,R26 — measure VectorType as dimensions*elementBytes, no VarInt prefix
-// @spec vector.field-type.R27,R28,R29 — encode VectorType as dimensions consecutive big-endian floats, verify
+// @spec vector.field-type.R24,R25,R26 — measure VectorType as dimensions*elementBytes, no VarInt
+// prefix
+// @spec vector.field-type.R27,R28,R29 — encode VectorType as dimensions consecutive big-endian
+// floats, verify
 // length
-// @spec vector.field-type.R30,R31,R32 — decode VectorType using schema-declared dimensions, no length prefix
+// @spec vector.field-type.R30,R31,R32 — decode VectorType using schema-declared dimensions, no
+// length prefix
 // @spec vector.field-type.R33,R34 — round-trip preserves FLOAT32/FLOAT16 bit patterns
 // @spec vector.field-type.R35,R36 — null VectorType fields marked in bitmask, no payload bytes
-// @spec vector.field-type.R37,R38 — use write-time field count from header for forward-compatible evolution
+// @spec vector.field-type.R37,R38 — use write-time field count from header for forward-compatible
+// evolution
 // @spec vector.field-type.R45 — encode-time length check uses runtime check (IAE), not assert
 // @spec vector.field-type.R46 — decode-time bounds check throws IAE on truncated vector input
-// @spec vector.field-type.R47 — write-time boolean count stored in header and validated on deserialization
-// @spec vector.field-type.R48 — field-level encode wraps ClassCastException as IAE with field name and type
+// @spec vector.field-type.R47 — write-time boolean count stored in header and validated on
+// deserialization
+// @spec vector.field-type.R48 — field-level encode wraps ClassCastException as IAE with field name
+// and type
 // @spec vector.field-type.R50 — rejects schema version > 65535 with IAE at serialization time
 public final class DocumentSerializer {
 
@@ -138,8 +144,10 @@ public final class DocumentSerializer {
         private final FieldDecoder[] decoders;
         private final FieldEncryptionDispatch encryptionDispatch;
 
-        // @spec serialization.document-serializer.R6,R7,R10,R11,R12,R13,R21 — precompute schema constants, build dispatch table
-        // @spec schema.schema-construction.R25 — rejects schemas with >65535 fields at serialization time
+        // @spec serialization.document-serializer.R6,R7,R10,R11,R12,R13,R21 — precompute schema
+        // constants, build dispatch table
+        // @spec schema.schema-construction.R25 — rejects schemas with >65535 fields at
+        // serialization time
         SchemaSerializer(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
             this.schema = schema;
 
@@ -188,7 +196,8 @@ public final class DocumentSerializer {
             this.encryptionDispatch = new FieldEncryptionDispatch(schema, keyHolder);
         }
 
-        // @spec serialization.document-serializer.R19,R20 — serialization path + on-disk binary format unchanged
+        // @spec serialization.document-serializer.R19,R20 — serialization path + on-disk binary
+        // format unchanged
         @Override
         public MemorySegment serialize(JlsmDocument doc) {
             Objects.requireNonNull(doc, "doc must not be null");
@@ -238,12 +247,15 @@ public final class DocumentSerializer {
                     encryptedPayloads[i] = enc.encrypt(plainBytes);
                     hasEncryptedFields = true;
                 } else if (fd.encryption() instanceof EncryptionSpec.DistancePreserving) {
-                    // @spec serialization.encrypted-field-serialization.R3,R12 — serializer owns DCPE encryption: encrypt the
-                    // @spec encryption.primitives-variants.R55 — serializer owns DCPE encryption: encrypt the
+                    // @spec serialization.encrypted-field-serialization.R3,R12 — serializer owns
+                    // DCPE encryption: encrypt the
+                    // @spec encryption.primitives-variants.R55 — serializer owns DCPE encryption:
+                    // encrypt the
                     // float[] directly and produce a [seed | values | MAC] blob.
                     final DcpeSapEncryptor dcpe = encryptionDispatch.dcpeEncryptorFor(i);
                     if (dcpe == null) {
-                        // @spec serialization.encrypted-field-serialization.R6 — refuse to silently store plaintext for a field that
+                        // @spec serialization.encrypted-field-serialization.R6 — refuse to silently
+                        // store plaintext for a field that
                         // was declared to require encryption. The serializer was built without
                         // a key holder, and this document is not pre-encrypted.
                         throw new IllegalStateException("Cannot serialize field '" + fd.name()
@@ -257,7 +269,8 @@ public final class DocumentSerializer {
                     encryptedPayloads[i] = DcpeSapEncryptor.toBlob(ev);
                     hasEncryptedFields = true;
                 } else if (!(fd.encryption() instanceof EncryptionSpec.None)) {
-                    // @spec serialization.encrypted-field-serialization.R6 — schema declares encryption for this field, we have no
+                    // @spec serialization.encrypted-field-serialization.R6 — schema declares
+                    // encryption for this field, we have no
                     // encryptor (no key holder), and the document is not pre-encrypted.
                     // Refuse rather than silently store plaintext.
                     throw new IllegalStateException("Cannot serialize field '" + fd.name() + "' ("
@@ -365,7 +378,8 @@ public final class DocumentSerializer {
             return MemorySegment.ofArray(buf);
         }
 
-        // @spec serialization.document-serializer.R8,R9,R14,R15,R16,R17,R18,R22,R23,R24 — optimized deserialize
+        // @spec serialization.document-serializer.R8,R9,R14,R15,R16,R17,R18,R22,R23,R24 — optimized
+        // deserialize
         @Override
         public JlsmDocument deserialize(MemorySegment segment) {
             Objects.requireNonNull(segment, "segment must not be null");
@@ -395,7 +409,8 @@ public final class DocumentSerializer {
             // We only read min(writeFieldCount, currentFieldCount) fields
             final int readCount = Math.min(writeFieldCount, fieldCount);
 
-            // @spec serialization.document-serializer.R16 — overlap-bool-count check is only strict when the writer's
+            // @spec serialization.document-serializer.R16 — overlap-bool-count check is only strict
+            // when the writer's
             // schema fits inside the reader's (forward compatibility). For tail-field
             // removal (writeFieldCount > fieldCount), writeBoolCount is the total over
             // the write-time schema and includes booleans in the removed tail; the
@@ -450,8 +465,10 @@ public final class DocumentSerializer {
                         final Cursor plainCursor = new Cursor(plainBytes, 0);
                         values[i] = decoders[i].decode(plainBytes, plainCursor);
                     } else if (dcpe != null) {
-                        // @spec serialization.encrypted-field-serialization.R3,R12 — DCPE blob: [seed | values | MAC]
-                        // @spec encryption.primitives-variants.R55 — DCPE blob: [seed | values | MAC]
+                        // @spec serialization.encrypted-field-serialization.R3,R12 — DCPE blob:
+                        // [seed | values | MAC]
+                        // @spec encryption.primitives-variants.R55 — DCPE blob: [seed | values |
+                        // MAC]
                         final int blobLen = readVarInt(buf, cursor);
                         final byte[] blob = new byte[blobLen];
                         System.arraycopy(buf, cursor.pos, blob, 0, blobLen);
@@ -1242,7 +1259,8 @@ public final class DocumentSerializer {
      * via {@code MemorySegment.ofArray(byte[])}), returns the backing array directly — zero-copy.
      * For off-heap or sliced segments, falls back to {@code toArray()}.
      */
-    // @spec serialization.document-serializer.R1,R2,R3,R4,R5 — heap fast path for full-array byte[] segments; fallback otherwise
+    // @spec serialization.document-serializer.R1,R2,R3,R4,R5 — heap fast path for full-array byte[]
+    // segments; fallback otherwise
     private static ByteArrayView extractBytes(MemorySegment segment) {
         Optional<Object> heapBase = segment.heapBase();
         if (heapBase.isPresent() && heapBase.get() instanceof byte[] data

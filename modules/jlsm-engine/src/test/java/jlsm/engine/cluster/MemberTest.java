@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link Member} record validation.
+ *
+ * @spec engine.clustering.R12 — member tracks (address, state, incarnation); incarnation monotonic
+ *       non-negative
  */
 class MemberTest {
 

@@ -87,6 +87,7 @@ class FieldIndexTest {
         index.close();
     }
 
+    // @spec query.index-types.R4 — UNIQUE enforces a uniqueness constraint at write time
     @Test
     void testUniqueConstraint() throws IOException {
         var def = new IndexDefinition("email", IndexType.UNIQUE);
@@ -134,6 +135,8 @@ class FieldIndexTest {
         index.close();
     }
 
+    // @spec query.index-types.R2 — EQUALITY supports Eq/Ne predicate lookups
+    // @spec query.index-types.R3 — RANGE supports Eq/Ne/Gt/Gte/Lt/Lte/Between predicate lookups
     @Test
     void testSupportsCorrectPredicates() throws IOException {
         var eqIndex = new FieldIndex(new IndexDefinition("name", IndexType.EQUALITY));
@@ -147,6 +150,7 @@ class FieldIndexTest {
 
         var rangeIndex = new FieldIndex(new IndexDefinition("age", IndexType.RANGE));
         assertTrue(rangeIndex.supports(new Predicate.Eq("age", 1)));
+        assertTrue(rangeIndex.supports(new Predicate.Ne("age", 1)));
         assertTrue(rangeIndex.supports(new Predicate.Gt("age", 1)));
         assertTrue(rangeIndex.supports(new Predicate.Gte("age", 1)));
         assertTrue(rangeIndex.supports(new Predicate.Lt("age", 1)));
@@ -154,6 +158,22 @@ class FieldIndexTest {
         assertTrue(rangeIndex.supports(new Predicate.Between("age", 1, 10)));
         assertFalse(rangeIndex.supports(new Predicate.FullTextMatch("age", "x")));
         rangeIndex.close();
+    }
+
+    // @spec query.index-types.R4 — UNIQUE supports the same predicate lookups as RANGE and
+    // additionally enforces a uniqueness constraint at write time
+    @Test
+    void testUniqueSupportsSameLookupsAsRange() throws IOException {
+        try (var uniqueIndex = new FieldIndex(new IndexDefinition("email", IndexType.UNIQUE))) {
+            assertTrue(uniqueIndex.supports(new Predicate.Eq("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Ne("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Gt("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Gte("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Lt("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Lte("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Between("email", "a", "z")));
+            assertFalse(uniqueIndex.supports(new Predicate.FullTextMatch("email", "x")));
+        }
     }
 
     @Test
@@ -173,8 +193,7 @@ class FieldIndexTest {
     // @spec query.field-index.R1 — SecondaryIndex is sealed with exactly three permitted impls
     @Test
     void secondaryIndexIsSealedWithThreePermittedImplementations() {
-        assertTrue(SecondaryIndex.class.isSealed(),
-                "SecondaryIndex must be a sealed interface");
+        assertTrue(SecondaryIndex.class.isSealed(), "SecondaryIndex must be a sealed interface");
         var permitted = Set.of(SecondaryIndex.class.getPermittedSubclasses());
         var expected = Set.<Class<?>>of(FieldIndex.class, FullTextFieldIndex.class,
                 VectorFieldIndex.class);
@@ -200,8 +219,7 @@ class FieldIndexTest {
         try (var index = new FieldIndex(new IndexDefinition("name", IndexType.EQUALITY))) {
             index.onUpdate(stringKey("pk1"), null, "Alice");
             var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
-            assertEquals(1, results.size(),
-                    "null oldValue: onUpdate must act as insert-only");
+            assertEquals(1, results.size(), "null oldValue: onUpdate must act as insert-only");
         }
     }
 
@@ -212,8 +230,7 @@ class FieldIndexTest {
             index.onInsert(stringKey("pk1"), "Alice");
             index.onUpdate(stringKey("pk1"), "Alice", null);
             var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
-            assertEquals(0, results.size(),
-                    "null newValue: onUpdate must act as delete-only");
+            assertEquals(0, results.size(), "null newValue: onUpdate must act as delete-only");
         }
     }
 
@@ -224,8 +241,7 @@ class FieldIndexTest {
             index.onInsert(stringKey("pk1"), "Alice");
             assertDoesNotThrow(() -> index.onUpdate(stringKey("pk2"), null, null));
             var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
-            assertEquals(1, results.size(),
-                    "null/null onUpdate must leave the index unchanged");
+            assertEquals(1, results.size(), "null/null onUpdate must leave the index unchanged");
         }
     }
 

@@ -8,7 +8,8 @@ import java.util.Objects;
  * An opaque token representing a registered table handle. Must be released via
  * {@link HandleTracker#release(HandleRegistration)} when the handle is closed.
  */
-// @spec engine.in-process-database-engine.R49,R51 — invalidation flag visible without caller synchronization; LRU order
+// @spec engine.in-process-database-engine.R49,R51 — invalidation flag visible without caller
+// synchronization; LRU order
 // maintained via list insertion order at the HandleTracker level
 final class HandleRegistration {
 

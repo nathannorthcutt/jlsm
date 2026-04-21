@@ -21,6 +21,10 @@ import java.util.concurrent.CopyOnWriteArraySet;
  *
  * <p>
  * Governed by: {@code .decisions/discovery-spi-design/adr.md}
+ *
+ * @spec engine.clustering.R26 — in-JVM discovery provider backed by a thread-safe shared registry
+ * @spec engine.clustering.R24 — register is idempotent (map put reuses same key)
+ * @spec engine.clustering.R25 — deregister is idempotent (remove on absent key is a no-op)
  */
 public final class InJvmDiscoveryProvider implements DiscoveryProvider, AutoCloseable {
 

@@ -14,7 +14,8 @@ import java.util.Objects;
  * <p>
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
  */
-// @spec engine.in-process-database-engine.R29,R47,R48 — subclass of IllegalStateException carrying the eviction reason
+// @spec engine.in-process-database-engine.R29,R47,R48 — subclass of IllegalStateException carrying
+// the eviction reason
 public final class HandleEvictedException extends IllegalStateException {
 
     /**

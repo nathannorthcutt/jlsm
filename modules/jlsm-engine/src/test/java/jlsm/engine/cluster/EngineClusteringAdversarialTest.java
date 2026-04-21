@@ -38,6 +38,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Adversarial tests for the engine-clustering feature. Targets bugs found during spec analysis
  * round 1.
+ *
+ * @spec engine.clustering.R55 — local engine remains functional under clustered wrapper
+ * @spec engine.clustering.R57 — join rollback on discovery/transport/protocol start failure
+ * @spec engine.clustering.R58 — shutdown is idempotent
+ * @spec engine.clustering.R80 — close accumulates errors
+ * @spec engine.clustering.R103 — rollback unwinds every prior registration step
  */
 final class EngineClusteringAdversarialTest {
 

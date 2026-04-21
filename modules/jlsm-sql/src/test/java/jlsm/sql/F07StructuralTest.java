@@ -20,7 +20,8 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class F07StructuralTest {
 
-    // @spec query.sql-query-support.R1 — jlsm-sql exports only jlsm.sql; no internal subpackages surface types
+    // @spec query.sql-query-support.R1 — jlsm-sql exports only jlsm.sql; no internal subpackages
+    // surface types
     @Test
     void jlsmSqlModuleExportsOnlyJlsmSqlPackage() throws Exception {
         // Tests run in the unnamed module, so Class.getModule() gives the unnamed module.
@@ -67,7 +68,8 @@ class F07StructuralTest {
         assertTrue(permitted.contains(SqlAst.Column.Named.class));
     }
 
-    // @spec query.sql-query-support.R50 — Expression sealed, permits exactly 11 listed implementations
+    // @spec query.sql-query-support.R50 — Expression sealed, permits exactly 11 listed
+    // implementations
     @Test
     void expressionPermitsExactlyElevenImplementations() {
         assertTrue(SqlAst.Expression.class.isSealed(), "Expression must be sealed");
@@ -152,7 +154,8 @@ class F07StructuralTest {
         assertEquals(TokenType.EOF, tokens.getFirst().type());
     }
 
-    // @spec query.sql-query-support.R77 — numeric widening: Integer if fits, Long if fits, Double for decimals
+    // @spec query.sql-query-support.R77 — numeric widening: Integer if fits, Long if fits, Double
+    // for decimals
     @Test
     void numericLiteralWidensIntegerToLongToDouble() throws SqlParseException {
         var schema = JlsmSchema.builder("t", 1).field("x", FieldType.int64())

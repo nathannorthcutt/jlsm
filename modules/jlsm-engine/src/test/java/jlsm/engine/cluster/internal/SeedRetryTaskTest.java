@@ -26,6 +26,9 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link SeedRetryTask} — periodic background task that re-invokes
  * {@link MembershipProtocol#start(List)} while quorum is lost.
+ *
+ * @spec engine.clustering.R42 — SeedRetryTask re-invokes membership.start(seeds) at configurable
+ *       interval; idempotent start/stop; swallows failures that caller cannot act on
  */
 final class SeedRetryTaskTest {
 

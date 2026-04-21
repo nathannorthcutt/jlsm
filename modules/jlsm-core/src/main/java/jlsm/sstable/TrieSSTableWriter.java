@@ -51,7 +51,8 @@ import java.util.zip.CRC32C;
 // @spec sstable.writer.R2 — if compressed >= uncompressed, store as NONE
 // @spec sstable.writer.R3 — map built during write, serialized after all blocks
 // @spec sstable.format-v2.R19 — intra-block offsets may use int
-// @spec compression.zstd-dictionary.R10,R11,R12,R13,R13a,R14,R18,R19,R27 — dictionary-aware writer lifecycle:
+// @spec compression.zstd-dictionary.R10,R11,R12,R13,R13a,R14,R18,R19,R27 — dictionary-aware writer
+// lifecycle:
 // buffer → train → compress-with-dict → v4 meta-block; graceful degradation paths
 public final class TrieSSTableWriter implements SSTableWriter {
 
@@ -166,7 +167,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.bloomFactory = bloomFactory;
         this.codec = codec;
         this.blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
-        // @spec sstable.v3-format-upgrade.R16 — codec-configured writers produce v3 format; no-codec writers stay v1
+        // @spec sstable.v3-format-upgrade.R16 — codec-configured writers produce v3 format;
+        // no-codec writers stay v1
         this.v3 = codec != null;
         this.dictionaryTrainingEnabled = false;
         this.dictionaryBlockThreshold = 64;
@@ -268,7 +270,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
         lastKeyBytes = keyBytes;
         entryCount++;
 
-        // @spec sstable.v3-format-upgrade.R12 — flush threshold reads configured field, not a hardcoded constant
+        // @spec sstable.v3-format-upgrade.R12 — flush threshold reads configured field, not a
+        // hardcoded constant
         if (currentBlock.byteSize() >= blockSize) {
             flushCurrentBlock();
         }
@@ -283,7 +286,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
             // Dictionary training mode: buffer the raw block for later compression
             long newTotal = dictBufferedBytes + blockBytes.length;
             if (newTotal > dictionaryMaxBufferBytes) {
-                // @spec compression.zstd-dictionary.R14 — buffer limit exceeded: abandon training, continue streaming
+                // @spec compression.zstd-dictionary.R14 — buffer limit exceeded: abandon training,
+                // continue streaming
                 dictBufferAbandoned = true;
                 // Compress and write all previously buffered blocks with plain codec
                 for (byte[] buffered : dictBufferedBlocks) {
@@ -321,7 +325,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
     /**
      * Compresses a single serialized block with the specified codec and writes it to the channel.
      */
-    // @spec sstable.v3-format-upgrade.R4,R5 — CRC32C over exact on-disk bytes (compressed or raw post-fallback)
+    // @spec sstable.v3-format-upgrade.R4,R5 — CRC32C over exact on-disk bytes (compressed or raw
+    // post-fallback)
     private void compressAndWriteBlock(byte[] blockBytes, CompressionCodec useCodec)
             throws IOException {
         try (Arena arena = Arena.ofConfined()) {
@@ -400,7 +405,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
                 // Dictionary training lifecycle
                 finishWithDictionaryTraining();
             } else if (codec != null) {
-                // @spec sstable.v3-format-upgrade.R16 — codec-configured writers always produce v3 (never v2)
+                // @spec sstable.v3-format-upgrade.R16 — codec-configured writers always produce v3
+                // (never v2)
                 // v3 layout: [data blocks][compression map v3][key index][bloom filter][footer 72]
                 assert v3 : "codec-configured writers must always set v3=true";
                 if (dictionaryTrainingEnabled && !dictEligible) {
@@ -509,7 +515,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeBytes(buf);
     }
 
-    // @spec sstable.v3-format-upgrade.R14,R15 — 72-byte v3 footer: 9 BE longs ending with MAGIC_V3; blockSize stored
+    // @spec sstable.v3-format-upgrade.R14,R15 — 72-byte v3 footer: 9 BE longs ending with MAGIC_V3;
+    // blockSize stored
     private void writeFooterV3(long mapOffset, long mapLength, long idxOffset, long idxLength,
             long fltOffset, long fltLength) throws IOException {
         byte[] buf = new byte[SSTableFormat.FOOTER_SIZE_V3];
@@ -564,10 +571,14 @@ public final class TrieSSTableWriter implements SSTableWriter {
         writeFooterV3(mapOffset, mapLength, indexOffset, indexLength, filterOffset, filterLength);
     }
 
-    // @spec compression.zstd-dictionary.R11,R11a — train on all buffered blocks, emit v4 with dictionary meta-block
-    // @spec compression.zstd-dictionary.R12 — below-threshold: plain codec, v3, no dictionary stored
-    // @spec compression.zstd-dictionary.R18 — dictionary written after compression map, before key index
-    // @spec compression.zstd-dictionary.R27 — training failure: fall back to plain ZSTD, no SSTable-write failure
+    // @spec compression.zstd-dictionary.R11,R11a — train on all buffered blocks, emit v4 with
+    // dictionary meta-block
+    // @spec compression.zstd-dictionary.R12 — below-threshold: plain codec, v3, no dictionary
+    // stored
+    // @spec compression.zstd-dictionary.R18 — dictionary written after compression map, before key
+    // index
+    // @spec compression.zstd-dictionary.R27 — training failure: fall back to plain ZSTD, no
+    // SSTable-write failure
     /**
      * Finishes the SSTable with dictionary training. Buffered blocks are either compressed with a
      * trained dictionary (v4 format) or with plain ZSTD (v3 format) depending on block count and
@@ -722,7 +733,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
             return this;
         }
 
-        // @spec sstable.v3-format-upgrade.R10,R11 — Builder.blockSize(int) validates and stores; default
+        // @spec sstable.v3-format-upgrade.R10,R11 — Builder.blockSize(int) validates and stores;
+        // default
         // DEFAULT_BLOCK_SIZE
         public Builder blockSize(int blockSize) {
             SSTableFormat.validateBlockSize(blockSize);
@@ -812,7 +824,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
             if (bloomFactory == null) {
                 bloomFactory = n -> new BlockedBloomFilter(n, 0.01);
             }
-            // @spec sstable.v3-format-upgrade.R16 — non-default blockSize without codec rejected at construction
+            // @spec sstable.v3-format-upgrade.R16 — non-default blockSize without codec rejected at
+            // construction
             if (blockSize != SSTableFormat.DEFAULT_BLOCK_SIZE && codec == null) {
                 throw new IllegalArgumentException(
                         "non-default blockSize requires a compression codec");
@@ -866,7 +879,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
      *
      * @return the training result, or {@code null}
      */
-    // @spec compression.zstd-dictionary.R13a — observable notification path for training skip/failure events
+    // @spec compression.zstd-dictionary.R13a — observable notification path for training
+    // skip/failure events
     public DictionaryTrainingResult dictionaryTrainingResult() {
         return trainingResult;
     }

@@ -41,6 +41,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Operations targeting locally-owned partitions must invoke the local {@link Engine}'s table
  * directly and must NOT touch the cluster transport.
+ *
+ * @spec engine.clustering.R60 — locally-owned partitions execute on local engine without transport
+ *       round-trip
+ * @spec engine.clustering.R59 — partition-aware proxy routes based on ownership
  */
 final class ClusteredTableLocalShortCircuitTest {
 

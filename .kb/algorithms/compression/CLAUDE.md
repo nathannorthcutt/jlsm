@@ -33,5 +33,7 @@ dominated by LZ4. ZSTD is too complex for hand-rolling (~5000+ lines).
 
 ## Research Gaps
 - Pure-Java LZ4 implementation performance benchmarks (JMH on jlsm workloads)
-- Optimal block size for SSTable compression (4 KiB vs 8 KiB vs 16 KiB)
 - ZSTD dictionary training parameter tuning for jlsm block sizes
+
+## Related (cross-topic)
+- [systems/database-engines/pool-aware-sstable-block-sizing.md](../../systems/database-engines/pool-aware-sstable-block-sizing.md) — block size as a function of arena/pool granularity; supersedes the "optimal block size" research gap.

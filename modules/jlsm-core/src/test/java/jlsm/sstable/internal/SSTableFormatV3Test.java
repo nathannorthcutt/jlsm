@@ -15,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * until the implementation is written.
  * </p>
  */
-// @spec sstable.v3-format-upgrade.R11,R13,R14,R17 — constants + validation for v3 format (magic, footer, block sizes)
+// @spec sstable.v3-format-upgrade.R11,R13,R14,R17 — constants + validation for v3 format (magic,
+// footer, block sizes)
 class SSTableFormatV3Test {
 
     @Test

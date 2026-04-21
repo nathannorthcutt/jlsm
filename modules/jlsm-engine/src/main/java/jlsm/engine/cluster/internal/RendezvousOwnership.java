@@ -32,13 +32,24 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>
  * Governed by: {@code .decisions/partition-to-node-ownership/adr.md}
+ *
+ * @spec engine.clustering.R44 — HRW assigns each partition to the node with the highest hash score
+ * @spec engine.clustering.R45 — assignments cached per epoch; cache invalidated when epoch advances
+ * @spec engine.clustering.R46 — ownership deterministic across nodes for the same membership view
+ * @spec engine.clustering.R48 — differentialAssign recomputes only departed-member partitions on
+ *       grace expiry
+ * @spec engine.clustering.R49 — rejoining members admitted via normal join; HRW computes new
+ *       assignments
+ * @spec engine.clustering.R75 — ownership cache safe for concurrent read (ConcurrentHashMap +
+ *       per-epoch immutability)
  */
 public class RendezvousOwnership {
 
     /** Default bound on the number of cached assignments per epoch when none is supplied. */
     public static final int DEFAULT_MAX_CACHE_ENTRIES_PER_EPOCH = 10_000;
 
-    // @spec engine.clustering.R93 — bound must be configurable; eviction policy is oldest-first within an epoch.
+    // @spec engine.clustering.R93 — bound must be configurable; eviction policy is oldest-first
+    // within an epoch.
     private final int maxEntriesPerEpoch;
     private final ConcurrentHashMap<Long, EpochCache> cache = new ConcurrentHashMap<>();
 
@@ -100,7 +111,8 @@ public class RendezvousOwnership {
         assert !ranked.isEmpty() : "ranked list must not be empty after live-member check";
 
         final NodeAddress owner = ranked.getFirst();
-        // @spec engine.clustering.R93 — EpochCache evicts its oldest entry when the configured bound is reached
+        // @spec engine.clustering.R93 — EpochCache evicts its oldest entry when the configured
+        // bound is reached
         // before accepting the new one, giving O(1) amortized put cost and a hard upper bound on
         // per-epoch memory usage.
         epochCache.put(id, owner);

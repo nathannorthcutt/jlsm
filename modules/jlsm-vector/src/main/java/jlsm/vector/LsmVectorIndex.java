@@ -138,9 +138,12 @@ public final class LsmVectorIndex {
      * @param vector the float vector to validate; must not be null
      * @throws IllegalArgumentException if any component overflows float16
      */
-    // @spec vector.float16-vector-support.R11 — reject finite float32 values with magnitude > 65504 (float16 max)
-    // @spec vector.float16-vector-support.R12 — subnormal flush-to-zero is an inherent property of float16 and accepted
-    // @spec vector.float16-vector-support.R13 — NaN/Infinity input rejected at the index layer (non-finite policy)
+    // @spec vector.float16-vector-support.R11 — reject finite float32 values with magnitude > 65504
+    // (float16 max)
+    // @spec vector.float16-vector-support.R12 — subnormal flush-to-zero is an inherent property of
+    // float16 and accepted
+    // @spec vector.float16-vector-support.R13 — NaN/Infinity input rejected at the index layer
+    // (non-finite policy)
     static void validateFloat16Components(float[] vector) {
         assert vector != null : "vector must not be null";
         for (int i = 0; i < vector.length; i++) {
@@ -171,10 +174,14 @@ public final class LsmVectorIndex {
      * @param floats the float array to encode; must not be null
      * @return big-endian float16 byte array of length {@code floats.length * 2}
      */
-    // @spec vector.float16-vector-support.R5 — IEEE 754 binary16 via JDK standard conversion, big-endian, length dim*2
-    // @spec vector.float16-vector-support.R8 — big-endian byte order matches the vector-serialization ADR
-    // @spec vector.float16-vector-support.R9 — no precision marker/header byte; caller-described encoding
-    // @spec vector.float16-vector-support.R18 — float16 posting-list uses exactly dim*2 bytes per vector
+    // @spec vector.float16-vector-support.R5 — IEEE 754 binary16 via JDK standard conversion,
+    // big-endian, length dim*2
+    // @spec vector.float16-vector-support.R8 — big-endian byte order matches the
+    // vector-serialization ADR
+    // @spec vector.float16-vector-support.R9 — no precision marker/header byte; caller-described
+    // encoding
+    // @spec vector.float16-vector-support.R18 — float16 posting-list uses exactly dim*2 bytes per
+    // vector
     // @spec vector.float16-vector-support.R26 — uses JDK standard float16 conversion exclusively
     // @spec vector.float16-vector-support.R28 — stateless; safe to call concurrently
     static byte[] encodeFloat16s(float[] floats) {
@@ -197,10 +204,12 @@ public final class LsmVectorIndex {
      * @param dimensions the expected number of float components
      * @return float array of length {@code dimensions}
      */
-    // @spec vector.float16-vector-support.R6 — IEEE 754 binary16 decoded back to float32 via JDK standard conversion
+    // @spec vector.float16-vector-support.R6 — IEEE 754 binary16 decoded back to float32 via JDK
+    // standard conversion
     // @spec vector.float16-vector-support.R26 — uses JDK standard float16 conversion exclusively
     // @spec vector.float16-vector-support.R28 — stateless; safe to call concurrently
-    // @spec vector.float16-vector-support.R35 — validates input length with a runtime check before decoding
+    // @spec vector.float16-vector-support.R35 — validates input length with a runtime check before
+    // decoding
     static float[] decodeFloat16s(byte[] bytes, int dimensions) {
         if (bytes == null) {
             throw new IllegalArgumentException("bytes must not be null");
@@ -226,7 +235,8 @@ public final class LsmVectorIndex {
      * @param precision the target precision; must not be null
      * @return encoded byte array
      */
-    // @spec vector.float16-vector-support.R7 — dispatch by precision: FLOAT32 → dim*4, FLOAT16 → dim*2
+    // @spec vector.float16-vector-support.R7 — dispatch by precision: FLOAT32 → dim*4, FLOAT16 →
+    // dim*2
     // @spec vector.float16-vector-support.R28 — stateless; safe to call concurrently
     static byte[] encodeVector(float[] floats, VectorPrecision precision) {
         assert floats != null : "floats must not be null";
@@ -247,8 +257,10 @@ public final class LsmVectorIndex {
      * @param precision the source precision; must not be null
      * @return float array of length {@code dimensions}
      */
-    // @spec vector.float16-vector-support.R7 — decoding accepts a precision parameter, produces float32 regardless
-    // @spec vector.float16-vector-support.R28,R29 — stateless; float32 arithmetic for downstream similarity
+    // @spec vector.float16-vector-support.R7 — decoding accepts a precision parameter, produces
+    // float32 regardless
+    // @spec vector.float16-vector-support.R28,R29 — stateless; float32 arithmetic for downstream
+    // similarity
     static float[] decodeVector(byte[] bytes, int dimensions, VectorPrecision precision) {
         assert bytes != null : "bytes must not be null";
         assert precision != null : "precision must not be null";
@@ -345,9 +357,12 @@ public final class LsmVectorIndex {
     // Abstract builder base
     // -----------------------------------------------------------------------
 
-    // @spec vector.float16-vector-support.R32 — builder implements AutoCloseable; abandoned builder releases the tree
-    // @spec vector.float16-vector-support.R3 — precision is an explicit builder choice; default FLOAT32; null rejected
-    // @spec vector.float16-vector-support.R34 — dimensions validated against precision-aware overflow bound
+    // @spec vector.float16-vector-support.R32 — builder implements AutoCloseable; abandoned builder
+    // releases the tree
+    // @spec vector.float16-vector-support.R3 — precision is an explicit builder choice; default
+    // FLOAT32; null rejected
+    // @spec vector.float16-vector-support.R34 — dimensions validated against precision-aware
+    // overflow bound
     private abstract static class AbstractBuilder<D, B extends AbstractBuilder<D, B>>
             implements AutoCloseable {
 
@@ -560,7 +575,8 @@ public final class LsmVectorIndex {
 
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
             byte[] vectorBytes = encodeVector(vector, precision);
-            // @spec vector.float16-vector-support.R15,R10b — use quantized vector (encode-then-decode through
+            // @spec vector.float16-vector-support.R15,R10b — use quantized vector
+            // (encode-then-decode through
             // configured precision) for centroid assignment, so the posting is filed under
             // the centroid it is actually closest to after storage quantization.
             float[] quantizedVector = precision == VectorPrecision.FLOAT32 ? vector
@@ -615,9 +631,12 @@ public final class LsmVectorIndex {
             }
         }
 
-        // @spec vector.float16-vector-support.R16 — decode posting-list vectors at configured precision, score in float32
-        // @spec vector.float16-vector-support.R17 — uses the original float32 query for all distance computations
-        // @spec vector.float16-vector-support.R25a — filter non-finite (NaN + Infinity) scores before constructing results
+        // @spec vector.float16-vector-support.R16 — decode posting-list vectors at configured
+        // precision, score in float32
+        // @spec vector.float16-vector-support.R17 — uses the original float32 query for all
+        // distance computations
+        // @spec vector.float16-vector-support.R25a — filter non-finite (NaN + Infinity) scores
+        // before constructing results
         @Override
         public List<VectorIndex.SearchResult<D>> search(float[] query, int topK)
                 throws IOException {
@@ -630,7 +649,8 @@ public final class LsmVectorIndex {
                 throw new IllegalArgumentException("topK must be > 0");
 
             // Load all centroids
-            // @spec vector.float16-vector-support.R14,R10b — centroids are always stored at FLOAT32, regardless of
+            // @spec vector.float16-vector-support.R14,R10b — centroids are always stored at
+            // FLOAT32, regardless of
             // the configured index precision; decode with the FLOAT32 codec.
             List<float[]> centroidVecs = new ArrayList<>();
             List<Integer> centroidIds = new ArrayList<>();
@@ -704,7 +724,8 @@ public final class LsmVectorIndex {
             return results;
         }
 
-        // @spec vector.float16-vector-support.R33 — idempotent close: second and subsequent calls must not propagate
+        // @spec vector.float16-vector-support.R33 — idempotent close: second and subsequent calls
+        // must not propagate
         // to the underlying storage tree.
         @Override
         public void close() throws IOException {
@@ -1003,7 +1024,8 @@ public final class LsmVectorIndex {
 
             byte[] docIdBytes = docIdSerializer.serialize(docId).toArray(ValueLayout.JAVA_BYTE);
 
-            // @spec vector.float16-vector-support.R20 — graph construction must use the quantized vector (decoded back
+            // @spec vector.float16-vector-support.R20 — graph construction must use the quantized
+            // vector (decoded back
             // to float32) for all distance computations during neighbor selection, so the
             // graph edges are optimized for the same precision that search queries encounter.
             byte[] vectorBytes = encodeVector(vector, precision);
@@ -1119,7 +1141,8 @@ public final class LsmVectorIndex {
         }
 
         @Override
-        // @spec vector.float16-vector-support.R24 — soft-delete preserves graph connectivity; traversal still
+        // @spec vector.float16-vector-support.R24 — soft-delete preserves graph connectivity;
+        // traversal still
         // visits soft-deleted nodes as waypoints, but results exclude them (see search()).
         public void remove(D docId) throws IOException {
             Objects.requireNonNull(docId, "docId must not be null");
@@ -1128,10 +1151,14 @@ public final class LsmVectorIndex {
             lsmTree.put(MemorySegment.ofArray(softDeleteKey(docIdBytes)), MemorySegment.NULL);
         }
 
-        // @spec vector.float16-vector-support.R16 — stored node vectors decoded at configured precision, scored in float32
-        // @spec vector.float16-vector-support.R17 — uses the original float32 query vector for all distance computations
-        // @spec vector.float16-vector-support.R24 — soft-deleted nodes remain traversable but are filtered from results
-        // @spec vector.float16-vector-support.R25a — filter non-finite (NaN + Infinity) scores before constructing results
+        // @spec vector.float16-vector-support.R16 — stored node vectors decoded at configured
+        // precision, scored in float32
+        // @spec vector.float16-vector-support.R17 — uses the original float32 query vector for all
+        // distance computations
+        // @spec vector.float16-vector-support.R24 — soft-deleted nodes remain traversable but are
+        // filtered from results
+        // @spec vector.float16-vector-support.R25a — filter non-finite (NaN + Infinity) scores
+        // before constructing results
         @Override
         public List<VectorIndex.SearchResult<D>> search(float[] query, int topK)
                 throws IOException {
@@ -1180,7 +1207,8 @@ public final class LsmVectorIndex {
             return results;
         }
 
-        // @spec vector.float16-vector-support.R33 — idempotent close: second and subsequent calls must be no-ops
+        // @spec vector.float16-vector-support.R33 — idempotent close: second and subsequent calls
+        // must be no-ops
         @Override
         public void close() throws IOException {
             if (closed) {
@@ -1208,7 +1236,8 @@ public final class LsmVectorIndex {
             }
         }
 
-        // @spec vector.float16-vector-support.R35 — validate entry-point bytes before reading structured fields so that
+        // @spec vector.float16-vector-support.R35 — validate entry-point bytes before reading
+        // structured fields so that
         // truncated data fails with a descriptive IOException rather than AIOOBE.
         private EntryPoint readEntryPoint() throws IOException {
             Optional<MemorySegment> opt = lsmTree.get(MemorySegment.ofArray(ENTRY_POINT_KEY));
@@ -1398,9 +1427,12 @@ public final class LsmVectorIndex {
         private record DecodedNode(List<List<byte[]>> layerNeighbors, float[] vector) {
         }
 
-        // @spec vector.float16-vector-support.R19 — node serialization uses configured precision for the vector portion
-        // @spec vector.float16-vector-support.R22 — float16 per-node size drops by exactly dim*2 vs float32
-        // @spec vector.float16-vector-support.R36 — each neighbor identifier uses an explicit per-neighbor length prefix
+        // @spec vector.float16-vector-support.R19 — node serialization uses configured precision
+        // for the vector portion
+        // @spec vector.float16-vector-support.R22 — float16 per-node size drops by exactly dim*2 vs
+        // float32
+        // @spec vector.float16-vector-support.R36 — each neighbor identifier uses an explicit
+        // per-neighbor length prefix
         private static byte[] encodeNode(byte[] docIdBytes, List<List<byte[]>> layerNeighbors,
                 float[] vector, VectorPrecision precision) {
             int docIdLen = docIdBytes.length;
@@ -1427,9 +1459,12 @@ public final class LsmVectorIndex {
             return buf;
         }
 
-        // @spec vector.float16-vector-support.R21 — remaining vector bytes divisible-by-bpc check is a runtime error
-        // @spec vector.float16-vector-support.R35 — validates input length with runtime checks before accessing bytes
-        // @spec vector.float16-vector-support.R36 — reads each neighbor identifier via its per-neighbor length prefix
+        // @spec vector.float16-vector-support.R21 — remaining vector bytes divisible-by-bpc check
+        // is a runtime error
+        // @spec vector.float16-vector-support.R35 — validates input length with runtime checks
+        // before accessing bytes
+        // @spec vector.float16-vector-support.R36 — reads each neighbor identifier via its
+        // per-neighbor length prefix
         private static DecodedNode decodeNode(byte[] bytes, VectorPrecision precision)
                 throws IOException {
             int off = 0;

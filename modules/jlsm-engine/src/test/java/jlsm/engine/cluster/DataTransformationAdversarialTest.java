@@ -32,6 +32,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Focus: wire-format round-trip fidelity; silent-failure masking where distinct failure modes
  * collapse into an ambiguous "empty" sentinel; encoding/framing assumption mismatches.
+ *
+ * @spec engine.clustering.R101 — full document + operation mode round-trip fidelity
+ * @spec engine.clustering.R111 — local-origin encoding failures distinct from remote failures
+ * @spec engine.clustering.R112 — response encoder size accumulator uses checked arithmetic
+ * @spec engine.clustering.R113 — ordered merge fails on malformed per-partition iterator elements
+ * @spec engine.clustering.R114 — range-scan decoder rejects malformed responses
  */
 final class DataTransformationAdversarialTest {
 

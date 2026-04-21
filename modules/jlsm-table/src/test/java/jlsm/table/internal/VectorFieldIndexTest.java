@@ -191,7 +191,8 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec query.vector-index.R3 — reject non-float[] non-short[] values with clear message (no silent drop)
+    // @spec query.vector-index.R3 — reject non-float[] non-short[] values with clear message (no
+    // silent drop)
     @Test
     void onInsert_rejectsNonVectorObject() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();

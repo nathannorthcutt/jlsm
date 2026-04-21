@@ -10,6 +10,8 @@ applies_to:
   - "modules/jlsm-core/src/main/java/jlsm/sstable/internal/SSTableFormat.java"
 research_status: stable
 last_researched: "2026-03-26"
+related:
+  - "systems/database-engines/pool-aware-sstable-block-sizing.md"
 ---
 
 # block-compression

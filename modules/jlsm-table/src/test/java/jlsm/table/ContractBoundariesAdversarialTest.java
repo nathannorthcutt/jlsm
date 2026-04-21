@@ -792,7 +792,8 @@ class ContractBoundariesAdversarialTest {
     // ObjectType's fields, and of() will accept it. This test pins that
     // limitation so a future change that adds deeper validation (a likely
     // enhancement) will deliberately touch this assertion.
-    // @spec schema.document-field-access.R18 — nested ObjectType values NOT validated against inner schema
+    // @spec schema.document-field-access.R18 — nested ObjectType values NOT validated against inner
+    // schema
     @Test
     void test_JlsmDocument_objectType_notValidatedAgainstInnerSchema() {
         JlsmSchema outerSchema = JlsmSchema.builder("outer", 1).objectField("addr", inner -> inner

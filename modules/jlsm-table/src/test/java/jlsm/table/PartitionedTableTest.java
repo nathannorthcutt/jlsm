@@ -161,7 +161,8 @@ class PartitionedTableTest {
     // CRUD routing — single-key operations
     // -------------------------------------------------------------------------
 
-    // @spec partitioning.table-partitioning.R75,R76,R79 — create routes by UTF-8 key, get routes correctly
+    // @spec partitioning.table-partitioning.R75,R76,R79 — create routes by UTF-8 key, get routes
+    // correctly
     @Test
     void create_and_get_routesToCorrectPartition() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -248,7 +249,8 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec partitioning.table-partitioning.R30,R31 — key outside all partitions rejected by RangeMap via IAE
+    // @spec partitioning.table-partitioning.R30,R31 — key outside all partitions rejected by
+    // RangeMap via IAE
     @Test
     void create_keyOutsideAllRanges_throwsIllegalArgumentException() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -280,7 +282,8 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec partitioning.table-partitioning.R80,R99 — multi-partition range with clipped boundaries, merged in key order
+    // @spec partitioning.table-partitioning.R80,R99 — multi-partition range with clipped
+    // boundaries, merged in key order
     @Test
     void getRange_acrossPartitions_mergesInKeyOrder() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -323,7 +326,8 @@ class PartitionedTableTest {
     // query — scatter-gather across partitions, top-k merge
     // -------------------------------------------------------------------------
 
-    // @spec partitioning.table-partitioning.R85,R86 — scatter to all partitions, merge via ResultMerger.mergeTopK,
+    // @spec partitioning.table-partitioning.R85,R86 — scatter to all partitions, merge via
+    // ResultMerger.mergeTopK,
     // full limit per partition
     @Test
     void query_scatterGatherAcrossPartitions_mergesGlobalTopK() throws IOException {
@@ -348,7 +352,8 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec partitioning.table-partitioning.R86 — each partition receives the full limit (not limit/P)
+    // @spec partitioning.table-partitioning.R86 — each partition receives the full limit (not
+    // limit/P)
     @Test
     void query_eachPartitionReceivesFullLimit() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -400,7 +405,8 @@ class PartitionedTableTest {
         assertThrows(IllegalStateException.class, () -> table.query(pred, 10));
     }
 
-    // @spec partitioning.table-partitioning.R89 — partition IOException propagates to caller; partial results not returned
+    // @spec partitioning.table-partitioning.R89 — partition IOException propagates to caller;
+    // partial results not returned
     @Test
     void query_partitionThrowsIOException_propagates() {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -431,7 +437,8 @@ class PartitionedTableTest {
         assertDoesNotThrow(table::close);
     }
 
-    // @spec partitioning.table-partitioning.R87,R88 — deferred close pattern; first exception thrown, others suppressed
+    // @spec partitioning.table-partitioning.R87,R88 — deferred close pattern; first exception
+    // thrown, others suppressed
     @Test
     void close_withFailingClient_accumulatesAndThrows() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",

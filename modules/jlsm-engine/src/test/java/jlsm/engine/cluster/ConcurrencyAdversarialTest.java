@@ -57,6 +57,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Adversarial tests for concurrency concerns in the clustering subsystem.
+ *
+ * @spec engine.clustering.R74 — concurrent membership view reads safe; writes serialized
+ * @spec engine.clustering.R75 — ownership cache safe under concurrent read
+ * @spec engine.clustering.R76 — grace period manager safe for concurrent protocol + ownership
+ *       threads
+ * @spec engine.clustering.R87 — atomic start/close lifecycle transitions (no double-allocation /
+ *       double-cleanup)
+ * @spec engine.clustering.R89 — locks not held during I/O or listener callbacks
+ * @spec engine.clustering.R102 — final fields safely published before listener/handler registration
+ * @spec engine.clustering.R108 — close-path failures logged via diagnostic channel, not assertions
+ * @spec engine.clustering.R109 — runtime non-null check on transport futures (not asserts)
+ * @spec engine.clustering.R110 — cancellation propagates to source transport future
  */
 final class ConcurrencyAdversarialTest {
 
@@ -1160,7 +1172,8 @@ final class ConcurrencyAdversarialTest {
             ownership.assignOwner("partition-" + i, view);
         }
 
-        // @spec engine.clustering.R93 — per-epoch cache must be bounded by maxEntriesPerEpoch, evicting the
+        // @spec engine.clustering.R93 — per-epoch cache must be bounded by maxEntriesPerEpoch,
+        // evicting the
         // oldest entry when the bound is reached. Inspect the cache via reflection through the
         // EpochCache.size() method.
         Field cacheField = RendezvousOwnership.class.getDeclaredField("cache");
@@ -1180,7 +1193,8 @@ final class ConcurrencyAdversarialTest {
                         + ownership.maxEntriesPerEpoch() + ".");
     }
 
-    // @spec engine.clustering.R93 — the cache bound must be configurable and a smaller bound must cap the cache
+    // @spec engine.clustering.R93 — the cache bound must be configurable and a smaller bound must
+    // cap the cache
     // strictly at that value, evicting the oldest entry when a new key arrives at the limit.
     @Test
     @Timeout(10)
@@ -1476,9 +1490,11 @@ final class ConcurrencyAdversarialTest {
                 "ClusteredTable.java source must exist at " + source.toAbsolutePath());
         final String src = java.nio.file.Files.readString(source);
 
-        // Locate the whenComplete block by the marker comment for @spec engine.clustering.R100 / H-RL-6.
+        // Locate the whenComplete block by the marker comment for @spec engine.clustering.R100 /
+        // H-RL-6.
         final int markerIdx = src.indexOf("@spec engine.clustering.R100");
-        assertTrue(markerIdx >= 0, "Expected @spec engine.clustering.R100 marker at the whenComplete close site");
+        assertTrue(markerIdx >= 0,
+                "Expected @spec engine.clustering.R100 marker at the whenComplete close site");
         // Scope: from marker to the end of the whenComplete lambda (closing brace + ");").
         // Use a window wide enough to cover the entire lambda body.
         final int windowEnd = Math.min(src.length(), markerIdx + 800);

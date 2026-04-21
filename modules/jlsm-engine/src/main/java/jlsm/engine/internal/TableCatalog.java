@@ -61,7 +61,8 @@ final class TableCatalog implements Closeable {
      *
      * @throws IOException if the root directory cannot be read or is corrupt
      */
-    // @spec engine.in-process-database-engine.R4,R5,R52,R53,R55,R57,R58,R59,R60,R85,R86 — startup scan + recovery
+    // @spec engine.in-process-database-engine.R4,R5,R52,R53,R55,R57,R58,R59,R60,R85,R86 — startup
+    // scan + recovery
     void open() throws IOException {
         if (!Files.exists(rootDir)) {
             Files.createDirectories(rootDir);
@@ -124,7 +125,8 @@ final class TableCatalog implements Closeable {
      * @return the metadata for the newly registered table
      * @throws IOException if the table already exists or the directory cannot be created
      */
-    // @spec engine.in-process-database-engine.R14,R15,R16,R17,R56,R67,R84,R87,R88 — register is the catalog write contract
+    // @spec engine.in-process-database-engine.R14,R15,R16,R17,R56,R67,R84,R87,R88 — register is the
+    // catalog write contract
     TableMetadata register(String name, JlsmSchema schema) throws IOException {
         ensureReady();
         Objects.requireNonNull(name, "name must not be null");
@@ -203,7 +205,8 @@ final class TableCatalog implements Closeable {
      * @param name the table name; must not be null or empty
      * @throws IOException if the table does not exist or the DROPPED-state write fails
      */
-    // @spec engine.in-process-database-engine.R26,R27 — persist DROPPED via atomic write-then-rename before any deletion
+    // @spec engine.in-process-database-engine.R26,R27 — persist DROPPED via atomic
+    // write-then-rename before any deletion
     void markDropped(String name) throws IOException {
         ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
@@ -223,7 +226,8 @@ final class TableCatalog implements Closeable {
         writeMetadata(metaPath, tombstone);
         tables.put(name, tombstone);
 
-        // @spec engine.in-process-database-engine.R31 — best-effort cleanup; the tombstone must remain even if deletion fails
+        // @spec engine.in-process-database-engine.R31 — best-effort cleanup; the tombstone must
+        // remain even if deletion fails
         final Path tableDir = rootDir.resolve(name);
         deleteDataFilesPreservingTombstone(tableDir, metaPath);
     }
@@ -414,7 +418,8 @@ final class TableCatalog implements Closeable {
      * Reads table metadata from a binary file, reconstructing the full schema including field
      * definitions and persisted table state.
      */
-    // @spec engine.in-process-database-engine.R55,R84 — read full schema + state from a single per-table metadata file
+    // @spec engine.in-process-database-engine.R55,R84 — read full schema + state from a single
+    // per-table metadata file
     private static TableMetadata readMetadata(String tableName, Path path) throws IOException {
         assert tableName != null : "tableName must not be null";
         assert path != null : "path must not be null";

@@ -29,6 +29,14 @@ import java.util.Objects;
  *            cut detector aggregates their suspicions into a single round
  * @param cutDetectorHighWatermark upper bound on observer reports considered for a single
  *            aggregated round (0 = auto, derived from the degree at rebuild time)
+ *
+ * @spec engine.clustering.R2 — builder with documented defaults for grace period, protocol period,
+ *       ping timeout, indirect probe count, phi threshold, and consensus quorum percent
+ * @spec engine.clustering.R3 — reject zero/negative gracePeriod with IllegalArgumentException
+ * @spec engine.clustering.R4 — reject consensusQuorumPercent outside (0, 100] with IAE
+ * @spec engine.clustering.R5 — reject non-finite or non-positive phiThreshold with IAE
+ * @spec engine.clustering.R6 — reject zero/negative pingTimeout with IAE
+ * @spec engine.clustering.R7 — reject negative indirectProbes with IAE; zero is valid
  */
 public record ClusterConfig(Duration gracePeriod, Duration protocolPeriod, Duration pingTimeout,
         int indirectProbes, double phiThreshold, int consensusQuorumPercent,

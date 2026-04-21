@@ -8,7 +8,8 @@ import org.junit.jupiter.api.Test;
 class IndexDefinitionTest {
 
     @Test
-    // @spec query.index-types.R1,R7,R13 — IndexType arity + IndexDefinition three-component record + 2-arg ctor
+    // @spec query.index-types.R1,R7,R13 — IndexType arity + IndexDefinition three-component record
+    // + 2-arg ctor
     void testIndexDefinitionCreation() {
         var eqDef = new IndexDefinition("name", IndexType.EQUALITY);
         assertEquals("name", eqDef.fieldName());
@@ -58,5 +59,18 @@ class IndexDefinitionTest {
     void testIndexDefinitionVectorMissingSimilarityThrowsNpe() {
         assertThrows(NullPointerException.class,
                 () -> new IndexDefinition("embedding", IndexType.VECTOR, null));
+    }
+
+    @Test
+    // @spec query.index-types.R12 — non-VECTOR with non-null similarityFunction rejected with IAE
+    void testIndexDefinitionNonVectorWithSimilarityThrowsIae() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new IndexDefinition("name", IndexType.EQUALITY, SimilarityFunction.COSINE));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IndexDefinition("age", IndexType.RANGE, SimilarityFunction.COSINE));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IndexDefinition("email", IndexType.UNIQUE, SimilarityFunction.COSINE));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IndexDefinition("body", IndexType.FULL_TEXT, SimilarityFunction.COSINE));
     }
 }

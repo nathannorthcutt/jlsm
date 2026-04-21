@@ -31,7 +31,8 @@ class StripedBlockCacheTest {
                 () -> StripedBlockCache.builder().stripeCount(-1).capacity(10).build());
     }
 
-    // @spec sstable.striped-block-cache.R9 — capacity formula uses effectiveStripeCount (rounded-up)
+    // @spec sstable.striped-block-cache.R9 — capacity formula uses effectiveStripeCount
+    // (rounded-up)
     @Test
     void nonPowerOfTwoStripeCountRoundedUp() {
         // 3 rounds up to 4, capacity must accommodate the effective count
@@ -48,7 +49,8 @@ class StripedBlockCacheTest {
         }
     }
 
-    // @spec sstable.striped-block-cache.R19 — power-of-2 stripe counts (including MAX_STRIPE_COUNT) are accepted
+    // @spec sstable.striped-block-cache.R19 — power-of-2 stripe counts (including MAX_STRIPE_COUNT)
+    // are accepted
     @Test
     void powerOfTwoStripeCountsAccepted() {
         for (int count : new int[]{ 1, 2, 4, 8, 16, 32, 64 }) {
@@ -107,7 +109,8 @@ class StripedBlockCacheTest {
         }
     }
 
-    // @spec sstable.striped-block-cache.R10,R13 — bitmask bound and determinism for power-of-2 stripeCount
+    // @spec sstable.striped-block-cache.R10,R13 — bitmask bound and determinism for power-of-2
+    // stripeCount
     @Test
     void stripeIndexUsesBitmaskForPowerOfTwo() {
         // Verify the bitmask produces the same result as manual computation
@@ -121,7 +124,8 @@ class StripedBlockCacheTest {
         }
     }
 
-    // @spec sstable.striped-block-cache.R12 — sequential 4096-aligned offsets distribute across ≥ half of 8 stripes
+    // @spec sstable.striped-block-cache.R12 — sequential 4096-aligned offsets distribute across ≥
+    // half of 8 stripes
     @Test
     void stripeIndexDistributesSequentialOffsets() {
         // Sequential 4096-aligned offsets (typical SSTable block offsets) should not all
@@ -331,7 +335,8 @@ class StripedBlockCacheTest {
 
     // --- Concurrent correctness ---
 
-    // @spec sstable.striped-block-cache.R34,R35,R36 — concurrent put/get is safe and doesn't lose entries within capacity
+    // @spec sstable.striped-block-cache.R34,R35,R36 — concurrent put/get is safe and doesn't lose
+    // entries within capacity
     @Test
     void concurrentPutGetDoesNotLoseEntries() throws InterruptedException {
         int threads = 8;
@@ -388,7 +393,8 @@ class StripedBlockCacheTest {
 
     // --- Algorithm pin tests ---
 
-    // @spec sstable.striped-block-cache.R11 — pins the Splitmix64 finalizer (Stafford variant 13) constants and the
+    // @spec sstable.striped-block-cache.R11 — pins the Splitmix64 finalizer (Stafford variant 13)
+    // constants and the
     // golden-ratio input combining. If any multiplier or shift drifts, this test
     // fails with a deterministic mismatch.
     @Test
@@ -410,7 +416,8 @@ class StripedBlockCacheTest {
         }
     }
 
-    // @spec sstable.striped-block-cache.R14 — stripeIndex must be package-private static (not exposed on the public API)
+    // @spec sstable.striped-block-cache.R14 — stripeIndex must be package-private static (not
+    // exposed on the public API)
     @Test
     void stripeIndexIsPackagePrivateStatic() throws NoSuchMethodException {
         Method m = StripedBlockCache.class.getDeclaredMethod("stripeIndex", long.class, long.class,
@@ -422,7 +429,8 @@ class StripedBlockCacheTest {
         assertFalse(Modifier.isPrivate(mods), "stripeIndex must not be private");
     }
 
-    // @spec sstable.striped-block-cache.R23 — default stripeCount = min(availableProcessors, 16), rounded up to next
+    // @spec sstable.striped-block-cache.R23 — default stripeCount = min(availableProcessors, 16),
+    // rounded up to next
     // power of 2 by the Builder
     @Test
     void defaultStripeCountMatchesSpec() throws Exception {

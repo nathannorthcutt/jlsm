@@ -35,6 +35,10 @@ sources:
     title: "How to Implement LRU Cache in Java — Baeldung"
     accessed: "2026-03-17"
     type: "blog"
+related:
+  - "data-structures/caching/byte-budget-cache-variable-size-entries.md"
+  - "data-structures/caching/concurrent-cache-eviction-strategies.md"
+  - "data-structures/caching/striped-block-cache.md"
 ---
 
 # Concurrent LRU Cache Implementations

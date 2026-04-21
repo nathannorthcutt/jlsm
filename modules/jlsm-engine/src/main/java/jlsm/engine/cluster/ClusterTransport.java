@@ -13,6 +13,13 @@ import java.util.concurrent.CompletableFuture;
  *
  * <p>
  * Governed by: {@code .decisions/transport-abstraction-design/adr.md}
+ *
+ * @spec engine.clustering.R27 — SPI with send (one-way), request (future response), registerHandler
+ *       (by message type)
+ * @spec engine.clustering.R29 — request returns a future that completes with the response or
+ *       completes exceptionally on delivery failure (timeout is enforced at the caller layer)
+ * @spec engine.clustering.R30 — handler registration keyed by message type; re-registration
+ *       replaces atomically
  */
 public interface ClusterTransport extends AutoCloseable {
 

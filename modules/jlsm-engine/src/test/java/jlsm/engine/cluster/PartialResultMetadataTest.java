@@ -9,6 +9,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link PartialResultMetadata} record — defensive copy and null check.
+ *
+ * @spec engine.clustering.R64 — partial result metadata indicates completeness + unavailable
+ *       partitions
+ * @spec engine.clustering.R73 — exposes isComplete + unavailablePartitions to caller
  */
 class PartialResultMetadataTest {
 

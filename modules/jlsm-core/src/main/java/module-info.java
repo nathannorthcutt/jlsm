@@ -22,7 +22,8 @@ module jlsm.core {
     exports jlsm.cache;
     exports jlsm.tree;
     exports jlsm.encryption;
-    exports jlsm.core.json; // @spec serialization.simd-jsonl.R40,R41 — public JSON API exported, internal package not
+    exports jlsm.core.json; // @spec serialization.simd-jsonl.R40,R41 — public JSON API exported,
+                            // internal package not
                             // exported
     // NOT exported (internal impl detail):
     // jlsm.bloom.hash, jlsm.wal.internal, jlsm.memtable.internal,

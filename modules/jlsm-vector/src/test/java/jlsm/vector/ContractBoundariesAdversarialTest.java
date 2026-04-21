@@ -171,7 +171,8 @@ class ContractBoundariesAdversarialTest {
     // just like NaN scores are, so that only finite scores reach search results.
     // Fix location: LsmVectorIndex.java, IvfFlat.search, around line 534 (the NaN filter)
     // Regression watch: ensure both positive and negative infinity are filtered, not just one
-    // @spec vector.float16-vector-support.R25,R25a — IvfFlat search filters Infinity at candidate accumulation
+    // @spec vector.float16-vector-support.R25,R25a — IvfFlat search filters Infinity at candidate
+    // accumulation
     @Test
     void test_IvfFlat_search_filters_infinity_scores() throws Exception {
         LsmTree lsmTree = createLsmTree();
@@ -215,7 +216,8 @@ class ContractBoundariesAdversarialTest {
     // Fix location: LsmVectorIndex.java, Hnsw.searchLayer (lines 1003, 1024) and Hnsw.search (line
     // 919)
     // Regression watch: ensure both entry score and neighbor scores filter Infinity, not just NaN
-    // @spec vector.float16-vector-support.R25,R25a — Hnsw search filters Infinity at candidate accumulation
+    // @spec vector.float16-vector-support.R25,R25a — Hnsw search filters Infinity at candidate
+    // accumulation
     @Test
     void test_Hnsw_search_filters_infinity_scores() throws Exception {
         LsmTree lsmTree = createLsmTree();

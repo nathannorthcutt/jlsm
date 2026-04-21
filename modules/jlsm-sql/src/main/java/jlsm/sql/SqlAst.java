@@ -15,7 +15,8 @@ import java.util.Optional;
  * <p>
  * Governed by: brief.md — Architecture section (SQL AST intermediate representation).
  */
-// @spec query.sql-query-support.R46 — SqlAst is a sealed interface; all AST nodes are records implementing it or a
+// @spec query.sql-query-support.R46 — SqlAst is a sealed interface; all AST nodes are records
+// implementing it or a
 // sub-interface
 public sealed interface SqlAst {
 
@@ -31,7 +32,8 @@ public sealed interface SqlAst {
      * @param limit optional LIMIT value
      * @param offset optional OFFSET value
      */
-    // @spec query.sql-query-support.R47,R48,R51 — required fields; defensively copied lists; null-reject in compact
+    // @spec query.sql-query-support.R47,R48,R51 — required fields; defensively copied lists;
+    // null-reject in compact
     // ctor
     record SelectStatement(List<Column> columns, String table, Optional<Expression> where,
             List<OrderByClause> orderBy, Optional<Integer> limit,
@@ -76,7 +78,8 @@ public sealed interface SqlAst {
 
     // ── Expressions (WHERE clause) ───────────────────────────────
 
-    // @spec query.sql-query-support.R50,R51 — Expression permits exactly 11 impls; all reference-typed fields
+    // @spec query.sql-query-support.R50,R51 — Expression permits exactly 11 impls; all
+    // reference-typed fields
     // null-rejected
     sealed interface Expression extends SqlAst {
 
@@ -136,7 +139,8 @@ public sealed interface SqlAst {
             }
         }
 
-        // @spec query.sql-query-support.R53 — NumberLiteral stores the raw text, not a parsed numeric value
+        // @spec query.sql-query-support.R53 — NumberLiteral stores the raw text, not a parsed
+        // numeric value
         record NumberLiteral(String text) implements Expression {
             public NumberLiteral {
                 Objects.requireNonNull(text, "text");

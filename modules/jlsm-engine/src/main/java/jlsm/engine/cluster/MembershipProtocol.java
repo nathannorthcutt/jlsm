@@ -14,6 +14,12 @@ import java.util.List;
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
+ *
+ * @spec engine.clustering.R33 — pluggable SPI with: start, currentView, addListener, leave
+ * @spec engine.clustering.R39 — protocol notifies listeners of view changes / joins / departures /
+ *       suspicions
+ * @spec engine.clustering.R40 — leave announces departure before ceasing participation
+ * @spec engine.clustering.R71 — currentView exposes epoch, live member count, and quorum status
  */
 public interface MembershipProtocol extends AutoCloseable {
 

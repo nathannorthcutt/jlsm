@@ -144,7 +144,8 @@ class ResourceLifecycleAdversarialTest {
     // tree only if build() was never called (ownership not transferred).
     // Fix location: AbstractBuilder (LsmVectorIndex.java:321-385) — implement AutoCloseable
     // Regression watch: build() must clear the lsmTree reference so close() doesn't double-close
-    // @spec vector.float16-vector-support.R32 — builder implements AutoCloseable; abandoned builder releases storage tree
+    // @spec vector.float16-vector-support.R32 — builder implements AutoCloseable; abandoned builder
+    // releases storage tree
     @Test
     void test_abstractBuilder_abandonedBuilder_closesLsmTree() throws Exception {
         LsmTree tree = buildTree(1024 * 1024);

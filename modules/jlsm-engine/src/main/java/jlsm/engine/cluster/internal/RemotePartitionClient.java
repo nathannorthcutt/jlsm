@@ -45,6 +45,25 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>
  * Governed by: {@code .decisions/transport-abstraction-design/adr.md}
+ *
+ * @spec engine.clustering.R68 — serializes CRUD into transport message format carrying table +
+ *       partition id
+ * @spec engine.clustering.R69 — deserializes responses; propagates remote exceptions as local
+ *       exceptions
+ * @spec engine.clustering.R70 — enforces per-request timeout; cancels future on timeout; reports
+ *       unavailable
+ * @spec engine.clustering.R101 — serializes full document + operation mode for
+ *       create/update/delete; decodes non-empty get/scan payloads
+ * @spec engine.clustering.R109 — validates transport future is non-null with a runtime check (not
+ *       assert)
+ * @spec engine.clustering.R110 — timeout cancels the source transport future (not just a downstream
+ *       wrapper)
+ * @spec engine.clustering.R111 — local-origin failures (encoding errors) distinguished from
+ *       remote-node failures
+ * @spec engine.clustering.R112 — response encoder uses checked arithmetic to avoid int overflow in
+ *       size fields
+ * @spec engine.clustering.R114 — range-scan decoder fails explicitly on malformed
+ *       populated-payload-without-schema
  */
 public final class RemotePartitionClient implements PartitionClient {
 
@@ -144,7 +163,8 @@ public final class RemotePartitionClient implements PartitionClient {
     public void doCreate(String key, JlsmDocument doc) throws IOException {
         checkNotClosed();
 
-        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote routing.
+        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote
+        // routing.
         final byte[] payload = QueryRequestPayload.encodeCreate(tableName, descriptor.id(), key,
                 doc);
         sendRequestAndAwait(payload);
@@ -154,7 +174,8 @@ public final class RemotePartitionClient implements PartitionClient {
     public Optional<JlsmDocument> doGet(String key) throws IOException {
         checkNotClosed();
 
-        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote routing.
+        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote
+        // routing.
         final byte[] payload = QueryRequestPayload.encodeGet(tableName, descriptor.id(), key);
         final Message response = sendRequestAndAwait(payload);
 
@@ -183,7 +204,8 @@ public final class RemotePartitionClient implements PartitionClient {
     public void doUpdate(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         checkNotClosed();
 
-        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote routing.
+        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote
+        // routing.
         final byte[] payload = QueryRequestPayload.encodeUpdate(tableName, descriptor.id(), key,
                 doc, mode);
         sendRequestAndAwait(payload);
@@ -193,7 +215,8 @@ public final class RemotePartitionClient implements PartitionClient {
     public void doDelete(String key) throws IOException {
         checkNotClosed();
 
-        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote routing.
+        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote
+        // routing.
         final byte[] payload = QueryRequestPayload.encodeDelete(tableName, descriptor.id(), key);
         sendRequestAndAwait(payload);
     }
@@ -203,7 +226,8 @@ public final class RemotePartitionClient implements PartitionClient {
             throws IOException {
         checkNotClosed();
 
-        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote routing.
+        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote
+        // routing.
         final byte[] payload = QueryRequestPayload.encodeRange(tableName, descriptor.id(), fromKey,
                 toKey);
         final Message response = sendRequestAndAwait(payload);
@@ -219,7 +243,8 @@ public final class RemotePartitionClient implements PartitionClient {
         }
         checkNotClosed();
 
-        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote routing.
+        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote
+        // routing.
         final byte[] payload = QueryRequestPayload.encodeQuery(tableName, descriptor.id(), limit);
         sendRequestAndAwait(payload);
         // Response deserialization of scored entries will be wired with full message format.
@@ -288,7 +313,8 @@ public final class RemotePartitionClient implements PartitionClient {
             return CompletableFuture
                     .failedFuture(new IOException("RemotePartitionClient is closed"));
         }
-        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote routing.
+        // @spec engine.clustering.R68 — payload header carries table name + partition id for remote
+        // routing.
         // F-R1.data_transformation.1.7 — a RuntimeException from encodeRange is a local
         // client-side programmer/state bug (e.g. invalidated internal state post-construction),
         // NOT a transport failure. Let it propagate synchronously rather than wrap into a
@@ -310,7 +336,8 @@ public final class RemotePartitionClient implements PartitionClient {
             return CompletableFuture
                     .failedFuture(new IOException("transport.request returned null future"));
         }
-        // @spec engine.clustering.R70 — per-request timeout. Rather than orTimeout (which completes the source
+        // @spec engine.clustering.R70 — per-request timeout. Rather than orTimeout (which completes
+        // the source
         // future in-place with TimeoutException, making a subsequent cancel(true) a no-op),
         // schedule
         // a direct cancel of the source future on timeoutMs. This cancel is observable via
@@ -451,7 +478,8 @@ public final class RemotePartitionClient implements PartitionClient {
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            // @spec engine.clustering.R70 — cancel the future on timeout so the transport releases any
+            // @spec engine.clustering.R70 — cancel the future on timeout so the transport releases
+            // any
             // resources associated with the pending response and the partition is reported as
             // unavailable rather than leaked as an indefinitely-pending future.
             future.cancel(true);

@@ -229,8 +229,8 @@
     {
       "id": "encryption.primitives-lifecycle",
       "path": ".spec/domains/encryption/primitives-lifecycle.md",
-      "state": "DRAFT",
-      "version": 4,
+      "state": "APPROVED",
+      "version": 6,
       "domains": [
         "encryption"
       ],
@@ -247,12 +247,17 @@
         "per-field-key-binding",
         "encryption-key-rotation",
         "unencrypted-to-encrypted-migration",
-        "index-access-pattern-leakage"
+        "index-access-pattern-leakage",
+        "three-tier-key-hierarchy",
+        "dek-scoping-granularity",
+        "kms-integration-model",
+        "tenant-key-revocation-and-external-rotation"
       ],
       "kb_refs": [
         "systems/security/encryption-key-rotation-patterns",
         "systems/security/jvm-key-handling-patterns",
         "systems/security/client-side-encryption-patterns",
+        "systems/security/three-level-key-hierarchy",
         "algorithms/encryption/index-access-pattern-leakage"
       ]
     },
@@ -303,8 +308,8 @@
     {
       "id": "engine.clustering",
       "path": ".spec/domains/engine/clustering.md",
-      "state": "DRAFT",
-      "version": 6,
+      "state": "APPROVED",
+      "version": 7,
       "domains": [
         "engine"
       ],
@@ -364,8 +369,8 @@
     {
       "id": "engine.in-process-database-engine",
       "path": ".spec/domains/engine/in-process-database-engine.md",
-      "state": "DRAFT",
-      "version": 3,
+      "state": "APPROVED",
+      "version": 4,
       "domains": [
         "engine"
       ],
@@ -876,7 +881,7 @@
     {
       "id": "query.index-types",
       "path": ".spec/domains/query/index-types.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"
@@ -889,7 +894,7 @@
     {
       "id": "query.query-executor",
       "path": ".spec/domains/query/query-executor.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"

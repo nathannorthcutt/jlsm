@@ -1,9 +1,9 @@
 ---
 {
   "id": "encryption.primitives-lifecycle",
-  "version": 4,
+  "version": 6,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "encryption"
   ],
@@ -22,12 +22,17 @@
     "per-field-key-binding",
     "encryption-key-rotation",
     "unencrypted-to-encrypted-migration",
-    "index-access-pattern-leakage"
+    "index-access-pattern-leakage",
+    "three-tier-key-hierarchy",
+    "dek-scoping-granularity",
+    "kms-integration-model",
+    "tenant-key-revocation-and-external-rotation"
   ],
   "kb_refs": [
     "systems/security/encryption-key-rotation-patterns",
     "systems/security/jvm-key-handling-patterns",
     "systems/security/client-side-encryption-patterns",
+    "systems/security/three-level-key-hierarchy",
     "algorithms/encryption/index-access-pattern-leakage"
   ],
   "open_obligations": [
@@ -70,25 +75,25 @@ R8. If a schema contains more than 64 fields and any field beyond index 63 is ma
 
 ### Per-field key derivation (HKDF)
 
-R9. EncryptionKeyHolder must provide a `deriveFieldKey(String tableName, String fieldName)` method that returns a MemorySegment containing a derived key of the length required by the field's EncryptionSpec variant (R16c). The derived key must be copied into a caller-supplied Arena by `deriveFieldKey`. The caller is responsible for zeroing and closing its own Arena. This prevents use-after-zero: close() zeros the internal master key and cached derivation state, but previously-returned derived key segments in caller-owned Arenas remain valid until the caller releases them. If no caller Arena is provided, the method must allocate from an internal shared Arena — in this case, close() must wait for all in-flight `deriveFieldKey` callers to complete (per R62a) before zeroing the internal Arena's segments.
+R9. EncryptionKeyHolder must provide a `deriveFieldKey(DekHandle dek, String tableName, String fieldName)` method that returns a MemorySegment containing a derived key of the length required by the field's EncryptionSpec variant (R16c). The derived key must be copied into a caller-supplied Arena by `deriveFieldKey`. The caller is responsible for zeroing and closing its own Arena. This prevents use-after-zero: close() zeros the internal master key and cached derivation state, but previously-returned derived key segments in caller-owned Arenas remain valid until the caller releases them. If no caller Arena is provided, the method must allocate from an internal shared Arena — in this case, close() must wait for all in-flight `deriveFieldKey` callers to complete (per R62a) before zeroing the internal Arena's segments.
 
-R10. Key derivation must use HKDF-SHA256. The extract step must compute `PRK = HMAC-SHA256(salt, IKM=masterKeyBytes)` where salt defaults to `0x00{32}` (all-zero, 32 bytes). The expand step must compute `OKM = HMAC-SHA256(PRK, info || 0x01)` truncated to 32 bytes.
+R10. Key derivation must use HKDF-SHA256. The extract step must compute `PRK = HMAC-SHA256(salt, IKM=dekBytes)` where salt defaults to `0x00{32}` (all-zero, 32 bytes) and `dekBytes` is the unwrapped DEK material resolved from the DekHandle. The expand step must compute `OKM = HMAC-SHA256(PRK, info || 0x01)` truncated to 32 bytes.
 
 R10a. The HKDF salt must be configurable via EncryptionKeyHolder's constructor. The default all-zero salt is acceptable for single-deployment scenarios. For multi-tenant or multi-deployment environments, the caller should provide a unique salt (e.g., a deployment identifier hash). When provided, the salt replaces the all-zero default in the extract step.
 
-R10b. The HKDF salt must be recorded in the key registry alongside the wrapped DEK entries. On EncryptionKeyHolder construction, if a salt is provided and a registry already exists, the constructor must verify that the provided salt matches the registry's recorded salt. A mismatch must throw IllegalArgumentException identifying the salt mismatch (without revealing salt bytes beyond a hash prefix). This prevents silent key derivation mismatch when salt is misconfigured across instances — particularly dangerous for OPE and DCPE fields where wrong-key decryption produces plausible but incorrect values rather than authentication failures.
+R10b. The HKDF salt must be recorded in the per-tenant sharded key registry (R71) alongside the wrapped DEK entries. On EncryptionKeyHolder construction, if a salt is provided and a registry already exists, the constructor must verify that the provided salt matches the registry's recorded salt. A mismatch must throw IllegalArgumentException identifying the salt mismatch (without revealing salt bytes beyond a hash prefix). This prevents silent key derivation mismatch when salt is misconfigured across instances — particularly dangerous for OPE and DCPE fields where wrong-key decryption produces plausible but incorrect values rather than authentication failures.
 
-R11. The info parameter for HKDF-Expand must be the UTF-8 encoding of the string `"jlsm-field-key:" + tableName + ":" + fieldName`. The colon delimiters must be literal ASCII 0x3A characters. To prevent ambiguity when table or field names contain colons, the table name and field name must each be length-prefixed in the info string: the info bytes must be `"jlsm-field-key:" || 4-byte-BE(tableNameUtf8.length) || tableNameUtf8 || 4-byte-BE(fieldNameUtf8.length) || fieldNameUtf8`.
+R11. The info parameter for HKDF-Expand must bind the derivation to the full four-tuple DEK identity `(tenantId, domainId, tableId, dekVersion)` per `dek-scoping-granularity` ADR. The info bytes must be the UTF-8 encoding of the literal prefix `"jlsm-field-key:"` followed by length-prefixed components: `"jlsm-field-key:" || 4-byte-BE(tenantIdUtf8.length) || tenantIdUtf8 || 4-byte-BE(domainIdUtf8.length) || domainIdUtf8 || 4-byte-BE(tableNameUtf8.length) || tableNameUtf8 || 4-byte-BE(fieldNameUtf8.length) || fieldNameUtf8 || 4-byte-BE(dekVersion)`. Length prefixes are mandatory to prevent canonicalization collisions (`tenant=a,table=bc` vs `tenant=ab,table=c`). All length fields must be non-negative 32-bit big-endian integers.
 
-R12. Calling `deriveFieldKey` twice with the same `tableName` and `fieldName` on the same key holder instance must return MemorySegments whose byte contents are identical. The derivation must be deterministic given the same master key and info string.
+R12. Calling `deriveFieldKey` twice with the same `(tenantId, domainId, tableName, fieldName, dekVersion)` tuple on the same key holder instance must return MemorySegments whose byte contents are identical. The derivation must be deterministic given the same DEK and info string.
 
-R12a. Two EncryptionKeyHolder instances constructed from identical master key bytes and identical salt must produce byte-identical derived field keys for the same tableName and fieldName combination. The derivation is purely a function of the master key, salt, table name, and field name.
+R12a. Two EncryptionKeyHolder instances constructed from identical DEK bytes, identical salt, and identical info construction must produce byte-identical derived field keys for the same `(tenantId, domainId, tableName, fieldName, dekVersion)` tuple. The derivation is purely a function of the DEK, salt, and info components.
 
-R13. Calling `deriveFieldKey` with different `fieldName` values (same `tableName` and master key) must produce outputs that differ in at least one byte. Two derived keys for distinct fields must not collide.
+R13. Calling `deriveFieldKey` with different `fieldName` values (same other inputs) must produce outputs that differ in at least one byte. Two derived keys for distinct fields must not collide.
 
-R14. Calling `deriveFieldKey` with different `tableName` values (same `fieldName` and master key) must produce outputs that differ in at least one byte. Two derived keys for fields with the same name in different tables must not collide.
+R14. Calling `deriveFieldKey` with different `tableName`, `domainId`, or `tenantId` values (same `fieldName` and DEK) must produce outputs that differ in at least one byte. Cross-table, cross-domain, and cross-tenant derivations must not collide.
 
-R15. `deriveFieldKey` must reject null `tableName` or null `fieldName` with NullPointerException. It must reject empty `tableName` or empty `fieldName` with IllegalArgumentException.
+R15. `deriveFieldKey` must reject null `DekHandle`, null or empty `tableName`, or null or empty `fieldName` with NullPointerException / IllegalArgumentException as appropriate. The DekHandle must carry non-null `tenantId` and `domainId` validated at DekHandle construction (R81).
 
 R16. All intermediate byte arrays created during HKDF computation (PRK, HMAC inputs, HMAC outputs) must be zeroed in a finally block before the method returns. No intermediate key material may survive on the heap after derivation completes. Zeroing must be null-safe — if an array reference is null (because computation did not reach that step), it must be skipped.
 
@@ -96,29 +101,39 @@ R16a. For encryption variants that require keys longer than 256 bits (e.g., AES-
 
 R16c. EncryptionSpec must expose a `requiredKeyBits()` method returning the key length in bits needed for that variant. Deterministic (AES-SIV) must return 512. Opaque (AES-GCM) must return 256. OrderPreserving (Boldyreva OPE) must return 256. DistancePreserving (DCPE/SAP) must return 256. None must return 0. The key derivation routine must call `requiredKeyBits()` to determine how many HKDF-Expand steps to perform. When `requiredKeyBits()` returns 0 (None variant), the key derivation routine must return null and must not invoke HKDF. Callers must check the return value before using the derived key.
 
-R16b. The per-field derived key (from HKDF) serves as the data encryption key for that field. In the envelope encryption model (R17-R21), the current DEK is used as the input keying material to HKDF. When the DEK rotates, all per-field derived keys change because the IKM changes. Callers provide the KEK; the library unwraps the current DEK and uses it as the HKDF master key input.
+R16b. The per-field derived key (from HKDF) serves as the data encryption key for that field. In the envelope encryption model (R17–R21 as amended by R71–R82b), the DEK resolved from the DekHandle is used as the input keying material to HKDF. When the DEK rotates, all per-field derived keys change because the IKM and the `dekVersion` info component both change. Callers provide a KmsClient (R80+) that unwraps the tenant KEK, which unwraps the domain KEK, which unwraps the DEK; the unwrapped DEK is then used as the HKDF master key input.
 
-### Key hierarchy: KEK and versioned DEKs
+### Key hierarchy: three-tier envelope
 
-R17. The encryption system must support a two-tier key hierarchy. The caller provides a KEK (Key Encryption Key). The library manages DEKs (Data Encryption Keys) that are wrapped (encrypted) by the KEK and stored in a key registry.
+R17. The encryption system must support a three-tier key hierarchy per `three-tier-key-hierarchy` ADR:
 
-R18. Each DEK must have a unique integer version identifier. Version identifiers must be 32-bit signed positive integers assigned in strictly increasing order. The version must never be reused.
+- **Tier 1 — Tenant KEK** — owned by the tenant (flavor 3) or the deployer (flavor 2); held in the tenant's KMS via the `KmsClient` SPI (R86+). Never materialised at rest by jlsm.
+- **Tier 2 — Data-domain KEK** — owned by jlsm; wrapped under the Tenant KEK using AES-KW or AES-KWP (RFC 3394/5649). Stored in the per-tenant sharded registry (R71). Unwrapped into an Arena-backed MemorySegment on first domain open, cached per `kms-integration-model` TTL.
+- **Tier 3 — DEK** — owned by jlsm; uniquely identified by `(tenantId, domainId, tableId, dekVersion)` per `dek-scoping-granularity` ADR. Wrapped under the Data-domain KEK using AES-GCM with the tenant+domain encryption context bound as AAD. Stored in the per-tenant sharded registry.
 
-R18a. When the current version is Integer.MAX_VALUE, generating a new DEK must throw IllegalStateException stating that the version space is exhausted.
+Tenant isolation is always-on when encryption is enabled. No shared-KEK mode across tenants exists.
 
-R19. The key registry must be a persistent structure stored alongside the SSTable manifest. It must contain: the active KEK version, a map from DEK version to wrapped DEK entry, and a set of retired KEK versions. Each wrapped DEK entry must record the wrapped key material, the KEK version used for wrapping, and the creation timestamp.
+R17a. Per-field encryption derives from the DEK via HKDF (R9–R16c). The three tier levels wrap; the per-field derivation is a fourth conceptual layer that does not create a persisted key — field keys are ephemeral and reproducible.
 
-R19a. The key registry file must include a trailing CRC-32C checksum covering all preceding bytes. On load, the checksum must be verified before any DEK entries are parsed. A checksum mismatch must throw IOException identifying the registry file path.
+R18. Each DEK must have a unique integer version identifier, scoped per `(tenantId, domainId, tableId)`. Version identifiers must be 32-bit signed positive integers assigned in strictly increasing order within each table's version space. The version must never be reused within the same `(tenantId, domainId, tableId)` scope.
 
-R20. The key registry must be updated atomically: write to a temporary file, fsync the temporary file, then rename to the target path. A crash during registry update must leave the previous registry intact.
+R18a. When the current version within a `(tenantId, domainId, tableId)` scope is Integer.MAX_VALUE, generating a new DEK for that table must throw IllegalStateException stating that the version space is exhausted for the identified scope.
 
-R20a. On startup, for each orphaned temporary registry file (matching the temp file naming pattern), the loader must: (1) verify the CRC-32C checksum (R19a), (2) if valid and the temp file contains a strictly newer state (higher max DEK version) than the current registry, complete the interrupted rename (promote the temp file to the registry path), (3) if invalid or older, delete the temp file. The comparison must use the DEK version map, not file timestamps. The temp file naming pattern must be documented.
+R19. The key registry must be a persistent structure **sharded per-tenant** per `three-tier-key-hierarchy` ADR and `dek-scoping-granularity` ADR. Each shard is keyed by `(tenantId, domainId, tableId, dekVersion)` and records: the wrapped DEK material (wrapped under the domain KEK), the domain KEK version used for wrapping, the tenant KEK version the domain KEK was wrapped under at the time of DEK creation, and the creation timestamp. Each tenant's shard must contain a map from `(domainId, tableId, dekVersion)` to wrapped DEK entry, plus a map from `(domainId)` to wrapped domain KEK entry, plus the active tenant KEK reference.
 
-R21. At any point in time, exactly one DEK version must be designated as the current (active) version. All new writes must use the current DEK. Reads must accept any DEK version present in the registry.
+R19a. Each registry shard file must include a trailing CRC-32C checksum covering all preceding bytes. On load, the checksum must be verified before any DEK or domain KEK entries are parsed. A checksum mismatch must throw IOException identifying the registry file path.
+
+R19b. The concrete per-tenant sharded registry layout (per-domain files versus log-structured merge-of-registries) is deferred to implementation but must satisfy: (a) atomic per-shard commit (temp+fsync+rename or equivalent), (b) independent per-tenant fault domains (one tenant's shard corruption does not affect others), (c) lazy-load — shards are read on first domain open, not enumerated at startup.
+
+R20. Each registry shard must be updated atomically using the pattern appropriate to the chosen layout: write to a temporary file, fsync, rename for per-domain files; or append-only log records with an atomic commit marker for log-structured. A crash during a shard update must leave the previous shard contents intact.
+
+R20a. On startup, for each orphaned temporary shard file (matching the temp file naming pattern), the loader must: (1) verify the CRC-32C checksum (R19a), (2) if valid and the temp file contains a strictly newer state (higher max DEK version within its scope) than the current shard, complete the interrupted rename (promote the temp file to the shard path), (3) if invalid or older, delete the temp file. The comparison must use the DEK version map scoped to the shard, not file timestamps. The temp file naming pattern must be documented.
+
+R21. For each `(tenantId, domainId, tableId)` tuple, exactly one DEK version must be designated as the current (active) version for that table. All new writes to that table must use the table's current DEK. Reads must accept any DEK version present in the registry scoped to the table.
 
 ### Ciphertext format with version tag
 
-R22. Every encrypted field value must be prefixed with a 4-byte big-endian DEK version tag in plaintext. The reader must use this tag to look up the correct DEK before decryption. The ciphertext layout per encryption variant is:
+R22. Every encrypted field value must be prefixed with a 4-byte big-endian DEK version tag in plaintext. The version tag alone does not carry tenant or domain identity — the reader derives `(tenantId, domainId, tableId)` from the SSTable footer metadata (R23a). Cross-scope reads must be rejected (R22b). The ciphertext layout per encryption variant is:
 
 - `[4B DEK version | 12B IV/nonce | encrypted payload | 16B GCM auth tag]` for AES-GCM (Opaque). The GCM tag provides inline authentication.
 - `[4B DEK version | 16B synthetic IV | ciphertext]` for AES-SIV (Deterministic). The S2V synthetic IV provides inline authentication.
@@ -129,31 +144,33 @@ Detached MAC tags for OPE and DCPE close the authenticity gap identified in F03 
 
 R22a. The 4-byte version tag must contain a positive integer (1 or greater). If the reader encounters a version tag of 0 or a negative value (when interpreted as signed big-endian int), it must throw IOException indicating corrupt ciphertext. This applies to both normal reads and compaction re-encryption reads. The version-0/negative check must be performed as part of the same lookup path as the hash map check (R64) — the implementation must not branch to a separate error path before performing the map lookup. Version 0 is never inserted into the map, so both version-0 and version-not-found follow the same code path, preserving the constant-time property of R64.
 
+R22b. The reader must resolve the DEK by the tuple `(tenantId, domainId, tableId, dekVersion)` where the first three components are derived from the SSTable's footer metadata (R23a) and the fourth from the ciphertext's version tag. The reader's **expected scope** must be materialised from the caller's `Table` handle obtained via catalog lookup — not inferred from the same SSTable footer it is validating (which would be tautological). If the SSTable's declared `(tenantId, domainId, tableId)` does not match the `Table` handle's scope (i.e., the SSTable was mis-routed to a different tenant's or domain's read path), decryption must throw IllegalStateException before any DEK lookup. This enforces per-tenant isolation at the read boundary.
+
 R23. The 4-byte version tag must be readable without decryption. No part of the version tag may be encrypted.
 
-R23a. Each SSTable's footer metadata must record the set of DEK versions used for encrypted fields within that SSTable. During compaction of multiple input SSTables, the output SSTable records only the current DEK version (since all fields are re-encrypted to the current version). This metadata enables the manifest to answer "which SSTables reference DEK version V?" without scanning ciphertext.
+R23a. Each SSTable's footer metadata must record: the `(tenantId, domainId, tableId)` scope identifying which table this SSTable belongs to, and the set of DEK versions used for encrypted fields within this SSTable. During compaction of multiple input SSTables, the output SSTable records only the current DEK version (since all fields are re-encrypted to the current version). This metadata enables the manifest to answer "which SSTables reference DEK version V for table T?" without scanning ciphertext, and anchors R22b's cross-scope check.
 
-R24. A ciphertext whose 4-byte version tag references a DEK version not present in the key registry must cause decryption to throw IllegalStateException with a message identifying the missing version number without revealing any key material.
+R24. A ciphertext whose 4-byte version tag references a DEK version not present in the registry for the SSTable's scope must cause decryption to throw IllegalStateException with a message identifying the missing version number and the `(tenantId, domainId, tableId)` scope without revealing any key material.
 
 ### Compaction-driven re-encryption
 
-R25. During compaction, for every encrypted field in a record, the compaction task must: (a) read the 4-byte DEK version tag, (b) look up the corresponding DEK, (c) decrypt with that DEK, (d) re-encrypt with the current (active) DEK, and (e) write the re-encrypted ciphertext with the current DEK's version tag.
+R25. During compaction, for every encrypted field in a record, the compaction task must: (a) read the 4-byte DEK version tag, (b) look up the corresponding DEK in the registry scoped by the input SSTable's `(tenantId, domainId, tableId)`, (c) decrypt with that DEK, (d) re-encrypt with the current (active) DEK for the scope, and (e) write the re-encrypted ciphertext with the current DEK's version tag.
 
-R25a. The compaction re-encryption path must not rely on the pre-encrypted bitset. The compactor must pass re-encrypted field data to the SSTable writer through a compaction-specific write path that accepts raw ciphertext bytes per field. This path must be distinct from the JlsmDocument-based write path (which uses the pre-encrypted bitset) and must accept an array or map of field-index-to-ciphertext entries. The SSTable writer must write these bytes verbatim without consulting the field's EncryptionSpec. This path must support schemas of any size (no 64-field limit). The SSTable writer must still record the schema version tag (R40) and DEK version set (R23a) in the footer metadata regardless of which write path is used.
+R25a. The compaction re-encryption path must not rely on the pre-encrypted bitset. The compactor must pass re-encrypted field data to the SSTable writer through a compaction-specific write path that accepts raw ciphertext bytes per field. This path must be distinct from the JlsmDocument-based write path (which uses the pre-encrypted bitset) and must accept an array or map of field-index-to-ciphertext entries. The SSTable writer must write these bytes verbatim without consulting the field's EncryptionSpec. This path must support schemas of any size (no 64-field limit). The SSTable writer must still record the schema version tag (R40), DEK version set (R23a), and scope identifier (R23a) in the footer metadata regardless of which write path is used.
 
-R25b. The compaction task must capture the current DEK version at task start and use it for all re-encryption within that task. The capture must read the current version from the volatile-reference immutable map (R64), not from the locked registry. This ensures compaction startup is never blocked by KEK rotation (R34a). The output SSTable records this single DEK version in its footer metadata (R23a). If the DEK rotates during compaction, the output SSTable will use the pre-rotation version, and a subsequent compaction pass will re-encrypt to the new version. Convergence detection (R37) must not treat output SSTables from recent compaction as converged — they may reference the pre-rotation DEK by design.
+R25b. The compaction task must capture the current DEK version (for the scope being compacted) at task start and use it for all re-encryption within that task. The capture must read the current version from the volatile-reference immutable map (R64), not from the locked registry. This ensures compaction startup is never blocked by KEK rotation (R34a) or cascading rewrap (R82). The output SSTable records this single DEK version in its footer metadata (R23a). If the DEK rotates during compaction, the output SSTable will use the pre-rotation version, and a subsequent compaction pass will re-encrypt to the new version. Convergence detection (R37) must not treat output SSTables from recent compaction as converged — they may reference the pre-rotation DEK by design.
 
-R26. If a record's encrypted field already uses the current DEK version, compaction must not decrypt and re-encrypt that field. It must copy the ciphertext unchanged. This avoids unnecessary cryptographic operations when no rotation has occurred.
+R26. If a record's encrypted field already uses the current DEK version for its scope, compaction must not decrypt and re-encrypt that field. It must copy the ciphertext unchanged. This avoids unnecessary cryptographic operations when no rotation has occurred.
 
-R27. Re-encryption during compaction must not block reads or writes to the table. Compaction operates on immutable SSTable inputs and produces new SSTable outputs; no lock on the active write path is required.
+R27. Re-encryption during compaction must not block reads or writes to the table. Compaction operates on immutable SSTable inputs and produces new SSTable outputs; no lock on the active write path is required. Compaction from one tenant must not block compaction for another tenant (per-tenant isolation invariant from `three-tier-key-hierarchy`).
 
 R28. After a compaction run completes and the output SSTable replaces the input SSTables in the manifest, the compaction task must not delete old DEK entries from the registry. DEK pruning is a separate operation (R30).
 
 ### DEK lifecycle
 
-R29. A new DEK must be generated by producing 32 bytes from a SecureRandom instance, wrapping the DEK with the current KEK using AES-GCM (the KEK wraps the DEK), assigning the next sequential version number, and persisting the wrapped entry to the key registry.
+R29. A new DEK must be generated for a `(tenantId, domainId, tableId)` scope by: producing 32 bytes from a SecureRandom instance, wrapping the DEK with the domain KEK using AES-GCM with the tenant+domain encryption context as AAD (R87), assigning the next sequential version number within the scope (R18), and persisting the wrapped entry to the per-tenant registry shard (R19).
 
-R30. A DEK version may be pruned from the registry only when no live SSTable in the manifest references that DEK version. The pruning check must scan the manifest's SSTable list. Premature pruning must be prevented: if any SSTable still contains ciphertext tagged with that DEK version, the DEK must remain.
+R30. A DEK version may be pruned from the registry only when no live SSTable in the manifest references that DEK version within its scope. The pruning check must scan the manifest's SSTable list filtering by `(tenantId, domainId, tableId)`. Premature pruning must be prevented: if any SSTable still contains ciphertext tagged with that DEK version in the same scope, the DEK must remain.
 
 R30a. DEK pruning must not remove a DEK version while any in-flight compaction task references an SSTable containing that version. The pruning check must consider both the live manifest and the set of SSTables currently being compacted (the compaction input set).
 
@@ -161,29 +178,39 @@ R30b. The pruning scan must operate on a consistent snapshot of the manifest. If
 
 R30c. The pruning operation must read the manifest snapshot and the in-flight compaction input set as a single atomic operation. The implementation must hold a read lock that prevents new compaction tasks from registering inputs between the manifest snapshot read and the compaction input set read. Without this atomicity guarantee, a new compaction could register an SSTable referencing a DEK version that the pruning scan has already determined is unreferenced.
 
-R31. When a DEK entry is pruned from the registry, the unwrapped key material (if held in memory) must be zeroed before release. The wrapped key material must be removed from the persisted registry in a subsequent atomic registry update.
+R31. When a DEK entry is pruned from the registry, the unwrapped key material (if held in memory) must be zeroed before release. The wrapped key material must be removed from the persisted registry shard in a subsequent atomic shard update.
 
-### KEK rotation
+### KEK rotation (cascading lazy rewrap)
 
-R32. KEK rotation must re-wrap all existing DEK entries under the new KEK. This is an O(DEK-count) operation, not an O(data-size) operation. The data on disk is not touched during KEK rotation.
+R32. KEK rotation at any tier must follow the cascading lazy rewrap model per `three-tier-key-hierarchy` ADR: a rotation at tier N produces a new tier-N reference; wrapped entries at tier N+1 are rewrapped opportunistically on next access (not synchronously). No rotation imposes a global barrier or synchronous O(domains) or O(DEKs) rewrap.
 
-R33. After KEK rotation, the old KEK version must be added to the set of retired KEK versions in the registry. The old KEK must not be deleted from the caller's key management until all DEK entries have been re-wrapped under the new KEK and the registry update is persisted.
+R32a. **Tenant KEK rotation** (tier 1, flavor 3: tenant-driven via `rekey` API from `tenant-key-revocation-and-external-rotation` ADR): on invocation, re-wraps the tenant's domain KEKs under the new Tenant KEK in streaming per-shard batches (R78b). Does not re-wrap DEKs (tier 3) or touch data on disk. Domain KEK blobs remain valid under both old and new Tenant KEK during the migration window (dual-reference per R78d).
 
-R34. KEK rotation must be atomic with respect to the registry: either all DEK entries are re-wrapped under the new KEK and the registry is updated, or none are. A crash during KEK rotation must leave the registry in a consistent state with the previous KEK still active.
+R32c. Streaming rekey per R32a / R78b must release the exclusive shard lock between batches. Each batch must complete within a configurable max-hold-time budget (default 250 ms). If a batch does not complete within the budget, the implementation must split the batch, commit the processed prefix, release the lock, and reacquire before continuing. This prevents rotation from starving DEK creation (R34a shared lock) for unbounded time.
 
-R34a. KEK rotation must hold an exclusive lock on the key registry for the entire duration of the re-wrap operation. No new DEK may be created or persisted while KEK rotation is in progress. DEK creation (R29) must acquire a shared lock, and KEK rotation must acquire an exclusive lock.
+R32b. **Domain KEK rotation** (tier 2): on invocation, unwraps the domain KEK from the Tenant KEK, generates a fresh domain KEK, re-wraps every DEK within the rotating domain under the new domain KEK, and persists the updated shard. DEK cipher material on disk is not touched. This is O(DEKs-in-domain), bounded by the domain's size.
+
+R32b-1. Domain KEK rotation must hold an exclusive lock scoped to the specific `(tenantId, domainId)` being rotated. The lock must cover **every DEK entry in the rotating domain** — concurrent DEK creation (R29) for the rotating `(tenantId, domainId)` must be rejected or queued for the rotation's duration. DEK creation in other `(tenantId, domainId)` scopes (same tenant, different domain; different tenant entirely) must not be blocked by this lock.
+
+R33. After any tier rotation, the retired reference must be added to a retired-references set in the registry. The retired reference must not be deleted from the KMS or zeroized in memory until the rewrap cascade has completed for at least one access cycle — old wrapped entries require the old reference to unwrap during the migration window.
+
+R33a. For Tenant KEK rotation (flavor 3), the retired-reference retention window must exceed WAL retention per the grace-period invariant from `three-tier-key-hierarchy` ADR. Otherwise, unreplayed WAL segments that were encrypted under the old domain KEK (which was wrapped under the old Tenant KEK) become undecryptable.
+
+R34. Rotation at any tier must be atomic with respect to the per-tenant registry shard it writes to: either all wrapped entries at that shard are updated, or none. A crash during rotation must leave the shard in a consistent state with the previous state still usable.
+
+R34a. Rotation must hold an exclusive lock on the specific registry shard being modified for the duration of the shard-scoped update. Concurrent DEK creation within the same shard must acquire a shared lock; rotation must acquire an exclusive lock. Rotations in different tenants' shards must not lock each other (per-tenant isolation).
 
 ### Dual-read during rotation window
 
-R35. During a key rotation window (when SSTables contain ciphertext under both old and new DEK versions), every read must be able to decrypt using any DEK version present in the registry. The reader must not assume all ciphertext uses the current DEK.
+R35. During a key rotation window (when SSTables contain ciphertext under both old and new DEK versions, or wrapped entries exist under both old and new KEK references), every read must be able to decrypt using any DEK version and unwrap via either retired or current KEK reference present in the registry. The reader must not assume all ciphertext uses the current DEK.
 
 R36. DET-encrypted indexed fields must be marked as "rotation-pending" when a new DEK version is activated and the previous version is still referenced by live SSTables. During the rotation-pending window, queries on DET/OPE-indexed encrypted fields may return incomplete results. This limitation must be documented on the rotation API.
 
-R37. After rotation converges (no live SSTables reference old DEK versions), DET/OPE indices affected by the rotation must be rebuilt. The library must provide a mechanism to detect convergence and trigger index rebuild.
+R37. After rotation converges (no live SSTables reference old DEK versions within the scope), DET/OPE indices affected by the rotation must be rebuilt. The library must provide a mechanism to detect convergence and trigger index rebuild.
 
 ### Compaction-driven encryption migration
 
-R38. When a schema update adds EncryptionSpec to a previously unencrypted field, all new writes must immediately encrypt that field with the current DEK. Existing SSTables with unencrypted data for that field must be encrypted during compaction.
+R38. When a schema update adds EncryptionSpec to a previously unencrypted field, all new writes must immediately encrypt that field with the current DEK for the table's scope. Existing SSTables with unencrypted data for that field must be encrypted during compaction.
 
 R39. When a schema update removes EncryptionSpec from a previously encrypted field, all new writes must write that field in plaintext. Existing SSTables with encrypted data for that field must be decrypted during compaction.
 
@@ -231,13 +258,13 @@ R55. `deriveFieldKey` called on a closed EncryptionKeyHolder must throw IllegalS
 
 R56. Constructing a key registry with a DEK version of 0 or negative must throw IllegalArgumentException. DEK versions must be positive integers.
 
-R57. Attempting to activate a DEK version that does not exist in the registry must throw IllegalStateException identifying the requested version without revealing key material.
+R57. Attempting to activate a DEK version that does not exist in the registry for the given scope must throw IllegalStateException identifying the requested version and scope without revealing key material.
 
-R58. Wrapping a DEK with a null or zero-length KEK must throw NullPointerException or IllegalArgumentException respectively, before any cryptographic operation begins.
+R58. Wrapping a DEK with a null or zero-length domain KEK must throw NullPointerException or IllegalArgumentException respectively, before any cryptographic operation begins.
 
-R59. HKDF derivation must reject master keys shorter than 16 bytes with IllegalArgumentException. Keys shorter than 128 bits do not meet minimum security requirements for HKDF input keying material.
+R59. HKDF derivation must reject DEK material shorter than 16 bytes with IllegalArgumentException. Keys shorter than 128 bits do not meet minimum security requirements for HKDF input keying material.
 
-R59a. When the master key is shorter than 32 bytes but at least 16 bytes, the implementation must log a warning that the effective security level is limited to the master key's entropy, not the 256-bit derived key length.
+R59a. When the DEK is shorter than 32 bytes but at least 16 bytes, the implementation must log a warning that the effective security level is limited to the DEK's entropy, not the 256-bit derived key length.
 
 R60. When compaction encounters a ciphertext whose version tag is valid but whose decryption fails (authentication tag mismatch), it must throw an IOException wrapping the underlying crypto exception. Corrupt ciphertext must not be silently dropped or re-encrypted.
 
@@ -247,41 +274,179 @@ R61. Schema version mismatch during migration (SSTable schema version is newer t
 
 ### Concurrency
 
-R62. EncryptionKeyHolder must be safe for concurrent use from multiple threads. The `deriveFieldKey` method must not require external synchronization. Multiple threads may derive keys simultaneously.
+R62. EncryptionKeyHolder must be safe for concurrent use from multiple threads. The `deriveFieldKey` method must not require external synchronization. Multiple threads may derive keys simultaneously, and threads may derive keys for different tenants concurrently without cross-tenant blocking.
 
 R62a. `deriveFieldKey` must be atomic with respect to `close()`. If `close()` is called while `deriveFieldKey` is executing, `deriveFieldKey` must either complete successfully using the original key material or throw IllegalStateException. It must never use partially-zeroed or fully-zeroed key material to produce a derived key.
 
-R63. The key registry must support concurrent reads from reader threads while a single writer updates it. The registry update must use atomic file rename; readers that opened the old registry file before the rename must continue to function correctly using the old registry contents.
+R63. The per-tenant key registry shards must support concurrent reads from reader threads while a single writer updates each shard. Shard updates must use atomic commit per R20; readers that opened the old shard file before commit must continue to function correctly using the old shard contents.
 
-R64. DEK version lookup during read operations must be wait-free: a single volatile-reference read of an immutable map followed by a hash lookup. The implementation must use copy-on-write semantics — mutations create a new immutable map and publish it via a volatile reference swap. Registry reloads (after rotation) may block briefly but must not hold locks that prevent concurrent reads from completing with the previously loaded registry. DEK version lookup timing must be constant-time with respect to whether the version exists — the implementation must perform the same operations regardless of outcome.
+R64. DEK version lookup during read operations must be wait-free: a single volatile-reference read of an immutable map followed by a hash lookup. The implementation must use copy-on-write semantics — mutations create a new immutable map and publish it via a volatile reference swap. Per-tenant registry reloads (after rotation) may block briefly but must not hold locks that prevent concurrent reads from completing with the previously loaded shard. DEK version lookup timing must be constant-time with respect to whether the version exists — the implementation must perform the same operations regardless of outcome.
 
 R65. The `isFieldPreEncrypted(int)` method on JlsmDocument must be safe to call concurrently from multiple threads. The bitset is a final field set at construction; no synchronization is required.
 
 ### Resource lifecycle and key zeroization
 
-R66. EncryptionKeyHolder must implement AutoCloseable. On close, it must zero all off-heap MemorySegments holding master key material and all derived field keys, then release the backing Arena. Close must be idempotent.
+R66. EncryptionKeyHolder must implement AutoCloseable. On close, it must zero all off-heap MemorySegments holding tenant KEK handle material (transient), domain KEK material, DEK material, and derived field keys, then release the backing Arena. Close must be idempotent.
 
 R67. When a derived field key MemorySegment is no longer needed (key holder closing, or field removed from schema), the MemorySegment must be filled with zeros before the Arena is closed. Zeroing must use `MemorySegment.fill((byte) 0)`.
 
-R68. Unwrapped DEK material held in memory for decryption must be stored in off-heap MemorySegments allocated from a shared Arena, not in on-heap byte arrays. On-heap copies created temporarily for JCA cipher initialization must be zeroed in a finally block immediately after the cipher is initialized.
+R68. Unwrapped domain KEK and DEK material held in memory for decryption must be stored in off-heap MemorySegments allocated from a shared Arena, not in on-heap byte arrays. On-heap copies created temporarily for JCA cipher initialization must be zeroed in a finally block immediately after the cipher is initialized.
 
 R68a. The JCA SecretKeySpec retains an internal copy of key bytes that cannot be zeroed by the library. The implementation must minimize the lifetime of SecretKeySpec instances — construct them immediately before use and null the reference immediately after `Cipher.init()` returns.
 
-R69. When a DEK is pruned from the in-memory registry (R30-R31), its off-heap MemorySegment must be zeroed before the segment is released. The zeroing must happen even if an exception occurs during the pruning operation.
+R69. When a DEK or domain KEK is pruned from the in-memory registry (R30–R31) or expired from the cache (R91), its off-heap MemorySegment must be zeroed before the segment is released. The zeroing must happen even if an exception occurs during the pruning operation.
 
-R70. The key registry file on disk must contain only wrapped (encrypted) DEK material. Unwrapped DEK bytes must never be written to the registry file.
+R70. The per-tenant key registry shard files on disk must contain only wrapped (encrypted) key material. Unwrapped DEK or domain KEK bytes must never be written to any shard file.
 
-R70a. The key registry file and any temporary files created during atomic updates must be created with owner-only permissions (0600 on POSIX systems, equivalent on other platforms). The implementation must set permissions before writing any key material to the file.
+R70a. The per-tenant key registry shard files and any temporary files created during atomic updates must be created with owner-only permissions (0600 on POSIX systems, equivalent on other platforms). The implementation must set permissions before writing any key material to the file.
+
+### Tenant encryption flavors
+
+R71. The encryption system must support three tenant encryption flavors per `three-tier-key-hierarchy` ADR:
+
+- **`none`** — no encryption; no `EncryptionKeyHolder` is constructed for tables with no encrypted fields. Fields whose `EncryptionSpec` is the `none` variant pass through unencrypted regardless of flavor.
+- **`local`** — `EncryptionKeyHolder` composes `LocalKmsClient`, a jlsm-shipped reference `KmsClient` implementation backed by filesystem key material with OS-enforced owner-only permissions. **Documented insecure for production** — supports rotation mechanics for test rigour but provides no HSM, no audit trail, no hardware-protected keys.
+- **`external`** — `EncryptionKeyHolder` composes a third-party `KmsClient` plugin (AWS KMS / GCP KMS / Vault / KMIP / custom). Tenant KEK lives in the tenant's KMS; jlsm never materialises it persistently.
+
+R71a. The flavor selection is per-tenant. A single jlsm deployment may serve tenants with different flavors simultaneously; jlsm's internal code paths branch only on the `KmsClient` implementation behavior, not on the flavor label.
+
+R71b. The `LocalKmsClient` implementation's Javadoc must begin with a `@implNote` block stating "NOT FOR PRODUCTION. This reference implementation supports rotation mechanics for test rigour but provides no HSM, no audit trail, and no hardware-protected keys. Production deployments must use a flavor-3 `KmsClient` backed by a real KMS (AWS KMS, GCP KMS, HashiCorp Vault, KMIP, etc.)." The class must also expose a runtime property `isProductionReady()` returning `false`; production harnesses may check this and refuse to start.
+
+### Encrypt-once-at-ingress invariant
+
+R72. Plaintext for encryptable field values must be bounded to the ingress window per `three-tier-key-hierarchy` ADR: from client submission through per-field encryption completion. After the per-field ciphertext is produced, the plaintext Arena must be closed (zeroizing the plaintext). No plaintext of encryptable field values may live in MemTable, WAL, or SSTable storage.
+
+R73. MemTable must hold per-field ciphertext produced at ingress, not plaintext. Queries on encrypted fields must decrypt the per-field ciphertext on read. This diverges from the common LSM pattern where MemTable holds plaintext.
+
+R74. Per-field ciphertext produced at ingress must be **reused unchanged** through WAL → MemTable → SSTable boundaries. The DEK used at ingress (the table's current DEK at ingress time) must be the same DEK whose version tag appears in the resulting SSTable. No decrypt-then-re-encrypt occurs on flush.
+
+R74a. Primary-key fields remain **plaintext** in all storage (MemTable, WAL, SSTable). This preserves sort order and range-scan semantics. Non-primary-key encrypted fields rely on the OPE / DET / DCPE / Opaque variants from `primitives-variants` to support query operations within their documented leakage profile.
+
+R74b. The WAL record envelope must cover only metadata (schema ref, opcode, timestamps) — encrypted field payload bytes in WAL records must be the same per-field ciphertext that flushes to SSTable. No additional encryption layer wraps the already-ciphertext field payload.
+
+### WAL encryption mapping
+
+R75. For WAL encryption per F42 (`wal.encryption`), each tenant carries a synthetic **`_wal` data domain** per `three-tier-key-hierarchy` ADR. WAL metadata-envelope ciphertext is encrypted under a DEK belonging to the `_wal` domain; field payload bytes embedded in WAL records are the per-field ciphertext already produced at ingress (R74b) and are not encrypted again by the WAL envelope.
+
+R75a. F42's "KEK" input parameter at WAL builder construction must resolve internally to the tenant's `_wal` domain DEK-resolver. No F42 spec amendment is required; the mapping is an implementation-level resolution documented in this spec and in a Verification Note on `wal.encryption`.
+
+R75b. Retiring a retired Tenant KEK (R33a) must not precede the replay or compaction of WAL segments encrypted under the `_wal` domain's DEKs whose wrapping chain depends on the retired Tenant KEK. This is the grace-period invariant from `three-tier-key-hierarchy` ADR enforced at WAL retention.
+
+R75c. The grace-period invariant in R75b is enforced via the **on-disk liveness witness** mechanism of R78e: the per-tenant counter of SSTables and WAL segments whose wrapping chain depends on `oldKekRef` includes `_wal` domain WAL segments. Rekey completion (R78e, R78f) cannot complete — and therefore the old Tenant KEK cannot be marked eligible for tenant-side deletion — until that counter reaches zero. This gives the invariant a mechanical enforcement path: tenant operators relying on the `rekey` API to signal "safe to delete old KEK" inherit the protection automatically.
+
+R75d. For the polling path (R79) that does NOT invoke a rekey (transient outage detection, not migration), no grace-period enforcement is required — polling does not transition the tenant KEK to retired.
+
+### Three-state failure machine (flavor 3)
+
+R76. Per `tenant-key-revocation-and-external-rotation` ADR, each tenant under flavor 3 must have one of three operational states, tracked per-tenant in the `EncryptionKeyHolder`:
+
+- **`healthy`** — Tenant KEK unwrap operations succeed; all reads and writes proceed normally.
+- **`grace-read-only`** — N consecutive permanent-class unwrap failures (default N=5, configurable) with jittered exponential backoff (per `kms-integration-model` R89). Writes are rejected with `TenantKekUnavailableException`; reads continue using cached domain KEKs for their remaining TTL (R91).
+- **`failed`** — Grace window exhausts (default 1 hour, configurable), OR all cached domain KEKs have TTL-expired. Reads and writes both rejected until the tenant rekeys to a usable Tenant KEK.
+
+R76a. Permanent-class KMS errors (AccessDenied, KeyDisabled, KeyNotFound) count toward N. Transient-class errors (throttling, timeout, 5xx) do not count toward N; they are retried per the backoff policy of `kms-integration-model` R89 and only escalate to a permanent-class outcome if the retry budget is exhausted.
+
+R76b. State transitions must be observable: emit `tenantKekStateTransition` structured log events and `tenantKekState` metric (gauge per tenant) via the `KmsObserver` interface (`kms-integration-model` R93).
+
+R76c. One tenant entering `grace-read-only` or `failed` must not affect other tenants' operations (per-tenant isolation from `three-tier-key-hierarchy`).
+
+R77. Recovery from `grace-read-only` or `failed` to `healthy` occurs when:
+- A rekey API call (R78) succeeds with a usable new Tenant KEK, OR
+- Opt-in polling (R79) detects that the current Tenant KEK is usable again (transient outage resolved)
+
+### Rekey API (flavor 3)
+
+R78. `EncryptionKeyHolder` must expose a `rekey(TenantId, KekRef oldKekRef, KekRef newKekRef, RekeySentinel proofOfControl, ContinuationToken token)` API per `tenant-key-revocation-and-external-rotation` ADR.
+
+R78a. `proofOfControl` must contain: a nonce-bound plaintext wrapped under `oldKekRef` (the "old sentinel"), the same nonce wrapped under `newKekRef` (the "new sentinel"), and a timestamp. jlsm must verify both operations by **independently invoking `KmsClient.unwrapKek(oldSentinel, oldKekRef, ctx)` AND `KmsClient.unwrapKek(newSentinel, newKekRef, ctx)` — comparing the unwrapped nonce bytes for byte-for-byte equality**. A structural inspection of the provided wrapped bytes without an actual KMS unwrap call is insufficient; both unwraps are required. Freshness window is 5 minutes maximum (timestamp must be within `now - 5min` and `now`).
+
+R78b. The rekey operation must be streaming and paginated: a single invocation processes a bounded batch of domains (default 100, configurable) and returns a `ContinuationToken`. Callers iterate until the token is null.
+
+R78c. Rekey execution must be resumable across crashes. A per-tenant rekey-progress file records `{oldKekRef, newKekRef, nextShardIndex, startedAt}` and is updated after each shard commit. A crashed rekey resumes at the next uncompleted shard. Stale progress files (>24h) must emit an observable event.
+
+R78c-1. The rekey-progress file and any temporary files created during its atomic updates must be created with owner-only permissions (0600 on POSIX systems, equivalent on other platforms). Although `oldKekRef` and `newKekRef` are references (ARNs / paths / IDs) rather than key material, they identify KMS resources that a reader could probe to infer tenant-specific key-management topology; permission discipline matches R70a for registry shards.
+
+R78d. During an in-progress rekey, each affected registry shard carries dual-reference entries `(kekRef, wrappedBlob)`: the existing entry under `oldKekRef` plus a new entry under `newKekRef`. Reads prefer `newKekRef`, falling back to `oldKekRef` if unwrap fails (shard not yet migrated). Writes always use `newKekRef` once rekey has started for the tenant.
+
+R78e. Rekey completes when **BOTH** of the following are true:
+
+1. **Registry migration**: every registry shard for the tenant carries `newKekRef` entries only (no `oldKekRef` entries remain); AND
+2. **On-disk liveness witness**: no live SSTable in the manifest and no unreplayed WAL segment for the tenant references a DEK whose wrapping chain transitively depends on `oldKekRef`. "Transitively depends" means: the DEK's wrapping entry in the registry at the time that SSTable or WAL was written recorded a domain KEK that was itself wrapped under `oldKekRef`.
+
+The implementation must track the on-disk liveness witness by maintaining, for each tenant, a monotonic counter of SSTables and WAL segments whose wrapping chain depends on `oldKekRef`; the counter decrements on SSTable compaction completion and WAL segment retirement. R78e is satisfied only when the counter reaches zero.
+
+Before R78e is satisfied, the `rekey` API must not return a null `continuationToken`. Instead it must return a `continuationToken` with an explicit "awaiting on-disk witness" marker so the caller polls to completion. Once R78e is satisfied, the API returns null, and only then may the `oldKekRef` entries be garbage-collected from the registry shard and the tenant operator may disable/delete the old KEK in the tenant's KMS.
+
+R78f. Rekey completion must be recorded atomically via a `rekey-complete` marker written to the tenant's shard (via the same atomic commit mechanism per R20). The marker records `{completedKekRef, timestamp}`. On crash recovery, the presence of the marker means rekey is complete for that KekRef; its absence (even when all shards appear migrated) means the on-disk witness was never confirmed and rekey remains incomplete. The marker makes the "rekey complete" transition idempotent and crash-safe; retries of R78e after recovery must be O(1) registry reads, not a full rescan.
+
+### Opt-in polling (flavor 3)
+
+R79. Per-tenant opt-in polling may be enabled by the deployer; when enabled, the polling loop invokes `KmsClient.isUsable(tenantKekRef)` on a configurable cadence (default 15 minutes) and updates the tenant's state machine (R76) based on the result.
+
+R79a. Polling failure classification must follow the same permanent-vs-transient rules as R76a. Transient failures do not count toward N; permanent failures do.
+
+R79b. Polling must be per-tenant — one tenant's polling load must not affect other tenants' KMS quota or jlsm's thread pool capacity.
+
+### KmsClient SPI contract (normative)
+
+R80. The `KmsClient` SPI must expose the following operations:
+
+- `WrapResult wrapKek(MemorySegment plaintextKek, KekRef kekRef, Map<String,String> encryptionContext)`
+- `UnwrapResult unwrapKek(ByteBuffer wrappedBytes, KekRef kekRef, Map<String,String> encryptionContext)`
+- `boolean isUsable(KekRef kekRef)`
+- `void close()` — implements AutoCloseable; releases connection pool resources
+
+Detailed method contracts, exception hierarchy (`KmsTransientException`, `KmsPermanentException`, `KmsRateLimitExceededException`), timeout / retry / cache defaults, encryption-context contents, and observability contract live in `kms-integration-model` ADR. This spec references that ADR as normative.
+
+R80a. `encryptionContext` passed on every wrap/unwrap must include at minimum: `tenantId`, `domainId`, and `purpose`. The `purpose` field is an enumerated value from a closed set defined by this spec:
+
+- `domain_kek` — wrapping of a data-domain KEK under the tenant KEK (tier 1 → tier 2)
+- `dek` — wrapping of a DEK under its domain KEK (tier 2 → tier 3)
+- `rekey_sentinel` — proof-of-control sentinel for rekey (R78a)
+- `health_check` — sentinel blob for opt-in polling (R79)
+
+jlsm must **reject** any `purpose` value not in this closed set with IllegalArgumentException before invoking the `KmsClient`. Third-party `KmsClient` implementations must not add `purpose` values of their own. Extending the set requires a spec amendment. Additional context keys (e.g., `tableId`, `dekVersion` per R80a-1) are permitted and extensible, but `purpose` is closed.
+
+R80a-1. For `purpose=dek` wraps and unwraps, the `encryptionContext` must additionally include `tableId` and `dekVersion` (the latter as decimal UTF-8 of the version integer) so the KMS AAD binding prevents cross-table DEK-blob swap within the same `(tenant, domain)`. For `purpose=domain_kek`, `purpose=rekey_sentinel`, and `purpose=health_check`, `tableId` and `dekVersion` are not applicable and must not be included.
+
+jlsm must not include plaintext key material in the context. The KMS binds these as AAD; a wrap under one context cannot be unwrapped under another — the wrap cannot be cross-wired between tenants, domains, purposes, or (for `dek` wraps) tables.
+
+R80b. `KmsClient` implementations must be thread-safe. Connection pooling is the implementation's responsibility — jlsm does not manage KMS connection state, retry queues, or circuit-breaker logic (`kms-integration-model` R88).
+
+### DekHandle contract
+
+R81. A `DekHandle` returned by `EncryptionKeyHolder` must carry (at minimum): non-null `tenantId`, non-null `domainId`, non-null `tableId`, and non-negative `dekVersion`. DekHandle construction must validate these and throw IllegalArgumentException for missing or invalid values.
+
+R81a. DekHandle must not expose the unwrapped DEK bytes directly. Access to the DEK material must be gated by `EncryptionKeyHolder.deriveFieldKey` (R9) so that the caller never holds raw DEK references beyond the ingress encryption path.
+
+### Sharded registry contract
+
+R82. The per-tenant registry is organised as one or more shard files per tenant per `three-tier-key-hierarchy` ADR. The concrete layout (per-domain files versus log-structured) is deferred to implementation but must honour R19b (atomic per-shard commit, independent per-tenant fault domains, lazy-load).
+
+R82a. Shards for different tenants must be stored in separate files, never interleaved, so a filesystem-level corruption or permission error affecting one tenant's shard does not leak into any other tenant's key material.
+
+R82b. Each tenant's shard file(s) must be derivable from `tenantId` alone via a deterministic, documented function, so operational tools (backup, compliance scans, tenant-decommission) can locate all of a tenant's shards without maintaining a separate index. Per-domain addressability within a tenant's shards is layout-dependent:
+
+- **Per-domain file layout** (one file per `(tenantId, domainId)`): the function also derives per-domain paths from `(tenantId, domainId)`. Layout satisfies R30c atomic manifest-snapshot+compaction-set coordination via per-file rename semantics.
+- **Log-structured layout** (one append-only log per tenant across domains): per-domain addressability is provided by an internal index rather than filesystem paths. Layout satisfies R30c via atomic commit markers; operational tools navigate via the index.
+
+Both layouts must satisfy: tenant-level file discovery by `tenantId` without a separate index (R82b as stated), atomic per-shard commit (R20), independent per-tenant fault domains (R82a), and lazy-load (R19b). R19b's layout optionality is constrained by this requirement — a layout that does not support tenant-level discovery-by-`tenantId` is not permitted.
 
 ## Cross-References
 
 - Spec: F03 — Field-Level In-Memory Encryption (parent encryption contracts)
 - Spec: F14 — JlsmDocument (document model, preEncrypted factory methods)
+- Spec: wal.encryption (F42) — consumes DEK from `_wal` domain per R75
+- ADR: .decisions/three-tier-key-hierarchy/adr.md
+- ADR: .decisions/dek-scoping-granularity/adr.md
+- ADR: .decisions/kms-integration-model/adr.md
+- ADR: .decisions/tenant-key-revocation-and-external-rotation/adr.md
 - ADR: .decisions/per-field-pre-encryption/adr.md
-- ADR: .decisions/per-field-key-binding/adr.md
-- ADR: .decisions/encryption-key-rotation/adr.md
+- ADR: .decisions/per-field-key-binding/adr.md (amended by three-tier-key-hierarchy)
+- ADR: .decisions/encryption-key-rotation/adr.md (amended by three-tier-key-hierarchy)
 - ADR: .decisions/unencrypted-to-encrypted-migration/adr.md
 - ADR: .decisions/index-access-pattern-leakage/adr.md
+- KB: .kb/systems/security/three-level-key-hierarchy.md
 - KB: .kb/systems/security/encryption-key-rotation-patterns.md
 - KB: .kb/systems/security/jvm-key-handling-patterns.md
 - KB: .kb/systems/security/client-side-encryption-patterns.md
@@ -293,27 +458,47 @@ R70a. The key registry file and any temporary files created during atomic update
 
 ### Intent
 
-This spec extends F03 (Field-Level In-Memory Encryption) with the full encryption lifecycle: per-field pre-encryption signaling, automatic per-field key derivation, key rotation via envelope encryption, online encryption migration, and leakage mitigation. Together, these capabilities transform jlsm's encryption from a static encrypt-at-rest feature into a production-grade system that supports key rotation without downtime, schema evolution that adds or removes encryption from fields online, and informed caller decisions about leakage tradeoffs.
+This spec extends F03 (Field-Level In-Memory Encryption) with the full encryption lifecycle: per-field pre-encryption signaling, automatic per-field key derivation, a three-tier envelope key hierarchy with per-tenant KMS isolation, rotation at every tier via cascading lazy rewrap, online encryption migration, leakage mitigation, tenant-driven rekey for external-KMS deployments, and a strong plaintext-bounded-to-ingress posture. Together, these capabilities transform jlsm's encryption from a static encrypt-at-rest feature into a production-grade multi-tenant system that supports rotation without downtime, schema evolution that adds or removes encryption from fields online, and informed caller decisions about leakage tradeoffs.
+
+### v5 — Three-tier hierarchy
+
+The v4 two-tier model (caller KEK → library DEK) is amended in v5 to a three-tier envelope per `three-tier-key-hierarchy` ADR: Tenant KEK → Data-domain KEK → DEK. The third tier is justified by sub-tenant blast-radius isolation — tenants may group tables into domains at different sensitivity levels, and a DEK compromise is bounded to its domain rather than propagating across a tenant's full dataset. Per-tenant KMS isolation is always-on when encryption is enabled; under flavor 3 (BYO-KMS), the Tenant KEK lives in the tenant's own KMS and is never materialised at rest by jlsm.
 
 ### Per-field pre-encryption
 
 The previous boolean pre-encryption flag forced all-or-nothing: either every encrypted field was pre-encrypted by the caller, or none were. This is insufficient for mixed scenarios where a client encrypts some fields (e.g., PII handled by a client-side encryption SDK) while the library encrypts others (e.g., searchable encrypted indices). The bitset representation costs zero overhead on the common path (a single `long` comparison against `0L`) and supports schemas up to 64 fields without additional allocation. The 64-field limit is acceptable for the current schema model; if schemas grow beyond 64 fields, the bitset can be extended to `long[]` or `BitSet` under a future revision.
 
-### Per-field key derivation
+### Per-field key derivation (HKDF hybrid)
 
-F03's key handling used a single master key for all fields in a table, with ad-hoc key adaptation (concatenation for upsizing, truncation for downsizing). F03 explicitly noted this as a known limitation: "should be replaced with HKDF when key rotation is implemented." This spec replaces the ad-hoc approach with HKDF-SHA256, deriving a cryptographically independent key per field. The info string includes both table name and field name to prevent cross-table key collision. This change invalidates F03.R20 (deterministic key derivation by concatenation) and F03.R22 (opaque key derivation by truncation) — both are superseded by the HKDF derivation in R10.
+HKDF-SHA256 derives per-field keys from the table DEK, with the info string including `(tenantId, domainId, tableName, fieldName, dekVersion)` length-prefixed. This deterministic derivation makes the encrypt-once-at-ingress invariant possible: a field's ciphertext is reproducible across WAL → MemTable → SSTable boundaries because the derived field key depends only on persistent identifiers, not on ephemeral state. Cross-tenant, cross-domain, and cross-table key collisions are prevented by the length-prefixed info structure (blocks canonicalization attacks like `tenant=a,table=bc` vs `tenant=ab,table=c`).
 
-### Envelope encryption and key rotation
+### Envelope encryption with cascading lazy rewrap
 
-Direct master key rotation would require re-encrypting the entire dataset — O(data size) write amplification. Envelope encryption reduces this to O(DEK count): the KEK wraps short DEK entries, and rotating the KEK means re-wrapping a few hundred bytes rather than terabytes of data. Actual data re-encryption is deferred to compaction, which already reads and rewrites SSTables. The 4-byte plaintext version tag on each ciphertext enables the reader to select the correct DEK without trial decryption.
+Three-tier wrapping (Tenant KEK → Domain KEK → DEK) makes rotation scalable. Rotation at tier N produces a new tier-N reference without synchronously touching tier N+1 — tier N+1 entries rewrap opportunistically on next access. This bounds the work per operation even when tenants have thousands of domains. The grace-period invariant (retention of retired tier references must exceed WAL retention) protects against undecryptable unreplayed WAL.
 
-The compaction-driven approach means rotation is eventual, not immediate. Convergence time is bounded by a full compaction cycle. If compliance requires immediate rotation, a priority compaction trigger would be needed — this is an operational concern deferred to a future ADR.
+### Per-tenant sharded registry
 
-### Online encryption migration
+The registry is sharded per-tenant. Each shard is self-contained (atomic commit, CRC-32C trailer, owner-only permissions) so one tenant's corruption or operator error does not affect others. Shards are lazy-loaded on first domain open; startup time does not scale with tenant count.
 
-Adding encryption to a field (or removing it) reuses the same compaction-driven mechanism as key rotation. The SSTable schema version tag tells the reader whether a given SSTable's fields are encrypted or not. During the migration window, some SSTables have the field encrypted and others do not; the reader handles both transparently. This avoids a stop-the-world migration pass and requires zero additional I/O beyond normal compaction.
+### Wire format version tag
 
-The bidirectional nature of the mechanism (encrypt-to-unencrypt and unencrypt-to-encrypt use the same code path) reduces implementation surface and testing burden.
+The 4-byte DEK version tag (R22) is scoped to the SSTable's declared `(tenantId, domainId, tableId)` (R23a). Cross-scope reads are rejected at the read boundary (R22b). This keeps the wire tag compact while preserving tenant isolation at the ciphertext level.
+
+### Compaction-driven re-encryption and migration
+
+Compaction is the rewrite engine for both DEK rotation (R25) and encryption-on / encryption-off migration (R38, R39). Schema version tags in SSTable footers disambiguate the encryption state of mixed-schema data during migration windows.
+
+### Tenant encryption flavors
+
+Three flavors (`none`, `local`, `external`) give jlsm a coherent story from development to production. `local` is a shipped reference `KmsClient` backed by filesystem keys for dev/test; `external` is the production posture via BYO-KMS plugin. Flavor selection is per-tenant; a single jlsm deployment may serve tenants in mixed flavors.
+
+### Plaintext bounded to ingress
+
+MemTable holds per-field ciphertext, not plaintext. Plaintext exists only during the ingress window (client submission through per-field encryption completion) and is zeroized immediately after. Primary keys remain plaintext to preserve sort order. Queries on encrypted fields rely on `primitives-variants`' existing leakage profiles. WAL envelope encryption covers metadata only; field payload bytes inside WAL records are the same ciphertext that flushes to SSTable.
+
+### Three-state failure machine and rekey API
+
+Under flavor 3, the tenant's KMS is outside jlsm's trust boundary. The three-state machine (`healthy` / `grace-read-only` / `failed`) is a defensive posture: transient KMS errors ride out the backoff policy; permanent errors (disabled/deleted KEK) enter grace-read-only with a bounded window, then fail. The rekey API is the normative coordination path: tenant operators call it before revoking old KEKs, with a proof-of-control sentinel preventing replay.
 
 ### Leakage mitigation
 
@@ -325,50 +510,95 @@ The 4-byte DEK version tag added to every encrypted field value is a wire format
 
 ### What this spec does NOT cover
 
-- **Client-side encryption SDK** — how external callers discover per-field encryption requirements and manage their own keys (deferred to `client-side-encryption-sdk`)
-- **External KMS integration** — callers provide the KEK; integration with AWS KMS, HashiCorp Vault, etc. is the caller's responsibility
-- **Forced immediate rotation** — priority compaction scheduling for compliance deadlines
-- **Updatable encryption** — re-encryption without decryption via update tokens (theoretical optimization, not needed for v1)
-- **ORAM-based access pattern hiding** — deferred until adaptive ORAM achieves < 5x overhead
+- **Client-side encryption SDK** — how external callers discover per-field encryption requirements and manage their own keys (handled by `client-side-encryption-sdk`).
+- **`KmsClient` SPI precise method signatures and cache/retry defaults** — normatively defined by `kms-integration-model` ADR; this spec cross-references it.
+- **Concrete sharded-registry file layout** (per-domain files vs log-structured) — implementation-level; constrained by R19b but not pinned here.
+- **`(domainId, dekVersion)` wire-tag byte layout** — the v5 design scopes the wire tag to SSTable footer identity (R23a); a future wire-tag expansion is not required.
+- **Forced immediate rotation** — priority compaction scheduling for compliance deadlines.
+- **Updatable encryption** — re-encryption without decryption via update tokens (theoretical optimization, not needed for v1).
+- **ORAM-based access pattern hiding** — deferred until adaptive ORAM achieves < 5x overhead.
+- **Tenant lifecycle / decommission** — deferred (see `tenant-lifecycle` deferred ADR).
 
-### Adversarial falsification (Pass 2 — 2026-04-15)
+### Adversarial falsification history
 
-32 findings from structured adversarial review (all mandatory probes). All promoted.
-Critical: empty byte[] pre-encrypted ciphertext (R5a), derived key lifecycle unassigned
-(R9 amended), schema version + DEK rotation race (R40a), KEK rotation + DEK creation race
-(R34a), compaction + DEK pruning race (R30a). High: pre-encrypted type validation (R2
-amended), compaction bitset limit (R25a), version tag 0 (R22a), requiredKeyBits mapping
-(R16c), close/deriveFieldKey race (R62a), manifest snapshot for pruning (R30b), compaction
-partial failure cleanup (R60a), registry file checksum (R19a), current DEK temporal scope
-(R25b), pre-encrypted version tag validation (R5c), bitset persistence leak (R1a),
-registry file permissions (R70a), configurable HKDF salt (R10a). Medium: sign bit (R1
-amended), null pre-encrypted value (R5b), master key length warning (R59a), JCA key copy
-(R68a), orphaned temp files (R20a), null-safe zeroing (R16 amended), wait-free DEK
-lookup (R64 amended), migration timeline leakage (R44a), configurable salt (R10a). Low:
-version exhaustion (R18a), cross-instance derivation (R12a), LeakageProfile descriptions
-(R46-R50), bitset immutability (R1 amended), timing side-channel (R64 amended).
+**Pass 2 — 2026-04-15** (32 findings): structured adversarial review. All promoted. See v4 notes below for detailed list.
 
-### Adversarial depth pass (Pass 3 — 2026-04-15)
+**Pass 3 — 2026-04-15** (11 fix-consequence findings): depth review. All promoted.
 
-11 fix-consequence findings from structured depth review. All promoted.
-Critical: pruning manifest+compaction atomicity gap (R30c), derived key use-after-zero
-from shared Arena (R9 amended to caller-supplied Arena). High: KEK rotation blocks
-compaction startup (R25b amended — use volatile map), compaction write path unspecified
-after bitset removal (R25a amended — dedicated ciphertext write path), salt not persisted
-(R10b), partial output registered before success (R60a amended), orphaned temp file
-blind deletion (R20a amended — CRC-verified promotion). Medium: convergence detection
-(R25b amended), R5c write-path version check (R5c amended — use volatile map). Low:
-requiredKeyBits 0 for None (R16c amended), R22a timing side channel (R22a amended).
+**Pass 4 — 2026-04-15** (verification): zero critical findings; cross-fix interactions validated.
 
-### Adversarial verification (Pass 4 — 2026-04-15)
-
-Zero critical findings. All 10 Pass 3 fixes verified for internal consistency,
-cross-fix interactions, and dangling dependencies. Low: R25a cross-reference to R40
-added for schema version tag handling in compaction write path.
+**Pass 5 — 2026-04-21**: v5 amendments (three-tier structure, per-tenant sharded registry, cascading lazy rewrap, plaintext-bounded-to-ingress, `_wal` domain mapping, three-state failure machine, rekey API, normative `KmsClient` SPI). 3 Critical + 7 High + 6 Medium + 7 Low findings identified. All Critical and High fixes applied in v6 (see v6 amendment notes below).
 
 ---
 
 ## Verification Notes
+
+### Amended: v6 — 2026-04-21 — Pass 5 adversarial findings addressed (promoted DRAFT → APPROVED)
+
+Pass 5 adversarial review of the v5 amendment surface identified 3 Critical, 7 High, 6 Medium, and 7 Low findings. The 3 Critical and 7 High findings are addressed in v6; plus cleanup of Low-priority stale references (L1, L2, L7). Medium findings are tracked for a future v6.1 amendment but are not blocking for APPROVED.
+
+**Critical fixes:**
+
+- **C1 — Grace-period invariant enforcement (R75b).** R75c added: the invariant is enforced via the on-disk liveness witness of R78e. The per-tenant counter of SSTables + WAL segments depending on `oldKekRef` includes `_wal` domain WAL segments, so rekey completion (and tenant-side KEK deletion eligibility) is mechanically gated on WAL retention.
+- **C2 — Rekey completion witnessing (R78e).** R78e rewritten: rekey completes only when BOTH registry shards are fully migrated AND the on-disk liveness witness counter reaches zero. The `rekey` API returns a "awaiting on-disk witness" continuation token until the counter drains, preventing premature "complete" signalling to tenant operators.
+- **C3 — `purpose` reserved-values list (R80a).** R80a rewritten with a closed enum: `domain_kek` / `dek` / `rekey_sentinel` / `health_check`. jlsm rejects any value outside this set. Third-party `KmsClient` implementations are prohibited from adding values; extension requires a spec amendment. R80a-1 added: `tableId` and `dekVersion` are required in the encryption context for `purpose=dek` specifically, preventing cross-table DEK-blob swap within the same `(tenant, domain)`.
+
+**High fixes:**
+
+- **H1 — Lock starvation under cascading rewrap.** R32c added: streaming rekey per R32a / R78b must release the exclusive shard lock between batches; each batch capped by a configurable max-hold-time budget (default 250 ms). Prevents rotation from starving DEK creation unboundedly.
+- **H2 — R19b vs R82b layout consistency.** R82b rewritten: tenant-level file discovery by `tenantId` is mandatory for both per-domain-file and log-structured layouts. Per-domain addressability within a tenant is layout-dependent (filesystem path for per-domain-file; internal index for log-structured). R19b's layout optionality is constrained by this invariant.
+- **H3 — "Reader's expected scope" source of truth.** R22b rewritten: expected scope is materialised from the caller's `Table` handle obtained via catalog lookup; tautological derivation from the same SSTable footer is explicitly forbidden.
+- **H4 — Proof-of-control unwrap ambiguity.** R78a rewritten: jlsm must independently invoke `KmsClient.unwrapKek` for BOTH old and new sentinels and compare nonces byte-for-byte. The "or verify the provided re-wrap" alternative is deleted.
+- **H5 — New DEK during domain rotation.** R32b-1 added: rotation exclusive lock is scoped to the specific `(tenantId, domainId)` being rotated; concurrent DEK creation within the rotating domain is rejected or queued; other domains and tenants are not blocked.
+- **H6 — `rekey-progress` file permissions.** R78c-1 added: 0600 permissions mandated, matching R70a for registry shards.
+- **H7 — Atomic "rekey complete" marker.** R78f added: a `rekey-complete` marker is written atomically to the tenant's shard recording `{completedKekRef, timestamp}`. Crash recovery uses the marker as the single source of truth for rekey completion.
+
+**Low fixes:**
+
+- **L1** — R32a's reference to "R85" corrected to R78b.
+- **L2** — R16b's reference to "R71–R85" corrected to R71–R82b; "R86+" corrected to R80+.
+- **L7** — R71b's `@ApiStatus.Experimental` (JetBrains-specific) replaced with Javadoc `@implNote` + runtime `isProductionReady()` property.
+
+**Medium findings (tracked for v6.1):**
+
+- **M1** — Extend R30a to cover captured DEK versions held by in-flight compactions.
+- **M2** — R5c pre-encryption lookup path needs DekHandle/table-handle resolution.
+- **M3** — Verification Note on `wal.encryption` was added in v5; M3 is effectively resolved.
+- **M4** — R64 wait-free semantics should be amended to describe per-shard immutable-map swap cadence.
+- **M5** — R80a-1 addresses the `tableId` / `dekVersion` gap for `purpose=dek` (addressed in v6; M5 effectively resolved for the critical case).
+- **M6** — R76 transition-to-`failed` ambiguity on partial cache state.
+
+These Medium items do not block APPROVED state; they are minor contract clarifications that can be resolved in a v6.1 amendment during implementation if they surface.
+
+**Post-fix disposition:** State promoted DRAFT → APPROVED. Implementation tracking: obligation `implement-f41-lifecycle` now encompasses the full v6 surface.
+
+### Amended: v5 — 2026-04-21 — three-tier hierarchy + tenant-aware registry
+
+Scope of v5 amendment:
+
+- **R17** — rewritten from two-tier (caller KEK + library DEKs) to three-tier (Tenant KEK → Domain KEK → DEK). Supersedes the two-tier assumption in `encryption-key-rotation` and `per-field-key-binding` ADRs.
+- **R17a** — new: per-field derivation is a fourth conceptual layer, ephemeral and reproducible, not persisted.
+- **R10**, **R11** — HKDF IKM is now the unwrapped DEK (resolved from DekHandle). `info` extended to include `tenantId`, `domainId`, and `dekVersion` length-prefixed. Blocks canonicalization collisions.
+- **R9**, **R12**, **R12a**, **R14**, **R15** — signatures updated to accept `DekHandle` and reflect the four-tuple identity.
+- **R18**, **R18a**, **R19**, **R19a**, **R19b** (new), **R20**, **R20a**, **R21** — registry schema rewritten for per-tenant shards keyed by `(tenantId, domainId, tableId, dekVersion)`. Atomic commit per-shard. Lazy-load.
+- **R22**, **R22b** (new), **R23a** — ciphertext scope now bound to SSTable footer `(tenantId, domainId, tableId)`; cross-scope reads rejected.
+- **R25**, **R25a**, **R25b**, **R26** — compaction paths scoped by `(tenantId, domainId, tableId)`.
+- **R29** — DEK generation wraps under the domain KEK (not directly under the caller's KEK).
+- **R32**, **R32a** (new), **R32b** (new), **R33**, **R33a** (new), **R34**, **R34a** — rotation rewritten as cascading lazy rewrap at each tier, with grace-period-exceeds-WAL-retention invariant.
+- **R57**, **R58**, **R63** — scope-aware validation and registry concurrency.
+- **R66**, **R68**, **R69** — zeroization extends to domain KEK, tenant KEK handles, and cache eviction.
+- **R70** — shard files on disk.
+- **R71–R71b** (new): three tenant encryption flavors (`none` / `local` / `external`).
+- **R72–R74b** (new): encrypt-once-at-ingress invariant; MemTable holds ciphertext; per-field ciphertext reused across WAL → MemTable → SSTable; primary keys remain plaintext; WAL envelope covers metadata only.
+- **R75–R75b** (new): WAL `_wal` domain mapping; F42 compatibility via internal resolution (no F42 amendment required; Verification Note on `wal.encryption` pending).
+- **R76–R77** (new): three-state failure machine per tenant (`healthy` / `grace-read-only` / `failed`) with N=5 / 1h defaults.
+- **R78–R78e** (new): rekey API with proof-of-control sentinel, streaming paginated execution, crash-resumable progress, dual-reference migration.
+- **R79–R79b** (new): opt-in polling per tenant.
+- **R80–R80b** (new): `KmsClient` SPI contract (normative signature surface; cache/retry defaults in `kms-integration-model`).
+- **R81–R81a** (new): DekHandle contract.
+- **R82–R82b** (new): per-tenant sharded registry guarantees.
+
+This amendment is substantial. State remains DRAFT until adversarial Pass 5 completes. Implementation tracking: existing obligation `implement-f41-lifecycle` remains valid; it now encompasses the v5 surface.
 
 ### Amended: v4 — 2026-04-17 — state demotion APPROVED → DRAFT
 
@@ -394,19 +624,20 @@ When the full F41 is implemented, the on-disk ciphertext format will need a migr
 
 #### Known gaps remaining in DRAFT state
 
-All of F41 except the MAC-wrapping portion of R22 remains unimplemented. The full list:
+All of F41 except the MAC-wrapping portion of R22 remains unimplemented. The full list (as of v4; v5 adds R71–R82b and amends many prior sections):
 
 - R1–R8 — per-field pre-encryption bitset on JlsmDocument
 - R9–R16c — HKDF-SHA256 key derivation (code currently uses single-pass HMAC-Expand)
-- R17–R24 — KEK/DEK hierarchy, key registry, DEK version tag prefix, CRC-32C checksum
+- R17–R24 (now amended for three-tier) — three-tier hierarchy, key registry, DEK version tag prefix, CRC-32C checksum, scope-binding
 - R25–R28 — compaction-driven re-encryption
 - R29–R31 — DEK lifecycle and pruning
-- R32–R34a — KEK rotation
+- R32–R34a (now amended for cascading rewrap) — rotation
 - R35–R37 — dual-read rotation window + DET/OPE index rebuild
 - R38–R43 — online encryption migration
 - R44–R50 — leakage profile documentation
 - R51–R54 — power-of-2 response padding
 - R55–R65 — various validation and concurrency requirements
 - R66–R70a — resource lifecycle requirements beyond R16/R68 finally-block zeroing
+- **R71–R82b (v5 additions)** — three flavors, encrypt-once invariant, `_wal` domain mapping, three-state failure machine, rekey API, polling, KmsClient SPI contract, DekHandle contract, sharded registry contract
 
 Obligations registered: `implement-f41-lifecycle`.

@@ -110,7 +110,8 @@ class ResultMergerTest {
         assertEquals("x", result.get(0).key());
     }
 
-    // @spec partitioning.table-partitioning.R54,R59 — merged result sorted by score descending via max-heap
+    // @spec partitioning.table-partitioning.R54,R59 — merged result sorted by score descending via
+    // max-heap
     @Test
     void mergeTopK_resultIsSortedByScoreDescending() {
         final JlsmSchema schema = testSchema();

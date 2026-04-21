@@ -180,7 +180,8 @@ public final class TypedStandardLsmTree {
             return (B) this;
         }
 
-        // @spec sstable.v3-format-upgrade.R23 — typed builder delegates blockSize to StandardLsmTree.Builder
+        // @spec sstable.v3-format-upgrade.R23 — typed builder delegates blockSize to
+        // StandardLsmTree.Builder
         @SuppressWarnings("unchecked")
         public B blockSize(int blockSize) {
             delegateBuilder.blockSize(blockSize);

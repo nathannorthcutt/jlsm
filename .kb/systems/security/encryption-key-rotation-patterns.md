@@ -14,6 +14,7 @@ last_researched: "2026-04-13"
 applies_to: []
 related:
   - "systems/security/jvm-key-handling-patterns.md"
+  - "systems/security/three-level-key-hierarchy.md"
   - "algorithms/encryption/searchable-encryption-schemes.md"
 decision_refs: ["encryption-key-rotation", "per-field-key-binding"]
 sources:

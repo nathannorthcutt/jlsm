@@ -17,6 +17,12 @@ import java.util.Objects;
  * @param sender the address of the sending node; must not be null
  * @param sequenceNumber monotonically increasing sequence for ordering; must be non-negative
  * @param payload the message payload bytes; must not be null (may be empty)
+ *
+ * @spec engine.clustering.R8 — message = (type, sender, monotonic sequence, opaque payload);
+ *       payload is defensively copied on construction to prevent external mutation
+ * @spec engine.clustering.R10 — exposes monotonic sequenceNumber so receivers that care about
+ *       exactly-once semantics can deduplicate (deduplication is not enforced at protocol level)
+ * @spec engine.clustering.R11 — zero-length payloads are accepted; null payloads rejected with NPE
  */
 public record Message(MessageType type, NodeAddress sender, long sequenceNumber, byte[] payload) {
 

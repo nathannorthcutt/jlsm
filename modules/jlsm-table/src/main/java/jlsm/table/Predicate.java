@@ -18,7 +18,8 @@ import java.util.Objects;
  * <li>Field name and type compatibility validated eagerly at construction</li>
  * </ul>
  */
-// @spec query.index-types.R14 — sealed with exactly 11 implementations: Eq, Ne, Gt, Gte, Lt, Lte, Between,
+// @spec query.index-types.R14 — sealed with exactly 11 implementations: Eq, Ne, Gt, Gte, Lt, Lte,
+// Between,
 // FullTextMatch, VectorNearest, And, Or
 public sealed interface Predicate {
 
@@ -74,7 +75,8 @@ public sealed interface Predicate {
     }
 
     /** Range: low <= field <= high. Requires an ordered field type. */
-    // @spec query.index-types.R15,R18 — reject null field/low/high with NPE; enforce low/high same class
+    // @spec query.index-types.R15,R18 — reject null field/low/high with NPE; enforce low/high same
+    // class
     record Between(String field, Comparable<?> low, Comparable<?> high) implements Predicate {
         public Between {
             Objects.requireNonNull(field);
@@ -106,7 +108,8 @@ public sealed interface Predicate {
      * Vector nearest neighbour: find the topK closest vectors to the query. Requires a VECTOR
      * index.
      */
-    // @spec query.index-types.R20,R21,R22,R23 — reject null field/queryVector (NPE), reject non-positive topK
+    // @spec query.index-types.R20,R21,R22,R23 — reject null field/queryVector (NPE), reject
+    // non-positive topK
     // (IAE),
     // defensive copy queryVector on construction and on accessor
     record VectorNearest(String field, float[] queryVector, int topK) implements Predicate {

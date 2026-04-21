@@ -1,9 +1,9 @@
 ---
 {
   "id": "engine.clustering",
-  "version": 6,
+  "version": 7,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "engine"
   ],
@@ -400,3 +400,37 @@ Phase 2 obligation resolution (feature `f04-obligation-resolution--wd-05`) close
 - **R63:** full fanout to every live member → `PartitionKeySpace` SPI (`SinglePartitionKeySpace` fallback + `LexicographicPartitionKeySpace` range-based) backing `RendezvousOwnership.ownersForKeyRange`; `ClusteredTable.scan(fromKey, toKey)` contacts only owners of range-overlapping partitions, preserving R60/R67/R77/R100/R64 semantics.
 
 Module surface: `RendezvousOwnership` is now non-`final` to permit in-tree test spying (`GraceGatedRebalancerTest`); behaviour is unchanged. `ClusteredTable` gained an 8-arg canonical constructor accepting `(TableMetadata, ClusterTransport, MembershipProtocol, NodeAddress, RendezvousOwnership, Engine, PartitionKeySpace, Supplier<ClusterOperationalMode>)`; legacy constructors delegate to it with `SinglePartitionKeySpace("default")` and a `() -> NORMAL` mode supplier.
+
+### Verified: v7 — 2026-04-21 (state: APPROVED)
+
+Coverage promotion work (WD `close-coverage-gaps / WD-01`). All 114 requirements (R1–R114) now
+have direct `@spec` annotations at both impl and test sites; `spec-trace.sh engine.clustering`
+reports `Annotations: 343 | Requirements traced: 114` and no "No test annotations" list. No
+requirement was rewritten; all deltas are annotation additions only.
+
+**Overall: PASS** — all requirements traced with implementation + test evidence.
+
+Coverage strategy:
+
+- **R1** — `NodeAddress` record + `NodeAddressTest` (validation of nodeId/host/port)
+- **R2–R7** — `ClusterConfig` builder + `ClusterConfigTest` (defaults and parameter validation)
+- **R8–R11** — `Message` record + `MessageTest`; `MessageType` enum + `MessageTypeTest` (R9)
+- **R12–R17, R82** — `Member` / `MemberState` / `MembershipView` + corresponding tests
+- **R18–R21, R83** — `PhiAccrualFailureDetector` + `PhiAccrualFailureDetectorTest`
+- **R22–R26** — `DiscoveryProvider` SPI + `InJvmDiscoveryProvider` + `InJvmDiscoveryProviderTest`
+- **R27–R32, R81** — `ClusterTransport` SPI + `InJvmTransport` + `InJvmTransportTest`
+- **R33–R40, R71–R72, R84–R92, R97** — `MembershipProtocol` / `RapidMembership` + `RapidMembershipTest`, `RapidMembershipAsyncListenerTest`, `RapidMembershipReconciliationTest`, `ConsensusCoordinatorTest`, `ExpanderGraphOverlayTest`, `DispatchRoutingAdversarialTest`, `ContractBoundariesAdversarialTest`
+- **R41–R43** — `ClusterOperationalMode`, `QuorumLostException`, `SeedRetryTask`, `ViewReconciler` + tests
+- **R44–R50, R93–R96** — `RendezvousOwnership`, `GracePeriodManager`, `GraceGatedRebalancer` + their tests
+- **R51–R54, R76, R94–R96** — `GracePeriodManagerTest` (covers all grace-lifecycle requirements)
+- **R55–R58, R78–R80, R97–R98, R102–R105** — `ClusteredEngine` + `ClusteredEngineJoinTest`, `ClusteredEngineTest`, `EngineClusteringAdversarialTest`, `ResourceLifecycleAdversarialTest`
+- **R59–R67, R73, R77, R99–R100, R106–R108, R113** — `ClusteredTable` + `ClusteredTableTest`, `ClusteredTableLocalShortCircuitTest`, `ClusteredTableScanParallelTest`, `ClusteredTableScanPruningTest`, `ClusteredTableReadOnlyTest`, `DataTransformationAdversarialTest`, `ResourceLifecycleAdversarialTest`
+- **R64, R73** — `PartialResultMetadata` + `PartialResultMetadataTest`
+- **R68–R70, R101, R109–R112, R114** — `RemotePartitionClient` + `RemotePartitionClientTest`, `RemotePartitionClientAsyncTest`, `DataTransformationAdversarialTest`
+- **R74–R76** — `ConcurrencyAdversarialTest`, `SharedStateAdversarialTest` (concurrency / shared state)
+- **R105** — `SharedStateAdversarialTest` (listener callbacks after close are no-ops)
+
+No obligations opened. No amendments to requirement text. Promotion is coverage-only: adding
+direct annotation chain at the enforcement sites for requirements whose behaviour was already
+enforced by shipped code and validated by existing tests. `./gradlew :modules:jlsm-engine:test`
+passes green at WD end.

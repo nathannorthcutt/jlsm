@@ -29,3 +29,4 @@ A `StripedBlockCache` implementation of `BlockCache` that partitions the key spa
 - ADR: .decisions/stripe-hash-function/adr.md
 - ADR: .decisions/cross-stripe-eviction/adr.md
 - KB: .kb/data-structures/caching/concurrent-lru-caches.md
+- KB: .kb/data-structures/caching/byte-budget-cache-variable-size-entries.md (byte-budget successor)

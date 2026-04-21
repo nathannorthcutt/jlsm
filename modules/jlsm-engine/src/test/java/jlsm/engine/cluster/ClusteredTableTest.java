@@ -25,6 +25,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link ClusteredTable} — partition-aware proxy that scatters queries across remote
  * partition owners and gathers results.
+ *
+ * @spec engine.clustering.R59 — partition-aware proxy routes ops by ownership
+ * @spec engine.clustering.R61 — remote ops serialized through transport
+ * @spec engine.clustering.R62 — multi-partition queries use scatter-gather
+ * @spec engine.clustering.R65 — unreachable partitions produce partial results
+ * @spec engine.clustering.R66 — scatter-gather timeout excludes slow partitions
  */
 final class ClusteredTableTest {
 

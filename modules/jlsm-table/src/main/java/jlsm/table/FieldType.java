@@ -14,13 +14,15 @@ import java.util.Objects;
  * <li>{@link ObjectType} — a nested object with its own field definitions</li>
  * </ul>
  */
-// @spec schema.schema-field-definition.R4 — sealed interface permitting Primitive, ArrayType, ObjectType, VectorType,
+// @spec schema.schema-field-definition.R4 — sealed interface permitting Primitive, ArrayType,
+// ObjectType, VectorType,
 // BoundedString
 // @spec vector.field-type.R2 — VectorType listed as permitted implementation
 public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayType,
         FieldType.ObjectType, FieldType.VectorType, FieldType.BoundedString {
 
-    // @spec schema.schema-field-definition.R5 — Primitive enum with STRING, INT8..FLOAT64, BOOLEAN, TIMESTAMP
+    // @spec schema.schema-field-definition.R5 — Primitive enum with STRING, INT8..FLOAT64, BOOLEAN,
+    // TIMESTAMP
     /** Scalar primitive field types. */
     enum Primitive implements FieldType {
         STRING, INT8, INT16, INT32, INT64, FLOAT16, FLOAT32, FLOAT64, BOOLEAN, TIMESTAMP
@@ -43,7 +45,8 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      *
      * @param fields the field definitions of the nested object; must not be null
      */
-    // @spec schema.schema-field-definition.R10 — rejects null fields with NullPointerException, defensively copies via
+    // @spec schema.schema-field-definition.R10 — rejects null fields with NullPointerException,
+    // defensively copies via
     // List.copyOf
     record ObjectType(List<FieldDefinition> fields) implements FieldType {
         public ObjectType {
@@ -97,7 +100,8 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      *
      * @param maxLength the maximum byte length; must be positive
      */
-    // @spec schema.schema-field-definition.R8 — rejects non-positive maxLength with IllegalArgumentException
+    // @spec schema.schema-field-definition.R8 — rejects non-positive maxLength with
+    // IllegalArgumentException
     record BoundedString(int maxLength) implements FieldType {
         public BoundedString {
             if (maxLength <= 0) {
@@ -117,10 +121,12 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
     // @spec schema.schema-field-definition.R7 — validates dimensions > 0
     // @spec vector.field-type.R1 — record with elementType and dimensions
     // @spec vector.field-type.R3 — null elementType rejected with NullPointerException
-    // @spec vector.field-type.R4 — non-FLOAT16/FLOAT32 elementType rejected with IllegalArgumentException
+    // @spec vector.field-type.R4 — non-FLOAT16/FLOAT32 elementType rejected with
+    // IllegalArgumentException
     // @spec vector.field-type.R5 — non-positive dimensions rejected with IllegalArgumentException
     // @spec vector.field-type.R6 — any positive dimensions accepted (no upper bound)
-    // @spec vector.field-type.R39,R40,R41 — record auto-generated equals/hashCode by (elementType, dimensions)
+    // @spec vector.field-type.R39,R40,R41 — record auto-generated equals/hashCode by (elementType,
+    // dimensions)
     record VectorType(Primitive elementType, int dimensions) implements FieldType {
         public VectorType {
             Objects.requireNonNull(elementType, "elementType must not be null");
@@ -190,7 +196,8 @@ public sealed interface FieldType permits FieldType.Primitive, FieldType.ArrayTy
      * @param dimensions the fixed number of elements per vector; must be positive
      * @return a new VectorType
      */
-    // @spec vector.field-type.R7 — factory returns new VectorType with given elementType and dimensions
+    // @spec vector.field-type.R7 — factory returns new VectorType with given elementType and
+    // dimensions
     // @spec vector.field-type.R8 — propagates VectorType constructor validation exceptions
     static FieldType vector(Primitive elementType, int dimensions) {
         return new VectorType(elementType, dimensions);
