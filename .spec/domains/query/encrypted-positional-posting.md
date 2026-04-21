@@ -31,3 +31,14 @@ R2. The positional posting encoding format must be: 4-byte big-endian document I
 R3. The positional posting codec must reject null document IDs and null position arrays at the public API boundary with NullPointerException.
 
 R4. Positional posting deserialization must validate that the encoded byte array is at least the minimum posting size (4 + 1 + 4 + 8 = 17 bytes). Undersized input must be rejected with an IllegalArgumentException, not an ArrayIndexOutOfBoundsException.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Extracted from F03 application-layer requirements during the F03 follow-up
+split (2026-04-20). Behavior is the F03 originals — see git history of
+`.spec/_archive/migration-2026-04-20/encryption/F03-encrypt-memory-data.md`
+for the original phrasing and design rationale.

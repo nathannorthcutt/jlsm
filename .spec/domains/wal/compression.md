@@ -82,3 +82,13 @@ R18. When more than 10 consecutive records are skipped due to decompression fail
 ### WAL write-path buffer management
 
 R19. The WAL write path must handle the case where a compression destination buffer of maxCompressedLength(payloadSize) cannot be acquired from the ArenaBufferPool, either by writing the record uncompressed or by propagating the allocation failure as an IOException.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

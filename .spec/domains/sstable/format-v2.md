@@ -88,3 +88,13 @@ R20. When reading a v2 key index, the reader must validate that each entry's blo
 ### Footer section ordering
 
 R21. Footer validation must verify that file sections do not overlap: compression map must end before key index starts, key index must end before bloom filter starts, and bloom filter must end before the footer. Specifically: mapOffset + mapLength <= idxOffset, idxOffset + idxLength <= fltOffset, and fltOffset + fltLength <= fileSize - footerSize.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

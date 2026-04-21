@@ -49,3 +49,13 @@ R9. `ArrayType` must reject null `elementType` with `NullPointerException`. `[EX
 R10. `ObjectType` must reject null `fields` with `NullPointerException` and defensively copy via `List.copyOf`. `[EXPLICIT]`
 
 R11. Static factory methods must be provided: `string()`, `string(int)`, `int32()`, `int64()`, `float32()`, `float64()`, `boolean_()`, `timestamp()`, `vector(Primitive, int)`, `arrayOf(FieldType)`, `objectOf(List<FieldDefinition>)`. `[EXPLICIT]`
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

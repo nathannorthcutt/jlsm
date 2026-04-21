@@ -41,3 +41,13 @@ R5. Nested object fields are represented as `FieldType.ObjectType` containing a 
 R6. `FieldType.ObjectType.toSchema()` must propagate the parent schema's encryption specs for each field, not silently drop them.
 
 R7. `FieldType.ObjectType.toSchema()` must accept and propagate the parent schema's `maxDepth` configuration rather than hardcoding a default value.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

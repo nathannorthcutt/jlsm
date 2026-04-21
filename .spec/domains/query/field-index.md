@@ -87,3 +87,13 @@ R26. Unique constraint checks must skip null field values (null values are not s
 R27. `ByteArrayKey.compareTo` must compare byte arrays using unsigned byte values, so that sort-preserving encoded keys produce correct ordering across all primitive types.
 
 R28. `ByteArrayKey` must implement `equals` and `hashCode` based on array content, not reference identity.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

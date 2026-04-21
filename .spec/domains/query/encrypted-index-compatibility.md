@@ -35,3 +35,14 @@ R4. A full-text index on a field with opaque, order-preserving, or distance-pres
 R5. A vector index on a field with deterministic, order-preserving, or opaque encryption must be rejected. Only none and distance-preserving encryption specifications report approximate nearest-neighbor support.
 
 R6. Validation of encryption compatibility must use the capability methods on the encryption specification, not pattern matching on variant types. This ensures that if capability methods are overridden in future variants, the validation remains correct.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Extracted from F03 application-layer requirements during the F03 follow-up
+split (2026-04-20). Behavior is the F03 originals — see git history of
+`.spec/_archive/migration-2026-04-20/encryption/F03-encrypt-memory-data.md`
+for the original phrasing and design rationale.

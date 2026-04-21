@@ -122,3 +122,13 @@ R53. AES-SIV decryption with the wrong key must produce an exception. The S2V ve
 R54. The OPE ciphertext format must include a detached 128-bit HMAC-SHA256 authentication tag that binds the 8-byte OPE ciphertext long and the 1-byte length prefix to the UTF-8 field name and the key holder's identity. The MAC key must be derived from the master key via HMAC-SHA256 using the domain-separated label "ope-mac-key", and the MAC key array must be zeroed in a finally block after encryptor construction. OPE decryption must verify the tag in constant time (using MessageDigest.isEqual) before performing the OPE inverse; a tag mismatch must throw SecurityException whose message does not reveal key content, plaintext, or comparison-timing information. This authenticated wrapping closes the wrong-key and ciphertext-tampering gaps and binds each ciphertext to a specific field, preventing cross-field substitution. The order-preserving property is preserved because the comparison in range queries operates on the 8-byte OPE ciphertext portion only; MAC verification runs at decrypt time after query candidates have been identified.
 
 R55. The DCPE ciphertext format must include a detached 128-bit HMAC-SHA256 authentication tag that binds the 8-byte perturbation seed and the encrypted float array bytes to the UTF-8 field name and the key holder's identity. The MAC key must be derived from the master key via HMAC-SHA256 using the domain-separated label "dcpe-mac-key", and the MAC key array must be zeroed in a finally block after encryptor construction. DCPE decryption must verify the tag in constant time (using MessageDigest.isEqual) before performing the DCPE inverse; a tag mismatch must throw SecurityException whose message does not reveal key content, plaintext, or comparison-timing information. This authenticated wrapping closes the wrong-key and ciphertext-tampering gaps and binds each encrypted vector to a specific field, preventing cross-field substitution. The approximate distance-preservation property is preserved because similarity comparisons operate on the encrypted float array portion only; MAC verification runs at decrypt time after query candidates have been identified.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

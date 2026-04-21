@@ -36,3 +36,14 @@ R4. The SSE index search method must accept a pre-derived token (not a plaintext
 R5. The SSE index must support soft deletion by marking entries with a deleted marker byte. Deleted entries must remain in storage (to preserve counter continuity) but must be excluded from search results.
 
 R6. SSE posting encryption must use AES-GCM with the storage address as authenticated associated data. This binds each encrypted posting to its address: moving an encrypted entry to a different address must cause decryption failure.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Extracted from F03 application-layer requirements during the F03 follow-up
+split (2026-04-20). Behavior is the F03 originals — see git history of
+`.spec/_archive/migration-2026-04-20/encryption/F03-encrypt-memory-data.md`
+for the original phrasing and design rationale.

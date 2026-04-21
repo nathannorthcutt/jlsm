@@ -37,3 +37,13 @@ R4. `VectorFieldIndex.onUpdate` must remove the old vector and insert the new ve
 R5. `VectorFieldIndex.onDelete` must remove the vector associated with the given primary key from the backing index.
 
 R6. `VectorFieldIndex.lookup` for `VectorNearest` must return the `topK` closest primary keys to the query vector according to the configured similarity function, using the backing implementation's `search(queryVector, topK)` call.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

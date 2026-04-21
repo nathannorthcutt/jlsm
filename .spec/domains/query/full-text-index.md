@@ -37,3 +37,13 @@ R4. `FullTextFieldIndex.onUpdate` must invoke `FullTextIndex.remove` with the ol
 R5. `FullTextFieldIndex.onDelete` must route `(fieldName -> String.valueOf(fieldValue))` to `FullTextIndex.remove(primaryKey, fields)` on the backing index so that all terms for the primary key are removed. Null `fieldValue` is a no-op per R60.
 
 R6. `FullTextFieldIndex.lookup` for `FullTextMatch` must translate the predicate to `jlsm.core.indexing.Query.TermQuery(field, query)` and return the iterator produced by `FullTextIndex.search`; it must reject any other predicate shape with `UnsupportedOperationException`. `FullTextFieldIndex.close()` must be idempotent and must close the backing index exactly once; subsequent calls are no-ops.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

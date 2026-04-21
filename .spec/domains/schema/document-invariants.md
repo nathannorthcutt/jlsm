@@ -50,3 +50,13 @@ R7. For documents constructed via `of()` and accessed only through public typed 
 R8. `JlsmDocument` must implement `equals()` based on `schema`, `preEncrypted`, and deep equality of the `values` array (via `Arrays.deepEquals`). `[EXPLICIT]`
 
 R9. `JlsmDocument` must implement `hashCode()` consistent with `equals()`, incorporating `schema`, `preEncrypted`, and `Arrays.deepHashCode(values)`. `[EXPLICIT]`
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

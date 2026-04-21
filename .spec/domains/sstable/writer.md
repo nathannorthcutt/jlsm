@@ -79,3 +79,13 @@ R12. TrieSSTableReader must use the MemorySegment decompress method for block de
 R13. The SSTable compression map format (v2 and v3) must remain unchanged. The codec migration affects only the in-memory API surface, not the on-disk format.
 
 R14. All existing SSTable tests that exercise compression must continue to pass after the codec API migration. The behavioral contract is unchanged — only the method signatures change.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

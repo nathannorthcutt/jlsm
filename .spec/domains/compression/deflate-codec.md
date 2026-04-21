@@ -43,3 +43,13 @@ R2. The DEFLATE codec decompress method must obtain a direct ByteBuffer from the
 R3. The DEFLATE codec must allocate and release Deflater/Inflater instances within each call. Native resources must be released in a finally block. This reaffirms F02.R6.
 
 R4. The DEFLATE codec must accept a configurable compression level (0-9) at construction time. Values outside 0-9 must be rejected with an IllegalArgumentException. This reaffirms F02.R5.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

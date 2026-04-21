@@ -106,3 +106,13 @@ R33. `JlsmDocument.of` must reject duplicate field names in the `nameValuePairs`
 R34. `JlsmDocument.validateType` must enforce a maximum recursion depth when validating nested `ArrayType` fields, throwing `IllegalArgumentException` when the depth limit is exceeded.
 
 R35. `JlsmDocument.defensiveCopyIfVector` must perform a deep copy of nested arrays within `ArrayType` fields, not a shallow clone that leaves inner arrays shared with the caller.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

@@ -72,3 +72,13 @@ R20. The SSE index's decryptDocId method must not expose the decryption exceptio
 ### Performance observability
 
 R21. The performance impact of field-level encryption must be measurable via JMH benchmarks comparing encrypted and unencrypted serialization round-trips for each encryption variant. The benchmark must cover at least: deterministic (AES-SIV), opaque (AES-GCM), order-preserving (OPE), and distance-preserving (DCPE).
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

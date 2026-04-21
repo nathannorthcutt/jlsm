@@ -93,3 +93,13 @@ R29. `Or` must store a defensively copied immutable list of its children.
 R30. `FieldValueCodec.encode` must reject a value whose Java type does not match the expected type for the field type (e.g., passing a String for an INT32 field) with an `IllegalArgumentException`.
 
 R31. `FieldValueCodec` must use the schema-declared field type for encoding rather than inferring from the runtime value type, when the schema field type is available.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

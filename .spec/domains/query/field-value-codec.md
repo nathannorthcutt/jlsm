@@ -53,3 +53,13 @@ R12. `FieldValueCodec.decode` must round-trip: for every supported field type, `
 R13. For FLOAT32, the encoding must sort NaN values above positive infinity in unsigned byte order.
 
 R14. For FLOAT64, the encoding must sort NaN values above positive infinity in unsigned byte order.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

@@ -36,3 +36,14 @@ R4. The serializer must store the DCPE perturbation seed and detached authentica
 R5. For fields with the none encryption specification, the serializer must not invoke any encryption or decryption operation, regardless of whether a key holder is present.
 
 R6. The serializer constructed without a key holder must produce output byte-for-byte identical to the non-encrypted serializer for schemas where every field uses the none encryption specification. For schemas containing any field with a non-none encryption specification, serialization must reject any document that carries a non-null value for such a field unless the document is pre-encrypted (JlsmDocument.preEncrypted): the serializer must throw IllegalStateException at serialize time naming the offending field, rather than silently storing plaintext for a field declared to require encryption. A serializer constructed without a key holder remains usable for pre-encrypted documents, whose ciphertext the caller supplies directly; it must reject any non-pre-encrypted document that would require the library to perform encryption.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Extracted from F03 application-layer requirements during the F03 follow-up
+split (2026-04-20). Behavior is the F03 originals — see git history of
+`.spec/_archive/migration-2026-04-20/encryption/F03-encrypt-memory-data.md`
+for the original phrasing and design rationale.

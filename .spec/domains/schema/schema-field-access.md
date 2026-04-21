@@ -49,3 +49,13 @@ R8. `JlsmSchema` does not implement `toString()`. The default `Object.toString()
 R9. `JlsmSchema` does not implement `Serializable` or any serialization interface. Persistence is handled externally. `[ABSENT]`
 
 R10. There is no field-count upper bound at the schema level. A schema may contain an arbitrarily large number of fields. The `DocumentSerializer` wire format imposes a 65535-field limit at the serialization boundary (see F12 R48). `[ABSENT]`
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

@@ -43,3 +43,13 @@ R7. `TableQuery.predicate()` must return the current root predicate, or null if 
 R8. `TableQuery.execute()` must return an `Iterator<TableEntry<K>>` of matching entries.
 
 R9. Calling `execute()` on an unbound `TableQuery` (not obtained from a table) must throw `UnsupportedOperationException`.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

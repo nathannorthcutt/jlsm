@@ -41,3 +41,13 @@ R2. Field definitions constructed without an explicit encryption specification m
 R3. The schema builder must accept a three-argument field method that takes a field name, field type, and encryption specification. All three arguments must be validated as non-null at the call site before the field definition is created.
 
 R4. The schema builder must continue to accept the two-argument field method (name and type) for backward compatibility. The two-argument overload must produce a field definition with the none encryption specification.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

@@ -79,3 +79,13 @@ R20. `IndexType`, `IndexDefinition`, `Predicate`, `TableQuery`, `TableEntry`, an
 R21. `IndexRegistry` must expose closed-state transitions atomically to all threads without external synchronization. Implementations must use either a `volatile` flag or a stronger primitive such as `AtomicBoolean` with `compareAndSet` to guarantee a single close winner.
 
 R22. `FieldIndex` must use a volatile closed flag so that the closed state is visible to all threads.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.

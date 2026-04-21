@@ -55,3 +55,13 @@ R8. Intermediate key arrays created during key derivation (e.g., splitting a 512
 R9. The key holder must not implement Serializable. Serialization of key material to disk or network would defeat the purpose of off-heap storage with explicit zeroing.
 
 R10. The key holder's getKeyBytes method must return a fresh copy on each call. Two sequential calls must return distinct array objects (not the same reference) so that zeroing one copy does not affect the other.
+
+---
+
+## Design Narrative
+
+### Intent
+
+Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+the migration plan and `.spec/_archive/migration-2026-04-20/` for the
+pre-migration source spec(s) this spec was derived from.
