@@ -1,0 +1,916 @@
+{
+  "source_spec": "F10",
+  "source_path": "query/F10-table-indices-and-queries.md",
+  "source_state": "DRAFT",
+  "total_requirements": 139,
+  "requirements": {
+    "R1": {
+      "new_spec": "query.index-types",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R2": {
+      "new_spec": "query.index-types",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R3": {
+      "new_spec": "query.index-types",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R4": {
+      "new_spec": "query.index-types",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R5": {
+      "new_spec": "query.index-types",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R6": {
+      "new_spec": "query.index-types",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R7": {
+      "new_spec": "query.index-types",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R8": {
+      "new_spec": "query.index-types",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R9": {
+      "new_spec": "query.index-types",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R10": {
+      "new_spec": "query.index-types",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R11": {
+      "new_spec": "query.index-types",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R12": {
+      "new_spec": "query.index-types",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R13": {
+      "new_spec": "query.index-types",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R14": {
+      "new_spec": "query.index-types",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R15": {
+      "new_spec": "query.index-types",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R16": {
+      "new_spec": "query.index-types",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R17": {
+      "new_spec": "query.index-types",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R18": {
+      "new_spec": "query.index-types",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R19": {
+      "new_spec": "query.index-types",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R20": {
+      "new_spec": "query.index-types",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R21": {
+      "new_spec": "query.index-types",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R22": {
+      "new_spec": "query.index-types",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R23": {
+      "new_spec": "query.index-types",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R24": {
+      "new_spec": "query.index-types",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R25": {
+      "new_spec": "query.index-types",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R26": {
+      "new_spec": "query.index-types",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R27": {
+      "new_spec": "query.index-types",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R28": {
+      "new_spec": "query.index-types",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R29": {
+      "new_spec": "query.index-types",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R124": {
+      "new_spec": "query.index-types",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R125": {
+      "new_spec": "query.index-types",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/query/index-types.md"
+    },
+    "R39": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R40": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R41": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R42": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R43": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R44": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R45": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R46": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R47": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R48": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R49": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R50": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R51": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R52": {
+      "new_spec": "query.field-value-codec",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/field-value-codec.md"
+    },
+    "R30": {
+      "new_spec": "query.table-query",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R31": {
+      "new_spec": "query.table-query",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R32": {
+      "new_spec": "query.table-query",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R33": {
+      "new_spec": "query.table-query",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R34": {
+      "new_spec": "query.table-query",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R35": {
+      "new_spec": "query.table-query",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R36": {
+      "new_spec": "query.table-query",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R37": {
+      "new_spec": "query.table-query",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R38": {
+      "new_spec": "query.table-query",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/table-query.md"
+    },
+    "R53": {
+      "new_spec": "query.field-index",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R54": {
+      "new_spec": "query.field-index",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R55": {
+      "new_spec": "query.field-index",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R56": {
+      "new_spec": "query.field-index",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R57": {
+      "new_spec": "query.field-index",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R58": {
+      "new_spec": "query.field-index",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R59": {
+      "new_spec": "query.field-index",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R60": {
+      "new_spec": "query.field-index",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R61": {
+      "new_spec": "query.field-index",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R62": {
+      "new_spec": "query.field-index",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R63": {
+      "new_spec": "query.field-index",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R64": {
+      "new_spec": "query.field-index",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R65": {
+      "new_spec": "query.field-index",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R66": {
+      "new_spec": "query.field-index",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R67": {
+      "new_spec": "query.field-index",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R68": {
+      "new_spec": "query.field-index",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R69": {
+      "new_spec": "query.field-index",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R70": {
+      "new_spec": "query.field-index",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R71": {
+      "new_spec": "query.field-index",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R72": {
+      "new_spec": "query.field-index",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R73": {
+      "new_spec": "query.field-index",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R74": {
+      "new_spec": "query.field-index",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R75": {
+      "new_spec": "query.field-index",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R76": {
+      "new_spec": "query.field-index",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R77": {
+      "new_spec": "query.field-index",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R78": {
+      "new_spec": "query.field-index",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R133": {
+      "new_spec": "query.field-index",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R134": {
+      "new_spec": "query.field-index",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/query/field-index.md"
+    },
+    "R79": {
+      "new_spec": "query.full-text-index",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/full-text-index.md"
+    },
+    "R80": {
+      "new_spec": "query.full-text-index",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/full-text-index.md"
+    },
+    "R81": {
+      "new_spec": "query.full-text-index",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/full-text-index.md"
+    },
+    "R82": {
+      "new_spec": "query.full-text-index",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/full-text-index.md"
+    },
+    "R83": {
+      "new_spec": "query.full-text-index",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/full-text-index.md"
+    },
+    "R84": {
+      "new_spec": "query.full-text-index",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/full-text-index.md"
+    },
+    "R85": {
+      "new_spec": "query.vector-index",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/vector-index.md"
+    },
+    "R86": {
+      "new_spec": "query.vector-index",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/vector-index.md"
+    },
+    "R87": {
+      "new_spec": "query.vector-index",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/vector-index.md"
+    },
+    "R88": {
+      "new_spec": "query.vector-index",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/vector-index.md"
+    },
+    "R89": {
+      "new_spec": "query.vector-index",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/vector-index.md"
+    },
+    "R90": {
+      "new_spec": "query.vector-index",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/vector-index.md"
+    },
+    "R91": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R92": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R93": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R94": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R95": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R96": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R97": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R98": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R99": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R100": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R101": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R102": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R103": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R104": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R105": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R126": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R127": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R128": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R135": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R136": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R137": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R138": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R139": {
+      "new_spec": "query.index-registry",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/query/index-registry.md"
+    },
+    "R106": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R107": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R108": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R109": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R110": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R111": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R112": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R113": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R114": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R115": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R116": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R117": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R118": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R119": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R120": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R121": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R122": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R123": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R129": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R130": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R131": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/query/query-executor.md"
+    },
+    "R132": {
+      "new_spec": "query.query-executor",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/query/query-executor.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "query.index-types",
+      "new_path": ".spec/domains/query/index-types.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R28",
+        "R29",
+        "R124",
+        "R125"
+      ]
+    },
+    {
+      "new_spec": "query.field-value-codec",
+      "new_path": ".spec/domains/query/field-value-codec.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R39",
+        "R40",
+        "R41",
+        "R42",
+        "R43",
+        "R44",
+        "R45",
+        "R46",
+        "R47",
+        "R48",
+        "R49",
+        "R50",
+        "R51",
+        "R52"
+      ]
+    },
+    {
+      "new_spec": "query.table-query",
+      "new_path": ".spec/domains/query/table-query.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R30",
+        "R31",
+        "R32",
+        "R33",
+        "R34",
+        "R35",
+        "R36",
+        "R37",
+        "R38"
+      ]
+    },
+    {
+      "new_spec": "query.field-index",
+      "new_path": ".spec/domains/query/field-index.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R53",
+        "R54",
+        "R55",
+        "R56",
+        "R57",
+        "R58",
+        "R59",
+        "R60",
+        "R61",
+        "R62",
+        "R63",
+        "R64",
+        "R65",
+        "R66",
+        "R67",
+        "R68",
+        "R69",
+        "R70",
+        "R71",
+        "R72",
+        "R73",
+        "R74",
+        "R75",
+        "R76",
+        "R77",
+        "R78",
+        "R133",
+        "R134"
+      ]
+    },
+    {
+      "new_spec": "query.full-text-index",
+      "new_path": ".spec/domains/query/full-text-index.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R79",
+        "R80",
+        "R81",
+        "R82",
+        "R83",
+        "R84"
+      ]
+    },
+    {
+      "new_spec": "query.vector-index",
+      "new_path": ".spec/domains/query/vector-index.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R85",
+        "R86",
+        "R87",
+        "R88",
+        "R89",
+        "R90"
+      ]
+    },
+    {
+      "new_spec": "query.index-registry",
+      "new_path": ".spec/domains/query/index-registry.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R91",
+        "R92",
+        "R93",
+        "R94",
+        "R95",
+        "R96",
+        "R97",
+        "R98",
+        "R99",
+        "R100",
+        "R101",
+        "R102",
+        "R103",
+        "R104",
+        "R105",
+        "R126",
+        "R127",
+        "R128",
+        "R135",
+        "R136",
+        "R137",
+        "R138",
+        "R139"
+      ]
+    },
+    {
+      "new_spec": "query.query-executor",
+      "new_path": ".spec/domains/query/query-executor.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R106",
+        "R107",
+        "R108",
+        "R109",
+        "R110",
+        "R111",
+        "R112",
+        "R113",
+        "R114",
+        "R115",
+        "R116",
+        "R117",
+        "R118",
+        "R119",
+        "R120",
+        "R121",
+        "R122",
+        "R123",
+        "R129",
+        "R130",
+        "R131",
+        "R132"
+      ]
+    }
+  ]
+}

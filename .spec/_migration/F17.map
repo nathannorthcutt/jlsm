@@ -1,0 +1,309 @@
+{
+  "source_spec": "F17",
+  "source_path": "serialization/F17-wal-compression-codec-api.md",
+  "source_state": "APPROVED",
+  "total_requirements": 42,
+  "requirements": {
+    "R1": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R2": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R3": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R4": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R5": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R6": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R7": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R8": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R9": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R10": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R11": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R41": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R42": {
+      "new_spec": "compression.codec-contract",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/compression/codec-contract.md"
+    },
+    "R12": {
+      "new_spec": "compression.none-codec",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/compression/none-codec.md"
+    },
+    "R13": {
+      "new_spec": "compression.none-codec",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/compression/none-codec.md"
+    },
+    "R14": {
+      "new_spec": "compression.deflate-codec",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/compression/deflate-codec.md"
+    },
+    "R15": {
+      "new_spec": "compression.deflate-codec",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/compression/deflate-codec.md"
+    },
+    "R16": {
+      "new_spec": "compression.deflate-codec",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/compression/deflate-codec.md"
+    },
+    "R17": {
+      "new_spec": "compression.deflate-codec",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/compression/deflate-codec.md"
+    },
+    "R18": {
+      "new_spec": "wal.compression",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R19": {
+      "new_spec": "wal.compression",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R20": {
+      "new_spec": "wal.compression",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R21": {
+      "new_spec": "wal.compression",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R22": {
+      "new_spec": "wal.compression",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R23": {
+      "new_spec": "wal.compression",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R24": {
+      "new_spec": "wal.compression",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R25": {
+      "new_spec": "wal.compression",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R26": {
+      "new_spec": "wal.compression",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R27": {
+      "new_spec": "wal.compression",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R28": {
+      "new_spec": "wal.compression",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R29": {
+      "new_spec": "wal.compression",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R30": {
+      "new_spec": "wal.compression",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R31": {
+      "new_spec": "wal.compression",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R32": {
+      "new_spec": "wal.compression",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R33": {
+      "new_spec": "wal.compression",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R34": {
+      "new_spec": "wal.compression",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R35": {
+      "new_spec": "wal.compression",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R36": {
+      "new_spec": "wal.compression",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/wal/compression.md"
+    },
+    "R37": {
+      "new_spec": "sstable.writer",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/sstable/writer.md"
+    },
+    "R38": {
+      "new_spec": "sstable.writer",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/sstable/writer.md"
+    },
+    "R39": {
+      "new_spec": "sstable.writer",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/sstable/writer.md"
+    },
+    "R40": {
+      "new_spec": "sstable.writer",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/sstable/writer.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "compression.codec-contract",
+      "new_path": ".spec/domains/compression/codec-contract.md",
+      "domains": [
+        "compression"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R41",
+        "R42"
+      ]
+    },
+    {
+      "new_spec": "compression.none-codec",
+      "new_path": ".spec/domains/compression/none-codec.md",
+      "domains": [
+        "compression"
+      ],
+      "source_requirements": [
+        "R12",
+        "R13"
+      ]
+    },
+    {
+      "new_spec": "compression.deflate-codec",
+      "new_path": ".spec/domains/compression/deflate-codec.md",
+      "domains": [
+        "compression"
+      ],
+      "source_requirements": [
+        "R14",
+        "R15",
+        "R16",
+        "R17"
+      ]
+    },
+    {
+      "new_spec": "wal.compression",
+      "new_path": ".spec/domains/wal/compression.md",
+      "domains": [
+        "wal",
+        "compression"
+      ],
+      "source_requirements": [
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R28",
+        "R29",
+        "R30",
+        "R31",
+        "R32",
+        "R33",
+        "R34",
+        "R35",
+        "R36"
+      ]
+    },
+    {
+      "new_spec": "sstable.writer",
+      "new_path": ".spec/domains/sstable/writer.md",
+      "domains": [
+        "sstable",
+        "compression"
+      ],
+      "source_requirements": [
+        "R37",
+        "R38",
+        "R39",
+        "R40"
+      ]
+    }
+  ]
+}

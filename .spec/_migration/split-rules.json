@@ -1,0 +1,311 @@
+{
+  "$schema_doc": "Split plans for features whose requirements distribute across multiple destination specs. Each entry encodes MIGRATION.md §6 as machine-readable rules. section_rules maps '### Header' text → destination spec. requirement_overrides handles per-req judgment calls (e.g., audit-hardened reqs that apply to specific sections). destinations defines the output spec files.",
+
+  "F03": {
+    "source_path": "encryption/F03-encrypt-memory-data.md",
+    "_note": "Per approved MIGRATION.md §6, F03 splits into 4 primitive specs. F03 contains 22 application-layer reqs (serializer integration R48-R53, index registry validation R54-R59, SSE index R60-R65, positional posting codec R66-R69) filed here in the closest-fit primitive spec. Follow-up work: extract these to their functional domains (serialization/, query/) in a later pass.",
+    "section_rules": {
+      "Encryption specification model": "encryption.primitives-variants",
+      "Deterministic encryption (AES-SIV)": "encryption.primitives-variants",
+      "Opaque encryption (AES-GCM)": "encryption.primitives-variants",
+      "Order-preserving encryption (Boldyreva OPE)": "encryption.primitives-variants",
+      "Distance-preserving encryption (DCPE / Scale-And-Perturb)": "encryption.primitives-variants",
+      "Wrong-key detection": "encryption.primitives-variants",
+      "Ciphertext structural validation": "encryption.primitives-variants",
+      "SSE encrypted index": "encryption.primitives-variants",
+      "Positional posting codec": "encryption.primitives-variants",
+      "Index registry validation": "encryption.primitives-variants",
+      "Schema-level field encryption configuration": "encryption.primitives-configuration",
+      "Encryption dispatch": "encryption.primitives-dispatch",
+      "Error handling": "encryption.primitives-dispatch",
+      "Concurrency": "encryption.primitives-dispatch",
+      "Performance observability": "encryption.primitives-dispatch",
+      "Serializer integration": "encryption.primitives-dispatch",
+      "Key holder lifecycle": "encryption.primitives-key-holder",
+      "Key material hygiene": "encryption.primitives-key-holder"
+    },
+    "requirement_overrides": {},
+    "dropped_requirements": {},
+    "destinations": {
+      "encryption.primitives-variants": {
+        "new_path": ".spec/domains/encryption/primitives-variants.md",
+        "domains": ["encryption"]
+      },
+      "encryption.primitives-configuration": {
+        "new_path": ".spec/domains/encryption/primitives-configuration.md",
+        "domains": ["encryption"]
+      },
+      "encryption.primitives-dispatch": {
+        "new_path": ".spec/domains/encryption/primitives-dispatch.md",
+        "domains": ["encryption"]
+      },
+      "encryption.primitives-key-holder": {
+        "new_path": ".spec/domains/encryption/primitives-key-holder.md",
+        "domains": ["encryption"]
+      }
+    }
+  },
+
+  "F42": {
+    "source_path": "encryption/F42-wal-encryption.md",
+    "_note": "F42's 77 reqs are all WAL-specific implementation details (SEK, nonce construction, record format, recovery, etc.). Encryption primitives it depends on live in F03 (variants, key holder) and F41 (lifecycle, rotation). All F42 reqs move to wal/encryption.md with multi-domain tag ['wal', 'encryption']. preserve_rns keeps the R1..R52 sequence (with R51a, R51b suffixes) intact since this is functionally a 1-destination move with a multi-domain tag.",
+    "preserve_rns": true,
+    "section_rules": {
+      "Opt-in configuration": "wal.encryption",
+      "Compress-then-encrypt pipeline": "wal.encryption",
+      "Per-segment SEK": "wal.encryption",
+      "Nonce construction": "wal.encryption",
+      "Record format": "wal.encryption",
+      "Encryption operation": "wal.encryption",
+      "Recovery and replay": "wal.encryption",
+      "Remote WAL": "wal.encryption",
+      "Input validation": "wal.encryption",
+      "Concurrency": "wal.encryption",
+      "Resource lifecycle": "wal.encryption"
+    },
+    "requirement_overrides": {},
+    "dropped_requirements": {},
+    "destinations": {
+      "wal.encryption": {
+        "new_path": ".spec/domains/wal/encryption.md",
+        "domains": ["wal", "encryption"]
+      }
+    }
+  },
+
+  "F10": {
+    "source_path": "query/F10-table-indices-and-queries.md",
+    "section_rules": {
+      "IndexType enum": "query.index-types",
+      "IndexDefinition record": "query.index-types",
+      "Predicate sealed interface": "query.index-types",
+      "Index-schema type compatibility": "query.index-types",
+      "FieldValueCodec — sort-preserving binary encoding": "query.field-value-codec",
+      "TableQuery fluent builder": "query.table-query",
+      "SecondaryIndex sealed interface": "query.field-index",
+      "FieldIndex — equality, range, and unique lookups": "query.field-index",
+      "Unique index constraint enforcement": "query.field-index",
+      "FieldIndex key comparison": "query.field-index",
+      "FullTextFieldIndex": "query.full-text-index",
+      "VectorFieldIndex": "query.vector-index",
+      "IndexRegistry — index lifecycle management": "query.index-registry",
+      "Index close and resource cleanup": "query.index-registry",
+      "QueryExecutor — query planning and execution": "query.query-executor",
+      "Scan-and-filter predicate evaluation": "query.query-executor",
+      "Null field value handling": "query.query-executor",
+      "Update atomicity": "query.query-executor",
+      "Thread safety": "query.query-executor",
+      "JPMS module boundaries": "query.query-executor"
+    },
+    "requirement_overrides": {
+      "R135": { "destination": "query.index-registry", "reason": "IndexRegistry read-lock audit — registry concern" },
+      "R136": { "destination": "query.index-registry", "reason": "IndexRegistry transactional consistency audit — registry concern" },
+      "R137": { "destination": "query.index-registry", "reason": "IndexRegistry close exception accumulation audit — registry concern" },
+      "R138": { "destination": "query.index-registry", "reason": "IndexRegistry EQUALITY+BOOLEAN rejection audit — registry concern" },
+      "R139": { "destination": "query.index-registry", "reason": "IndexRegistry extractFieldValue defensive copy audit — registry concern" }
+    },
+    "dropped_requirements": {},
+    "destinations": {
+      "query.index-types": { "new_path": ".spec/domains/query/index-types.md", "domains": ["query"] },
+      "query.field-value-codec": { "new_path": ".spec/domains/query/field-value-codec.md", "domains": ["query"] },
+      "query.table-query": { "new_path": ".spec/domains/query/table-query.md", "domains": ["query"] },
+      "query.field-index": { "new_path": ".spec/domains/query/field-index.md", "domains": ["query"] },
+      "query.full-text-index": { "new_path": ".spec/domains/query/full-text-index.md", "domains": ["query"] },
+      "query.vector-index": { "new_path": ".spec/domains/query/vector-index.md", "domains": ["query"] },
+      "query.index-registry": { "new_path": ".spec/domains/query/index-registry.md", "domains": ["query"] },
+      "query.query-executor": { "new_path": ".spec/domains/query/query-executor.md", "domains": ["query"] }
+    }
+  },
+
+  "F17": {
+    "source_path": "serialization/F17-wal-compression-codec-api.md",
+    "section_rules": {
+      "CompressionCodec MemorySegment API": "compression.codec-contract",
+      "Input validation (MemorySegment)": "compression.codec-contract",
+      "Codec statelessness with dictionary configuration": "compression.codec-contract",
+      "NONE codec (MemorySegment)": "compression.none-codec",
+      "DEFLATE codec (MemorySegment — zero-copy)": "compression.deflate-codec",
+      "WAL compressed record format": "wal.compression",
+      "WAL format versioning": "wal.compression",
+      "WAL compression behavior": "wal.compression",
+      "WAL recovery (compressed records)": "wal.compression",
+      "WAL write-path buffer management": "wal.compression",
+      "SSTable codec migration": "sstable.writer"
+    },
+    "requirement_overrides": {},
+    "dropped_requirements": {},
+    "destinations": {
+      "compression.codec-contract": {
+        "new_path": ".spec/domains/compression/codec-contract.md",
+        "domains": ["compression"]
+      },
+      "compression.none-codec": {
+        "new_path": ".spec/domains/compression/none-codec.md",
+        "domains": ["compression"]
+      },
+      "compression.deflate-codec": {
+        "new_path": ".spec/domains/compression/deflate-codec.md",
+        "domains": ["compression"]
+      },
+      "wal.compression": {
+        "new_path": ".spec/domains/wal/compression.md",
+        "domains": ["wal", "compression"]
+      },
+      "sstable.writer": {
+        "new_path": ".spec/domains/sstable/writer.md",
+        "domains": ["sstable", "compression"]
+      }
+    }
+  },
+
+  "F02": {
+    "source_path": "serialization/F02-block-compression.md",
+    "section_rules": {
+      "Compression codec contract": "compression.codec-contract",
+      "SSTable file format v2": "sstable.format-v2",
+      "Backward compatibility": "sstable.format-v2",
+      "Self-describing format and codec resolution": "sstable.format-v2",
+      "Writer behavior": "sstable.writer",
+      "Compression map validation": "sstable.format-v2",
+      "Footer validation": "sstable.format-v2",
+      "File offset and length width": "sstable.format-v2",
+      "Key index validation": "sstable.format-v2",
+      "Footer section ordering": "sstable.format-v2",
+      "Concurrency": "sstable.writer",
+      "Block cache integration": "sstable.writer",
+      "Tree builder integration": "sstable.writer",
+      "Compaction integration": "sstable.compaction",
+      "ZSTD codec and tiered detection": "compression.zstd-codec",
+      "Dictionary-aware writer lifecycle": "compression.zstd-codec",
+      "Error handling": "sstable.writer",
+      "Silent failure documentation": "sstable.writer"
+    },
+    "requirement_overrides": {},
+    "dropped_requirements": {
+      "R2": "Superseded by F17 MemorySegment codec contract (F17 invalidates F02.R2)",
+      "R3": "Superseded by F17 MemorySegment codec contract (F17 invalidates F02.R3)",
+      "R4": "Superseded by F17 MemorySegment codec contract (F17 invalidates F02.R4)",
+      "R8": "Superseded by F17 MemorySegment input validation (F17 invalidates F02.R8)",
+      "R9": "Superseded by F17 MemorySegment input validation (F17 invalidates F02.R9)",
+      "R10": "Superseded by F17 MemorySegment input validation (F17 invalidates F02.R10)"
+    },
+    "destinations": {
+      "compression.codec-contract": {
+        "new_path": ".spec/domains/compression/codec-contract.md",
+        "domains": ["compression"]
+      },
+      "compression.zstd-codec": {
+        "new_path": ".spec/domains/compression/zstd-codec.md",
+        "domains": ["compression"]
+      },
+      "sstable.format-v2": {
+        "new_path": ".spec/domains/sstable/format-v2.md",
+        "domains": ["sstable"]
+      },
+      "sstable.writer": {
+        "new_path": ".spec/domains/sstable/writer.md",
+        "domains": ["sstable", "compression"]
+      },
+      "sstable.compaction": {
+        "new_path": ".spec/domains/sstable/compaction.md",
+        "domains": ["sstable"]
+      }
+    }
+  },
+
+  "F14": {
+    "source_path": "engine/F14-jlsm-document.md",
+    "section_rules": {
+      "Construction": "schema.document-construction",
+      "Factory method: `of(JlsmSchema, Object...)`": "schema.document-construction",
+      "Factory method: `preEncrypted(JlsmSchema, Object...)`": "schema.document-construction",
+      "Type validation": "schema.document-construction",
+      "Defensive copying": "schema.document-construction",
+      "Typed getters": "schema.document-field-access",
+      "Schema accessor": "schema.document-field-access",
+      "Null field query": "schema.document-field-access",
+      "Vector getters": "schema.document-field-access",
+      "Absent behaviors": "schema.document-field-access",
+      "Serialization (JSON)": "schema.document-serialization",
+      "Internal access (DocumentAccess)": "schema.document-invariants",
+      "Immutability and thread safety": "schema.document-invariants",
+      "Structural equality": "schema.document-invariants"
+    },
+    "requirement_overrides": {
+      "R50": { "destination": "schema.document-field-access", "reason": "isPreEncrypted() is an introspection query method, not serialization" },
+      "R51": { "destination": "schema.document-invariants", "reason": "values() defensive internal accessor — invariants concern" },
+      "R66": { "destination": "schema.document-construction", "reason": "of() duplicate field rejection — factory construction concern" },
+      "R67": { "destination": "schema.document-construction", "reason": "validateType recursion depth — type validation at construction" },
+      "R68": { "destination": "schema.document-construction", "reason": "defensiveCopyIfVector deep copy — construction-path defensive copying" },
+      "R69": { "destination": "schema.document-field-access", "reason": "getLong() null NPE message — typed getter concern" }
+    },
+    "dropped_requirements": {
+      "R48": "YAML serialization removed — not migrating (describes a never-built feature, not a displaced one)",
+      "R49": "YAML serialization removed — not migrating"
+    },
+    "destinations": {
+      "schema.document-construction": {
+        "new_path": ".spec/domains/schema/document-construction.md",
+        "domains": ["schema"]
+      },
+      "schema.document-field-access": {
+        "new_path": ".spec/domains/schema/document-field-access.md",
+        "domains": ["schema"]
+      },
+      "schema.document-serialization": {
+        "new_path": ".spec/domains/schema/document-serialization.md",
+        "domains": ["schema", "serialization"]
+      },
+      "schema.document-invariants": {
+        "new_path": ".spec/domains/schema/document-invariants.md",
+        "domains": ["schema"]
+      }
+    }
+  },
+
+  "F13": {
+    "source_path": "engine/F13-jlsm-schema.md",
+    "section_rules": {
+      "Construction": "schema.schema-construction",
+      "Field management": "schema.schema-construction",
+      "Builder lifecycle": "schema.schema-construction",
+      "Field name validation": "schema.schema-construction",
+      "Field lookup": "schema.schema-field-access",
+      "Accessors": "schema.schema-field-access",
+      "Absent behaviors": "schema.schema-field-access",
+      "Nesting (object fields)": "schema.schema-nesting",
+      "Immutability and thread safety": "schema.schema-invariants",
+      "Structural equality": "schema.schema-invariants",
+      "FieldDefinition (companion type)": "schema.schema-field-definition",
+      "FieldType (companion type)": "schema.schema-field-definition"
+    },
+    "requirement_overrides": {
+      "R56": { "destination": "schema.schema-construction", "reason": "Builder.objectField() blank name validation — construction concern" },
+      "R57": { "destination": "schema.schema-nesting", "reason": "ObjectType.toSchema() encryption propagation — nested schema concern" },
+      "R58": { "destination": "schema.schema-nesting", "reason": "ObjectType.toSchema() maxDepth propagation — nested schema concern" },
+      "R59": { "destination": "schema.schema-construction", "reason": "DocumentSerializer max 65535 fields — schema-level construction constraint" }
+    },
+    "destinations": {
+      "schema.schema-construction": {
+        "new_path": ".spec/domains/schema/schema-construction.md",
+        "domains": ["schema"]
+      },
+      "schema.schema-field-access": {
+        "new_path": ".spec/domains/schema/schema-field-access.md",
+        "domains": ["schema"]
+      },
+      "schema.schema-nesting": {
+        "new_path": ".spec/domains/schema/schema-nesting.md",
+        "domains": ["schema"]
+      },
+      "schema.schema-invariants": {
+        "new_path": ".spec/domains/schema/schema-invariants.md",
+        "domains": ["schema"]
+      },
+      "schema.schema-field-definition": {
+        "new_path": ".spec/domains/schema/schema-field-definition.md",
+        "domains": ["schema"]
+      }
+    }
+  }
+}
