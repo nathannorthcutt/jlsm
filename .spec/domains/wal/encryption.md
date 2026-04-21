@@ -311,3 +311,29 @@ non-blocking deferred zeroing). Medium: 0x00 indicator vs sparse pre-allocation 
 amended — 0xE1 for encrypted), valid header + zero records (R32a amended), CRC vs
 uncompressed size ambiguity (R34a), corrupt sidecar handling (R41b). Low: frame overflow
 formula (R25a amended).
+
+### Clarification: Three-tier-hierarchy mapping (2026-04-21)
+
+This spec's R2 accepts a "KEK" parameter at WAL builder construction. Under
+`encryption.primitives-lifecycle` v5 (which this spec requires) and the
+`three-tier-key-hierarchy` ADR, the three-tier key hierarchy is
+**tenant KEK → data-domain KEK → DEK**. The F42 "KEK" parameter resolves
+internally, as follows:
+
+- Each tenant carries a synthetic `_wal` data domain per
+  `primitives-lifecycle` R75.
+- WAL envelope encryption uses a DEK belonging to that tenant's `_wal`
+  domain.
+- Field payload bytes embedded in WAL records are the **per-field
+  ciphertext already produced at ingress** and are not re-encrypted by
+  the WAL envelope (R74b in `primitives-lifecycle`).
+- The grace-period invariant (R75b) binds WAL retention to Tenant KEK
+  retirement: a retired Tenant KEK must remain in the registry's
+  retired-references set until unreplayed WAL segments encrypted under
+  `_wal` domain DEKs (whose wrapping depends on the retired Tenant KEK)
+  have been replayed or compacted away.
+
+**No F42 requirement text changes are required.** The "KEK" parameter
+name is preserved; the implementation resolves it to the tenant's
+`_wal` domain DEK-resolver internally. This clarification is a
+Verification Note only, not an amendment.

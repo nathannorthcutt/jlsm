@@ -230,7 +230,7 @@
       "id": "encryption.primitives-lifecycle",
       "path": ".spec/domains/encryption/primitives-lifecycle.md",
       "state": "DRAFT",
-      "version": 4,
+      "version": 5,
       "domains": [
         "encryption"
       ],
@@ -247,12 +247,17 @@
         "per-field-key-binding",
         "encryption-key-rotation",
         "unencrypted-to-encrypted-migration",
-        "index-access-pattern-leakage"
+        "index-access-pattern-leakage",
+        "three-tier-key-hierarchy",
+        "dek-scoping-granularity",
+        "kms-integration-model",
+        "tenant-key-revocation-and-external-rotation"
       ],
       "kb_refs": [
         "systems/security/encryption-key-rotation-patterns",
         "systems/security/jvm-key-handling-patterns",
         "systems/security/client-side-encryption-patterns",
+        "systems/security/three-level-key-hierarchy",
         "algorithms/encryption/index-access-pattern-leakage"
       ]
     },
