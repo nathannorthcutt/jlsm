@@ -45,6 +45,16 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>
  * Governed by: {@code .decisions/transport-abstraction-design/adr.md}
+ *
+ * @spec engine.clustering.R68 — serializes CRUD into transport message format carrying table + partition id
+ * @spec engine.clustering.R69 — deserializes responses; propagates remote exceptions as local exceptions
+ * @spec engine.clustering.R70 — enforces per-request timeout; cancels future on timeout; reports unavailable
+ * @spec engine.clustering.R101 — serializes full document + operation mode for create/update/delete; decodes non-empty get/scan payloads
+ * @spec engine.clustering.R109 — validates transport future is non-null with a runtime check (not assert)
+ * @spec engine.clustering.R110 — timeout cancels the source transport future (not just a downstream wrapper)
+ * @spec engine.clustering.R111 — local-origin failures (encoding errors) distinguished from remote-node failures
+ * @spec engine.clustering.R112 — response encoder uses checked arithmetic to avoid int overflow in size fields
+ * @spec engine.clustering.R114 — range-scan decoder fails explicitly on malformed populated-payload-without-schema
  */
 public final class RemotePartitionClient implements PartitionClient {
 

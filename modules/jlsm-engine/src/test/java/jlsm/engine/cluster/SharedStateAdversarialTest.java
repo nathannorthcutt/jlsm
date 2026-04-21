@@ -44,6 +44,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Adversarial tests for shared-state concerns in the clustering subsystem.
+ *
+ * @spec engine.clustering.R74 — membership view safe for concurrent reads + serialized writes
+ * @spec engine.clustering.R99 — ownership instance shared (not duplicated) across engine + clustered tables
+ * @spec engine.clustering.R105 — listener callbacks after close are no-ops (no shared-state mutation)
  */
 final class SharedStateAdversarialTest {
 

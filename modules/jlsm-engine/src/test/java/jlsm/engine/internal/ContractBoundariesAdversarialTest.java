@@ -113,7 +113,8 @@ class ContractBoundariesAdversarialTest {
     // should be closed, removed from liveTables, and the catalog entry unregistered
     // Fix location: LocalEngine.createTable() lines 99-106 — wrap in try-catch with rollback
     // Regression watch: rollback must close jlsmTable before removing from liveTables/catalog
-    // @spec engine.in-process-database-engine.R87 — createTable rollback removes orphaned resources on any failure
+    // @spec engine.in-process-database-engine.R17,R87 — createTable rollback removes orphaned resources on any failure;
+    // if directory creation / registration fails the table must not appear in the catalog on a subsequent startup.
     @Test
     void test_LocalEngine_createTable_doesNotCloseJlsmTableOnHandleRegistrationFailure(
             @TempDir Path tempDir) throws IOException {

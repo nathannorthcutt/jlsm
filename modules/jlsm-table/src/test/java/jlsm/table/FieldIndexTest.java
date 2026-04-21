@@ -87,6 +87,7 @@ class FieldIndexTest {
         index.close();
     }
 
+    // @spec query.index-types.R4 — UNIQUE enforces a uniqueness constraint at write time
     @Test
     void testUniqueConstraint() throws IOException {
         var def = new IndexDefinition("email", IndexType.UNIQUE);
@@ -134,6 +135,8 @@ class FieldIndexTest {
         index.close();
     }
 
+    // @spec query.index-types.R2 — EQUALITY supports Eq/Ne predicate lookups
+    // @spec query.index-types.R3 — RANGE supports Eq/Ne/Gt/Gte/Lt/Lte/Between predicate lookups
     @Test
     void testSupportsCorrectPredicates() throws IOException {
         var eqIndex = new FieldIndex(new IndexDefinition("name", IndexType.EQUALITY));
@@ -147,6 +150,7 @@ class FieldIndexTest {
 
         var rangeIndex = new FieldIndex(new IndexDefinition("age", IndexType.RANGE));
         assertTrue(rangeIndex.supports(new Predicate.Eq("age", 1)));
+        assertTrue(rangeIndex.supports(new Predicate.Ne("age", 1)));
         assertTrue(rangeIndex.supports(new Predicate.Gt("age", 1)));
         assertTrue(rangeIndex.supports(new Predicate.Gte("age", 1)));
         assertTrue(rangeIndex.supports(new Predicate.Lt("age", 1)));
@@ -154,6 +158,22 @@ class FieldIndexTest {
         assertTrue(rangeIndex.supports(new Predicate.Between("age", 1, 10)));
         assertFalse(rangeIndex.supports(new Predicate.FullTextMatch("age", "x")));
         rangeIndex.close();
+    }
+
+    // @spec query.index-types.R4 — UNIQUE supports the same predicate lookups as RANGE and
+    // additionally enforces a uniqueness constraint at write time
+    @Test
+    void testUniqueSupportsSameLookupsAsRange() throws IOException {
+        try (var uniqueIndex = new FieldIndex(new IndexDefinition("email", IndexType.UNIQUE))) {
+            assertTrue(uniqueIndex.supports(new Predicate.Eq("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Ne("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Gt("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Gte("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Lt("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Lte("email", "a@b")));
+            assertTrue(uniqueIndex.supports(new Predicate.Between("email", "a", "z")));
+            assertFalse(uniqueIndex.supports(new Predicate.FullTextMatch("email", "x")));
+        }
     }
 
     @Test

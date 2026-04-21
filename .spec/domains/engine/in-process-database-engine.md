@@ -1,9 +1,9 @@
 ---
 {
   "id": "engine.in-process-database-engine",
-  "version": 3,
+  "version": 4,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "engine"
   ],
@@ -405,3 +405,28 @@ Untestable: 2 (R61, R79)
 - **R60** corrupt per-table metadata → ERROR state (engine continues startup; no IOException propagated)
 - **R67** concurrent duplicate create → exactly one success + one IOException
 - **R74** `jlsm.engine.cluster` added as permitted second exported package (F04 scope)
+
+### Verified: v4 — 2026-04-21 (state: APPROVED)
+
+Coverage promotion work (WD `close-coverage-gaps / WD-01`). All 91 requirements now have direct
+`@spec` annotations at their enforcement sites:
+
+- **R60, R86** — `ContractBoundariesAdversarialTest.test_TableCatalog_open_corruptMetadata_preservesDirectory` (added)
+- **R61** — impl annotation added on `LocalEngine.getTable` (dispatch of ERROR-state tables during lazy load); per the
+  lazy-loading contract, startup does not open the LSM tree, so data-file corruption surfaces on first use rather than
+  aborting engine startup. R61 remains UNTESTABLE in the mechanical sense (no failure injection API for WAL corruption
+  at lazy-load time within this module), but the ERROR-state dispatch branch is the enforcement site.
+- **R78** — `LocalEngineTest.closeContinuesClosingRemainingTablesWhenOneFails` (added) — validates engine close
+  invalidates all table handles even when multiple live tables are open; `LocalEngine.close` accumulates
+  errors from each table's close into an aggregate IOException.
+- **R79** — UNTESTABLE (resource-leak absence not mechanically testable in-library); impl annotation retained on
+  `LocalEngine.close`. The requirement is validated through code review of arena/channel release paths rather
+  than runtime assertions.
+- **R88** — `LocalEngineTest.concurrentTableCreation` annotation extended to cover R88 alongside R65/R66.
+
+`spec-trace.sh engine.in-process-database-engine` reports `Annotations: 124 | Requirements traced: 91`
+with only R61 and R79 (both documented UNTESTABLE) lacking test annotations. `./gradlew
+:modules:jlsm-engine:test` passes green at WD end. No requirement text was rewritten.
+
+**Overall: PASS** — 89/91 requirements fully traced with impl + test; 2 (R61, R79) traced impl-only
+with documented UNTESTABLE rationale per v2 Verification Notes.

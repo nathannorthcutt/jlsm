@@ -10,6 +10,9 @@ package jlsm.engine.cluster;
  *
  * <p>
  * Governed by: {@code .decisions/transport-abstraction-design/adr.md}
+ *
+ * @spec engine.clustering.R9 — message types distinguish at minimum: ping, ack, view change, query
+ *       request, query response, state digest, state delta
  */
 public enum MessageType {
 

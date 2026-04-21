@@ -19,6 +19,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link RapidMembership}.
+ *
+ * @spec engine.clustering.R33 — start/currentView/addListener/leave/close lifecycle
+ * @spec engine.clustering.R39 — view-change listener notification
+ * @spec engine.clustering.R40 — graceful leave announces departure
+ * @spec engine.clustering.R71 — currentView exposes epoch + live count + quorum
+ * @spec engine.clustering.R87 — start/close atomic lifecycle transitions
+ * @spec engine.clustering.R92 — epoch regression rejected
  */
 class RapidMembershipTest {
 

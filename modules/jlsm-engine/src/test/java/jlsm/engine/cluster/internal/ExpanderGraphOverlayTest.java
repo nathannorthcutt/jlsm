@@ -29,6 +29,9 @@ import org.junit.jupiter.api.Timeout;
  * <p>
  * Covers deterministic construction, clamping, empty/singleton overlays, degree regularity, query
  * invariants, and atomic rebuild under concurrency.
+ *
+ * @spec engine.clustering.R35 — expander-graph monitoring overlay with sub-linear monitoring,
+ *       deterministic given (alive members, degree, epoch), rebuilt on every view change
  */
 @Timeout(5)
 final class ExpanderGraphOverlayTest {

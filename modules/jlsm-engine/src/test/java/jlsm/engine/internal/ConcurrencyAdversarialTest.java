@@ -289,7 +289,9 @@ class ConcurrencyAdversarialTest {
     // silently execute on an invalidated handle.
     // Fix location: LocalTable.checkValid (lines 123-129) and each delegate call site
     // Regression watch: Ensure non-invalidated handles still work correctly
-    // @spec engine.in-process-database-engine.R83 — checkValid and delegate execute atomically w.r.t. concurrent invalidation
+    // @spec engine.in-process-database-engine.R68,R83 — checkValid and delegate execute atomically w.r.t. concurrent
+    // invalidation. R68 (concurrent drop alongside in-flight query) reduces to the same synchronization contract:
+    // either the op completes with prior results or throws HandleEvictedException — never propagates an unexpected exception.
     @Test
     @Timeout(30)
     void test_LocalTable_concurrency_checkThenActRaceBetweenCheckValidAndInvalidation()

@@ -50,6 +50,16 @@ import java.util.function.Supplier;
  *
  * <p>
  * Governed by: {@code .decisions/scatter-gather-query-execution/adr.md}
+ *
+ * @spec engine.clustering.R59 — partition-aware proxy over the local engine's tables
+ * @spec engine.clustering.R61 — remotely-owned operations serialized and sent via transport; response deserialized
+ * @spec engine.clustering.R62 — multi-partition queries use scatter-gather with parallel dispatch
+ * @spec engine.clustering.R65 — unreachable partition owners produce partial results (not whole-query failure)
+ * @spec engine.clustering.R66 — scatter-gather timeout configurable; unavailable partitions excluded with metadata
+ * @spec engine.clustering.R106 — tracks in-flight scatter tasks; close cancels each tracked task
+ * @spec engine.clustering.R107 — cancelled fanout request releases the blocked servicing thread
+ * @spec engine.clustering.R108 — close-path failures from per-partition client releases surfaced via diagnostic channel
+ * @spec engine.clustering.R113 — ordered merge fails explicitly on malformed per-partition iterator elements
  */
 public final class ClusteredTable implements Table {
 

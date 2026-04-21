@@ -3,7 +3,7 @@
   "id": "query.index-types",
   "version": 1,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "query"
   ],
@@ -95,6 +95,30 @@ R30. `FieldValueCodec.encode` must reject a value whose Java type does not match
 R31. `FieldValueCodec` must use the schema-declared field type for encoding rather than inferring from the runtime value type, when the schema field type is available.
 
 ---
+
+## Verification Notes
+
+Promoted DRAFT -> APPROVED on 2026-04-21 under work group
+`close-coverage-gaps` / WD-02.
+
+`spec-trace` coverage: 31/31 requirements traced, all with both implementation
+and test annotations.
+
+Coverage closure details:
+
+- R2 (EQUALITY supports Eq/Ne): enforced in `FieldIndex.supports()` switch
+  arm; exercised by `FieldIndexTest.testSupportsCorrectPredicates`.
+- R3 (RANGE supports Eq/Ne/Gt/Gte/Lt/Lte/Between): enforced in the same
+  switch's `RANGE, UNIQUE` arm; exercised by the same test.
+- R4 (UNIQUE supports RANGE lookups + uniqueness constraint): two enforcement
+  sites — `FieldIndex.supports()` for predicate support and
+  `FieldIndex.onInsert()` UNIQUE guard for write-time uniqueness. Tests are
+  `FieldIndexTest.testUniqueSupportsSameLookupsAsRange` and
+  `FieldIndexTest.testUniqueConstraint`.
+- R12 (non-VECTOR rejects non-null similarityFunction with IAE): impl already
+  present in `IndexDefinition`'s compact constructor; new test
+  `IndexDefinitionTest.testIndexDefinitionNonVectorWithSimilarityThrowsIae`
+  covers EQUALITY, RANGE, UNIQUE, and FULL_TEXT.
 
 ## Design Narrative
 

@@ -13,6 +13,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * All timing-sensitive tests use explicit nanosecond timestamps via the overloaded
  * {@code recordHeartbeat(node, timestampNanos)} and {@code phi(node, nowNanos)} methods. This
  * eliminates flakiness from GC pauses, thread scheduling, and {@code Thread.sleep()} variance.
+ *
+ * @spec engine.clustering.R18 — phi accrual model over sliding window of inter-arrival times
+ * @spec engine.clustering.R19 — phi exceeding threshold indicates suspicion (detector reports only)
+ * @spec engine.clustering.R20 — phi returns 0 until at least 2 heartbeats recorded
+ * @spec engine.clustering.R21 — sliding window bounded; oldest entries evicted on overflow
  */
 class PhiAccrualFailureDetectorTest {
 

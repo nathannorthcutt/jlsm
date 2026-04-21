@@ -8,6 +8,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link ClusterConfig} record validation and builder defaults.
+ *
+ * @spec engine.clustering.R2 — builder + documented defaults (see builderDefaults, builderOverrides)
+ * @spec engine.clustering.R3 — zero/negative gracePeriod rejected (zeroGracePeriodThrows, negativeGracePeriodThrows)
+ * @spec engine.clustering.R4 — quorum percent boundary/rejection (quorumPercentZeroThrows, 101Throws, boundary1/100)
+ * @spec engine.clustering.R5 — phi threshold non-finite/non-positive rejected (zeroPhiThresholdThrows, negativePhiThresholdThrows)
+ * @spec engine.clustering.R6 — (ping timeout validation by construction in ClusterConfig; zero/negative rejected through builder)
+ * @spec engine.clustering.R7 — indirect probes boundary (negativeIndirectProbesThrows, indirectProbesZeroAllowed)
  */
 class ClusterConfigTest {
 

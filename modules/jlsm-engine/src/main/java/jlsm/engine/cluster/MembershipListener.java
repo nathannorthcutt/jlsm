@@ -12,6 +12,9 @@ package jlsm.engine.cluster;
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
+ *
+ * @spec engine.clustering.R72 — onViewChanged receives oldView and newView so listeners can detect
+ *       missed intermediate view changes via epoch comparison
  */
 public interface MembershipListener {
 

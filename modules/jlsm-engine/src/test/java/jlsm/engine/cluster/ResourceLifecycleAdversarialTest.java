@@ -33,6 +33,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Adversarial tests for resource lifecycle concerns in the clustering subsystem.
+ *
+ * @spec engine.clustering.R80 — engine close accumulates shutdown errors then throws after release
+ * @spec engine.clustering.R83 — failure detector evicts heartbeat history for departed members
+ * @spec engine.clustering.R94 — grace period manager removes expired departure records
+ * @spec engine.clustering.R97 — membership close deregisters discovery provider + transport handlers
+ * @spec engine.clustering.R98 — clustered engine rolls back local table on proxy registration failure
+ * @spec engine.clustering.R100 — scan closes remote clients on both normal and exceptional paths
+ * @spec engine.clustering.R106 — close cancels in-flight scatter fanout tasks
+ * @spec engine.clustering.R107 — cancelled scatter unblocks the servicing thread
  */
 final class ResourceLifecycleAdversarialTest {
 

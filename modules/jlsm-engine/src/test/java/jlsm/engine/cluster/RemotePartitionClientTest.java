@@ -27,6 +27,11 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link RemotePartitionClient} — serializes CRUD as QUERY_REQUEST messages, sends via
  * ClusterTransport.request(), deserializes QUERY_RESPONSE.
+ *
+ * @spec engine.clustering.R68 — CRUD serialization with table + partition id
+ * @spec engine.clustering.R69 — remote exceptions propagated as local exceptions
+ * @spec engine.clustering.R70 — per-request timeout via transport.request() future
+ * @spec engine.clustering.R101 — full document + operation mode carried in payload
  */
 final class RemotePartitionClientTest {
 

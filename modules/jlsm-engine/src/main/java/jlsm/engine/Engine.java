@@ -20,6 +20,9 @@ import java.util.Objects;
  * <p>
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
  */
+// @spec engine.in-process-database-engine.R76 — public API surface uses only exported types (Table,
+// TableMetadata, EngineMetrics, JlsmSchema); internal classes (LocalEngine, HandleTracker) are never
+// exposed in parameter or return positions.
 public interface Engine extends Closeable {
 
     /**

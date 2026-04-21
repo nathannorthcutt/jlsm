@@ -38,6 +38,10 @@ import java.util.function.Supplier;
  *
  * <p>
  * {@code @spec engine.clustering.R47, R48, R50}
+ *
+ * @spec engine.clustering.R47 — defers rebalance until grace expiry via scheduled drain
+ * @spec engine.clustering.R48 — differentialAssign touches only departed partitions on expiry
+ * @spec engine.clustering.R50 — cancelPending aborts scheduled rebalance when node returns within grace
  */
 public final class GraceGatedRebalancer {
 

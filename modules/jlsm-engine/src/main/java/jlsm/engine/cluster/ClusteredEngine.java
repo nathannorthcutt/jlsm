@@ -40,6 +40,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code .decisions/scatter-gather-query-execution/adr.md},
  * {@code .decisions/discovery-spi-design/adr.md},
  * {@code .decisions/transport-abstraction-design/adr.md}
+ *
+ * @spec engine.clustering.R55 — wraps local engine; local engine remains usable for locally-owned partitions
+ * @spec engine.clustering.R80 — closeable lifecycle; shutdown sequence (leave → deregister → stop transport)
+ *       accumulates errors then surfaces after all resources released
+ * @spec engine.clustering.R98 — createTable closes previous proxy with same name; on failure local table rolled back
+ * @spec engine.clustering.R99 — ownership instance shared with ClusteredTable (not per-table copy)
+ * @spec engine.clustering.R102 — final fields assigned before any listener/handler registration (safe publication)
+ * @spec engine.clustering.R103 — constructor unwinds registration steps if a later step throws
+ * @spec engine.clustering.R104 — join rollback attaches rollback exceptions as suppressed on the original cause
+ * @spec engine.clustering.R105 — membership listener callbacks after close are observable as no-ops
  */
 public final class ClusteredEngine implements Engine {
 

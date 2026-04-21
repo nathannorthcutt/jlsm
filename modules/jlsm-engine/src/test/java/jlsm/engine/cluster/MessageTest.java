@@ -6,6 +6,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link Message} record — validation, defensive copies, sequence number.
+ *
+ * @spec engine.clustering.R8 — (type, sender, sequenceNumber, payload); defensive-copy on construction
+ * @spec engine.clustering.R10 — monotonic sequence number exposed for de-duplication by receivers
+ * @spec engine.clustering.R11 — empty payload accepted; null payload rejected with NPE
  */
 class MessageTest {
 

@@ -16,6 +16,8 @@ import java.util.Objects;
  * @param nodeId unique identifier for the node; must not be null or empty
  * @param host the hostname or IP address; must not be null or empty
  * @param port the port number; must be in range [1, 65535]
+ *
+ * @spec engine.clustering.R1 — node address = (nodeId, host, port); id/host non-null-non-empty; port [1,65535]
  */
 public record NodeAddress(String nodeId, String host, int port) {
 

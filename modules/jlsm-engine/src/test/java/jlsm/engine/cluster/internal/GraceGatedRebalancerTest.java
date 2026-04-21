@@ -28,6 +28,10 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link GraceGatedRebalancer} — grace-period drain that applies differential rebalancing
  * only to partitions previously owned by expired departures.
+ *
+ * @spec engine.clustering.R47 — defers rebalance until grace expiry via scheduled drain
+ * @spec engine.clustering.R48 — differentialAssign touches only departed-member partitions
+ * @spec engine.clustering.R50 — cancelPending when a node returns within grace
  */
 final class GraceGatedRebalancerTest {
 

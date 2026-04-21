@@ -14,6 +14,10 @@ import java.util.Set;
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
+ *
+ * @spec engine.clustering.R14 — membership view tracks current member set + monotonic epoch number
+ * @spec engine.clustering.R15 — liveMemberCount counts ALIVE only (SUSPECTED and DEAD excluded)
+ * @spec engine.clustering.R74 — view reads are safe under concurrency (record-like immutable snapshot)
  */
 public final class MembershipView implements Comparable<MembershipView> {
 

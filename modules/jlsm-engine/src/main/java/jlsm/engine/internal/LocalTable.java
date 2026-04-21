@@ -26,7 +26,8 @@ import java.util.Optional;
  * <p>
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
  */
-// @spec engine.in-process-database-engine.R22,R32,R33,R34,R35,R36,R38,R39,R47,R48,R70,R77,R83 — delegating handle surface
+// @spec engine.in-process-database-engine.R22,R32,R33,R34,R35,R36,R38,R39,R47,R48,R68,R70,R77,R83 — delegating handle surface;
+// registration-synchronized delegate calls make concurrent drop + query on the same table safe (R68).
 final class LocalTable implements Table {
 
     private final JlsmTable.StringKeyed delegate;

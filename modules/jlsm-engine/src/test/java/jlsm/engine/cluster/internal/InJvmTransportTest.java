@@ -18,6 +18,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link InJvmTransport} — send, request, handler dispatch, close, registry.
+ *
+ * @spec engine.clustering.R27 — transport SPI: send + request + registerHandler (exercised across tests)
+ * @spec engine.clustering.R29 — request completes with response or fails exceptionally on delivery failure
+ * @spec engine.clustering.R30 — handler registration is keyed by message type and atomically replaced
+ * @spec engine.clustering.R31 — in-JVM transport delivers without network I/O
  */
 class InJvmTransportTest {
 

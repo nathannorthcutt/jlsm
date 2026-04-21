@@ -34,6 +34,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>
  * Delivers: F04.R77 (parallel fanout); preserves F04.R60, R64, R67, R70, R100.
+ *
+ * @spec engine.clustering.R62 — scatter-gather merges results into unified set
+ * @spec engine.clustering.R77 — requests issued in parallel (not sequentially)
+ * @spec engine.clustering.R106 — in-flight scatter fanout tracked for close cancellation
+ * @spec engine.clustering.R108 — client-close failures surfaced via diagnostic channel
  */
 final class ClusteredTableScanParallelTest {
 
@@ -101,6 +106,7 @@ final class ClusteredTableScanParallelTest {
 
     // --- F04.R67 — ordered merge ---
 
+    // @spec engine.clustering.R67 — scatter-gather merge preserves ordering guarantees of underlying query
     @Test
     void scan_mergesOrderedAcrossNodes() throws IOException {
         registerEntriesHandler(remoteATransport, REMOTE_A, List.of("apple", "cherry", "grape"));

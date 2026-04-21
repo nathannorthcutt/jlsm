@@ -33,6 +33,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * received by each node. With a {@link LexicographicPartitionKeySpace} configured, a scan whose
  * range does not overlap a partition must not dispatch a scatter request to the owner of that
  * partition.
+ *
+ * @spec engine.clustering.R63 — scan fans out only to owners of partitions intersecting key range
  */
 final class ClusteredTableScanPruningTest {
 

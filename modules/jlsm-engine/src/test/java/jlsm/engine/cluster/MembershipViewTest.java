@@ -9,6 +9,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link MembershipView} — liveMemberCount, isMember, hasQuorum, Comparable, equals.
+ *
+ * @spec engine.clustering.R14 — view tracks members + monotonic epoch (emptyView, epochOrdering)
+ * @spec engine.clustering.R15 — liveMemberCount counts ALIVE only (liveMemberCountFiltersStates)
+ * @spec engine.clustering.R74 — view reads are safe under concurrency (immutable snapshot)
  */
 class MembershipViewTest {
 

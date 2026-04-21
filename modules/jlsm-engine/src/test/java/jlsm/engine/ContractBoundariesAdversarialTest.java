@@ -172,6 +172,7 @@ class ContractBoundariesAdversarialTest {
     // Correct behavior: Preserve the table directory and record the table in ERROR state
     // Fix location: TableCatalog.java:84-86 — catch block in open()
     // Regression watch: Ensure genuinely corrupt metadata (bad magic) still reports error state
+    // @spec engine.in-process-database-engine.R60,R86 — corrupt table.meta → ERROR state, directory preserved
     @Test
     void test_TableCatalog_open_corruptMetadata_preservesDirectory(@TempDir Path tempDir)
             throws Exception {

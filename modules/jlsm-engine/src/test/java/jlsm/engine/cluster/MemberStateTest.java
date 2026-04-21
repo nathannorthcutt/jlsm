@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link MemberState} enum completeness.
+ *
+ * @spec engine.clustering.R12 — states: ALIVE, SUSPECTED, DEAD
+ * @spec engine.clustering.R13 — DEAD state is terminal and tracked as a distinct value in this enum
  */
 class MemberStateTest {
 

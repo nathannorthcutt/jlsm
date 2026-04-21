@@ -24,6 +24,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Adversarial tests for dispatch routing in the engine clustering subsystem.
+ *
+ * @spec engine.clustering.R17 — membership testing: ALIVE/SUSPECTED current vs DEAD departed
+ * @spec engine.clustering.R82 — dead members rejected for membership checks / join blocking / leave processing
+ * @spec engine.clustering.R88 — view-change proposals validated: non-member sender + malformed payload rejected
+ * @spec engine.clustering.R91 — duplicate leave for already-DEAD member does not advance epoch
  */
 final class DispatchRoutingAdversarialTest {
 

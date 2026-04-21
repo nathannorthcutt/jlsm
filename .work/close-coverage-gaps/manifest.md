@@ -9,8 +9,8 @@
 
 | WD | Title | Status | Domains | Deps | Produces |
 |----|-------|--------|---------|------|----------|
-| WD-01 | Close engine.clustering + engine.in-process-database-engine gaps | READY | engine | 0 | — |
-| WD-02 | Close query.index-types + query.query-executor gaps | READY | query | 0 | — |
+| WD-01 | Close engine.clustering + engine.in-process-database-engine gaps | SPECIFIED | engine | 0 | — |
+| WD-02 | Close query.index-types + query.query-executor gaps | SPECIFIED | query | 0 | — |
 
 ## Dependency Graph
 

@@ -32,6 +32,13 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>
  * Governed by: {@code .decisions/partition-to-node-ownership/adr.md}
+ *
+ * @spec engine.clustering.R44 — HRW assigns each partition to the node with the highest hash score
+ * @spec engine.clustering.R45 — assignments cached per epoch; cache invalidated when epoch advances
+ * @spec engine.clustering.R46 — ownership deterministic across nodes for the same membership view
+ * @spec engine.clustering.R48 — differentialAssign recomputes only departed-member partitions on grace expiry
+ * @spec engine.clustering.R49 — rejoining members admitted via normal join; HRW computes new assignments
+ * @spec engine.clustering.R75 — ownership cache safe for concurrent read (ConcurrentHashMap + per-epoch immutability)
  */
 public class RendezvousOwnership {
 

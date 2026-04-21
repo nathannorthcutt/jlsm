@@ -15,6 +15,11 @@ import java.util.Set;
  *
  * <p>
  * Governed by: {@code .decisions/discovery-spi-design/adr.md}
+ *
+ * @spec engine.clustering.R22 — pluggable SPI with three operations: discover seeds, register self, deregister self
+ * @spec engine.clustering.R23 — discoverSeeds returns an (optionally empty) set of seed addresses
+ * @spec engine.clustering.R24 — register must be idempotent
+ * @spec engine.clustering.R25 — deregister must be idempotent (tolerates not-registered)
  */
 public interface DiscoveryProvider {
 

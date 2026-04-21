@@ -57,6 +57,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Adversarial tests for concurrency concerns in the clustering subsystem.
+ *
+ * @spec engine.clustering.R74 — concurrent membership view reads safe; writes serialized
+ * @spec engine.clustering.R75 — ownership cache safe under concurrent read
+ * @spec engine.clustering.R76 — grace period manager safe for concurrent protocol + ownership threads
+ * @spec engine.clustering.R87 — atomic start/close lifecycle transitions (no double-allocation / double-cleanup)
+ * @spec engine.clustering.R89 — locks not held during I/O or listener callbacks
+ * @spec engine.clustering.R102 — final fields safely published before listener/handler registration
+ * @spec engine.clustering.R108 — close-path failures logged via diagnostic channel, not assertions
+ * @spec engine.clustering.R109 — runtime non-null check on transport futures (not asserts)
+ * @spec engine.clustering.R110 — cancellation propagates to source transport future
  */
 final class ConcurrencyAdversarialTest {
 

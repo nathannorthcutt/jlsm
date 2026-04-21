@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link MessageType} enum completeness.
+ *
+ * @spec engine.clustering.R9 — message types distinguish ping/ack/view-change/query-request/query-response/state-digest/state-delta
  */
 class MessageTypeTest {
 

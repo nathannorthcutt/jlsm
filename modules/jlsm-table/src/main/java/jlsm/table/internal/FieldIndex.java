@@ -101,6 +101,7 @@ public final class FieldIndex implements SecondaryIndex {
         FieldType fieldType = resolveFieldType(fieldValue);
         ByteArrayKey encoded = encodeKey(fieldValue, fieldType);
 
+        // @spec query.index-types.R4 — UNIQUE index enforces uniqueness constraint at write time
         if (definition.indexType() == IndexType.UNIQUE) {
             List<MemorySegment> existing = entries.get(encoded);
             if (existing != null && !existing.isEmpty()) {
@@ -177,6 +178,10 @@ public final class FieldIndex implements SecondaryIndex {
 
     @Override
     // @spec query.field-index.R10,R14,R15 — match field name + predicate class to index type
+    // @spec query.index-types.R2 — EQUALITY supports only Eq/Ne predicate lookups
+    // @spec query.index-types.R3 — RANGE supports Eq/Ne/Gt/Gte/Lt/Lte/Between predicate lookups
+    // @spec query.index-types.R4 — UNIQUE supports the same predicate lookups as RANGE; uniqueness
+    // enforcement at write time is implemented in onInsert/onUpdate via checkUnique
     public boolean supports(Predicate predicate) {
         String field = predicateField(predicate);
         if (field == null || !field.equals(definition.fieldName())) {

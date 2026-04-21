@@ -303,8 +303,8 @@
     {
       "id": "engine.clustering",
       "path": ".spec/domains/engine/clustering.md",
-      "state": "DRAFT",
-      "version": 6,
+      "state": "APPROVED",
+      "version": 7,
       "domains": [
         "engine"
       ],
@@ -364,8 +364,8 @@
     {
       "id": "engine.in-process-database-engine",
       "path": ".spec/domains/engine/in-process-database-engine.md",
-      "state": "DRAFT",
-      "version": 3,
+      "state": "APPROVED",
+      "version": 4,
       "domains": [
         "engine"
       ],
@@ -876,7 +876,7 @@
     {
       "id": "query.index-types",
       "path": ".spec/domains/query/index-types.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"
@@ -889,7 +889,7 @@
     {
       "id": "query.query-executor",
       "path": ".spec/domains/query/query-executor.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"

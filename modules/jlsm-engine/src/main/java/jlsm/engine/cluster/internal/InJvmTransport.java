@@ -28,6 +28,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>
  * Governed by: {@code .decisions/transport-abstraction-design/adr.md}
+ *
+ * @spec engine.clustering.R31 — in-JVM transport implementation for testing (no network I/O)
+ * @spec engine.clustering.R30 — handler registration replaces atomically via ConcurrentHashMap.put
  */
 public final class InJvmTransport implements ClusterTransport {
 

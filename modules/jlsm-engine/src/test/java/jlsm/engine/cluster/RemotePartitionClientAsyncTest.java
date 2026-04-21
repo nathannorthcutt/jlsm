@@ -33,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link RemotePartitionClient#getRangeAsync(String, String)} and the payload-header
  * contract that delivers F04.R68 + F04.R77.
+ *
+ * @spec engine.clustering.R68 — payload header carries (table, partition) routing info
+ * @spec engine.clustering.R70 — async getRange respects per-request timeout and surfaces failure
  */
 final class RemotePartitionClientAsyncTest {
 

@@ -32,6 +32,16 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link ClusteredEngine#join(List)} and discovery registration symmetry on close —
  * covers F04.R56, R57, R58, R78, R79, R80.
+ *
+ * @spec engine.clustering.R56 — builder accepts mandatory parameters
+ * @spec engine.clustering.R57 — join orchestration; rollback on failure
+ * @spec engine.clustering.R58 — leave + deregister + stop transport on shutdown
+ * @spec engine.clustering.R78 — null-argument rejection on mandatory parameters
+ * @spec engine.clustering.R79 — builder rejects null mandatory parameters at build time
+ * @spec engine.clustering.R80 — closeable lifecycle accumulates errors
+ * @spec engine.clustering.R97 — close deregisters from discovery and transport handlers
+ * @spec engine.clustering.R103 — unwind registrations if later step throws
+ * @spec engine.clustering.R104 — rollback exceptions attached as suppressed on original cause
  */
 final class ClusteredEngineJoinTest {
 

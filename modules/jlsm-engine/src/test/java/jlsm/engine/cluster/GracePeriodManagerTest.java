@@ -13,6 +13,14 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link GracePeriodManager} — tracks departed nodes and manages the grace period before
  * permanent removal.
+ *
+ * @spec engine.clustering.R51 — monotonic departure timestamps
+ * @spec engine.clustering.R52 — cancellation on return; member restored to active ownership
+ * @spec engine.clustering.R53 — monotonic time source used for duration comparisons
+ * @spec engine.clustering.R54 — concurrent departures independent
+ * @spec engine.clustering.R94 — expired departure records removed during expiration checks
+ * @spec engine.clustering.R95 — injectable clock; single-timestamp capture per operation
+ * @spec engine.clustering.R96 — re-departure preserves original timestamp
  */
 final class GracePeriodManagerTest {
 

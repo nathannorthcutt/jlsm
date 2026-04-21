@@ -60,6 +60,27 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md}
+ *
+ * @spec engine.clustering.R33 — pluggable MembershipProtocol implementation (start/currentView/addListener/leave)
+ * @spec engine.clustering.R34 — multi-process cut detection with observer-quorum consensus before SUSPECT view change
+ * @spec engine.clustering.R35 — expander-graph overlay distributes monitoring responsibility sub-linearly
+ * @spec engine.clustering.R36 — observers receiving a SUSPICION_PROPOSAL vote independently (or self-refute if targeted)
+ * @spec engine.clustering.R37 — consensusRoundTimeout bounds a round; expired rounds are abandoned silently
+ * @spec engine.clustering.R38 — live node receiving SUSPICION_PROPOSAL about self refutes by bumping incarnation
+ * @spec engine.clustering.R39 — view change listeners notified asynchronously (listenerDispatcher) with bounded queue
+ * @spec engine.clustering.R40 — graceful leave broadcasts LEAVE message then ceases protocol participation
+ * @spec engine.clustering.R71 — currentView exposes the live member count, epoch and quorum status
+ * @spec engine.clustering.R72 — listener notifications carry old + new epoch
+ * @spec engine.clustering.R74 — view updates serialized via viewLock; reads concurrent
+ * @spec engine.clustering.R84 — membership protocol records a heartbeat for newly joined members
+ * @spec engine.clustering.R85 — heartbeats recorded from probe acknowledgments (bidirectional reachability)
+ * @spec engine.clustering.R86 — start() rolls back completed initialization steps on failure
+ * @spec engine.clustering.R87 — start/close lifecycle transitions atomic (AtomicBoolean guard)
+ * @spec engine.clustering.R88 — view change proposals validate sender; non-member rejected; malformed payload rejected
+ * @spec engine.clustering.R89 — protocol-level locks not held during I/O or listener callbacks (listenerDispatcher decoupled)
+ * @spec engine.clustering.R91 — duplicate leave for already-DEAD member does not advance epoch (idempotent)
+ * @spec engine.clustering.R92 — received views with epoch <= current epoch rejected as epoch regression
+ * @spec engine.clustering.R97 — close() deregisters from discovery and deregisters transport handlers before other cleanup
  */
 public final class RapidMembership implements MembershipProtocol {
 

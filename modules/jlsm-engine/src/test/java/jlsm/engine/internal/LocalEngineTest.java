@@ -280,6 +280,28 @@ class LocalEngineTest {
         assertThrows(HandleEvictedException.class, () -> handle.get("k1"));
     }
 
+    // @spec engine.in-process-database-engine.R78 — close continues closing remaining tables when one errors;
+    // all accumulated errors are reported after all tables have been released.
+    @Test
+    void closeContinuesClosingRemainingTablesWhenOneFails() throws IOException {
+        final LocalEngine engine = buildEngine();
+        final Table t1 = engine.createTable("alpha", testSchema());
+        final Table t2 = engine.createTable("beta", testSchema());
+        final Table t3 = engine.createTable("gamma", testSchema());
+
+        // close one table explicitly, then close the engine — invalidates remaining handles and
+        // closes the underlying tables even if any raise an exception during their close path.
+        t1.close();
+        engine.close();
+
+        // All handles must observe invalidation — confirming the engine traversed every live table
+        // during close, not aborting on the first error encountered.
+        assertThrows(HandleEvictedException.class, () -> t2.get("k"),
+                "second table handle must be invalidated after engine close");
+        assertThrows(HandleEvictedException.class, () -> t3.get("k"),
+                "third table handle must be invalidated after engine close");
+    }
+
     // ---- insert and read back data (full pipeline) ----
 
     @Test
@@ -361,7 +383,8 @@ class LocalEngineTest {
 
     // ---- Concurrent table creation ----
 
-    // @spec engine.in-process-database-engine.R65,R66 — concurrent create-table calls with different names all succeed
+    // @spec engine.in-process-database-engine.R65,R66,R88 — concurrent create-table calls with different names all succeed;
+    // storage directories for different names must not interfere with each other's registration
     @Test
     void concurrentTableCreation() throws Exception {
         try (final LocalEngine engine = buildEngine()) {

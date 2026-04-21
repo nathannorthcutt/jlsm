@@ -3,7 +3,7 @@
   "id": "query.query-executor",
   "version": 1,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "query"
   ],
@@ -81,6 +81,36 @@ R21. `IndexRegistry` must expose closed-state transitions atomically to all thre
 R22. `FieldIndex` must use a volatile closed flag so that the closed state is visible to all threads.
 
 ---
+
+## Verification Notes
+
+Promoted DRAFT -> APPROVED on 2026-04-21 under work group
+`close-coverage-gaps` / WD-02.
+
+`spec-trace` coverage: 22/22 requirements traced, all with both implementation
+and test annotations.
+
+Coverage closure details:
+
+- R12 (scan-and-filter throws UOE for FullTextMatch/VectorNearest): impl
+  already present in `QueryExecutor.matchesPredicate`; new tests
+  `QueryExecutorTest.testFullTextMatchWithoutIndexThrowsUnsupported` and
+  `QueryExecutorTest.testVectorNearestWithoutIndexThrowsUnsupported` assert
+  the UOE message identifies both the field and the required index type.
+- R19 (internal types reside in non-exported `jlsm.table.internal`): enforced
+  by `module-info.java` omitting the export. Verified by new test
+  `ModuleBoundariesTest` which (a) loads `module-info.class` from the test
+  classpath and asserts `jlsm.table.internal` is absent from the exported
+  package set, and (b) asserts each internal type's package name.
+- R20 (public API types reside in exported `jlsm.table`): enforced by
+  `module-info.java` exports clause. Verified by `ModuleBoundariesTest` which
+  asserts `jlsm.table` is exported and each public API type resides there.
+
+Note on R19/R20 test surface: because `jlsm-table` tests run in the unnamed
+module (Gradle `test` task uses `--add-exports jlsm.table/...=ALL-UNNAMED`),
+the runtime `Module` API cannot read the production module descriptor
+directly. The test instead walks `ClassLoader.getResources("module-info.class")`
+and selects the descriptor named `jlsm.table`.
 
 ## Design Narrative
 

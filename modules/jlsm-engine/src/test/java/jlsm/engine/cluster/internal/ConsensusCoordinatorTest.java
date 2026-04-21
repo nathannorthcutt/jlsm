@@ -40,6 +40,11 @@ import org.junit.jupiter.api.Timeout;
  * Covers constructor validation, round lifecycle, proposal routing (self vs remote), vote
  * accumulation and quorum sink invocation, refutation cancellation, tick expiry, view-change round
  * invalidation, and close idempotence.
+ *
+ * @spec engine.clustering.R34 — multi-process cut detection with observer-quorum consensus
+ * @spec engine.clustering.R36 — observers vote independently; proposals targeting self trigger refutation
+ * @spec engine.clustering.R37 — bounded consensus round timeout; expired rounds abandoned
+ * @spec engine.clustering.R38 — self-refutation cancels pending rounds; higher incarnation supersedes
  */
 @Timeout(10)
 final class ConsensusCoordinatorTest {

@@ -59,4 +59,17 @@ class IndexDefinitionTest {
         assertThrows(NullPointerException.class,
                 () -> new IndexDefinition("embedding", IndexType.VECTOR, null));
     }
+
+    @Test
+    // @spec query.index-types.R12 — non-VECTOR with non-null similarityFunction rejected with IAE
+    void testIndexDefinitionNonVectorWithSimilarityThrowsIae() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new IndexDefinition("name", IndexType.EQUALITY, SimilarityFunction.COSINE));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IndexDefinition("age", IndexType.RANGE, SimilarityFunction.COSINE));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IndexDefinition("email", IndexType.UNIQUE, SimilarityFunction.COSINE));
+        assertThrows(IllegalArgumentException.class,
+                () -> new IndexDefinition("body", IndexType.FULL_TEXT, SimilarityFunction.COSINE));
+    }
 }
