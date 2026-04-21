@@ -8,7 +8,8 @@ import org.junit.jupiter.api.Test;
 //       — covers TableQuery<K> fluent builder: where() null rejection, FieldClause comparison
 //         operators returning TableQuery<K>, and/or chaining into And/Or predicates, predicate()
 //         root exposure (null before any predicate is added).
-// (R37,R38 covered by TableIndicesAdversarialTest / integration — unbound execute() UOE.)
+// R8 (execute() returns Iterator) + R9 (unbound execute() throws UOE) covered by
+// TableQueryExecutionTest.
 class TableQueryTest {
 
     /**

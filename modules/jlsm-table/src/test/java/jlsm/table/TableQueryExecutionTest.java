@@ -37,8 +37,9 @@ import jlsm.wal.local.LocalWriteAheadLog;
  * Resolves OBL-F05-R37: {@code Table.query()} must produce a functional {@link TableQuery} that
  * runs against the table's primary tree and its registered secondary indices.
  */
-// @spec engine.in-process-database-engine.R37,F10.R37,F10.R38 — query() returns a bound TableQuery whose execute() routes
-// through QueryExecutor; unbound TableQuery.execute() throws UnsupportedOperationException.
+// @spec engine.in-process-database-engine.R37 — Table.query() returns a bound TableQuery
+// @spec query.table-query.R8,R9 — execute() returns Iterator<TableEntry<K>> routed through
+// QueryExecutor; unbound TableQuery.execute() throws UnsupportedOperationException.
 class TableQueryExecutionTest {
 
     @TempDir

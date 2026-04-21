@@ -99,7 +99,7 @@ pre-migration source spec(s) this spec was derived from.
 
 ## Verification Notes
 
-### Verified: v1 — 2026-04-20
+### Verified: v1 — 2026-04-20 (initial promotion); annotation closure 2026-04-21
 
 Promoted DRAFT → APPROVED after migration verification. Pre-migration source
 (F10 v4) was DRAFT pending post-amendment re-verification. Migration preserved
@@ -107,10 +107,29 @@ all requirements mechanically; the split redistributed F10's 139 reqs across
 8 query specs with global RN renumbering (see `.spec/_archive/migration-2026-04-20/`).
 
 Verification evidence:
-- Annotation coverage: 100% of reqs have `@spec` annotations in `modules/`
-  (implementation) and `tests/` (regression). Verified via `spec-trace.sh`.
-- Build + test green: `./gradlew test` BUILD SUCCESSFUL post-migration.
+- Annotation coverage: 28/28 reqs have direct `@spec` annotations on both the
+  implementation side (in `modules/`) and the test side. Verified via
+  `spec-trace.sh` → "All traced requirements have both implementation and
+  test annotations." No transitive/side-effect coverage is relied upon —
+  tests that previously exercised SecondaryIndex-contract behaviour only
+  through FieldIndex have been supplemented with direct tests for R1, R2,
+  R6, R8, and R26 so the contract cannot silently lose coverage if an
+  existing test is changed.
+- Build + test green: `./gradlew :modules:jlsm-table:test` — 838/838 pass.
 - Round-trip validation passed: every source `F10.R*` maps to exactly one
   `query.field-index.R*` destination, preserving req content.
 
 No requirement text changed in this promotion; only frontmatter state.
+
+### Coverage notes by requirement
+
+- R1 (sealed SecondaryIndex, 3 permitted impls) — reflection-based test
+  asserts `getPermittedSubclasses()` matches `{FieldIndex, FullTextFieldIndex,
+  VectorFieldIndex}`. Adding or removing a permitted subclass will fail this
+  test, which is the correct signal because it is a contract change.
+- R24, R25 (IndexRegistry two-phase unique validation) — covered by
+  `TableIndicesAdversarialTest.testMultipleUniqueIndicesAtomicity` (R24) and
+  `testMultipleUniqueIndicesAtomicityOnUpdate` (R25).
+- R26 (unique-check null skip) — covered at both FieldIndex level
+  (`FieldIndexTest.uniqueConstraintSkipsNullValuesOnInsert`) and
+  IndexRegistry level (`testUniqueConstraintAtRegistrySkipsNullValues`).
