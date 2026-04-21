@@ -43,7 +43,7 @@ R6. `FullTextFieldIndex.lookup` for `FullTextMatch` must translate the predicate
 
 ### Intent
 
-Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
+Generated during the 2026-04-20 spec migration. See `.spec/_archive/migration-2026-04-20/MIGRATION.md` for
 the migration plan and `.spec/_archive/migration-2026-04-20/` for the
 pre-migration source spec(s) this spec was derived from.
 
