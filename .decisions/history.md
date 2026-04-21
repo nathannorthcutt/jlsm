@@ -4,6 +4,7 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| Corruption Repair and Recovery | corruption-repair-recovery | 2026-04-15 | Layered repair — quarantine + compaction (single-node), read repair + anti-entropy + targeted replica fetch (replicated) |
 | Un-WAL'd Memtable Data Loss | un-walled-memtable-data-loss | 2026-04-15 | Documented data loss window (F27) eliminated by Raft replication (F32) for committed writes |
 | In-Flight Write Protection | in-flight-write-protection | 2026-04-15 | Drain-and-reject with in-flight completion guarantee — structured rejection metadata |
 | Concurrent WAL Replay Throttling | concurrent-wal-replay-throttling | 2026-04-15 | Three-gate resource bounding — concurrency, I/O throughput, memory budget, compaction backpressure |
