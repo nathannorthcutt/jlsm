@@ -19,11 +19,11 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| Three-Tier Key Hierarchy | three-tier-key-hierarchy | 2026-04-21 | Tenant KEK → data-domain KEK → DEK; per-tenant KMS isolation always-on; 3 KMS flavors (none/local/external); HKDF hybrid derivation; amends `encryption-key-rotation` + `per-field-key-binding` |
 | Client-Side Encryption SDK | client-side-encryption-sdk | 2026-04-15 | Schema-driven auto-encrypt/decrypt with KeyVault SPI — per-field HKDF, off-heap key caching |
 | Encrypted Prefix/Wildcard Queries | encrypted-prefix-wildcard-queries | 2026-04-15 | Prefix tokenization + DET — AES-SIV encrypted prefixes in LsmInvertedIndex, L4 leakage profile |
 | Encrypted Fuzzy Matching | encrypted-fuzzy-matching | 2026-04-15 | LSH + Bloom filter — n-gram shingling, AES-GCM encrypted filter, approximate matching, L2 leakage |
 | Corruption Repair and Recovery | corruption-repair-recovery | 2026-04-15 | Layered repair — quarantine + compaction (single-node), read repair + anti-entropy + targeted replica fetch (replicated) |
-| Un-WAL'd Memtable Data Loss | un-walled-memtable-data-loss | 2026-04-15 | Documented data loss window (F27) eliminated by Raft replication (F32) for committed writes |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
