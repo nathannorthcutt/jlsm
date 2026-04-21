@@ -28,12 +28,15 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @spec engine.clustering.R51 — track each departed member with a monotonic departure timestamp
  * @spec engine.clustering.R52 — support cancellation when a departed member returns
- * @spec engine.clustering.R53 — use a monotonic time source (never wall-clock) for duration comparisons
+ * @spec engine.clustering.R53 — use a monotonic time source (never wall-clock) for duration
+ *       comparisons
  * @spec engine.clustering.R54 — handle concurrent departures independently (ConcurrentHashMap)
  * @spec engine.clustering.R76 — safe for concurrent membership-thread + ownership-thread access
- * @spec engine.clustering.R94 — expired departures removed from internal state during expiration checks
+ * @spec engine.clustering.R94 — expired departures removed from internal state during expiration
+ *       checks
  * @spec engine.clustering.R95 — injectable clock; single-timestamp capture per operation boundary
- * @spec engine.clustering.R96 — re-departure preserves the original departure timestamp (first anchors the grace)
+ * @spec engine.clustering.R96 — re-departure preserves the original departure timestamp (first
+ *       anchors the grace)
  */
 public final class GracePeriodManager {
 

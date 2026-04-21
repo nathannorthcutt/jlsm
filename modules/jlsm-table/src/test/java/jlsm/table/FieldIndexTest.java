@@ -193,8 +193,7 @@ class FieldIndexTest {
     // @spec query.field-index.R1 — SecondaryIndex is sealed with exactly three permitted impls
     @Test
     void secondaryIndexIsSealedWithThreePermittedImplementations() {
-        assertTrue(SecondaryIndex.class.isSealed(),
-                "SecondaryIndex must be a sealed interface");
+        assertTrue(SecondaryIndex.class.isSealed(), "SecondaryIndex must be a sealed interface");
         var permitted = Set.of(SecondaryIndex.class.getPermittedSubclasses());
         var expected = Set.<Class<?>>of(FieldIndex.class, FullTextFieldIndex.class,
                 VectorFieldIndex.class);
@@ -220,8 +219,7 @@ class FieldIndexTest {
         try (var index = new FieldIndex(new IndexDefinition("name", IndexType.EQUALITY))) {
             index.onUpdate(stringKey("pk1"), null, "Alice");
             var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
-            assertEquals(1, results.size(),
-                    "null oldValue: onUpdate must act as insert-only");
+            assertEquals(1, results.size(), "null oldValue: onUpdate must act as insert-only");
         }
     }
 
@@ -232,8 +230,7 @@ class FieldIndexTest {
             index.onInsert(stringKey("pk1"), "Alice");
             index.onUpdate(stringKey("pk1"), "Alice", null);
             var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
-            assertEquals(0, results.size(),
-                    "null newValue: onUpdate must act as delete-only");
+            assertEquals(0, results.size(), "null newValue: onUpdate must act as delete-only");
         }
     }
 
@@ -244,8 +241,7 @@ class FieldIndexTest {
             index.onInsert(stringKey("pk1"), "Alice");
             assertDoesNotThrow(() -> index.onUpdate(stringKey("pk2"), null, null));
             var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
-            assertEquals(1, results.size(),
-                    "null/null onUpdate must leave the index unchanged");
+            assertEquals(1, results.size(), "null/null onUpdate must leave the index unchanged");
         }
     }
 

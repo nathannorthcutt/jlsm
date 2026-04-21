@@ -122,7 +122,8 @@ class FullTextTableIntegrationTest {
         }
     }
 
-    // @spec query.full-text-index.R1 — table builder must reject a FULL_TEXT definition when no factory is
+    // @spec query.full-text-index.R1 — table builder must reject a FULL_TEXT definition when no
+    // factory is
     // supplied, surfacing mis-wiring at build() rather than on the first write.
     @Test
     void tableBuilder_rejectsFullTextWithoutFactory() throws IOException {
@@ -157,7 +158,8 @@ class FullTextTableIntegrationTest {
         return hits;
     }
 
-    // @spec query.full-text-index.R6 — closing the table closes the registry which closes the FullTextFieldIndex
+    // @spec query.full-text-index.R6 — closing the table closes the registry which closes the
+    // FullTextFieldIndex
     // adapter which closes the underlying FullTextIndex; no resources leak.
     @Test
     void tableClose_closesFullTextIndex() throws IOException {
@@ -191,7 +193,8 @@ class FullTextTableIntegrationTest {
         try (table) {
             table.create("k1", JlsmDocument.of(schema, "body", "hi"));
             assertEquals("hi", table.get("k1").orElseThrow().getString("body"));
-            // @spec engine.in-process-database-engine.R37 (WD-03) — a schema-configured table always materialises an
+            // @spec engine.in-process-database-engine.R37 (WD-03) — a schema-configured table
+            // always materialises an
             // IndexRegistry (even with zero index definitions) so table.query() can execute
             // scan-and-filter queries. The registry must be present and empty.
             assertTrue(

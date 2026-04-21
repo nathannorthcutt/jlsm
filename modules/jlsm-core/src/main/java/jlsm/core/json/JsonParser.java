@@ -20,10 +20,13 @@ import java.util.Objects;
  * <p>
  * Stricter than RFC 8259: rejects duplicate keys, trailing content, and bounds nesting depth.
  *
- * @spec serialization.simd-jsonl.R16 — two-stage architecture: structural index then materialization
+ * @spec serialization.simd-jsonl.R16 — two-stage architecture: structural index then
+ *       materialization
  * @spec serialization.simd-jsonl.R17 — parse returns fully materialized tree, no input references
- * @spec serialization.simd-jsonl.R25 — handles all RFC 8259 types with stricter duplicate/trailing rules
- * @spec serialization.simd-jsonl.R27 — configurable max depth (default 256), iterative not recursive
+ * @spec serialization.simd-jsonl.R25 — handles all RFC 8259 types with stricter duplicate/trailing
+ *       rules
+ * @spec serialization.simd-jsonl.R27 — configurable max depth (default 256), iterative not
+ *       recursive
  */
 public final class JsonParser {
 
@@ -129,7 +132,8 @@ public final class JsonParser {
          * depth check is against {@code stack.size()} — one frame per nesting level — so the JVM
          * call stack depth is O(1) regardless of input nesting depth.
          *
-         * @spec serialization.simd-jsonl.R27 — no recursion for depth traversal; iterative state machine
+         * @spec serialization.simd-jsonl.R27 — no recursion for depth traversal; iterative state
+         *       machine
          */
         JsonValue parseValue() {
             Deque<Frame> stack = new ArrayDeque<>();
@@ -291,7 +295,8 @@ public final class JsonParser {
             }
             String key = parseStringValue();
             if (key.isBlank()) {
-                // @spec serialization.simd-jsonl.R15 — blank keys are rejected (stricter than RFC 8259)
+                // @spec serialization.simd-jsonl.R15 — blank keys are rejected (stricter than RFC
+                // 8259)
                 throw new JsonParseException("Object key must not be blank", pos);
             }
             if (of.members.containsKey(key)) {

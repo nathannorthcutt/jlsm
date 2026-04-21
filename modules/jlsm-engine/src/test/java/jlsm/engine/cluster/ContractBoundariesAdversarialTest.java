@@ -61,11 +61,14 @@ import static org.junit.jupiter.api.Assertions.*;
  * @spec engine.clustering.R78 — null-argument rejection at public API boundaries
  * @spec engine.clustering.R84 — heartbeat recorded for newly joined members on first contact
  * @spec engine.clustering.R85 — heartbeats from probe acknowledgments (bidirectional reachability)
- * @spec engine.clustering.R86 — membership start rolls back completed initialization on later-step failure
- * @spec engine.clustering.R88 — view change proposals validate sender; non-members and malformed payload rejected
+ * @spec engine.clustering.R86 — membership start rolls back completed initialization on later-step
+ *       failure
+ * @spec engine.clustering.R88 — view change proposals validate sender; non-members and malformed
+ *       payload rejected
  * @spec engine.clustering.R98 — clustered engine creates new table proxy after closing previous
  * @spec engine.clustering.R111 — local-origin encoding failures distinct from remote-node failures
- * @spec engine.clustering.R114 — range-scan response decoder rejects populated-payload-without-schema
+ * @spec engine.clustering.R114 — range-scan response decoder rejects
+ *       populated-payload-without-schema
  */
 final class ContractBoundariesAdversarialTest {
 

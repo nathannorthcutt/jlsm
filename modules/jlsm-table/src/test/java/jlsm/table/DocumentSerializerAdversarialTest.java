@@ -93,7 +93,8 @@ class DocumentSerializerAdversarialTest {
     // deserialization works correctly with sliced heap segments.
     // =====================================================================
 
-    // @spec serialization.document-serializer.R2,R3,R4 — sliced heap segment flows through toArray() fallback with offset=0
+    // @spec serialization.document-serializer.R2,R3,R4 — sliced heap segment flows through
+    // toArray() fallback with offset=0
     @Test
     void deserialize_slicedHeapSegment_producesCorrectResult() {
         // DS-01: A sliced heap segment has heapBase().isPresent() but
@@ -117,7 +118,8 @@ class DocumentSerializerAdversarialTest {
         assertEquals(42, result.getInt("val"));
     }
 
-    // @spec serialization.document-serializer.R3,R13,R14 — off-heap fallback path decodes every field type correctly
+    // @spec serialization.document-serializer.R3,R13,R14 — off-heap fallback path decodes every
+    // field type correctly
     @Test
     void deserialize_offHeapSegment_allFieldTypes_producesCorrectResult() {
         // DS-01: Comprehensive off-heap test with all primitive types to verify
@@ -160,7 +162,8 @@ class DocumentSerializerAdversarialTest {
     // prefixBoolCount precomputation handles edge cases correctly.
     // =====================================================================
 
-    // @spec serialization.document-serializer.R7,R8,R15 — prefixBoolCount correctly handles added fields incl. booleans
+    // @spec serialization.document-serializer.R7,R8,R15 — prefixBoolCount correctly handles added
+    // fields incl. booleans
     @Test
     void schemaEvolution_writerHasBooleansReaderHasMore_prefixBoolCountCorrect() {
         // Writer: [STRING, BOOLEAN, INT32] — 1 boolean at position 1
@@ -278,7 +281,8 @@ class DocumentSerializerAdversarialTest {
                 "overlap INT32 field must decode correctly when trailing boolean fields are removed");
     }
 
-    // @spec serialization.document-serializer.R16 — tail-field removal with multiple trailing booleans must not throw
+    // @spec serialization.document-serializer.R16 — tail-field removal with multiple trailing
+    // booleans must not throw
     @Test
     void schemaEvolution_writerHasMultipleTrailingBooleans_readerKeepsOnlyPrefix() {
         // Writer: [STRING, INT32, BOOLEAN, BOOLEAN, BOOLEAN] — 3 trailing bools
@@ -304,7 +308,8 @@ class DocumentSerializerAdversarialTest {
         assertEquals(7, result.getInt("n"));
     }
 
-    // @spec serialization.document-serializer.R16 — tail-field removal preserving interior booleans must not throw
+    // @spec serialization.document-serializer.R16 — tail-field removal preserving interior booleans
+    // must not throw
     @Test
     void schemaEvolution_writerInteriorBool_readerDropsTrailingBool_deserializesCleanly() {
         // Writer: [BOOLEAN, INT32, BOOLEAN] — interior bool kept, trailing bool removed
@@ -334,7 +339,8 @@ class DocumentSerializerAdversarialTest {
     // still advance boolIdx correctly during deserialization.
     // =====================================================================
 
-    // @spec serialization.document-serializer.R17,R18 — null booleans advance boolIdx without mask read under evolution
+    // @spec serialization.document-serializer.R17,R18 — null booleans advance boolIdx without mask
+    // read under evolution
     @Test
     void schemaEvolution_nullBooleansInterspersed_correctDeserialization() {
         // Writer: [BOOLEAN(null), STRING, BOOLEAN(true), INT32]
@@ -426,7 +432,8 @@ class DocumentSerializerAdversarialTest {
     // construction (precomputed arrays and dispatch table effectively immutable)
     // =====================================================================
 
-    // @spec serialization.document-serializer.R21 — deserialize is safe under concurrent invocation from multiple threads
+    // @spec serialization.document-serializer.R21 — deserialize is safe under concurrent invocation
+    // from multiple threads
     @Test
     void concurrentDeserialize_multipleThreads_allProduceSameResult() throws Exception {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
@@ -469,7 +476,8 @@ class DocumentSerializerAdversarialTest {
     // current implementation (IllegalArgumentException with descriptive msg)
     // =====================================================================
 
-    // @spec serialization.document-serializer.R24 — zero-byte segment throws IllegalArgumentException with header-size message
+    // @spec serialization.document-serializer.R24 — zero-byte segment throws
+    // IllegalArgumentException with header-size message
     @Test
     void deserialize_zeroByteSegment_throwsIllegalArgumentException() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)
@@ -483,7 +491,8 @@ class DocumentSerializerAdversarialTest {
                 "error must describe insufficient header bytes");
     }
 
-    // @spec serialization.document-serializer.R24 — zero-byte off-heap segment has same behavior as zero-byte heap segment
+    // @spec serialization.document-serializer.R24 — zero-byte off-heap segment has same behavior as
+    // zero-byte heap segment
     @Test
     void deserialize_zeroByteOffHeapSegment_throwsIllegalArgumentException() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)
@@ -501,7 +510,8 @@ class DocumentSerializerAdversarialTest {
     // the current implementation (truncated segments, truncated headers)
     // =====================================================================
 
-    // @spec serialization.document-serializer.R23 — truncated segment (fewer than 6 header bytes) produces IAE
+    // @spec serialization.document-serializer.R23 — truncated segment (fewer than 6 header bytes)
+    // produces IAE
     @Test
     void deserialize_truncatedHeader_throwsIllegalArgumentException() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)
@@ -513,7 +523,8 @@ class DocumentSerializerAdversarialTest {
         assertThrows(IllegalArgumentException.class, () -> ser.deserialize(truncated));
     }
 
-    // @spec serialization.document-serializer.R23 — malformed variable-length integer surfaces as an exception (not silent)
+    // @spec serialization.document-serializer.R23 — malformed variable-length integer surfaces as
+    // an exception (not silent)
     @Test
     void deserialize_malformedVarInt_throwsIllegalArgumentException() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)

@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link NodeAddress} record validation and value semantics.
  *
- * @spec engine.clustering.R1 — node address = (nodeId, host, port); nodeId non-null/non-empty,
- *       host non-null/non-empty, port in [1, 65535]
+ * @spec engine.clustering.R1 — node address = (nodeId, host, port); nodeId non-null/non-empty, host
+ *       non-null/non-empty, port in [1, 65535]
  */
 class NodeAddressTest {
 

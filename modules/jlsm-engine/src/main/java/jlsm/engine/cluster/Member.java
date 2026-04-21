@@ -17,7 +17,8 @@ import java.util.Objects;
  * @param state the node's current membership state; must not be null
  * @param incarnation the node's incarnation number; must be non-negative
  *
- * @spec engine.clustering.R12 — member tracks state + monotonically increasing incarnation per node identity
+ * @spec engine.clustering.R12 — member tracks state + monotonically increasing incarnation per node
+ *       identity
  */
 public record Member(NodeAddress address, MemberState state, long incarnation) {
 

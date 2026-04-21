@@ -8,7 +8,8 @@ import org.junit.jupiter.api.Test;
 class IndexDefinitionTest {
 
     @Test
-    // @spec query.index-types.R1,R7,R13 — IndexType arity + IndexDefinition three-component record + 2-arg ctor
+    // @spec query.index-types.R1,R7,R13 — IndexType arity + IndexDefinition three-component record
+    // + 2-arg ctor
     void testIndexDefinitionCreation() {
         var eqDef = new IndexDefinition("name", IndexType.EQUALITY);
         assertEquals("name", eqDef.fieldName());

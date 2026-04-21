@@ -76,7 +76,8 @@ class F01SpecVerifyRegressionTest {
                 .memTableFlushThresholdBytes(1024 * 1024).build();
     }
 
-    // @spec vector.float16-vector-support.R14 — centroids must always be stored at FLOAT32 regardless of index precision.
+    // @spec vector.float16-vector-support.R14 — centroids must always be stored at FLOAT32
+    // regardless of index precision.
     // @spec vector.float16-vector-support.R10b — centroid coordinates must remain float32.
     @Test
     void test_ivfFlat_float16Precision_centroidsStoredAtFloat32() throws IOException {
@@ -110,7 +111,8 @@ class F01SpecVerifyRegressionTest {
         }
     }
 
-    // @spec vector.float16-vector-support.R14 — full-fidelity centroid coordinates must round-trip exactly.
+    // @spec vector.float16-vector-support.R14 — full-fidelity centroid coordinates must round-trip
+    // exactly.
     @Test
     void test_ivfFlat_float16Precision_centroidCoordinatesAreFullFidelity() throws IOException {
         int dimensions = 2;
@@ -142,7 +144,8 @@ class F01SpecVerifyRegressionTest {
         }
     }
 
-    // @spec vector.float16-vector-support.R15 — centroid assignment must use the quantized vector value
+    // @spec vector.float16-vector-support.R15 — centroid assignment must use the quantized vector
+    // value
     // (encode-then-decode through the configured precision), not the original float32 input.
     // @spec vector.float16-vector-support.R10b — centroid assignment uses quantized vector value.
     @Test
@@ -179,7 +182,8 @@ class F01SpecVerifyRegressionTest {
         }
     }
 
-    // @spec vector.float16-vector-support.R20 — HNSW graph construction must use the quantized vector (decoded back to
+    // @spec vector.float16-vector-support.R20 — HNSW graph construction must use the quantized
+    // vector (decoded back to
     // float32) for all distance computations during indexing, not the original float32 input.
     @Test
     void test_hnsw_float16Precision_constructionUsesQuantizedVector() throws IOException {
@@ -211,7 +215,8 @@ class F01SpecVerifyRegressionTest {
         }
     }
 
-    // @spec vector.float16-vector-support.R23 — VectorIndex.index() public javadoc must document that re-indexing without
+    // @spec vector.float16-vector-support.R23 — VectorIndex.index() public javadoc must document
+    // that re-indexing without
     // a prior remove may degrade graph quality for graph-based indexes (HNSW).
     @Test
     void test_vectorIndex_index_javadocDocumentsReIndexingDegradation() throws IOException {
@@ -240,7 +245,8 @@ class F01SpecVerifyRegressionTest {
                 "VectorIndex.index() javadoc must mention graph-quality degradation — R23 violated");
     }
 
-    // @spec vector.float16-vector-support.R33 — calling close() multiple times on IvfFlat must be idempotent; the second
+    // @spec vector.float16-vector-support.R33 — calling close() multiple times on IvfFlat must be
+    // idempotent; the second
     // and subsequent calls must not propagate to the underlying storage tree.
     @Test
     void test_ivfFlat_close_idempotent_doubleCloseDoesNotReclose() throws Exception {
@@ -293,7 +299,8 @@ class F01SpecVerifyRegressionTest {
                 "second close must not re-invoke lsmTree.close() — R33 idempotency violated");
     }
 
-    // @spec vector.float16-vector-support.R35 — internal binary decoding routines must validate input length with a
+    // @spec vector.float16-vector-support.R35 — internal binary decoding routines must validate
+    // input length with a
     // runtime check before accessing bytes; Hnsw.readEntryPoint must reject truncated entry
     // point values with a descriptive IOException rather than throwing AIOOBE.
     @Test

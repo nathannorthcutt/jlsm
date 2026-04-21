@@ -76,7 +76,8 @@ public final class TableQuery<K> {
      * @param <K> the primary key type
      * @return a new bound query
      */
-    // @spec engine.in-process-database-engine.R37,F10.R37 — bound factory used by StringKeyedTable to wire QueryExecutor.
+    // @spec engine.in-process-database-engine.R37,F10.R37 — bound factory used by StringKeyedTable
+    // to wire QueryExecutor.
     public static <K> TableQuery<K> bound(QueryRunner<K> runner) {
         Objects.requireNonNull(runner, "runner must not be null");
         return new TableQuery<>(runner);
@@ -101,7 +102,8 @@ public final class TableQuery<K> {
      * @return iterator over matching table entries
      * @throws IOException if an I/O error occurs during query execution
      */
-    // @spec query.table-query.R8,R9 — returns Iterator<TableEntry<K>>; unbound instance throws UOE, bound
+    // @spec query.table-query.R8,R9 — returns Iterator<TableEntry<K>>; unbound instance throws UOE,
+    // bound
     // instance delegates to the QueryRunner wired by the owning table.
     public Iterator<TableEntry<K>> execute() throws IOException {
         if (runner == null) {
@@ -122,7 +124,8 @@ public final class TableQuery<K> {
      *
      * @return the root predicate, or null if no predicates have been added
      */
-    // @spec query.table-query.R7 — returns the current root predicate, or null if none have been added
+    // @spec query.table-query.R7 — returns the current root predicate, or null if none have been
+    // added
     public Predicate predicate() {
         return root;
     }
@@ -133,7 +136,8 @@ public final class TableQuery<K> {
      * @param fieldName the next field to filter on
      * @return a field clause for specifying the comparison operator
      */
-    // @spec query.table-query.R5 — combines the next predicate with the existing root using Predicate.And
+    // @spec query.table-query.R5 — combines the next predicate with the existing root using
+    // Predicate.And
     public FieldClause<K> and(String fieldName) {
         Objects.requireNonNull(fieldName, "fieldName");
         nextMode = CombineMode.AND;
@@ -146,7 +150,8 @@ public final class TableQuery<K> {
      * @param fieldName the next field to filter on
      * @return a field clause for specifying the comparison operator
      */
-    // @spec query.table-query.R6 — combines the next predicate with the existing root using Predicate.Or
+    // @spec query.table-query.R6 — combines the next predicate with the existing root using
+    // Predicate.Or
     public FieldClause<K> or(String fieldName) {
         Objects.requireNonNull(fieldName, "fieldName");
         nextMode = CombineMode.OR;
@@ -174,7 +179,8 @@ public final class TableQuery<K> {
      *
      * @param <K> the primary key type
      */
-    // @spec query.table-query.R4 — FieldClause provides eq/ne/gt/gte/lt/lte/between/fullTextMatch/vectorNearest
+    // @spec query.table-query.R4 — FieldClause provides
+    // eq/ne/gt/gte/lt/lte/between/fullTextMatch/vectorNearest
     // each returning the owning TableQuery<K> for chaining
     public static final class FieldClause<K> {
 

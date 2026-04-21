@@ -35,7 +35,8 @@ import java.util.stream.StreamSupport;
  * <p>
  * Implements {@link AutoCloseable}; closing the reader closes the underlying input stream.
  *
- * @spec serialization.simd-jsonl.R30 — reads JSON Lines from InputStream, one value per non-empty line
+ * @spec serialization.simd-jsonl.R30 — reads JSON Lines from InputStream, one value per non-empty
+ *       line
  * @spec serialization.simd-jsonl.R31 — stream() returns Stream of JsonValue
  * @spec serialization.simd-jsonl.R32 — no accumulation across lines, O(line) memory
  * @spec serialization.simd-jsonl.R33 — fail-fast and skip-on-error modes

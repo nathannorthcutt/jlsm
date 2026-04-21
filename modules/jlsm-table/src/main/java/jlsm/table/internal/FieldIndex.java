@@ -25,9 +25,11 @@ import jlsm.table.Predicate;
  * values are lists of primary keys.
  */
 // @spec query.field-index.R11 — final class in jlsm.table.internal implementing SecondaryIndex
-// @spec query.field-index.R13 — sorted map keyed by sort-preserving encoded field values (ByteArrayKey -> PK
+// @spec query.field-index.R13 — sorted map keyed by sort-preserving encoded field values
+// (ByteArrayKey -> PK
 // list)
-// @spec query.query-executor.R22 — volatile closed flag exposes closed-state visibility across threads
+// @spec query.query-executor.R22 — volatile closed flag exposes closed-state visibility across
+// threads
 public final class FieldIndex implements SecondaryIndex {
 
     private final IndexDefinition definition;
@@ -42,7 +44,8 @@ public final class FieldIndex implements SecondaryIndex {
     public FieldIndex(IndexDefinition definition, FieldType schemaFieldType) throws IOException {
         Objects.requireNonNull(definition, "definition");
         IndexType type = definition.indexType();
-        // @spec query.field-index.R12 — reject non-EQUALITY/RANGE/UNIQUE index types at construction with IAE
+        // @spec query.field-index.R12 — reject non-EQUALITY/RANGE/UNIQUE index types at
+        // construction with IAE
         if (type != IndexType.EQUALITY && type != IndexType.RANGE && type != IndexType.UNIQUE) {
             throw new IllegalArgumentException(
                     "FieldIndex only supports EQUALITY, RANGE, or UNIQUE — got " + type);
@@ -142,7 +145,8 @@ public final class FieldIndex implements SecondaryIndex {
     @Override
     // @spec query.field-index.R7,R8 — remove (pk, value); null value no-op; post-close rejects with
     // @spec query.query-executor.R3 — remove (pk, value); null value no-op; post-close rejects with
-    // @spec query.index-registry.R17 — remove (pk, value); null value no-op; post-close rejects with
+    // @spec query.index-registry.R17 — remove (pk, value); null value no-op; post-close rejects
+    // with
     // ISE
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
         if (closed) {
@@ -155,7 +159,8 @@ public final class FieldIndex implements SecondaryIndex {
     }
 
     @Override
-    // @spec query.field-index.R9,R16,R17,R18,R19,R20 — per-predicate dispatch using sort-preserving encoded
+    // @spec query.field-index.R9,R16,R17,R18,R19,R20 — per-predicate dispatch using sort-preserving
+    // encoded
     // @spec query.index-registry.R17 — per-predicate dispatch using sort-preserving encoded
     // keys
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
@@ -264,7 +269,8 @@ public final class FieldIndex implements SecondaryIndex {
         return flattenValues(entries.headMap(encoded, true));
     }
 
-    // @spec query.field-index.R19,R20 — inclusive [low,high] range; empty iterator when lowKey > highKey
+    // @spec query.field-index.R19,R20 — inclusive [low,high] range; empty iterator when lowKey >
+    // highKey
     private Iterator<MemorySegment> lookupBetween(Object low, Object high) {
         FieldType lowType = resolveFieldType(low);
         FieldType highType = resolveFieldType(high);
@@ -325,7 +331,8 @@ public final class FieldIndex implements SecondaryIndex {
      * back to runtime type inference. This is critical for Short values which are ambiguous between
      * INT16 and FLOAT16.
      */
-    // @spec query.index-types.R31 — prefer schema-declared FieldType over runtime inference for encoding
+    // @spec query.index-types.R31 — prefer schema-declared FieldType over runtime inference for
+    // encoding
     private FieldType resolveFieldType(Object value) {
         if (schemaFieldType != null) {
             return schemaFieldType;
@@ -356,7 +363,8 @@ public final class FieldIndex implements SecondaryIndex {
     /**
      * Byte array wrapper with unsigned bytewise comparison for use as TreeMap key.
      */
-    // @spec query.field-index.R21,R27 — unsigned byte-wise comparison so sort-preserving encoding orders
+    // @spec query.field-index.R21,R27 — unsigned byte-wise comparison so sort-preserving encoding
+    // orders
     // correctly
     // @spec query.field-index.R28 — equals/hashCode derived from array content via java.util.Arrays
     record ByteArrayKey(byte[] data) implements Comparable<ByteArrayKey> {

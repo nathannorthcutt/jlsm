@@ -18,7 +18,8 @@ import java.util.function.Consumer;
  */
 // @spec schema.schema-construction.R1 — final class in jlsm.table, not subclassable
 // @spec schema.schema-invariants.R1 — all fields private final, effectively immutable
-// @spec schema.schema-invariants.R4 — safe for concurrent read access (immutable after construction)
+// @spec schema.schema-invariants.R4 — safe for concurrent read access (immutable after
+// construction)
 // @spec schema.schema-field-access.R8 — no toString() override (absent behavior)
 // @spec schema.schema-field-access.R9 — no Serializable (absent behavior)
 // @spec schema.schema-field-access.R10 — no field-count upper bound at schema level
@@ -35,9 +36,11 @@ public final class JlsmSchema {
     private final Map<String, Integer> fieldIndexMap;
 
     // @spec schema.schema-construction.R2 — private constructor, instances only via builder
-    // @spec schema.schema-construction.R4,R5,R6,R7 — assertion checks for name, fields, maxDepth, version
+    // @spec schema.schema-construction.R4,R5,R6,R7 — assertion checks for name, fields, maxDepth,
+    // version
     // @spec schema.schema-construction.R9 — fields defensively copied via List.copyOf
-    // @spec schema.schema-construction.R10 — duplicate field names rejected with IllegalArgumentException
+    // @spec schema.schema-construction.R10 — duplicate field names rejected with
+    // IllegalArgumentException
     // @spec schema.schema-construction.R11 — empty field list accepted without error
     // @spec schema.schema-construction.R12 — field ordering preserved (List.copyOf maintains order)
     // @spec schema.schema-field-access.R4 — fieldIndexMap unmodifiable via Map.copyOf
@@ -178,9 +181,12 @@ public final class JlsmSchema {
             this.rootBuilder = rootBuilder;
         }
 
-        // @spec schema.schema-construction.R13 — rejects null name or type with NullPointerException
-        // @spec schema.schema-construction.R15 — creates FieldDefinition with EncryptionSpec.NONE default
-        // @spec schema.schema-construction.R23 — rejects blank field names with IllegalArgumentException
+        // @spec schema.schema-construction.R13 — rejects null name or type with
+        // NullPointerException
+        // @spec schema.schema-construction.R15 — creates FieldDefinition with EncryptionSpec.NONE
+        // default
+        // @spec schema.schema-construction.R23 — rejects blank field names with
+        // IllegalArgumentException
         /**
          * Adds a primitive or array field to this schema level.
          *
@@ -200,7 +206,8 @@ public final class JlsmSchema {
             return this;
         }
 
-        // @spec schema.schema-construction.R14 — rejects null name, type, or encryption with NullPointerException
+        // @spec schema.schema-construction.R14 — rejects null name, type, or encryption with
+        // NullPointerException
         // @spec schema.schema-construction.R23 — rejects blank field names
         /**
          * Adds a primitive or array field with an explicit encryption specification.
@@ -224,7 +231,8 @@ public final class JlsmSchema {
             return this;
         }
 
-        // @spec schema.schema-construction.R16 — rejects null name or elementType with NullPointerException
+        // @spec schema.schema-construction.R16 — rejects null name or elementType with
+        // NullPointerException
         // @spec schema.schema-construction.R17 — delegates to FieldType.vector for validation
         // @spec vector.field-type.R9 — adds a VectorType field to the schema
         // @spec vector.field-type.R10 — rejects null name with NullPointerException
@@ -283,7 +291,8 @@ public final class JlsmSchema {
             return this;
         }
 
-        // @spec schema.schema-construction.R18 — rejects values >25 or negative with IllegalArgumentException
+        // @spec schema.schema-construction.R18 — rejects values >25 or negative with
+        // IllegalArgumentException
         // @spec schema.schema-construction.R19 — accepts values in range [0, 25] inclusive
         /**
          * Sets the maximum nesting depth allowed for object fields. Must be between 0 and 25

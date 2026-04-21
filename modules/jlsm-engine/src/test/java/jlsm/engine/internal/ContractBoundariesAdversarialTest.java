@@ -37,7 +37,8 @@ class ContractBoundariesAdversarialTest {
     // maxHandlesPerSourcePerTable
     // Fix location: HandleTracker.register() — should call evictIfNeeded(tableName) after inserting
     // Regression watch: eviction must invalidate oldest handle, not the newly registered one
-    // @spec engine.in-process-database-engine.R80 — register must invoke eviction when limits are exceeded
+    // @spec engine.in-process-database-engine.R80 — register must invoke eviction when limits are
+    // exceeded
     @Test
     void test_HandleTracker_register_doesNotEnforceLimits() throws IOException {
         final int perSourceLimit = 2;
@@ -113,8 +114,10 @@ class ContractBoundariesAdversarialTest {
     // should be closed, removed from liveTables, and the catalog entry unregistered
     // Fix location: LocalEngine.createTable() lines 99-106 — wrap in try-catch with rollback
     // Regression watch: rollback must close jlsmTable before removing from liveTables/catalog
-    // @spec engine.in-process-database-engine.R17,R87 — createTable rollback removes orphaned resources on any failure;
-    // if directory creation / registration fails the table must not appear in the catalog on a subsequent startup.
+    // @spec engine.in-process-database-engine.R17,R87 — createTable rollback removes orphaned
+    // resources on any failure;
+    // if directory creation / registration fails the table must not appear in the catalog on a
+    // subsequent startup.
     @Test
     void test_LocalEngine_createTable_doesNotCloseJlsmTableOnHandleRegistrationFailure(
             @TempDir Path tempDir) throws IOException {
@@ -237,7 +240,8 @@ class ContractBoundariesAdversarialTest {
     // maxHandlesPerSourcePerTable > maxHandlesPerTable or maxHandlesPerTable > maxTotalHandles
     // Fix location: HandleTracker.Builder.build() and LocalEngine.Builder.build()
     // Regression watch: valid hierarchies (e.g., 4 <= 16 <= 64) must still be accepted
-    // @spec engine.in-process-database-engine.R72,R90 — maxHandlesPerSourcePerTable <= maxHandlesPerTable
+    // @spec engine.in-process-database-engine.R72,R90 — maxHandlesPerSourcePerTable <=
+    // maxHandlesPerTable
     @Test
     void test_HandleTrackerBuilder_allowsNonsensicalHierarchicalLimits() {
         // Per-source (100) > per-table (10) — nonsensical: a single source can never
@@ -261,7 +265,8 @@ class ContractBoundariesAdversarialTest {
                         + "should be rejected at build time");
     }
 
-    // @spec engine.in-process-database-engine.R72,R90 — LocalEngine.Builder rejects hierarchy violations
+    // @spec engine.in-process-database-engine.R72,R90 — LocalEngine.Builder rejects hierarchy
+    // violations
     @Test
     void test_LocalEngineBuilder_allowsNonsensicalHierarchicalLimits(@TempDir Path tempDir) {
         // Same hierarchy violation through LocalEngine.Builder

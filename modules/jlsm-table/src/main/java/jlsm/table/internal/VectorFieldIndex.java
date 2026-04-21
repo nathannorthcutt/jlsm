@@ -68,8 +68,10 @@ public final class VectorFieldIndex implements SecondaryIndex {
         return definition;
     }
 
-    // @spec query.field-index.R3,R4 — extract vector from field value and index; null value is a no-op
-    // @spec query.vector-index.R3 — extract vector from field value and index; null value is a no-op
+    // @spec query.field-index.R3,R4 — extract vector from field value and index; null value is a
+    // no-op
+    // @spec query.vector-index.R3 — extract vector from field value and index; null value is a
+    // no-op
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
         ensureOpen();
@@ -80,8 +82,10 @@ public final class VectorFieldIndex implements SecondaryIndex {
         backing.index(primaryKey, toFloats(fieldValue));
     }
 
-    // @spec query.field-index.R5,R6 — remove old vector (if non-null) then insert new vector (if non-null)
-    // @spec query.vector-index.R4 — remove old vector (if non-null) then insert new vector (if non-null)
+    // @spec query.field-index.R5,R6 — remove old vector (if non-null) then insert new vector (if
+    // non-null)
+    // @spec query.vector-index.R4 — remove old vector (if non-null) then insert new vector (if
+    // non-null)
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
@@ -116,8 +120,10 @@ public final class VectorFieldIndex implements SecondaryIndex {
         backing.remove(primaryKey);
     }
 
-    // @spec query.field-index.R9 — translate VectorNearest → VectorIndex.search and return matching PKs;
-    // @spec query.vector-index.R6 — translate VectorNearest → VectorIndex.search and return matching PKs;
+    // @spec query.field-index.R9 — translate VectorNearest → VectorIndex.search and return matching
+    // PKs;
+    // @spec query.vector-index.R6 — translate VectorNearest → VectorIndex.search and return
+    // matching PKs;
     // reject other predicate shapes with UOE
     @Override
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
@@ -154,8 +160,10 @@ public final class VectorFieldIndex implements SecondaryIndex {
         };
     }
 
-    // @spec query.field-index.R10 — true only for VectorNearest whose field matches this index's field
-    // @spec query.vector-index.R2 — true only for VectorNearest whose field matches this index's field
+    // @spec query.field-index.R10 — true only for VectorNearest whose field matches this index's
+    // field
+    // @spec query.vector-index.R2 — true only for VectorNearest whose field matches this index's
+    // field
     @Override
     public boolean supports(Predicate predicate) {
         if (closed) {

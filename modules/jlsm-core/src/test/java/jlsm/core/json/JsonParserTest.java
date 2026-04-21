@@ -392,7 +392,8 @@ class JsonParserTest {
             assertThrows(JsonParseException.class, () -> JsonParser.parse(sb.toString()));
         }
 
-        // @spec serialization.simd-jsonl.R27 — parser must use an explicit stack, not recursion, for depth
+        // @spec serialization.simd-jsonl.R27 — parser must use an explicit stack, not recursion,
+        // for depth
         // traversal. At the upper bound of R52 (maxDepth=4096), the old mutual-recursion
         // implementation consumed ~3 stack frames per level (~12k frames), which risks
         // StackOverflowError on default JVM stack sizes. The explicit-stack implementation

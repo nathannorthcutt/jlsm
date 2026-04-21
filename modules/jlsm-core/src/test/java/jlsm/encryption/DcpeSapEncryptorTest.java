@@ -146,7 +146,8 @@ class DcpeSapEncryptorTest {
         }
     }
 
-    // @spec encryption.primitives-variants.R29 — non-finite output rejected with IllegalStateException
+    // @spec encryption.primitives-variants.R29 — non-finite output rejected with
+    // IllegalStateException
     @Test
     void encrypt_rejectsOverflowToInfinity() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -235,7 +236,8 @@ class DcpeSapEncryptorTest {
 
     // ── Blob encoding ──────────────────────────────────────────────────────
 
-    // @spec serialization.encrypted-field-serialization.R4, F41.R22 — blob round-trips through toBlob/fromBlob
+    // @spec serialization.encrypted-field-serialization.R4, F41.R22 — blob round-trips through
+    // toBlob/fromBlob
     @Test
     void blob_roundTrip() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);

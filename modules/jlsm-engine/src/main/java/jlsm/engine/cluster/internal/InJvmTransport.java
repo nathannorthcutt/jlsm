@@ -59,7 +59,8 @@ public final class InJvmTransport implements ClusterTransport {
         }
     }
 
-    // @spec engine.clustering.R32 — configure the per-send delivery delay for fault-injection testing.
+    // @spec engine.clustering.R32 — configure the per-send delivery delay for fault-injection
+    // testing.
     /**
      * Sets the simulated per-delivery delay. The default is {@link Duration#ZERO}. Must not be
      * negative.
@@ -74,7 +75,8 @@ public final class InJvmTransport implements ClusterTransport {
         this.deliveryDelay = delay;
     }
 
-    // @spec engine.clustering.R32 — configure the simulated message loss rate for fault-injection testing.
+    // @spec engine.clustering.R32 — configure the simulated message loss rate for fault-injection
+    // testing.
     /**
      * Sets the simulated per-send message loss probability. Must be in [0.0, 1.0]. The default is
      * {@code 0.0} (no loss).
@@ -92,18 +94,21 @@ public final class InJvmTransport implements ClusterTransport {
     public void send(NodeAddress target, Message msg) throws IOException {
         Objects.requireNonNull(target, "target must not be null");
         Objects.requireNonNull(msg, "msg must not be null");
-        // @spec engine.clustering.R81 — closed transport rejects send with IllegalStateException (not
+        // @spec engine.clustering.R81 — closed transport rejects send with IllegalStateException
+        // (not
         // IOException)
         if (closed.get()) {
             throw new IllegalStateException("Transport is closed");
         }
-        // @spec engine.clustering.R32 — simulate message loss by silently dropping a fraction of sends.
+        // @spec engine.clustering.R32 — simulate message loss by silently dropping a fraction of
+        // sends.
         if (messageLossRate > 0.0 && ThreadLocalRandom.current().nextDouble() < messageLossRate) {
             return;
         }
         applyDeliveryDelay();
         final var targetTransport = REGISTRY.get(target);
-        // @spec engine.clustering.R28 — delivery failures (unreachable target or handler) are silently absorbed;
+        // @spec engine.clustering.R28 — delivery failures (unreachable target or handler) are
+        // silently absorbed;
         // the failure detector is the mechanism for detecting unreachable nodes.
         if (targetTransport == null) {
             return;
@@ -127,7 +132,8 @@ public final class InJvmTransport implements ClusterTransport {
         if (closed.get()) {
             return CompletableFuture.failedFuture(new IllegalStateException("Transport is closed"));
         }
-        // @spec engine.clustering.R32 — simulate message loss on requests by completing with unreachable.
+        // @spec engine.clustering.R32 — simulate message loss on requests by completing with
+        // unreachable.
         if (messageLossRate > 0.0 && ThreadLocalRandom.current().nextDouble() < messageLossRate) {
             return CompletableFuture
                     .failedFuture(new IOException("Simulated message loss to: " + target));
@@ -144,7 +150,8 @@ public final class InJvmTransport implements ClusterTransport {
                     .failedFuture(new IOException("No handler registered for type: " + msg.type()));
         }
         final CompletableFuture<Message> result = handler.handle(localAddress, msg);
-        // @spec engine.clustering.R81 — track in-flight futures so close() can complete them exceptionally.
+        // @spec engine.clustering.R81 — track in-flight futures so close() can complete them
+        // exceptionally.
         if (!result.isDone()) {
             inFlightFutures.add(result);
             result.whenComplete((_, _) -> inFlightFutures.remove(result));
@@ -180,7 +187,8 @@ public final class InJvmTransport implements ClusterTransport {
         }
         REGISTRY.remove(localAddress);
         handlers.clear();
-        // @spec engine.clustering.R81 — complete any in-flight response futures exceptionally on close.
+        // @spec engine.clustering.R81 — complete any in-flight response futures exceptionally on
+        // close.
         for (final CompletableFuture<Message> f : inFlightFutures) {
             if (!f.isDone()) {
                 f.completeExceptionally(new IllegalStateException("Transport closed"));

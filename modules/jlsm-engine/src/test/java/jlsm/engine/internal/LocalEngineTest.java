@@ -51,13 +51,15 @@ class LocalEngineTest {
 
     // ---- Builder validation ----
 
-    // @spec engine.in-process-database-engine.R1 — builder requires rootDirectory to be set before build()
+    // @spec engine.in-process-database-engine.R1 — builder requires rootDirectory to be set before
+    // build()
     @Test
     void builderRequiresRootDirectory() {
         assertThrows(IllegalStateException.class, () -> LocalEngine.builder().build());
     }
 
-    // @spec engine.in-process-database-engine.R2 — reject null rootDirectory with NPE identifying the parameter
+    // @spec engine.in-process-database-engine.R2 — reject null rootDirectory with NPE identifying
+    // the parameter
     @Test
     void builderRejectsNullRootDirectory() {
         assertThrows(NullPointerException.class, () -> LocalEngine.builder().rootDirectory(null));
@@ -65,7 +67,8 @@ class LocalEngineTest {
 
     // ---- createTable ----
 
-    // @spec engine.in-process-database-engine.R10,R22 — create+retrieve a handle supporting CRUD operations
+    // @spec engine.in-process-database-engine.R10,R22 — create+retrieve a handle supporting CRUD
+    // operations
     @Test
     void createTableReturnsUsableHandle() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -76,7 +79,8 @@ class LocalEngineTest {
         }
     }
 
-    // @spec engine.in-process-database-engine.R15,R16 — persist metadata before returning; dedicated subdirectory per table
+    // @spec engine.in-process-database-engine.R15,R16 — persist metadata before returning;
+    // dedicated subdirectory per table
     @Test
     void createTableCreatesDirectoryAndWritesData() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -92,7 +96,8 @@ class LocalEngineTest {
         }
     }
 
-    // @spec engine.in-process-database-engine.R14 — duplicate create throws IOException with the conflicting name
+    // @spec engine.in-process-database-engine.R14 — duplicate create throws IOException with the
+    // conflicting name
     @Test
     void createTableWithDuplicateNameThrowsIOException() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -101,7 +106,8 @@ class LocalEngineTest {
         }
     }
 
-    // @spec engine.in-process-database-engine.R11,R70 — reject null name with NPE identifying the parameter
+    // @spec engine.in-process-database-engine.R11,R70 — reject null name with NPE identifying the
+    // parameter
     @Test
     void createTableRejectsNullName() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -118,7 +124,8 @@ class LocalEngineTest {
         }
     }
 
-    // @spec engine.in-process-database-engine.R12,R70 — reject null schema with NPE identifying the parameter
+    // @spec engine.in-process-database-engine.R12,R70 — reject null schema with NPE identifying the
+    // parameter
     @Test
     void createTableRejectsNullSchema() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -128,7 +135,8 @@ class LocalEngineTest {
 
     // ---- getTable ----
 
-    // @spec engine.in-process-database-engine.R22,R53 — retrieve a handle to an existing table; data survives close/reopen
+    // @spec engine.in-process-database-engine.R22,R53 — retrieve a handle to an existing table;
+    // data survives close/reopen
     @Test
     void getTableReturnsHandleToExistingTable() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -148,7 +156,8 @@ class LocalEngineTest {
         }
     }
 
-    // @spec engine.in-process-database-engine.R23 — retrieving a non-existent table throws IOException with the name
+    // @spec engine.in-process-database-engine.R23 — retrieving a non-existent table throws
+    // IOException with the name
     @Test
     void getTableForUnknownTableThrowsIOException() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -172,7 +181,8 @@ class LocalEngineTest {
 
     // ---- dropTable ----
 
-    // @spec engine.in-process-database-engine.R26,R29 — drop transitions to DROPPED and invalidates held handles
+    // @spec engine.in-process-database-engine.R26,R29 — drop transitions to DROPPED and invalidates
+    // held handles
     @Test
     void dropTableRemovesTableAndInvalidatesHandles() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -209,7 +219,8 @@ class LocalEngineTest {
 
     // ---- listTables ----
 
-    // @spec engine.in-process-database-engine.R20 — listTables returns the registered tables (READY-only filtering verified in
+    // @spec engine.in-process-database-engine.R20 — listTables returns the registered tables
+    // (READY-only filtering verified in
     // F05ContractTest.listTablesReturnsReadyOnlySnapshot)
     @Test
     void listTablesReturnsAllRegisteredTables() throws IOException {
@@ -242,7 +253,8 @@ class LocalEngineTest {
         }
     }
 
-    // @spec engine.in-process-database-engine.R21 — tableMetadata returns null for unknown table (amended: "empty result" ==
+    // @spec engine.in-process-database-engine.R21 — tableMetadata returns null for unknown table
+    // (amended: "empty result" ==
     // null)
     @Test
     void tableMetadataReturnsNullForUnknownTable() throws IOException {
@@ -253,7 +265,8 @@ class LocalEngineTest {
 
     // ---- metrics ----
 
-    // @spec engine.in-process-database-engine.R62,R63 — metrics expose handle counts reflecting current state
+    // @spec engine.in-process-database-engine.R62,R63 — metrics expose handle counts reflecting
+    // current state
     @Test
     void metricsReturnCorrectCounts() throws IOException {
         try (final LocalEngine engine = buildEngine()) {
@@ -280,7 +293,8 @@ class LocalEngineTest {
         assertThrows(HandleEvictedException.class, () -> handle.get("k1"));
     }
 
-    // @spec engine.in-process-database-engine.R78 — close continues closing remaining tables when one errors;
+    // @spec engine.in-process-database-engine.R78 — close continues closing remaining tables when
+    // one errors;
     // all accumulated errors are reported after all tables have been released.
     @Test
     void closeContinuesClosingRemainingTablesWhenOneFails() throws IOException {
@@ -355,7 +369,8 @@ class LocalEngineTest {
 
     // ---- Engine is usable after restart from same directory ----
 
-    // @spec engine.in-process-database-engine.R5,R53,R84 — tables survive close/reopen with full schema recovered
+    // @spec engine.in-process-database-engine.R5,R53,R84 — tables survive close/reopen with full
+    // schema recovered
     @Test
     void engineRecoversPreviouslyCreatedTables() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -383,7 +398,8 @@ class LocalEngineTest {
 
     // ---- Concurrent table creation ----
 
-    // @spec engine.in-process-database-engine.R65,R66,R88 — concurrent create-table calls with different names all succeed;
+    // @spec engine.in-process-database-engine.R65,R66,R88 — concurrent create-table calls with
+    // different names all succeed;
     // storage directories for different names must not interfere with each other's registration
     @Test
     void concurrentTableCreation() throws Exception {

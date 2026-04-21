@@ -23,7 +23,8 @@ package jlsm.core.json;
  * <p>
  * All implementations are deeply immutable. Equality semantics are defined per subtype.
  *
- * @spec serialization.simd-jsonl.R4 — sealed interface permitting JsonObject, JsonArray, JsonPrimitive, JsonNull
+ * @spec serialization.simd-jsonl.R4 — sealed interface permitting JsonObject, JsonArray,
+ *       JsonPrimitive, JsonNull
  */
 public sealed interface JsonValue permits JsonObject, JsonArray, JsonPrimitive, JsonNull {
 }

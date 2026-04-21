@@ -16,7 +16,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * compilation failures until implemented.
  * </p>
  */
-// @spec sstable.v3-format-upgrade.R1,R2,R3,R22 — v3 CompressionMap: 21-byte entries with CRC32C, version-aware
+// @spec sstable.v3-format-upgrade.R1,R2,R3,R22 — v3 CompressionMap: 21-byte entries with CRC32C,
+// version-aware
 class CompressionMapV3Test {
 
     @Test

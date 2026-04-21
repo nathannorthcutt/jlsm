@@ -21,7 +21,8 @@ import java.util.Objects;
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
  */
 // @spec engine.in-process-database-engine.R76 — public API surface uses only exported types (Table,
-// TableMetadata, EngineMetrics, JlsmSchema); internal classes (LocalEngine, HandleTracker) are never
+// TableMetadata, EngineMetrics, JlsmSchema); internal classes (LocalEngine, HandleTracker) are
+// never
 // exposed in parameter or return positions.
 public interface Engine extends Closeable {
 
@@ -30,7 +31,8 @@ public interface Engine extends Closeable {
      *
      * @return a new builder; never null
      */
-    // @spec engine.in-process-database-engine.R1 — public factory exposed from the exported jlsm.engine package
+    // @spec engine.in-process-database-engine.R1 — public factory exposed from the exported
+    // jlsm.engine package
     static Builder builder() {
         return new Builder();
     }
@@ -100,7 +102,8 @@ public interface Engine extends Closeable {
      * filesystem. Delegates to the internal {@link LocalEngine.Builder}; the indirection keeps the
      * implementation class out of the exported public API surface.
      */
-    // @spec engine.in-process-database-engine.R1 — public Builder type exposed from the exported jlsm.engine package
+    // @spec engine.in-process-database-engine.R1 — public Builder type exposed from the exported
+    // jlsm.engine package
     final class Builder {
 
         private final LocalEngine.Builder delegate;

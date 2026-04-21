@@ -142,8 +142,7 @@ class QueryExecutorTest {
         var ex = assertThrows(UnsupportedOperationException.class,
                 () -> collect(executor.execute(new Predicate.FullTextMatch("name", "Alice"))),
                 "FullTextMatch without a FULL_TEXT index must throw UnsupportedOperationException");
-        assertTrue(ex.getMessage().contains("name"),
-                "message must identify the field");
+        assertTrue(ex.getMessage().contains("name"), "message must identify the field");
         assertTrue(ex.getMessage().contains("FULL_TEXT"),
                 "message must identify the required index type");
 
@@ -159,12 +158,11 @@ class QueryExecutorTest {
         registry.onInsert(stringKey("pk1"), doc);
 
         var executor = QueryExecutor.forStringKeys(schema, registry);
-        float[] query = new float[] {1.0f, 2.0f, 3.0f};
+        float[] query = new float[]{ 1.0f, 2.0f, 3.0f };
         var ex = assertThrows(UnsupportedOperationException.class,
                 () -> collect(executor.execute(new Predicate.VectorNearest("name", query, 1))),
                 "VectorNearest without a VECTOR index must throw UnsupportedOperationException");
-        assertTrue(ex.getMessage().contains("name"),
-                "message must identify the field");
+        assertTrue(ex.getMessage().contains("name"), "message must identify the field");
         assertTrue(ex.getMessage().contains("VECTOR"),
                 "message must identify the required index type");
 

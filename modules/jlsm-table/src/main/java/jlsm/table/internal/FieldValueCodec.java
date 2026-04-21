@@ -44,11 +44,14 @@ public final class FieldValueCodec {
         }
     }
 
-    // @spec query.field-value-codec.R1 — encode returns sort-preserving MemorySegment for non-null value + FieldType
+    // @spec query.field-value-codec.R1 — encode returns sort-preserving MemorySegment for non-null
+    // value + FieldType
     // @spec query.field-value-codec.R2 — reject null fieldType with NPE
     // @spec query.field-value-codec.R3 — reject null value with NPE
-    // @spec query.field-value-codec.R4 — reject non-primitive, non-BoundedString field types with IAE
-    // @spec query.index-types.R31 — encoding dispatches on FieldType parameter, not runtime value type
+    // @spec query.field-value-codec.R4 — reject non-primitive, non-BoundedString field types with
+    // IAE
+    // @spec query.index-types.R31 — encoding dispatches on FieldType parameter, not runtime value
+    // type
     public static MemorySegment encode(Object value, FieldType fieldType) {
         Objects.requireNonNull(fieldType, "fieldType");
         final FieldType.Primitive p;
@@ -75,7 +78,8 @@ public final class FieldValueCodec {
         };
     }
 
-    // @spec query.field-value-codec.R12 — decode is inverse of encode for all supported types (round-trip equality)
+    // @spec query.field-value-codec.R12 — decode is inverse of encode for all supported types
+    // (round-trip equality)
     public static Object decode(MemorySegment encoded, FieldType fieldType) {
         Objects.requireNonNull(encoded, "encoded");
         Objects.requireNonNull(fieldType, "fieldType");
@@ -178,8 +182,10 @@ public final class FieldValueCodec {
 
     // ── FLOAT16 ─────────────────────────────────────────────────────────
 
-    // @spec query.field-value-codec.R8 — FLOAT16 IEEE 754 sort-preserving (invert all bits if sign bit set;
-    // @spec query.index-types.R30 — FLOAT16 IEEE 754 sort-preserving (invert all bits if sign bit set;
+    // @spec query.field-value-codec.R8 — FLOAT16 IEEE 754 sort-preserving (invert all bits if sign
+    // bit set;
+    // @spec query.index-types.R30 — FLOAT16 IEEE 754 sort-preserving (invert all bits if sign bit
+    // set;
     // else set sign bit); reject non-Short raw-bits values with IAE
     private static MemorySegment encodeFloat16(Object value) {
         if (!(value instanceof Short s)) {
@@ -210,7 +216,8 @@ public final class FieldValueCodec {
 
     // ── FLOAT32 ─────────────────────────────────────────────────────────
 
-    // @spec query.field-value-codec.R6,R13 — FLOAT32 IEEE 754 sort-preserving; NaN sorts above +Inf; reject
+    // @spec query.field-value-codec.R6,R13 — FLOAT32 IEEE 754 sort-preserving; NaN sorts above
+    // +Inf; reject
     // @spec query.index-types.R30 — FLOAT32 IEEE 754 sort-preserving; NaN sorts above +Inf; reject
     // non-Float IAE
     private static MemorySegment encodeFloat32(Object value) {
@@ -242,7 +249,8 @@ public final class FieldValueCodec {
 
     // ── FLOAT64 ─────────────────────────────────────────────────────────
 
-    // @spec query.field-value-codec.R7,R14 — FLOAT64 IEEE 754 sort-preserving; NaN sorts above +Inf; reject
+    // @spec query.field-value-codec.R7,R14 — FLOAT64 IEEE 754 sort-preserving; NaN sorts above
+    // +Inf; reject
     // @spec query.index-types.R30 — FLOAT64 IEEE 754 sort-preserving; NaN sorts above +Inf; reject
     // non-Double IAE
     private static MemorySegment encodeFloat64(Object value) {
@@ -274,8 +282,10 @@ public final class FieldValueCodec {
 
     // ── STRING ──────────────────────────────────────────────────────────
 
-    // @spec query.field-value-codec.R9 — STRING/BoundedString raw UTF-8 bytes (no transformation); reject
-    // @spec query.index-types.R30 — STRING/BoundedString raw UTF-8 bytes (no transformation); reject
+    // @spec query.field-value-codec.R9 — STRING/BoundedString raw UTF-8 bytes (no transformation);
+    // reject
+    // @spec query.index-types.R30 — STRING/BoundedString raw UTF-8 bytes (no transformation);
+    // reject
     // non-String IAE
     private static MemorySegment encodeString(Object value) {
         if (!(value instanceof String s)) {
@@ -314,8 +324,10 @@ public final class FieldValueCodec {
 
     // ── TIMESTAMP ───────────────────────────────────────────────────────
 
-    // @spec query.field-value-codec.R11 — TIMESTAMP encodes identically to INT64 (sign-bit-flipped big-endian 8
-    // @spec query.index-types.R30 — TIMESTAMP encodes identically to INT64 (sign-bit-flipped big-endian 8
+    // @spec query.field-value-codec.R11 — TIMESTAMP encodes identically to INT64 (sign-bit-flipped
+    // big-endian 8
+    // @spec query.index-types.R30 — TIMESTAMP encodes identically to INT64 (sign-bit-flipped
+    // big-endian 8
     // bytes)
     private static MemorySegment encodeTimestamp(Object value) {
         if (!(value instanceof Long l)) {

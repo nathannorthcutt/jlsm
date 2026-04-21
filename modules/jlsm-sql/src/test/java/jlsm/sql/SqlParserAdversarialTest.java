@@ -46,7 +46,8 @@ class SqlParserAdversarialTest {
 
     // ── FINDING-11: SqlParser mutable state ───────────────────────────
 
-    // @spec query.sql-query-support.R103 — parser must consume all tokens up to EOF; trailing tokens after a
+    // @spec query.sql-query-support.R103 — parser must consume all tokens up to EOF; trailing
+    // tokens after a
     // complete SELECT must produce a SqlParseException. Without this check, a malformed
     // query like "SELECT * FROM t GARBAGE" silently succeeds and the extra tokens are lost.
     @Test
@@ -64,7 +65,8 @@ class SqlParserAdversarialTest {
                 "Trailing tokens after LIMIT must throw SqlParseException");
     }
 
-    // @spec query.sql-query-support.R103 — well-formed SELECT with no trailing tokens must still parse (regression)
+    // @spec query.sql-query-support.R103 — well-formed SELECT with no trailing tokens must still
+    // parse (regression)
     @Test
     void noTrailingTokensParsesCleanly() throws SqlParseException {
         var stmt = parser.parse(lexer.tokenize("SELECT * FROM t WHERE x = 1 LIMIT 5 OFFSET 10"));

@@ -73,7 +73,8 @@ class VectorTypeTest {
     // ── FieldType.vector() factory ───────────────────────────────────────
 
     // @spec schema.schema-field-definition.R11
-    // @spec vector.field-type.R7 — factory returns new VectorType with given elementType and dimensions
+    // @spec vector.field-type.R7 — factory returns new VectorType with given elementType and
+    // dimensions
     @Test
     void vectorFactory_returnsVectorType() {
         FieldType result = FieldType.vector(FieldType.Primitive.FLOAT32, 128);
@@ -86,7 +87,8 @@ class VectorTypeTest {
     // ── JlsmSchema.Builder.vectorField() ─────────────────────────────────
 
     // @spec schema.schema-construction.R16,R17
-    // @spec vector.field-type.R9,R12 — vectorField adds VectorType field and delegates to FieldType.vector
+    // @spec vector.field-type.R9,R12 — vectorField adds VectorType field and delegates to
+    // FieldType.vector
     @Test
     void schemaBuilder_vectorField() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())
@@ -103,7 +105,8 @@ class VectorTypeTest {
 
     // ── IndexDefinition simplification ───────────────────────────────────
 
-    // @spec vector.field-type.R13,R15 — record with three components; two-arg variant is convenience
+    // @spec vector.field-type.R13,R15 — record with three components; two-arg variant is
+    // convenience
     @Test
     void indexDefinition_vectorWithSimilarity() {
         var def = new IndexDefinition("embedding", IndexType.VECTOR, SimilarityFunction.COSINE);
@@ -175,7 +178,8 @@ class VectorTypeTest {
         return ser.deserialize(bytes);
     }
 
-    // @spec vector.field-type.R24,R27,R30,R33 — measure, encode, decode, round-trip FLOAT32 preserves bits
+    // @spec vector.field-type.R24,R27,R30,R33 — measure, encode, decode, round-trip FLOAT32
+    // preserves bits
     @Test
     void documentSerializer_roundTripsFloat32Vector() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -190,7 +194,8 @@ class VectorTypeTest {
         assertArrayEquals(vector, result);
     }
 
-    // @spec vector.field-type.R25,R28,R31,R34 — measure, encode, decode, round-trip FLOAT16 preserves bits
+    // @spec vector.field-type.R25,R28,R31,R34 — measure, encode, decode, round-trip FLOAT16
+    // preserves bits
     @Test
     void documentSerializer_roundTripsFloat16Vector() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -249,7 +254,8 @@ class VectorTypeTest {
     // ── Dimension validation ────────────────────────────────────────────
 
     // @spec schema.document-construction.R26 — vector dimension must match schema declaration
-    // @spec vector.field-type.R45,R49 — encode-time runtime check; upstream validateType rejects mismatch
+    // @spec vector.field-type.R45,R49 — encode-time runtime check; upstream validateType rejects
+    // mismatch
     @Test
     void documentOf_dimensionMismatch() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -261,7 +267,8 @@ class VectorTypeTest {
     }
 
     // @spec schema.document-construction.R10,R11 — null vector value accepted, stored as absent
-    // @spec vector.field-type.R35,R36 — null VectorType marked in bitmask, deserializes without reading bytes
+    // @spec vector.field-type.R35,R36 — null VectorType marked in bitmask, deserializes without
+    // reading bytes
     @Test
     void documentSerializer_roundTripsNullVector() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())
@@ -276,7 +283,8 @@ class VectorTypeTest {
 
     // ── VectorType equality and hashCode ────────────────────────────────
 
-    // @spec vector.field-type.R39 — same elementType and dimensions are equal with matching hashCode
+    // @spec vector.field-type.R39 — same elementType and dimensions are equal with matching
+    // hashCode
     @Test
     void vectorType_equalitySameTypeSameDimensions() {
         var a = new FieldType.VectorType(FieldType.Primitive.FLOAT32, 128);
@@ -303,7 +311,8 @@ class VectorTypeTest {
 
     // ── Schema evolution — dimension mismatch ───────────────────────────
 
-    // @spec vector.field-type.R37,R38 — reader uses write-time field count; dimension change throws IAE
+    // @spec vector.field-type.R37,R38 — reader uses write-time field count; dimension change throws
+    // IAE
     // rather than silently reading past the truncated vector payload
     @Test
     void documentSerializer_schemaEvolutionDimensionMismatch() {
@@ -326,7 +335,8 @@ class VectorTypeTest {
 
     // ── Structural: VectorType is a permitted sealed subtype ────────────
 
-    // @spec vector.field-type.R2 — VectorType is listed as a permitted implementation of sealed FieldType
+    // @spec vector.field-type.R2 — VectorType is listed as a permitted implementation of sealed
+    // FieldType
     @Test
     void vectorType_isSealedPermittedSubtype() {
         Class<?>[] permitted = FieldType.class.getPermittedSubclasses();
@@ -338,7 +348,8 @@ class VectorTypeTest {
 
     // ── R6: large dimension accepted without upper bound ────────────────
 
-    // @spec vector.field-type.R6 — any positive dimensions value accepted with no type-level upper bound
+    // @spec vector.field-type.R6 — any positive dimensions value accepted with no type-level upper
+    // bound
     @Test
     void vectorType_acceptsLargeDimensions() {
         var vt = new FieldType.VectorType(FieldType.Primitive.FLOAT32, 1_000_000);
@@ -355,7 +366,8 @@ class VectorTypeTest {
 
     // ── R8: factory propagates validation exceptions ────────────────────
 
-    // @spec vector.field-type.R8 — factory propagates validation exceptions from VectorType constructor
+    // @spec vector.field-type.R8 — factory propagates validation exceptions from VectorType
+    // constructor
     @Test
     void vectorFactory_propagatesValidation() {
         assertThrows(NullPointerException.class, () -> FieldType.vector(null, 128));
@@ -443,7 +455,8 @@ class VectorTypeTest {
 
     // ── R23: IndexRegistry derives dimensions from schema, not IndexDefinition ──
 
-    // @spec vector.field-type.R23 — IndexRegistry accepts the definition and sources dimensions from the
+    // @spec vector.field-type.R23 — IndexRegistry accepts the definition and sources dimensions
+    // from the
     // VectorType field on the schema; IndexDefinition carries no vectorDimensions parameter
     @Test
     void indexRegistry_derivesDimensionsFromSchema() throws IOException {
@@ -461,8 +474,10 @@ class VectorTypeTest {
 
     // ── R26, R32: no VarInt length prefix — size is exactly dimensions*elementBytes ──
 
-    // @spec vector.field-type.R26 — measure emits no VarInt length prefix; payload is exactly dims*elemBytes
-    // @spec vector.field-type.R32 — decode uses schema-declared dimensions without reading a length prefix
+    // @spec vector.field-type.R26 — measure emits no VarInt length prefix; payload is exactly
+    // dims*elemBytes
+    // @spec vector.field-type.R32 — decode uses schema-declared dimensions without reading a length
+    // prefix
     @Test
     void documentSerializer_vectorPayloadHasNoLengthPrefix() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -483,7 +498,8 @@ class VectorTypeTest {
 
     // ── R29: encode-time length verification ─────────────────────────────
 
-    // @spec vector.field-type.R29 — encode-time length verification rejects array length != dimensions
+    // @spec vector.field-type.R29 — encode-time length verification rejects array length !=
+    // dimensions
     // (also enforced upstream at JlsmDocument.of via F12.R49, exercised here at the encode path)
     @Test
     void documentSerializer_rejectsEncodeTimeLengthMismatch() {
@@ -496,7 +512,8 @@ class VectorTypeTest {
 
     // ── R46: truncated vector input rejected at decode ───────────────────
 
-    // @spec vector.field-type.R46 — decode throws IAE with descriptive message when buffer is too small
+    // @spec vector.field-type.R46 — decode throws IAE with descriptive message when buffer is too
+    // small
     @Test
     void documentSerializer_rejectsTruncatedVectorInput() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -517,7 +534,8 @@ class VectorTypeTest {
 
     // ── R47: write-time boolean count validated at decode ────────────────
 
-    // @spec vector.field-type.R47 — serialized header carries the write-time boolean count and the reader
+    // @spec vector.field-type.R47 — serialized header carries the write-time boolean count and the
+    // reader
     // rejects deserialization when current schema's boolean count differs for overlap fields
     @Test
     void documentSerializer_detectsBooleanCountDivergence() {
@@ -538,7 +556,8 @@ class VectorTypeTest {
 
     // ── R48: field-level encode wraps type mismatches with field context ─
 
-    // @spec vector.field-type.R48 — encode path rethrows ClassCastException as IAE with field name and type
+    // @spec vector.field-type.R48 — encode path rethrows ClassCastException as IAE with field name
+    // and type
     @Test
     void documentSerializer_wrapsFieldTypeMismatchWithContext() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("n", FieldType.int32()).build();

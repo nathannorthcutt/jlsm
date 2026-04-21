@@ -16,13 +16,14 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Verifies the JPMS module descriptor of {@code jlsm.table} exports the public API package and
- * withholds the {@code jlsm.table.internal} package — the boundary that keeps {@code SecondaryIndex},
- * {@code FieldIndex}, {@code FullTextFieldIndex}, {@code VectorFieldIndex}, {@code FieldValueCodec},
- * {@code IndexRegistry}, and {@code QueryExecutor} off the public surface while
- * {@code IndexType}, {@code IndexDefinition}, {@code Predicate}, {@code TableQuery},
+ * withholds the {@code jlsm.table.internal} package — the boundary that keeps
+ * {@code SecondaryIndex}, {@code FieldIndex}, {@code FullTextFieldIndex}, {@code VectorFieldIndex},
+ * {@code FieldValueCodec}, {@code IndexRegistry}, and {@code QueryExecutor} off the public surface
+ * while {@code IndexType}, {@code IndexDefinition}, {@code Predicate}, {@code TableQuery},
  * {@code TableEntry}, and {@code DuplicateKeyException} remain available to consumers.
  *
- * <p>The test suite runs in the unnamed module (per jlsm-table's Gradle config with
+ * <p>
+ * The test suite runs in the unnamed module (per jlsm-table's Gradle config with
  * {@code --add-exports jlsm.table/jlsm.table.internal=ALL-UNNAMED}), so the production module
  * descriptor is read directly from the compiled {@code module-info.class} on the classpath rather
  * than via the runtime {@link Module} API.
@@ -58,10 +59,8 @@ class ModuleBoundariesTest {
     }
 
     private static Set<String> exportedPackages(ModuleDescriptor descriptor) {
-        return descriptor.exports().stream()
-                .filter(e -> !e.isQualified())
-                .map(ModuleDescriptor.Exports::source)
-                .collect(Collectors.toUnmodifiableSet());
+        return descriptor.exports().stream().filter(e -> !e.isQualified())
+                .map(ModuleDescriptor.Exports::source).collect(Collectors.toUnmodifiableSet());
     }
 
     @Test
@@ -101,26 +100,28 @@ class ModuleBoundariesTest {
     @Test
     // @spec query.query-executor.R19 — internal types reside in jlsm.table.internal
     void internalTypesResideInInternalPackage() {
-        assertTrue(jlsm.table.internal.SecondaryIndex.class.getPackageName()
-                .equals("jlsm.table.internal"),
+        assertTrue(
+                jlsm.table.internal.SecondaryIndex.class.getPackageName()
+                        .equals("jlsm.table.internal"),
                 "SecondaryIndex must reside in jlsm.table.internal");
-        assertTrue(jlsm.table.internal.FieldIndex.class.getPackageName()
-                .equals("jlsm.table.internal"),
+        assertTrue(
+                jlsm.table.internal.FieldIndex.class.getPackageName().equals("jlsm.table.internal"),
                 "FieldIndex must reside in jlsm.table.internal");
-        assertTrue(jlsm.table.internal.FullTextFieldIndex.class.getPackageName()
-                .equals("jlsm.table.internal"),
+        assertTrue(
+                jlsm.table.internal.FullTextFieldIndex.class.getPackageName()
+                        .equals("jlsm.table.internal"),
                 "FullTextFieldIndex must reside in jlsm.table.internal");
-        assertTrue(jlsm.table.internal.VectorFieldIndex.class.getPackageName()
-                .equals("jlsm.table.internal"),
+        assertTrue(
+                jlsm.table.internal.VectorFieldIndex.class.getPackageName()
+                        .equals("jlsm.table.internal"),
                 "VectorFieldIndex must reside in jlsm.table.internal");
-        assertTrue(jlsm.table.internal.FieldValueCodec.class.getPackageName()
-                .equals("jlsm.table.internal"),
+        assertTrue(
+                jlsm.table.internal.FieldValueCodec.class.getPackageName()
+                        .equals("jlsm.table.internal"),
                 "FieldValueCodec must reside in jlsm.table.internal");
         assertTrue(jlsm.table.internal.IndexRegistry.class.getPackageName()
-                .equals("jlsm.table.internal"),
-                "IndexRegistry must reside in jlsm.table.internal");
+                .equals("jlsm.table.internal"), "IndexRegistry must reside in jlsm.table.internal");
         assertTrue(jlsm.table.internal.QueryExecutor.class.getPackageName()
-                .equals("jlsm.table.internal"),
-                "QueryExecutor must reside in jlsm.table.internal");
+                .equals("jlsm.table.internal"), "QueryExecutor must reside in jlsm.table.internal");
     }
 }

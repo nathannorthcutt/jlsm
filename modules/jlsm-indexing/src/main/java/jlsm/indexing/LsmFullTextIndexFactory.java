@@ -74,7 +74,8 @@ public final class LsmFullTextIndexFactory implements FullTextIndex.Factory {
         return new Builder();
     }
 
-    // @spec query.full-text-index.R1,R3,R4,R5,R6 — factory produces a FullTextIndex<MemorySegment> per
+    // @spec query.full-text-index.R1,R3,R4,R5,R6 — factory produces a FullTextIndex<MemorySegment>
+    // per
     // (tableName, fieldName); the adapter in FullTextFieldIndex routes mutations through it.
     @Override
     public FullTextIndex<MemorySegment> create(String tableName, String fieldName)

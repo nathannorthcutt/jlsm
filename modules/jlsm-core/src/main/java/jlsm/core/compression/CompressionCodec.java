@@ -66,7 +66,8 @@ public interface CompressionCodec {
      *             {@code dst.byteSize() < maxCompressedLength(src.byteSize())}
      * @throws java.io.UncheckedIOException if compression fails
      */
-    // (formerly @spec F02.R2 — dropped during migration) — stateless compression (note: byte[] API removed per F17.R3)
+    // (formerly @spec F02.R2 — dropped during migration) — stateless compression (note: byte[] API
+    // removed per F17.R3)
     // @spec compression.codec-contract.R5 — compress with caller-provided destination
     MemorySegment compress(MemorySegment src, MemorySegment dst);
 
@@ -165,7 +166,8 @@ public interface CompressionCodec {
      * @return a new {@code ZstdCodec} instance
      * @throws IllegalArgumentException if level is outside the range 1–22
      */
-    // @spec compression.zstd-dictionary.R1,R2 — zstd(level) factory, level validated at construction
+    // @spec compression.zstd-dictionary.R1,R2 — zstd(level) factory, level validated at
+    // construction
     static CompressionCodec zstd(int level) {
         return new ZstdCodec(level, null);
     }

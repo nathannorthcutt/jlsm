@@ -28,7 +28,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * Each test drives a two-node cluster and asserts the listener contract does not bleed into the
  * protocol thread (no blocking, no crash, in-order delivery for a single event).
  *
- * @spec engine.clustering.R39 — listener notifications asynchronous; slow/throwing listener does not block protocol
+ * @spec engine.clustering.R39 — listener notifications asynchronous; slow/throwing listener does
+ *       not block protocol
  * @spec engine.clustering.R72 — onViewChanged receives old + new view (epoch gap detection)
  * @spec engine.clustering.R89 — protocol-level locks not held during listener callbacks
  */

@@ -19,7 +19,8 @@ import java.util.Set;
  * Instances are created via the static factory {@link #of(Map)} or the {@link Builder}. Both
  * enforce non-null keys and values and reject duplicates.
  *
- * @spec serialization.simd-jsonl.R9 — Map-like access: get, containsKey, keys, size, entrySet, getOrDefault
+ * @spec serialization.simd-jsonl.R9 — Map-like access: get, containsKey, keys, size, entrySet,
+ *       getOrDefault
  * @spec serialization.simd-jsonl.R10 — preserves insertion order
  * @spec serialization.simd-jsonl.R11 — rejects duplicate keys at construction
  * @spec serialization.simd-jsonl.R13 — deeply immutable after construction
@@ -47,7 +48,8 @@ public final class JsonObject implements JsonValue {
      * @return a new immutable JsonObject
      * @throws NullPointerException if members, any key, or any value is null
      */
-    // @spec serialization.simd-jsonl.R15 — keys must be non-null and non-blank; blank keys are rejected eagerly
+    // @spec serialization.simd-jsonl.R15 — keys must be non-null and non-blank; blank keys are
+    // rejected eagerly
     // (stricter than RFC 8259; see F15.R25 for the list of stricter-than-RFC parser behaviors).
     public static JsonObject of(Map<String, JsonValue> members) {
         Objects.requireNonNull(members, "members must not be null");

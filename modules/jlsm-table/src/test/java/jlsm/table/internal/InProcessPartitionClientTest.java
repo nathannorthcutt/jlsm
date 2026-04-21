@@ -112,7 +112,8 @@ class InProcessPartitionClientTest {
     // create / get
     // -------------------------------------------------------------------------
 
-    // @spec partitioning.table-partitioning.R41,R42,R50 — create routes to wrapped table; get returns Optional; delegate
+    // @spec partitioning.table-partitioning.R41,R42,R50 — create routes to wrapped table; get
+    // returns Optional; delegate
     @Test
     void create_and_get_roundtrip() throws IOException {
         final Path dir = tempDir.resolve("create_get");
@@ -223,7 +224,8 @@ class InProcessPartitionClientTest {
     // getRange
     // -------------------------------------------------------------------------
 
-    // @spec partitioning.table-partitioning.R45,R51 — getRange delegates to getAllInRange, half-open semantics
+    // @spec partitioning.table-partitioning.R45,R51 — getRange delegates to getAllInRange,
+    // half-open semantics
     @Test
     void getRange_returnsEntriesInHalfOpenRange() throws IOException {
         final Path dir = tempDir.resolve("getRange_halfOpen");
@@ -266,7 +268,8 @@ class InProcessPartitionClientTest {
     // query — scan-and-filter implementation
     // -------------------------------------------------------------------------
 
-    // @spec partitioning.table-partitioning.R46 — query returns List<ScoredEntry<String>> of at most limit matches
+    // @spec partitioning.table-partitioning.R46 — query returns List<ScoredEntry<String>> of at
+    // most limit matches
     @Test
     void query_scalarEqPredicate_returnsMatchingEntries() throws IOException {
         final Path dir = tempDir.resolve("query_eq_match");
@@ -286,7 +289,8 @@ class InProcessPartitionClientTest {
         }
     }
 
-    // @spec partitioning.table-partitioning.R46 — respects the limit parameter by stopping scan after N matches
+    // @spec partitioning.table-partitioning.R46 — respects the limit parameter by stopping scan
+    // after N matches
     @Test
     void query_limitRespected_stopsAtLimit() throws IOException {
         final Path dir = tempDir.resolve("query_limit");
@@ -320,7 +324,8 @@ class InProcessPartitionClientTest {
         }
     }
 
-    // @spec partitioning.table-partitioning.R46 — VectorNearest requires per-partition index; scan-and-filter rejects
+    // @spec partitioning.table-partitioning.R46 — VectorNearest requires per-partition index;
+    // scan-and-filter rejects
     @Test
     void query_vectorNearestPredicate_throwsUnsupportedOperationException() throws IOException {
         final Path dir = tempDir.resolve("query_vector_uoe");
@@ -334,7 +339,8 @@ class InProcessPartitionClientTest {
         }
     }
 
-    // @spec partitioning.table-partitioning.R46 — FullTextMatch requires per-partition index; scan-and-filter rejects
+    // @spec partitioning.table-partitioning.R46 — FullTextMatch requires per-partition index;
+    // scan-and-filter rejects
     @Test
     void query_fullTextPredicate_throwsUnsupportedOperationException() throws IOException {
         final Path dir = tempDir.resolve("query_fulltext_uoe");
@@ -376,7 +382,8 @@ class InProcessPartitionClientTest {
     // close
     // -------------------------------------------------------------------------
 
-    // @spec partitioning.table-partitioning.R52,R102 — close closes wrapped table (R52) and is idempotent (R102)
+    // @spec partitioning.table-partitioning.R52,R102 — close closes wrapped table (R52) and is
+    // idempotent (R102)
     @Test
     void close_doesNotThrow() throws IOException {
         final Path dir = tempDir.resolve("close_ok");

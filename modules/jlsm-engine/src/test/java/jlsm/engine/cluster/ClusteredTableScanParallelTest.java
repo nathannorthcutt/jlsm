@@ -106,7 +106,8 @@ final class ClusteredTableScanParallelTest {
 
     // --- F04.R67 — ordered merge ---
 
-    // @spec engine.clustering.R67 — scatter-gather merge preserves ordering guarantees of underlying query
+    // @spec engine.clustering.R67 — scatter-gather merge preserves ordering guarantees of
+    // underlying query
     @Test
     void scan_mergesOrderedAcrossNodes() throws IOException {
         registerEntriesHandler(remoteATransport, REMOTE_A, List.of("apple", "cherry", "grape"));

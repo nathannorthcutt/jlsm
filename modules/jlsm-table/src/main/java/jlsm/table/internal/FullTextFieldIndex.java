@@ -69,8 +69,10 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         return definition;
     }
 
-    // @spec query.field-index.R3,R4 — tokenise field value and index per term; null value is a no-op
-    // @spec query.full-text-index.R3 — tokenise field value and index per term; null value is a no-op
+    // @spec query.field-index.R3,R4 — tokenise field value and index per term; null value is a
+    // no-op
+    // @spec query.full-text-index.R3 — tokenise field value and index per term; null value is a
+    // no-op
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
         ensureOpen();
@@ -81,8 +83,10 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         backing.index(primaryKey, Map.of(definition.fieldName(), String.valueOf(fieldValue)));
     }
 
-    // @spec query.field-index.R5,R6 — remove old terms (if non-null) then insert new terms (if non-null)
-    // @spec query.full-text-index.R4 — remove old terms (if non-null) then insert new terms (if non-null)
+    // @spec query.field-index.R5,R6 — remove old terms (if non-null) then insert new terms (if
+    // non-null)
+    // @spec query.full-text-index.R4 — remove old terms (if non-null) then insert new terms (if
+    // non-null)
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
@@ -110,8 +114,10 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         backing.remove(primaryKey, Map.of(definition.fieldName(), String.valueOf(fieldValue)));
     }
 
-    // @spec query.field-index.R9 — translate FullTextMatch → Query.TermQuery and delegate; throw for
-    // @spec query.full-text-index.R4,R6 — translate FullTextMatch → Query.TermQuery and delegate; throw for
+    // @spec query.field-index.R9 — translate FullTextMatch → Query.TermQuery and delegate; throw
+    // for
+    // @spec query.full-text-index.R4,R6 — translate FullTextMatch → Query.TermQuery and delegate;
+    // throw for
     // unsupported predicates
     @Override
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
@@ -130,8 +136,10 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         return backing.search(new Query.TermQuery(ftm.field(), ftm.query()));
     }
 
-    // @spec query.field-index.R10 — true only for FullTextMatch whose field matches this index's field
-    // @spec query.full-text-index.R2 — true only for FullTextMatch whose field matches this index's field
+    // @spec query.field-index.R10 — true only for FullTextMatch whose field matches this index's
+    // field
+    // @spec query.full-text-index.R2 — true only for FullTextMatch whose field matches this index's
+    // field
     @Override
     public boolean supports(Predicate predicate) {
         if (closed) {

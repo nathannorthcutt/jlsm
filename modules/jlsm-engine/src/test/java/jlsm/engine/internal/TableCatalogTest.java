@@ -27,7 +27,8 @@ class TableCatalogTest {
 
     // ---- open() on empty directory ----
 
-    // @spec engine.in-process-database-engine.R59 — empty root directory → fresh installation, no tables
+    // @spec engine.in-process-database-engine.R59 — empty root directory → fresh installation, no
+    // tables
     @Test
     void openOnEmptyDirectoryDiscoversNoTables() throws IOException {
         var catalog = new TableCatalog(tempDir);
@@ -40,7 +41,8 @@ class TableCatalogTest {
 
     // ---- open() discovers existing tables ----
 
-    // @spec engine.in-process-database-engine.R5,R52,R55,R57,R85 — startup scans root subdirs, reads each table.meta,
+    // @spec engine.in-process-database-engine.R5,R52,R55,R57,R85 — startup scans root subdirs,
+    // reads each table.meta,
     // restores state
     @Test
     void openDiscoversExistingTableSubdirectories() throws IOException {
@@ -66,7 +68,8 @@ class TableCatalogTest {
 
     // ---- register() ----
 
-    // @spec engine.in-process-database-engine.R15,R16,R52,R84 — register creates subdirectory, persists full metadata
+    // @spec engine.in-process-database-engine.R15,R16,R52,R84 — register creates subdirectory,
+    // persists full metadata
     @Test
     void registerCreatesSubdirectoryAndMetadataFile() throws IOException {
         var catalog = new TableCatalog(tempDir);
@@ -82,7 +85,8 @@ class TableCatalogTest {
         catalog.close();
     }
 
-    // @spec engine.in-process-database-engine.R14,R56,R67 — duplicate registration throws IOException
+    // @spec engine.in-process-database-engine.R14,R56,R67 — duplicate registration throws
+    // IOException
     @Test
     void registerDuplicateNameThrowsIOException() throws IOException {
         var catalog = new TableCatalog(tempDir);
@@ -217,7 +221,8 @@ class TableCatalogTest {
 
     // ---- Partial creation cleanup ----
 
-    // @spec engine.in-process-database-engine.R58 — partial creation (no table.meta) → cleanup on startup
+    // @spec engine.in-process-database-engine.R58 — partial creation (no table.meta) → cleanup on
+    // startup
     @Test
     void openCleansUpDirectoryWithoutMetadataFile() throws IOException {
         // Create a directory but no metadata file — simulates partial creation

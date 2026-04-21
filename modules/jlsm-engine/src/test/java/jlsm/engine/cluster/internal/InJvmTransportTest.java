@@ -19,9 +19,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for {@link InJvmTransport} — send, request, handler dispatch, close, registry.
  *
- * @spec engine.clustering.R27 — transport SPI: send + request + registerHandler (exercised across tests)
- * @spec engine.clustering.R29 — request completes with response or fails exceptionally on delivery failure
- * @spec engine.clustering.R30 — handler registration is keyed by message type and atomically replaced
+ * @spec engine.clustering.R27 — transport SPI: send + request + registerHandler (exercised across
+ *       tests)
+ * @spec engine.clustering.R29 — request completes with response or fails exceptionally on delivery
+ *       failure
+ * @spec engine.clustering.R30 — handler registration is keyed by message type and atomically
+ *       replaced
  * @spec engine.clustering.R31 — in-JVM transport delivers without network I/O
  */
 class InJvmTransportTest {
@@ -91,7 +94,8 @@ class InJvmTransportTest {
         assertArrayEquals(new byte[]{ 99 }, response.payload());
     }
 
-    // @spec engine.clustering.R28 — delivery failure (target not registered) must be silently absorbed by the
+    // @spec engine.clustering.R28 — delivery failure (target not registered) must be silently
+    // absorbed by the
     // transport. The failure detector is the mechanism for detecting unreachable nodes.
     @Test
     void sendToUnregisteredTargetSilentlyAbsorbs() throws IOException {
@@ -102,7 +106,8 @@ class InJvmTransportTest {
         transportA.send(ADDR_B, msg);
     }
 
-    // @spec engine.clustering.R28 — delivery failure (no handler on target) must be silently absorbed.
+    // @spec engine.clustering.R28 — delivery failure (no handler on target) must be silently
+    // absorbed.
     @Test
     void sendWithNoHandlerForTypeSilentlyAbsorbs() throws IOException {
         var transportA = new InJvmTransport(ADDR_A);
@@ -135,7 +140,8 @@ class InJvmTransportTest {
         assertThrows(IllegalStateException.class, () -> transportA.send(ADDR_B, msg));
     }
 
-    // @spec engine.clustering.R81 — closed transport rejects request with IllegalStateException via the future
+    // @spec engine.clustering.R81 — closed transport rejects request with IllegalStateException via
+    // the future
     @Test
     void requestAfterCloseCompletesWithIllegalStateException() throws Exception {
         var transportA = new InJvmTransport(ADDR_A);
@@ -148,7 +154,8 @@ class InJvmTransportTest {
         assertInstanceOf(IllegalStateException.class, ex.getCause());
     }
 
-    // @spec engine.clustering.R32 — InJvmTransport must accept configurable delivery delay and loss rate,
+    // @spec engine.clustering.R32 — InJvmTransport must accept configurable delivery delay and loss
+    // rate,
     // with zero defaults. Negative delay and out-of-range rates are rejected.
     @Test
     void faultInjectionKnobsValidateArguments() {
@@ -163,7 +170,8 @@ class InJvmTransportTest {
         transport.setDeliveryDelay(java.time.Duration.ZERO);
     }
 
-    // @spec engine.clustering.R32 — a 100% loss rate drops every send without invoking the remote handler.
+    // @spec engine.clustering.R32 — a 100% loss rate drops every send without invoking the remote
+    // handler.
     @Test
     void fullMessageLossDropsAllSends() throws IOException {
         var transportA = new InJvmTransport(ADDR_A);

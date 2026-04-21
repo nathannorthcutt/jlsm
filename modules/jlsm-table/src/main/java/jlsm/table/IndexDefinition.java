@@ -24,11 +24,15 @@ import jlsm.core.indexing.SimilarityFunction;
  * @param indexType the type of index to create
  * @param similarityFunction similarity function for VECTOR indices; null for other types
  */
-// @spec query.index-types.R7 — public record with components (fieldName, indexType, similarityFunction)
-// @spec vector.field-type.R13 — record with exactly three components: fieldName, indexType, similarityFunction
-// @spec vector.field-type.R14 — no vectorDimensions field; dimensions derive from schema's VectorType
+// @spec query.index-types.R7 — public record with components (fieldName, indexType,
+// similarityFunction)
+// @spec vector.field-type.R13 — record with exactly three components: fieldName, indexType,
+// similarityFunction
+// @spec vector.field-type.R14 — no vectorDimensions field; dimensions derive from schema's
+// VectorType
 // @spec query.index-types.R11,F12.R16 — null similarityFunction rejected when indexType is VECTOR
-// @spec query.index-types.R12,F12.R17 — non-null similarityFunction rejected when indexType is not VECTOR
+// @spec query.index-types.R12,F12.R17 — non-null similarityFunction rejected when indexType is not
+// VECTOR
 public record IndexDefinition(String fieldName, IndexType indexType,
         SimilarityFunction similarityFunction) {
 

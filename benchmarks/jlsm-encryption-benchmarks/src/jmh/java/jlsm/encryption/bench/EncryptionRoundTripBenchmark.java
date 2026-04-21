@@ -38,7 +38,8 @@ import java.util.concurrent.TimeUnit;
  * Input sizes chosen to represent common field shapes: 64-byte string for byte-level schemes, INT16
  * domain for OPE, 128-dimension float vector for DCPE.
  *
- * @spec encryption.primitives-dispatch.R21 — performance impact measurable via JMH benchmarks across all four variants
+ * @spec encryption.primitives-dispatch.R21 — performance impact measurable via JMH benchmarks
+ *       across all four variants
  */
 // @spec encryption.primitives-dispatch.R21
 @BenchmarkMode(Mode.Throughput)
@@ -132,7 +133,8 @@ public class EncryptionRoundTripBenchmark {
         bh.consume(pt);
     }
 
-    // @spec encryption.primitives-dispatch.R21 — OPE encrypt + decrypt on the domain endpoint (worst case for recursion)
+    // @spec encryption.primitives-dispatch.R21 — OPE encrypt + decrypt on the domain endpoint
+    // (worst case for recursion)
     @Benchmark
     public void opeRoundTrip(Blackhole bh) {
         final long ct = ope.encrypt(42L);

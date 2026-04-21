@@ -428,7 +428,8 @@ public final class StandardLsmTree implements LsmTree {
         }
 
         // @spec sstable.writer.R6 — tree builder accepts codec, propagates to writer/reader
-        // @spec compression.zstd-dictionary.R23 — tree-builder compression() is single-codec equivalent of R23 policy
+        // @spec compression.zstd-dictionary.R23 — tree-builder compression() is single-codec
+        // equivalent of R23 policy
         /**
          * Sets a single compression codec for all levels. Equivalent to
          * {@code compressionPolicy(_ -> codec)}.
@@ -455,8 +456,10 @@ public final class StandardLsmTree implements LsmTree {
          * @param policy function from level to codec; must not be null
          * @return this builder
          */
-        // @spec sstable.compaction.R2 — per-level compression policy via Function<Level, CompressionCodec>
-        // @spec compression.zstd-dictionary.R23 — compressionPolicy(fn) evaluated once per writer creation
+        // @spec sstable.compaction.R2 — per-level compression policy via Function<Level,
+        // CompressionCodec>
+        // @spec compression.zstd-dictionary.R23 — compressionPolicy(fn) evaluated once per writer
+        // creation
         public Builder compressionPolicy(Function<Level, CompressionCodec> policy) {
             this.compressionPolicy = Objects.requireNonNull(policy,
                     "compressionPolicy must not be null");
@@ -482,7 +485,8 @@ public final class StandardLsmTree implements LsmTree {
          * @param blockSize block size in bytes; default is 4096
          * @return this builder
          */
-        // @spec sstable.v3-format-upgrade.R23 — tree builder accepts blockSize, propagates to default writer factory
+        // @spec sstable.v3-format-upgrade.R23 — tree builder accepts blockSize, propagates to
+        // default writer factory
         public Builder blockSize(int blockSize) {
             jlsm.sstable.internal.SSTableFormat.validateBlockSize(blockSize);
             this.blockSize = blockSize;
@@ -511,7 +515,8 @@ public final class StandardLsmTree implements LsmTree {
             Objects.requireNonNull(readerFactory, "readerFactory must not be null — "
                     + "set sstableReaderFactory or compression/compressionPolicy");
 
-            // @spec sstable.v3-format-upgrade.R24 — compactor reuses tree's writerFactory (with configured blockSize)
+            // @spec sstable.v3-format-upgrade.R24 — compactor reuses tree's writerFactory (with
+            // configured blockSize)
             // so compacted SSTables inherit the tree-level block size. Reader version detection
             // (R17) handles mixed-version source SSTables.
             if (compactor == null) {
@@ -551,8 +556,10 @@ public final class StandardLsmTree implements LsmTree {
          * compression configuration are supplied (R25)</li>
          * </ol>
          */
-        // @spec compression.zstd-dictionary.R24 — policy beats single codec, regardless of set order
-        // @spec compression.zstd-dictionary.R25 — default none() policy only when caller provided no factories either
+        // @spec compression.zstd-dictionary.R24 — policy beats single codec, regardless of set
+        // order
+        // @spec compression.zstd-dictionary.R25 — default none() policy only when caller provided
+        // no factories either
         private Function<Level, CompressionCodec> resolveCompressionPolicy() {
             if (compressionPolicy != null) {
                 return compressionPolicy;
@@ -571,7 +578,8 @@ public final class StandardLsmTree implements LsmTree {
          * to each writer it creates. The factory creates a {@link jlsm.sstable.TrieSSTableWriter}
          * via its builder, configuring the level-appropriate codec.
          */
-        // @spec sstable.v3-format-upgrade.R23 — block size is propagated from tree builder through the factory closure
+        // @spec sstable.v3-format-upgrade.R23 — block size is propagated from tree builder through
+        // the factory closure
         private static SSTableWriterFactory codecAwareWriterFactory(
                 Function<Level, CompressionCodec> policy, int blockSize) {
             return (id, level, path) -> {

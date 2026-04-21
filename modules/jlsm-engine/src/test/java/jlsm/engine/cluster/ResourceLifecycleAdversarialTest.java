@@ -37,8 +37,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * @spec engine.clustering.R80 — engine close accumulates shutdown errors then throws after release
  * @spec engine.clustering.R83 — failure detector evicts heartbeat history for departed members
  * @spec engine.clustering.R94 — grace period manager removes expired departure records
- * @spec engine.clustering.R97 — membership close deregisters discovery provider + transport handlers
- * @spec engine.clustering.R98 — clustered engine rolls back local table on proxy registration failure
+ * @spec engine.clustering.R97 — membership close deregisters discovery provider + transport
+ *       handlers
+ * @spec engine.clustering.R98 — clustered engine rolls back local table on proxy registration
+ *       failure
  * @spec engine.clustering.R100 — scan closes remote clients on both normal and exceptional paths
  * @spec engine.clustering.R106 — close cancels in-flight scatter fanout tasks
  * @spec engine.clustering.R107 — cancelled scatter unblocks the servicing thread
@@ -301,7 +303,8 @@ final class ResourceLifecycleAdversarialTest {
                         + "scheduler and discovery registration leaked");
     }
 
-    // @spec engine.clustering.R83 — RapidMembership must wire failureDetector.remove when a member departs so
+    // @spec engine.clustering.R83 — RapidMembership must wire failureDetector.remove when a member
+    // departs so
     // the detector does not retain heartbeat history for nodes that have left the view. Without
     // this wiring, the remove() method exists but the membership protocol never calls it.
     @Test

@@ -75,8 +75,10 @@ package jlsm.sstable.internal;
 // @spec sstable.format-v2.R1 — v2 layout: data blocks, compression map, key index, bloom, footer
 // @spec sstable.format-v2.R2 — 64-byte footer with 8 big-endian long fields
 // @spec sstable.format-v2.R5 — v1 magic 0x4A4C534D53535401, v2 magic ...02
-// @spec sstable.v3-format-upgrade.R13,R14,R17 — v3 magic 0x...03, 72-byte footer, named block-size constants
-// @spec compression.zstd-dictionary.R19 — v4 magic 0x...04, 88-byte footer with dictOffset/dictLength fields
+// @spec sstable.v3-format-upgrade.R13,R14,R17 — v3 magic 0x...03, 72-byte footer, named block-size
+// constants
+// @spec compression.zstd-dictionary.R19 — v4 magic 0x...04, 88-byte footer with
+// dictOffset/dictLength fields
 public final class SSTableFormat {
 
     /** Magic number v1: ASCII "JLSMSST\x01" packed as a big-endian long. */
@@ -152,7 +154,8 @@ public final class SSTableFormat {
      * @param blockSize the block size to validate
      * @throws IllegalArgumentException if the block size is invalid
      */
-    // @spec sstable.v3-format-upgrade.R11 — min 1024, max 33554432, power-of-two; IAE identifies violated constraint
+    // @spec sstable.v3-format-upgrade.R11 — min 1024, max 33554432, power-of-two; IAE identifies
+    // violated constraint
     public static void validateBlockSize(int blockSize) {
         if (blockSize < MIN_BLOCK_SIZE) {
             throw new IllegalArgumentException(

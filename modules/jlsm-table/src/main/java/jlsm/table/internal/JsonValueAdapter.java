@@ -39,7 +39,8 @@ import java.util.Objects;
  * <li>Type mismatches are rejected with descriptive error messages</li>
  * </ul>
  *
- * @spec serialization.simd-jsonl.R44 — type validation and range checking matching JlsmDocument.of()
+ * @spec serialization.simd-jsonl.R44 — type validation and range checking matching
+ *       JlsmDocument.of()
  * @spec serialization.simd-jsonl.R57 — FLOAT64 rejects NaN/Infinity
  * @spec serialization.simd-jsonl.R58 — distinct overflow vs format error messages
  */
@@ -160,7 +161,8 @@ public final class JsonValueAdapter {
         return JsonArray.of(list);
     }
 
-    // @spec vector.field-type.R49 — operates on pre-validated JlsmDocument; dimension check enforced upstream
+    // @spec vector.field-type.R49 — operates on pre-validated JlsmDocument; dimension check
+    // enforced upstream
     // by JlsmDocument.validateType at construction time
     private static JsonArray vectorToJson(FieldType.VectorType vt, Object value) {
         final List<JsonValue> list;

@@ -19,7 +19,8 @@ class HandleTrackerTest {
 
     // ---- Lifecycle: register / release ----
 
-    // @spec engine.in-process-database-engine.R40,R49 — register produces a tracked registration with visible invalidation flag
+    // @spec engine.in-process-database-engine.R40,R49 — register produces a tracked registration
+    // with visible invalidation flag
     @Test
     void registerReturnsNonNullRegistration() {
         try (var tracker = HandleTracker.builder().build()) {
@@ -45,7 +46,8 @@ class HandleTrackerTest {
         }
     }
 
-    // @spec engine.in-process-database-engine.R50 — invalidate is idempotent, and release of an invalid registration is a no-op
+    // @spec engine.in-process-database-engine.R50 — invalidate is idempotent, and release of an
+    // invalid registration is a no-op
     @Test
     void releaseOfAlreadyInvalidatedRegistrationIsNoOp() throws IOException {
         try (var tracker = HandleTracker.builder().build()) {
@@ -80,7 +82,8 @@ class HandleTrackerTest {
         }
     }
 
-    // @spec engine.in-process-database-engine.R43 — CALLER_TAG mode currently captures no allocation site (reserved)
+    // @spec engine.in-process-database-engine.R43 — CALLER_TAG mode currently captures no
+    // allocation site (reserved)
     @Test
     void allocationTrackingCallerTagSetsNullAllocationSite() throws IOException {
         try (var tracker = HandleTracker.builder().allocationTracking(AllocationTracking.CALLER_TAG)
@@ -103,7 +106,8 @@ class HandleTrackerTest {
 
     // ---- Eviction: per-source-per-table limit ----
 
-    // @spec engine.in-process-database-engine.R42,R44,R80 — per-source-per-table limit triggers eviction
+    // @spec engine.in-process-database-engine.R42,R44,R80 — per-source-per-table limit triggers
+    // eviction
     @Test
     void evictIfNeededTriggersWhenPerSourcePerTableLimitExceeded() throws IOException {
         try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(2)
@@ -150,7 +154,8 @@ class HandleTrackerTest {
 
     // Updated by audit F-R1.cb.1.5: maxHandlesPerSourcePerTable > maxHandlesPerTable was a bug, now
     // correctly rejected by hierarchy validation
-    // @spec engine.in-process-database-engine.R40,R46 — global handle-budget limit triggers eviction
+    // @spec engine.in-process-database-engine.R40,R46 — global handle-budget limit triggers
+    // eviction
     @Test
     void evictIfNeededTriggersWhenTotalLimitExceeded() throws IOException {
         try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(3)
@@ -197,7 +202,8 @@ class HandleTrackerTest {
 
     // ---- Eviction: oldest first within a source ----
 
-    // @spec engine.in-process-database-engine.R51 — oldest handle (insertion-order) evicted first within a source
+    // @spec engine.in-process-database-engine.R51 — oldest handle (insertion-order) evicted first
+    // within a source
     @Test
     void oldestHandlesEvictedFirstWithinSource() throws IOException {
         try (var tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(2)
@@ -249,7 +255,8 @@ class HandleTrackerTest {
 
     // ---- snapshot ----
 
-    // @spec engine.in-process-database-engine.R62,R63,R64 — metrics expose live counts across sources/tables safely
+    // @spec engine.in-process-database-engine.R62,R63,R64 — metrics expose live counts across
+    // sources/tables safely
     @Test
     void snapshotReturnsCorrectCounts() throws IOException {
         try (var tracker = HandleTracker.builder().build()) {
@@ -371,7 +378,8 @@ class HandleTrackerTest {
 
     // ---- Thread-safety: concurrent register/release ----
 
-    // @spec engine.in-process-database-engine.R65,R69 — concurrent register/release must not corrupt state
+    // @spec engine.in-process-database-engine.R65,R69 — concurrent register/release must not
+    // corrupt state
     @Test
     void concurrentRegisterAndReleaseDoNotCorruptState() throws Exception {
         final int threadCount = 8;

@@ -112,7 +112,8 @@ class TableQueryExecutionTest {
     // ── Bound query: index-backed leaf predicate ─────────────────────────
 
     @Test
-    // @spec engine.in-process-database-engine.R37 — Eq on indexed field routes through IndexRegistry.findAndLookup
+    // @spec engine.in-process-database-engine.R37 — Eq on indexed field routes through
+    // IndexRegistry.findAndLookup
     void boundQuery_eqOnIndexedField_usesIndex() throws IOException {
         final JlsmSchema schema = personSchema();
         try (var table = buildTable(schema, "eq-indexed",
@@ -132,7 +133,8 @@ class TableQueryExecutionTest {
     // ── Bound query: scan-fallback on non-indexed field ──────────────────
 
     @Test
-    // @spec engine.in-process-database-engine.R37 — predicate on unindexed field falls back to scan-and-filter
+    // @spec engine.in-process-database-engine.R37 — predicate on unindexed field falls back to
+    // scan-and-filter
     void boundQuery_scanFallbackWhenNoMatchingIndex() throws IOException {
         final JlsmSchema schema = personSchema();
         // Register an EQUALITY index on a *different* field so the registry exists but
@@ -154,7 +156,8 @@ class TableQueryExecutionTest {
     // ── Bound query: combined index + scan (AND) ─────────────────────────
 
     @Test
-    // @spec engine.in-process-database-engine.R37 — AND across indexed and unindexed predicates intersects child result sets
+    // @spec engine.in-process-database-engine.R37 — AND across indexed and unindexed predicates
+    // intersects child result sets
     void boundQuery_andCombinesIndexAndScanPredicates() throws IOException {
         final JlsmSchema schema = personSchema();
         try (var table = buildTable(schema, "and-combine",
@@ -211,7 +214,8 @@ class TableQueryExecutionTest {
     // ── Bound query: range (Gte) on unindexed field ──────────────────────
 
     @Test
-    // @spec engine.in-process-database-engine.R37 — Gte falls back to scan-and-filter when no RANGE index is registered
+    // @spec engine.in-process-database-engine.R37 — Gte falls back to scan-and-filter when no RANGE
+    // index is registered
     void boundQuery_gteScanFallback() throws IOException {
         final JlsmSchema schema = personSchema();
         try (var table = buildTable(schema, "gte-scan",
@@ -231,7 +235,8 @@ class TableQueryExecutionTest {
     // ── Unbound TableQuery: execute() throws UOE ─────────────────────────
 
     @Test
-    // @spec query.table-query.R9 — an unbound TableQuery (constructed without a binding context) throws UOE
+    // @spec query.table-query.R9 — an unbound TableQuery (constructed without a binding context)
+    // throws UOE
     void unboundTableQuery_executeThrowsUOE() {
         TableQuery<String> unbound = TableQuery.unbound();
         unbound.where("foo").eq("bar");
@@ -241,7 +246,8 @@ class TableQueryExecutionTest {
     // ── Schema mismatch: unknown field surfaces a clear exception ────────
 
     @Test
-    // @spec engine.in-process-database-engine.R37 — query against a non-existent field surfaces IllegalArgumentException via
+    // @spec engine.in-process-database-engine.R37 — query against a non-existent field surfaces
+    // IllegalArgumentException via
     // QueryExecutor/schema field lookup
     void boundQuery_unknownField_throwsIAE() throws IOException {
         final JlsmSchema schema = personSchema();

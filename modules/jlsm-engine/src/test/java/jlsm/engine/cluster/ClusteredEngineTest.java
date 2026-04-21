@@ -32,8 +32,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for {@link ClusteredEngine} — cluster-aware engine wrapping LocalEngine with membership,
  * ownership, and distributed routing.
  *
- * @spec engine.clustering.R55 — wraps local engine; local engine remains functional for local partitions
- * @spec engine.clustering.R56 — builder accepts localEngine, config, transport, discovery, membership as mandatory
+ * @spec engine.clustering.R55 — wraps local engine; local engine remains functional for local
+ *       partitions
+ * @spec engine.clustering.R56 — builder accepts localEngine, config, transport, discovery,
+ *       membership as mandatory
  * @spec engine.clustering.R80 — closeable lifecycle
  */
 final class ClusteredEngineTest {

@@ -115,7 +115,8 @@ class SqlTranslatorAdversarialTest {
                 () -> translate("SELECT * FROM test WHERE age = 2147483648"));
     }
 
-    // @spec query.sql-query-support.R78 — decimal numeric literals that overflow Double must throw, not become Infinity
+    // @spec query.sql-query-support.R78 — decimal numeric literals that overflow Double must throw,
+    // not become Infinity
     @Test
     void decimalOverflowThrowsSqlParseException() {
         // Double.parseDouble("1e400") returns Double.POSITIVE_INFINITY without throwing

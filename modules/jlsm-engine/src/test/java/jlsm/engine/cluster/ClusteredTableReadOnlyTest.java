@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests that {@link ClusteredTable} write operations throw {@link QuorumLostException} when the
- * engine reports {@link ClusterOperationalMode#READ_ONLY} (@spec engine.clustering.R41), while reads continue to
- * succeed.
+ * engine reports {@link ClusterOperationalMode#READ_ONLY} (@spec engine.clustering.R41), while
+ * reads continue to succeed.
  */
 final class ClusteredTableReadOnlyTest {
 

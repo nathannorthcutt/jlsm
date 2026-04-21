@@ -11,10 +11,12 @@ import java.util.Objects;
  * @param type the field type; must not be null
  * @param encryption the encryption specification for this field; must not be null
  */
-// @spec schema.schema-field-definition.R1 — public record in jlsm.table with (name, type, encryption) components
+// @spec schema.schema-field-definition.R1 — public record in jlsm.table with (name, type,
+// encryption) components
 public record FieldDefinition(String name, FieldType type, EncryptionSpec encryption) {
 
-    // @spec schema.schema-field-definition.R2 — compact constructor rejects null name, type, or encryption
+    // @spec schema.schema-field-definition.R2 — compact constructor rejects null name, type, or
+    // encryption
     /**
      * Compact constructor — validates all components are non-null.
      */
@@ -24,7 +26,8 @@ public record FieldDefinition(String name, FieldType type, EncryptionSpec encryp
         Objects.requireNonNull(encryption, "encryption must not be null");
     }
 
-    // @spec schema.schema-field-definition.R3 — two-argument constructor defaults encryption to EncryptionSpec.NONE
+    // @spec schema.schema-field-definition.R3 — two-argument constructor defaults encryption to
+    // EncryptionSpec.NONE
     /**
      * Backward-compatible constructor that defaults encryption to {@link EncryptionSpec#NONE}.
      *

@@ -26,8 +26,10 @@ import java.util.Optional;
  * <p>
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
  */
-// @spec engine.in-process-database-engine.R22,R32,R33,R34,R35,R36,R38,R39,R47,R48,R68,R70,R77,R83 — delegating handle surface;
-// registration-synchronized delegate calls make concurrent drop + query on the same table safe (R68).
+// @spec engine.in-process-database-engine.R22,R32,R33,R34,R35,R36,R38,R39,R47,R48,R68,R70,R77,R83 —
+// delegating handle surface;
+// registration-synchronized delegate calls make concurrent drop + query on the same table safe
+// (R68).
 final class LocalTable implements Table {
 
     private final JlsmTable.StringKeyed delegate;
@@ -113,7 +115,8 @@ final class LocalTable implements Table {
     }
 
     @Override
-    // @spec engine.in-process-database-engine.R37 — query pass-through delegates to the underlying JlsmTable.StringKeyed, which
+    // @spec engine.in-process-database-engine.R37 — query pass-through delegates to the underlying
+    // JlsmTable.StringKeyed, which
     // returns either a bound TableQuery (when schema + IndexRegistry are configured) or an
     // unbound TableQuery whose execute() throws UOE. OBL-F05-R37 resolved by WD-03.
     public TableQuery<String> query() {
