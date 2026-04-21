@@ -78,17 +78,34 @@ count_tokens() {
   echo $(( ${#1} / 4 ))
 }
 
-# ── Resolve feature ID to file path via manifest registry ────────────────────
-# Never uses grep on file contents. Returns absolute path or empty string.
+# ── Resolve a spec ID to file path via manifest registry ─────────────────────
+# Supports both manifest schema versions:
+#   v1 (legacy): {"features": {"F01": {"latest_file": "...", ...}}}
+#   v2 (post-migration): {"schema_version": 2, "specs": [{"id": "...", "path": "..."}]}
+# Returns absolute path or empty string.
 spec_file_for_id() {
   local manifest="$1"
   local fid="$2"
   local spec_dir
   spec_dir="$(dirname "$(dirname "$manifest")")"
   local rel
-  rel=$(jq -r --arg id "$fid" '.features[$id].latest_file // ""' "$manifest")
+  # Try v2 first (specs[] array with id field), fall back to v1 (features{} object).
+  rel=$(jq -r --arg id "$fid" '
+    if .specs then
+      ((.specs[] | select(.id == $id) | .path) // "")
+    else
+      (.features[$id].latest_file // "")
+    end
+  ' "$manifest")
   [[ -z "$rel" ]] && echo "" && return 0
-  echo "$spec_dir/$rel"
+  # v2 manifest stores paths relative to the repo root (e.g., ".spec/domains/...").
+  # v1 stores paths relative to the .spec/ directory. Detect which form by checking
+  # if the path already starts with ".spec/" — if so, resolve against repo root.
+  if [[ "$rel" == .spec/* ]]; then
+    echo "$spec_dir/${rel#.spec/}"
+  else
+    echo "$spec_dir/$rel"
+  fi
 }
 
 # ── Update manifest registry entry atomically via temp file ──────────────────
@@ -105,25 +122,28 @@ spec_registry_update() {
   echo "[registry] $fid -> $latest_file ($state)" >&2
 }
 
-# ── Verify FXX.RN reference resolves to a real requirement ───────────────────
-# Returns 0 if valid, 1 with error message if not.
+# ── Verify a spec requirement reference resolves to a real requirement ────────
+# Accepts both legacy FXX.RN and new domain.slug.RN formats. Returns 0 if valid,
+# 1 with error message if not.
 spec_invalidates_check() {
   local manifest="$1" ref="$2"
-  local fid req_num
-  fid=$(echo "$ref" | grep -oE '^F[0-9]+' || true)
-  req_num=$(echo "$ref" | grep -oE 'R[0-9]+$' || true)
-  if [[ -z "$fid" || -z "$req_num" ]]; then
-    echo "  FAIL invalidates '$ref': cannot parse as FXX.RN" >&2
+  local sid req_num
+  # Strip the trailing .RN[a] to get the spec ID (works for both forms).
+  sid=$(echo "$ref" | sed -E 's/\.R[0-9]+[a-z]?$//')
+  # Capture the trailing R-number (with optional letter suffix).
+  req_num=$(echo "$ref" | grep -oE 'R[0-9]+[a-z]?$' || true)
+  if [[ -z "$sid" || -z "$req_num" || "$sid" == "$ref" ]]; then
+    echo "  FAIL invalidates '$ref': cannot parse as <spec-id>.RN (e.g. F01.R3 or schema.field-access.R3)" >&2
     return 1
   fi
   local target_file
-  target_file=$(spec_file_for_id "$manifest" "$fid")
+  target_file=$(spec_file_for_id "$manifest" "$sid")
   if [[ -z "$target_file" || ! -f "$target_file" ]]; then
-    echo "  FAIL invalidates '$ref': $fid not found in registry" >&2
+    echo "  FAIL invalidates '$ref': $sid not found in registry" >&2
     return 1
   fi
   if ! machine_section "$target_file" | grep -qE "^${req_num}\."; then
-    echo "  FAIL invalidates '$ref': $req_num not found in $fid" >&2
+    echo "  FAIL invalidates '$ref': $req_num not found in $sid" >&2
     return 1
   fi
   return 0

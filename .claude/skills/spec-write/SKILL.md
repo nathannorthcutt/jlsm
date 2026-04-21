@@ -100,10 +100,13 @@ supersedes (partial overlap allowed).
 runtime (not just at build time). Includes prerequisite stubs created
 in Step 2.
 
-**invalidates:** Specific `FXX.RN` requirement IDs this feature makes
-obsolete. Use exact format: `F01.R3`. Cross-check against the context
-bundle requirements to confirm they exist before writing them.
-MUST include any conflicts identified in Step 1.
+**invalidates:** Specific requirement IDs this feature makes obsolete.
+Format is `<spec-id>.RN` where `<spec-id>` is either legacy `FXX`
+(e.g., `F01.R3`) or new domain.slug (e.g., `schema.field-access.R3`).
+Match the format your project uses — check existing specs in `.spec/domains/`
+to determine which is in use. Cross-check against the context bundle
+requirements to confirm they exist before writing them. MUST include any
+conflicts identified in Step 1.
 
 **decision_refs:** ADR slugs from `.decisions/` that informed this feature.
 Check that `.decisions/<slug>/adr.md` exists.
@@ -112,8 +115,8 @@ Check that `.decisions/<slug>/adr.md` exists.
 Check that `.kb/<path>.md` exists.
 
 **displaced_by:** Set by the pipeline during displacement finalization — do
-not populate manually. Array of spec IDs (FXX format) that caused this spec
-to be INVALIDATED.
+not populate manually. Array of spec IDs (FXX or domain.slug) that caused
+this spec to be INVALIDATED.
 
 **revived_by:** Set by the pipeline when a new spec revives this one — do
 not populate manually. Array of spec IDs.
@@ -128,19 +131,38 @@ inspection.
 
 ---
 
-## Step 5 — Determine version and file path
+## Step 5 — Determine spec ID, version, and file path
 
-Check the registry for existing versions of this feature:
+**Spec ID format:** Two conventions are supported. Use whichever matches
+the project's existing specs (check `.spec/domains/` to see what's in use).
+
+- **`domain.slug`** (recommended for new projects) — e.g., `schema.field-access`,
+  `query.full-text-index`. Self-describing, greppable, dimensional. The spec
+  lives at `.spec/domains/<domain>/<slug>.md`.
+- **`FXX`** (legacy) — e.g., `F07`, `F13`. Numeric feature ID. The spec lives
+  at `.spec/domains/<domain>/F<nn>-<slug>.md` (filename has both ID and slug).
+
+Check the registry for existing versions:
 ```bash
-jq -r --arg id "$FEATURE_ID" '.features[$id].latest_file // ""' \
-  .spec/registry/manifest.json
+# Try v2 manifest schema (specs[] array) first; falls back to v1 (features{}).
+jq -r --arg id "$SPEC_ID" '
+  if .specs then
+    ((.specs[] | select(.id == $id) | .path) // "")
+  else
+    (.features[$id].latest_file // "")
+  end
+' .spec/registry/manifest.json
 ```
 
-If no entry exists: version = 1, filename = `F<nn>-<slug>.md`
-If entry exists: increment version, filename = `F<nn>-<slug>.v<N>.md`
+If no entry exists: version = 1.
+  - For domain.slug: filename = `<slug>.md`
+  - For FXX: filename = `F<nn>-<slug>.md`
+
+If entry exists: increment version. Filename gains `.v<N>` suffix
+(e.g., `field-access.v2.md` or `F07-compaction-engine.v2.md`).
 
 The slug is the title lowercased with spaces replaced by hyphens,
-truncated to 30 chars. Example: `F07-compaction-engine.md`
+truncated to 30 chars.
 
 ---
 
@@ -166,9 +188,9 @@ Use this exact structure:
   "amends": [<feature ids or empty>],
   "amended_by": [],
   "requires": [<feature ids or empty>],
-  "invalidates": [<FXX.RN refs or empty>],
+  "invalidates": [<spec.RN refs or empty — FXX.RN or domain.slug.RN>],
   "displaced_by": [],
-  "revives": [<FXX ids of INVALIDATED specs this revives, or empty>],
+  "revives": [<spec ids of INVALIDATED specs this revives, or empty>],
   "revived_by": [],
   "displacement_reason": "",
   "decision_refs": [<ADR slugs or empty>],

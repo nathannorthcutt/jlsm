@@ -90,10 +90,13 @@ for requirements that have zero test coverage, including:
 - Skip negative concurrency claims (flaky test territory)
 
 Annotation rules (from `.spec/CLAUDE.md` Code Traceability section):
-- Format: `// @spec FXX.RN` or `// @spec FXX.RN — brief description`
+- Format: `// @spec <spec-id>.RN` or `// @spec <spec-id>.RN — brief description`
+- Spec ID can be legacy `FXX` (e.g., `F13.R5`) or new domain.slug (e.g.,
+  `schema.field-access.R5`). Match the project's convention — check
+  `.spec/domains/` to see which is in use.
 - Place above the enforcing method or code block
 - Same format in both implementation and test files
-- Multiple requirements per annotation: `// @spec FXX.R1,R3,R7`
+- Multiple requirements per annotation: `// @spec <spec-id>.R1,R3,R7`
 
 After discovery and annotation, run `spec-trace.sh` again to confirm
 coverage. Report any requirements with zero enforcement points — these
@@ -320,7 +323,8 @@ For each **test-gap** finding (requirement SATISFIED but no test-side
    | Documentation (javadoc, API contract) | Skip — not testable |
    | Negative concurrency (no synchronization) | Skip — flaky test territory |
 
-3. **Annotate every test** with `@spec FXX.RN` linking it to the requirement.
+3. **Annotate every test** with `@spec <spec-id>.RN` linking it to the
+   requirement (FXX.RN or domain.slug.RN, matching the project's convention).
 
 4. **Run the test suite** to confirm all new tests pass. Test-gap tests
    must pass immediately (unlike regression tests for violations which must

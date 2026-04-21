@@ -77,11 +77,18 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
     echo "[validate] Warning: manifest not found, skipping requires check" >&2
   fi
 
+  # ── Spec ID format patterns (legacy FXX or new domain.slug) ───────────────
+  # Spec ID alone:           F01  OR  schema.field-access
+  # Spec requirement ref:    F01.R3  OR  schema.field-access.R3
+  #                          (letter-suffix RNs like R51a are supported)
+  spec_id_re='^(F[0-9]+|[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*)$'
+  spec_ref_re='^(F[0-9]+|[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*)\.R[0-9]+[a-z]?$'
+
   # ── Check 7: invalidates[] format AND target existence
   while IFS= read -r inv; do
     [[ -z "$inv" ]] && continue
-    if ! echo "$inv" | grep -qE '^F[0-9]+\.R[0-9]+$'; then
-      ERRORS+=("Invalid invalidates format: '$inv' (expected FXX.RN e.g. F01.R3)")
+    if ! echo "$inv" | grep -qE "$spec_ref_re"; then
+      ERRORS+=("Invalid invalidates format: '$inv' (expected FXX.RN or domain.slug.RN, e.g. F01.R3 or schema.field-access.R3)")
     elif [[ -f "$MANIFEST" ]]; then
       inv_err=$(spec_invalidates_check "$MANIFEST" "$inv" 2>&1 || true)
       if [[ -n "$inv_err" ]]; then
@@ -93,8 +100,8 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
   # ── Check 7b: displaced_by[] IDs resolve via registry (optional field)
   while IFS= read -r dby; do
     [[ -z "$dby" ]] && continue
-    if ! echo "$dby" | grep -qE '^F[0-9]+$'; then
-      ERRORS+=("Invalid displaced_by format: '$dby' (expected FXX e.g. F05)")
+    if ! echo "$dby" | grep -qE "$spec_id_re"; then
+      ERRORS+=("Invalid displaced_by format: '$dby' (expected FXX or domain.slug, e.g. F05 or schema.field-access)")
     elif [[ -f "$MANIFEST" ]]; then
       dby_file=$(spec_file_for_id "$MANIFEST" "$dby")
       if [[ -z "$dby_file" || ! -f "$dby_file" ]]; then
@@ -106,8 +113,8 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
   # ── Check 7c: revives[] IDs must be INVALIDATED specs
   while IFS= read -r rev; do
     [[ -z "$rev" ]] && continue
-    if ! echo "$rev" | grep -qE '^F[0-9]+$'; then
-      ERRORS+=("Invalid revives format: '$rev' (expected FXX e.g. F05)")
+    if ! echo "$rev" | grep -qE "$spec_id_re"; then
+      ERRORS+=("Invalid revives format: '$rev' (expected FXX or domain.slug)")
     elif [[ -f "$MANIFEST" ]]; then
       rev_file=$(spec_file_for_id "$MANIFEST" "$rev")
       if [[ -z "$rev_file" || ! -f "$rev_file" ]]; then
@@ -124,8 +131,8 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
   # ── Check 7d: revived_by[] IDs resolve via registry (optional field)
   while IFS= read -r rby; do
     [[ -z "$rby" ]] && continue
-    if ! echo "$rby" | grep -qE '^F[0-9]+$'; then
-      ERRORS+=("Invalid revived_by format: '$rby' (expected FXX e.g. F05)")
+    if ! echo "$rby" | grep -qE "$spec_id_re"; then
+      ERRORS+=("Invalid revived_by format: '$rby' (expected FXX or domain.slug)")
     elif [[ -f "$MANIFEST" ]]; then
       rby_file=$(spec_file_for_id "$MANIFEST" "$rby")
       if [[ -z "$rby_file" || ! -f "$rby_file" ]]; then

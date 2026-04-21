@@ -1,9 +1,9 @@
 ---
 description: "Decompose a work group into work definitions with dependency graph"
-argument-hint: "<group-slug> [--from-obligations [--spec FXX] [--domain <domain>]]"
+argument-hint: "<group-slug> [--from-obligations [--spec <spec-id>] [--domain <domain>]]"
 ---
 
-# /work-decompose "<group-slug>" [--from-obligations [--spec FXX] [--domain <domain>]]
+# /work-decompose "<group-slug>" [--from-obligations [--spec <spec-id>] [--domain <domain>]]
 
 Decomposes a work group into individual work definitions. Identifies natural
 boundaries, artifact dependencies, shared interface contracts, and the
@@ -68,7 +68,8 @@ Read `.spec/registry/_obligations.json`. Filter to open obligations only
 (`status == "open"`).
 
 Apply filters if provided:
-- `--spec FXX` → only obligations where `spec` matches
+- `--spec <spec-id>` → only obligations where `spec` matches. Spec ID can be
+  legacy `FXX` (e.g., `F12`) or domain.slug (e.g., `query.full-text-index`).
 - `--domain <domain>` → only obligations where `domains` array contains the value
 
 If no open obligations match the filters:
