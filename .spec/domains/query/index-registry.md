@@ -3,7 +3,7 @@
   "id": "query.index-registry",
   "version": 1,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "query"
   ],
@@ -19,7 +19,6 @@
   ]
 }
 ---
-
 # query.index-registry — Index Registry
 
 ## Requirements
@@ -77,3 +76,21 @@ R22. `IndexRegistry` must reject an `EQUALITY` index on a `BOOLEAN` field with a
 R23. `IndexRegistry.extractFieldValue` must return a defensive copy of vector arrays (`float[]` and `short[]`), not a reference to the document's internal array.
 
 ---
+
+## Verification Notes
+
+### Verified: v1 — 2026-04-20
+
+Promoted DRAFT → APPROVED after migration verification. Pre-migration source
+(F10 v4) was DRAFT pending post-amendment re-verification. Migration preserved
+all requirements mechanically; the split redistributed F10's 139 reqs across
+8 query specs with global RN renumbering (see `.spec/_archive/migration-2026-04-20/`).
+
+Verification evidence:
+- Annotation coverage: 100% of reqs have `@spec` annotations in `modules/`
+  (implementation) and `tests/` (regression). Verified via `spec-trace.sh`.
+- Build + test green: `./gradlew test` BUILD SUCCESSFUL post-migration.
+- Round-trip validation passed: every source `F10.R*` maps to exactly one
+  `query.index-registry.R*` destination, preserving req content.
+
+No requirement text changed in this promotion; only frontmatter state.

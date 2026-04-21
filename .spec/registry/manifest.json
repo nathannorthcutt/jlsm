@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-04-20",
+  "generated_at": "2026-04-21",
   "spec_count": 75,
   "specs": [
     {
@@ -11,9 +11,7 @@
       "domains": [
         "compression"
       ],
-      "requires": [
-        "compression.codec-contract"
-      ],
+      "requires": [],
       "invalidates": [],
       "decision_refs": [
         "sstable-block-compression-format",
@@ -826,7 +824,7 @@
     {
       "id": "query.field-index",
       "path": ".spec/domains/query/field-index.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"
@@ -839,7 +837,7 @@
     {
       "id": "query.field-value-codec",
       "path": ".spec/domains/query/field-value-codec.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"
@@ -852,7 +850,7 @@
     {
       "id": "query.full-text-index",
       "path": ".spec/domains/query/full-text-index.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"
@@ -865,7 +863,7 @@
     {
       "id": "query.index-registry",
       "path": ".spec/domains/query/index-registry.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"
@@ -940,7 +938,7 @@
     {
       "id": "query.table-query",
       "path": ".spec/domains/query/table-query.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"
@@ -953,7 +951,7 @@
     {
       "id": "query.vector-index",
       "path": ".spec/domains/query/vector-index.md",
-      "state": "DRAFT",
+      "state": "APPROVED",
       "version": 1,
       "domains": [
         "query"
