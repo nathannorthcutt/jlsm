@@ -10,6 +10,35 @@ semver release cadence is established.
 
 ## [Unreleased]
 
+### Added — Spec coverage gap closure (close-coverage-gaps WD-01 + WD-02)
+- `engine.clustering` v6 → v7 promoted DRAFT → APPROVED — 114/114 requirements reach direct `@spec` annotation coverage (impl + test)
+- `engine.in-process-database-engine` v3 → v4 promoted DRAFT → APPROVED — 89/91 traced (R61 and R79 documented UNTESTABLE, retained as impl-only)
+- `query.index-types` v1 promoted DRAFT → APPROVED — 31/31 requirements traced
+- `query.query-executor` v1 promoted DRAFT → APPROVED — 22/22 requirements traced
+- New test `LocalEngineTest.closeContinuesClosingRemainingTablesWhenOneFails` (R78); new tests for R4 / R12 / R19 / R20 in jlsm-table including `ModuleBoundariesTest` covering module-exports boundary
+
+### Added — Encryption architecture decisions (implement-encryption-lifecycle WD-01)
+- ADR `three-tier-key-hierarchy` (confirmed) — Tenant KEK → data-domain KEK → DEK; per-tenant KMS isolation always-on; 3 KMS flavors (`none` / `local` / `external`); HKDF hybrid deterministic derivation; sharded per-tenant registry; synthetic `_wal` domain per tenant; plaintext bounded to ingress; primary keys remain plaintext
+- ADR `dek-scoping-granularity` (confirmed) — DEK identity is `(tenantId, domainId, tableId, dekVersion)`; per-SSTable and per-object scopes rejected by the encrypt-once invariant
+- ADR `tenant-key-revocation-and-external-rotation` (confirmed) — `rekey` API with proof-of-control sentinel; streaming paginated execution with dual-reference migration; three-state per-tenant failure machine (N=5 permanent-failure / 1h grace defaults); opt-in polling
+- ADR `kms-integration-model` (confirmed) — `KmsClient` SPI + transient/permanent exception hierarchy; 30 min cache TTL; 3-retry exponential backoff (100 ms → 400 ms → 1.6 s, ±25 % jitter); 10 s per-call timeout; encryption context carries `tenantId` + `domainId` + `purpose`
+- ADR `tenant-lifecycle` (deferred) — decommission + data-erasure semantics parked until compliance requirement surfaces
+- Amends `encryption-key-rotation` and `per-field-key-binding` (both previously assumed two-tier)
+
+### Changed — Encryption spec v6 APPROVED (implement-encryption-lifecycle WD-01)
+- `encryption.primitives-lifecycle` v4 DRAFT → v6 APPROVED — ~40 requirements amended for three-tier + new R71–R82b plus R32b-1, R32c, R75c, R75d, R78c-1, R78f, R80a-1
+- Adversarial Pass 5 landed 3 Critical + 7 High + 6 Medium + 7 Low findings; all Critical + High + selected Low fixed in v6
+- Verification Note added to `wal.encryption` — F42's "KEK" parameter resolves internally to the tenant's `_wal`-domain DEK-resolver; no F42 requirement text changes
+
+### Added — Research KB entries (staged ahead of architect phases)
+- `.kb/systems/security/three-level-key-hierarchy{,-detail}.md` — envelope, HKDF-info domain separation, wrap-primitive choices, reference designs
+- `.kb/data-structures/caching/byte-budget-cache-variable-size-entries{,-detail}.md` — admission modes, W-TinyLFU weight-blind admission, pin-count overrun
+- `.kb/systems/database-engines/pool-aware-sstable-block-sizing{,-detail}.md` — `block_size == pool.slotSize`, Panama FFM alignment constraints, jemalloc 25 % fragmentation bound
+
+### Known Gaps
+- `encryption.primitives-lifecycle` v6 is APPROVED but unimplemented (obligation `implement-f41-lifecycle` remains). Downstream encryption WDs (WD-02 ciphertext format, WD-03 DEK lifecycle + rotation, WD-04 compaction migration, WD-05 runtime concerns) are blocked on WD-01 implementation.
+- 6 Medium adversarial findings (M1, M2, M4, M6) tracked for v6.1 amendment during implementation; M3 and M5 effectively resolved in v6.
+
 ### Added — Fault Tolerance and Smart Rebalancing (WD-05)
 - `ClusterOperationalMode` enum (`NORMAL`, `READ_ONLY`) + `ClusteredEngine.operationalMode()` accessor — engine transitions to `READ_ONLY` when quorum is lost (F04.R41)
 - `QuorumLostException` (checked `IOException` subtype) — thrown by `ClusteredTable.create/update/delete/insert` while the engine is in `READ_ONLY` mode; reads remain available (F04.R41)
