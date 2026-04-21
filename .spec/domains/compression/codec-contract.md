@@ -7,9 +7,7 @@
   "domains": [
     "compression"
   ],
-  "requires": [
-    "compression.codec-contract"
-  ],
+  "requires": [],
   "invalidates": [],
   "amends": null,
   "amended_by": null,
