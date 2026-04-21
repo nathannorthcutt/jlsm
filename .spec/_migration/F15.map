@@ -1,0 +1,373 @@
+{
+  "source_spec": "F15",
+  "source_path": "serialization/F15-json-only-simd-jsonl.md",
+  "source_state": "APPROVED",
+  "total_requirements": 59,
+  "requirements": {
+    "R1": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R2": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R3": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R4": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R5": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R6": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R7": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R8": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R47": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R47",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R9": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R10": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R11": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R12": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R13": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R14": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R15": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R48": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R48",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R16": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R17": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R18": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R19": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R49": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R49",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R20": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R21": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R22": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R23": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R24": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R50": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R50",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R25": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R51": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R51",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R26": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R27": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R52": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R52",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R28": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R29": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R59": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R59",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R30": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R31": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R53": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R53",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R32": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R33": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R34": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R35": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R54": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R54",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R36": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R37": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R38": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R55": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R55",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R56": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R56",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R39": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R40": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R41": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R42": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R43": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R44": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R57": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R57",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R58": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R58",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R45": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    },
+    "R46": {
+      "new_spec": "serialization.simd-jsonl",
+      "new_rn": "R46",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "serialization.simd-jsonl",
+      "new_path": ".spec/domains/serialization/simd-jsonl.md",
+      "domains": [
+        "serialization"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R47",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R48",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R49",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R50",
+        "R25",
+        "R51",
+        "R26",
+        "R27",
+        "R52",
+        "R28",
+        "R29",
+        "R59",
+        "R30",
+        "R31",
+        "R53",
+        "R32",
+        "R33",
+        "R34",
+        "R35",
+        "R54",
+        "R36",
+        "R37",
+        "R38",
+        "R55",
+        "R56",
+        "R39",
+        "R40",
+        "R41",
+        "R42",
+        "R43",
+        "R44",
+        "R57",
+        "R58",
+        "R45",
+        "R46"
+      ]
+    }
+  ]
+}

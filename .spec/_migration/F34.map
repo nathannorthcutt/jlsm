@@ -1,0 +1,499 @@
+{
+  "source_spec": "F34",
+  "source_path": "engine/F34-handle-lifecycle.md",
+  "source_state": "APPROVED",
+  "total_requirements": 80,
+  "requirements": {
+    "R1": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R2": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R3": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R4": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R5": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R6": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R6a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R6a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R7": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R7a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R7a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R8": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R9": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R10": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R10a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R10a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R10b": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R10b",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R11": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R12": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R13": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R14": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R15": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R15a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R15a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R15b": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R15b",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R16": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R16a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R16a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R17": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R18": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R19": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R20": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R21": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R22": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R22a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R22a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R23": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R24": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R25": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R25a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R25a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R26": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R27": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R28": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R29": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R29a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R29a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R30": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R31": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R32": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R33": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R33a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R33a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R33b": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R33b",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R34": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R35": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R36": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R37": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R37a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R37a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R37b": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R37b",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R38": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R39": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R39a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R39a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R39b": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R39b",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R40": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R41": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R42": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R42a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R42a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R43": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R44": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R45": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R46": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R46",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R47": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R47",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R48": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R48",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R48a": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R48a",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R48b": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R48b",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R49": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R49",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R50": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R50",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R51": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R51",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R52": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R52",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R53": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R53",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R54": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R54",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R55": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R55",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R56": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R56",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R57": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R57",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R58": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R58",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R59": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R59",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R60": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R60",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    },
+    "R61": {
+      "new_spec": "engine.handle-lifecycle",
+      "new_rn": "R61",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "engine.handle-lifecycle",
+      "new_path": ".spec/domains/engine/handle-lifecycle.md",
+      "domains": [
+        "engine"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R6a",
+        "R7",
+        "R7a",
+        "R8",
+        "R9",
+        "R10",
+        "R10a",
+        "R10b",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R15a",
+        "R15b",
+        "R16",
+        "R16a",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R22a",
+        "R23",
+        "R24",
+        "R25",
+        "R25a",
+        "R26",
+        "R27",
+        "R28",
+        "R29",
+        "R29a",
+        "R30",
+        "R31",
+        "R32",
+        "R33",
+        "R33a",
+        "R33b",
+        "R34",
+        "R35",
+        "R36",
+        "R37",
+        "R37a",
+        "R37b",
+        "R38",
+        "R39",
+        "R39a",
+        "R39b",
+        "R40",
+        "R41",
+        "R42",
+        "R42a",
+        "R43",
+        "R44",
+        "R45",
+        "R46",
+        "R47",
+        "R48",
+        "R48a",
+        "R48b",
+        "R49",
+        "R50",
+        "R51",
+        "R52",
+        "R53",
+        "R54",
+        "R55",
+        "R56",
+        "R57",
+        "R58",
+        "R59",
+        "R60",
+        "R61"
+      ]
+    }
+  ]
+}

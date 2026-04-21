@@ -1,0 +1,265 @@
+{
+  "source_spec": "F18",
+  "source_path": "serialization/F18-zstd-dictionary-compression.md",
+  "source_state": "APPROVED",
+  "total_requirements": 41,
+  "requirements": {
+    "R1": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R2": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R3": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R3a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R3a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R4": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R4a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R4a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R5": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R6": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R7": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R7a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R7a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R8": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R9": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R10": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R11": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R11a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R11a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R12": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R13": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R13a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R13a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R14": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R15": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R15a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R15a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R16": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R17": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R17a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R17a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R17b": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R17b",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R17c": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R17c",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R18": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R19": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R19a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R19a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R19b": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R19b",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R19c": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R19c",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R20": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R20a": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R20a",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R21": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R22": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R23": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R24": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R25": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R26": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R27": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    },
+    "R28": {
+      "new_spec": "compression.zstd-dictionary",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "compression.zstd-dictionary",
+      "new_path": ".spec/domains/compression/zstd-dictionary.md",
+      "domains": [
+        "compression"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R3a",
+        "R4",
+        "R4a",
+        "R5",
+        "R6",
+        "R7",
+        "R7a",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R11a",
+        "R12",
+        "R13",
+        "R13a",
+        "R14",
+        "R15",
+        "R15a",
+        "R16",
+        "R17",
+        "R17a",
+        "R17b",
+        "R17c",
+        "R18",
+        "R19",
+        "R19a",
+        "R19b",
+        "R19c",
+        "R20",
+        "R20a",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R28"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,427 @@
+{
+  "source_spec": "F38",
+  "source_path": "engine/F38-aggregation-query-merge.md",
+  "source_state": "APPROVED",
+  "total_requirements": 68,
+  "requirements": {
+    "R1": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R2": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R3": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R4": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R5": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R6": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R7": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R7a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R7a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R8": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R9": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R10": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R10a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R10a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R11": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R12": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R13": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R14": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R15": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R15a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R15a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R16": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R17": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R18": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R19": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R19a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R19a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R20": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R21": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R22": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R23": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R23a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R23a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R24": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R25": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R26": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R27": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R27a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R27a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R28": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R28a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R28a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R29": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R30": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R31": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R31a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R31a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R32": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R33": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R34": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R35": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R36": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R37": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R38": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R38a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R38a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R39": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R40": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R41": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R42": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R43": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R44": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R44a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R44a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R45": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R45a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R45a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R46": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R46",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R47": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R47",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R48": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R48",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R49": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R49",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R50": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R50",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R51": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R51",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R52": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R52",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R53": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R53",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R54": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R54",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R55": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R55",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R54a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R54a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    },
+    "R6a": {
+      "new_spec": "query.aggregation-merge",
+      "new_rn": "R6a",
+      "new_path": ".spec/domains/query/aggregation-merge.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "query.aggregation-merge",
+      "new_path": ".spec/domains/query/aggregation-merge.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R7a",
+        "R8",
+        "R9",
+        "R10",
+        "R10a",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R15a",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R19a",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "R23a",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R27a",
+        "R28",
+        "R28a",
+        "R29",
+        "R30",
+        "R31",
+        "R31a",
+        "R32",
+        "R33",
+        "R34",
+        "R35",
+        "R36",
+        "R37",
+        "R38",
+        "R38a",
+        "R39",
+        "R40",
+        "R41",
+        "R42",
+        "R43",
+        "R44",
+        "R44a",
+        "R45",
+        "R45a",
+        "R46",
+        "R47",
+        "R48",
+        "R49",
+        "R50",
+        "R51",
+        "R52",
+        "R53",
+        "R54",
+        "R55",
+        "R54a",
+        "R6a"
+      ]
+    }
+  ]
+}

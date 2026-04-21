@@ -1,0 +1,115 @@
+{
+  "source_spec": "F24",
+  "source_path": "storage/F24-pool-aware-block-size.md",
+  "source_state": "DRAFT",
+  "total_requirements": 16,
+  "requirements": {
+    "R1": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R2": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R3": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R4": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R5": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R6": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R7": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R8": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R9": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R10": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R11": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R12": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R13": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R14": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R15": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    },
+    "R16": {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "sstable.pool-aware-block-size",
+      "new_path": ".spec/domains/sstable/pool-aware-block-size.md",
+      "domains": [
+        "sstable"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16"
+      ]
+    }
+  ]
+}

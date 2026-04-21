@@ -1,0 +1,187 @@
+{
+  "source_spec": "F25",
+  "source_path": "storage/F25-byte-budget-block-cache.md",
+  "source_state": "DRAFT",
+  "total_requirements": 28,
+  "requirements": {
+    "R1": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R2": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R3": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R4": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R5": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R6": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R7": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R8": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R9": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R10": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R11": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R12": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R13": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R14": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R15": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R16": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R17": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R18": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R19": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R20": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R21": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R22": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R23": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R24": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R25": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R26": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R27": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    },
+    "R28": {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "sstable.byte-budget-block-cache",
+      "new_path": ".spec/domains/sstable/byte-budget-block-cache.md",
+      "domains": [
+        "sstable"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R28"
+      ]
+    }
+  ]
+}

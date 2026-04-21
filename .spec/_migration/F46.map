@@ -1,0 +1,217 @@
+{
+  "source_spec": "F46",
+  "source_path": "encryption/F46-encrypted-prefix-index.md",
+  "source_state": "APPROVED",
+  "total_requirements": 33,
+  "requirements": {
+    "R1": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R2": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R3": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R4": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R5": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R6": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R7": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R8": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R9": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R10": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R11": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R12": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R13": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R14": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R15": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R16": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R16a": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R16a",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R16b": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R16b",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R16c": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R16c",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R17": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R18": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R18a": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R18a",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R18b": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R18b",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R19": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R20": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R20a": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R20a",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R21": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R22": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R23": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R24": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R24a": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R24a",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R24b": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R24b",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    },
+    "R25": {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "query.encrypted-prefix-index",
+      "new_path": ".spec/domains/query/encrypted-prefix-index.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R16a",
+        "R16b",
+        "R16c",
+        "R17",
+        "R18",
+        "R18a",
+        "R18b",
+        "R19",
+        "R20",
+        "R20a",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R24a",
+        "R24b",
+        "R25"
+      ]
+    }
+  ]
+}

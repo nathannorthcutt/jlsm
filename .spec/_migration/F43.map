@@ -1,0 +1,235 @@
+{
+  "source_spec": "F43",
+  "source_path": "partitioning/F43-sequential-insert-hotspot-mitigation.md",
+  "source_state": "APPROVED",
+  "total_requirements": 36,
+  "requirements": {
+    "R1": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R2": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R3": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R4": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R5": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R6": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R7": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R8": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R9": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R10": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R11": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R12": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R13": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R14": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R15": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R16": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R17": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R18": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R19": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R20": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R21": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R22": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R23": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R24": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R25": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R26": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R27": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R28": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R29": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R30": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R31": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R32": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R33": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R34": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R35": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    },
+    "R36": {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "partitioning.sequential-insert-hotspot-mitigation",
+      "new_path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md",
+      "domains": [
+        "partitioning"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R28",
+        "R29",
+        "R30",
+        "R31",
+        "R32",
+        "R33",
+        "R34",
+        "R35",
+        "R36"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,307 @@
+{
+  "source_spec": "F44",
+  "source_path": "engine/F44-scan-lease-gc-watermark.md",
+  "source_state": "APPROVED",
+  "total_requirements": 48,
+  "requirements": {
+    "R1": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R2": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R3": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R4": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R4a": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R4a",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R5": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R6": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R7": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R8": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R9": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R10": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R11": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R12": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R10a": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R10a",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R13": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R14": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R15": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R16": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R17": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R18": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R19": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R20": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R21": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R22": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R23": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R24": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R25": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R26": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R27": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R26a": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R26a",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R28": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R29": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R30": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R31": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R32": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R33": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R34": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R35": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R36": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R37": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R38": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R39": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R40": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R41": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R42": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R43": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R44": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    },
+    "R45": {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "query.scan-lease-gc-watermark",
+      "new_path": ".spec/domains/query/scan-lease-gc-watermark.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R4a",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R10a",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R26a",
+        "R28",
+        "R29",
+        "R30",
+        "R31",
+        "R32",
+        "R33",
+        "R34",
+        "R35",
+        "R36",
+        "R37",
+        "R38",
+        "R39",
+        "R40",
+        "R41",
+        "R42",
+        "R43",
+        "R44",
+        "R45"
+      ]
+    }
+  ]
+}

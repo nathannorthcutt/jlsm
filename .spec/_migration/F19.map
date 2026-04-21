@@ -1,0 +1,391 @@
+{
+  "source_spec": "F19",
+  "source_path": "cluster-transport/F19-multiplexed-transport-framing.md",
+  "source_state": "DRAFT",
+  "total_requirements": 62,
+  "requirements": {
+    "R1": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R2": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R2a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R2a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R2b": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R2b",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R3": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R4": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R5": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R6": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R6a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R6a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R7": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R8": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R9": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R10": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R35a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R35a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R11": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R12": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R13": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R14": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R15": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R15a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R15a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R16": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R17": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R18": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R19": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R19a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R19a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R20": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R21": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R22": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R22a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R22a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R23": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R23a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R23a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R24": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R24a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R24a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R25": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R39": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R39a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R39a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R40": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R40a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R40a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R41": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R42": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R26": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R26a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R26a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R27": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R43": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R43a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R43a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R44": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R35": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R36": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R37": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R37a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R37a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R38": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R28": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R29": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R30": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R30a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R30a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R31": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R32": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R33": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R34": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R34a": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R34a",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R34b": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R34b",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    },
+    "R45": {
+      "new_spec": "transport.multiplexed-framing",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "transport.multiplexed-framing",
+      "new_path": ".spec/domains/transport/multiplexed-framing.md",
+      "domains": [
+        "transport"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R2a",
+        "R2b",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R6a",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R35a",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R15a",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R19a",
+        "R20",
+        "R21",
+        "R22",
+        "R22a",
+        "R23",
+        "R23a",
+        "R24",
+        "R24a",
+        "R25",
+        "R39",
+        "R39a",
+        "R40",
+        "R40a",
+        "R41",
+        "R42",
+        "R26",
+        "R26a",
+        "R27",
+        "R43",
+        "R43a",
+        "R44",
+        "R35",
+        "R36",
+        "R37",
+        "R37a",
+        "R38",
+        "R28",
+        "R29",
+        "R30",
+        "R30a",
+        "R31",
+        "R32",
+        "R33",
+        "R34",
+        "R34a",
+        "R34b",
+        "R45"
+      ]
+    }
+  ]
+}

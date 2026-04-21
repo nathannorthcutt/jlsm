@@ -1,0 +1,577 @@
+{
+  "source_spec": "F37",
+  "source_path": "engine/F37-catalog-operations.md",
+  "source_state": "APPROVED",
+  "total_requirements": 93,
+  "requirements": {
+    "R1": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R1a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R1a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R2": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R3": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R4": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R5": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R5a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R5a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R6": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R6a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R6a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R7": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R7a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R7a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R7b": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R7b",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R8": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R9": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R10": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R11": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R12": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R13": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R14": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R15": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R16": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R17": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R17a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R17a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R18": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R19": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R20": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R20a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R20a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R20b": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R20b",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R70": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R70",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R71": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R71",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R72": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R72",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R73": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R73",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R74": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R74",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R21": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R22": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R23": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R24": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R25": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R25a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R25a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R26": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R27": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R27a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R27a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R28": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R29": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R30": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R31": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R31a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R31a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R32": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R33": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R34": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R35": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R36": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R37": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R38": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R39": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R39a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R39a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R40": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R41": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R42": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R42a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R42a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R43": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R44": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R45": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R46": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R46",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R47": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R47",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R48": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R48",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R48a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R48a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R48b": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R48b",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R48c": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R48c",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R49": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R49",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R50": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R50",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R51": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R51",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R52": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R52",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R53": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R53",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R54": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R54",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R55": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R55",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R56": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R56",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R56a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R56a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R57": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R57",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R58": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R58",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R59": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R59",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R60": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R60",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R61": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R61",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R62": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R62",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R62a": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R62a",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R62b": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R62b",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R63": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R63",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R64": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R64",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R65": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R65",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R66": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R66",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R67": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R67",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R68": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R68",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    },
+    "R69": {
+      "new_spec": "engine.catalog-operations",
+      "new_rn": "R69",
+      "new_path": ".spec/domains/engine/catalog-operations.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "engine.catalog-operations",
+      "new_path": ".spec/domains/engine/catalog-operations.md",
+      "domains": [
+        "engine"
+      ],
+      "source_requirements": [
+        "R1",
+        "R1a",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R5a",
+        "R6",
+        "R6a",
+        "R7",
+        "R7a",
+        "R7b",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R17a",
+        "R18",
+        "R19",
+        "R20",
+        "R20a",
+        "R20b",
+        "R70",
+        "R71",
+        "R72",
+        "R73",
+        "R74",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R25",
+        "R25a",
+        "R26",
+        "R27",
+        "R27a",
+        "R28",
+        "R29",
+        "R30",
+        "R31",
+        "R31a",
+        "R32",
+        "R33",
+        "R34",
+        "R35",
+        "R36",
+        "R37",
+        "R38",
+        "R39",
+        "R39a",
+        "R40",
+        "R41",
+        "R42",
+        "R42a",
+        "R43",
+        "R44",
+        "R45",
+        "R46",
+        "R47",
+        "R48",
+        "R48a",
+        "R48b",
+        "R48c",
+        "R49",
+        "R50",
+        "R51",
+        "R52",
+        "R53",
+        "R54",
+        "R55",
+        "R56",
+        "R56a",
+        "R57",
+        "R58",
+        "R59",
+        "R60",
+        "R61",
+        "R62",
+        "R62a",
+        "R62b",
+        "R63",
+        "R64",
+        "R65",
+        "R66",
+        "R67",
+        "R68",
+        "R69"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,499 @@
+{
+  "source_spec": "F35",
+  "source_path": "engine/F35-cross-table-transactions.md",
+  "source_state": "APPROVED",
+  "total_requirements": 80,
+  "requirements": {
+    "R1": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R1a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R1a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R2": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R2a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R2a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R2b": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R2b",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R3": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R3a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R3a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R3b": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R3b",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R4": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R5": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R6": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R6a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R6a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R7": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R7a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R7a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R8": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R9": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R10": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R11": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R11a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R11a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R12": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R12a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R12a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R13": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R13a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R13a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R13b": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R13b",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R14": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R15": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R16": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R17": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R18": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R19": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R20": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R20a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R20a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R21": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R22": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R23": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R24": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R24a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R24a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R25": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R26": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R27": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R28": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R28a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R28a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R29": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R29a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R29a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R30": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R31": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R32": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R32a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R32a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R33": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R34": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R34a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R34a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R35": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R36": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R36a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R36a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R37": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R38": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R38a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R38a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R39": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R40": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R40a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R40a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R41": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R41a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R41a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R42": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R43": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R43a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R43a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R44": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R45": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R46": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R46",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R46a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R46a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R46b": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R46b",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R47": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R47",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R48": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R48",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R49": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R49",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R50": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R50",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R51": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R51",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R52": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R52",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R53": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R53",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R53a": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R53a",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R54": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R54",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    },
+    "R55": {
+      "new_spec": "engine.cross-table-transactions",
+      "new_rn": "R55",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "engine.cross-table-transactions",
+      "new_path": ".spec/domains/engine/cross-table-transactions.md",
+      "domains": [
+        "engine"
+      ],
+      "source_requirements": [
+        "R1",
+        "R1a",
+        "R2",
+        "R2a",
+        "R2b",
+        "R3",
+        "R3a",
+        "R3b",
+        "R4",
+        "R5",
+        "R6",
+        "R6a",
+        "R7",
+        "R7a",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R11a",
+        "R12",
+        "R12a",
+        "R13",
+        "R13a",
+        "R13b",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R20a",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R24a",
+        "R25",
+        "R26",
+        "R27",
+        "R28",
+        "R28a",
+        "R29",
+        "R29a",
+        "R30",
+        "R31",
+        "R32",
+        "R32a",
+        "R33",
+        "R34",
+        "R34a",
+        "R35",
+        "R36",
+        "R36a",
+        "R37",
+        "R38",
+        "R38a",
+        "R39",
+        "R40",
+        "R40a",
+        "R41",
+        "R41a",
+        "R42",
+        "R43",
+        "R43a",
+        "R44",
+        "R45",
+        "R46",
+        "R46a",
+        "R46b",
+        "R47",
+        "R48",
+        "R49",
+        "R50",
+        "R51",
+        "R52",
+        "R53",
+        "R53a",
+        "R54",
+        "R55"
+      ]
+    }
+  ]
+}

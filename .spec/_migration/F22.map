@@ -1,0 +1,187 @@
+{
+  "source_spec": "F22",
+  "source_path": "cluster-membership/F22-continuous-rediscovery.md",
+  "source_state": "DRAFT",
+  "total_requirements": 28,
+  "requirements": {
+    "R1": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R2": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R3": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R3a": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R3a",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R4": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R5": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R6": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R7": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R8": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R8a": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R8a",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R9": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R9a": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R9a",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R10": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R10a": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R10a",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R11": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R11a": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R11a",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R11b": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R11b",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R12": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R13": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R14": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R15": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R15a": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R15a",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R16": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R17": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R18": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R18a": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R18a",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R19": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    },
+    "R20": {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "membership.continuous-rediscovery",
+      "new_path": ".spec/domains/membership/continuous-rediscovery.md",
+      "domains": [
+        "membership"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R3a",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R8a",
+        "R9",
+        "R9a",
+        "R10",
+        "R10a",
+        "R11",
+        "R11a",
+        "R11b",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R15a",
+        "R16",
+        "R17",
+        "R18",
+        "R18a",
+        "R19",
+        "R20"
+      ]
+    }
+  ]
+}

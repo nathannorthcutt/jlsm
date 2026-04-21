@@ -1,0 +1,595 @@
+{
+  "source_spec": "F36",
+  "source_path": "engine/F36-remote-serialization.md",
+  "source_state": "APPROVED",
+  "total_requirements": 96,
+  "requirements": {
+    "R1": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R2": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R3": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R4": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R5": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R6": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R7": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R8": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R9": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R10": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R10a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R10a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R11": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R12": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R13": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R14": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R15": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R15a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R15a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R16": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R17": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R18": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R18a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R18a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R19": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R20": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R21": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R22": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R22a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R22a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R23": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R23a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R23a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R23b": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R23b",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R23c": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R23c",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R24": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R24a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R24a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R24b": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R24b",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R24c": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R24c",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R24d": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R24d",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R24e": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R24e",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R24f": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R24f",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R25": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R26": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R26a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R26a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R26b": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R26b",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R26c": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R26c",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R26d": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R26d",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R26e": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R26e",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R26f": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R26f",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R26g": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R26g",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R27": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R28": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R29": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R30": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R31": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R32": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R33": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R33a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R33a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R34": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R35": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R36": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R37": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R38": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R39": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R39a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R39a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R40": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R41": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R42": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R43": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R44": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R45": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R46": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R46",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R47": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R47",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R48": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R48",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R48a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R48a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R48b": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R48b",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R49": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R49",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R50": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R50",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R51": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R51",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R51a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R51a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R52": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R52",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R53": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R53",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R54": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R54",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R55": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R55",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R55a": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R55a",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R56": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R56",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R57": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R57",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R58": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R58",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R59": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R59",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R60": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R60",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R61": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R61",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R62": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R62",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R63": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R63",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R64": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R64",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R65": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R65",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R66": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R66",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R67": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R67",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R68": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R68",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R69": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R69",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    },
+    "R70": {
+      "new_spec": "serialization.remote-serialization",
+      "new_rn": "R70",
+      "new_path": ".spec/domains/serialization/remote-serialization.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "serialization.remote-serialization",
+      "new_path": ".spec/domains/serialization/remote-serialization.md",
+      "domains": [
+        "serialization"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R10a",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R15a",
+        "R16",
+        "R17",
+        "R18",
+        "R18a",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R22a",
+        "R23",
+        "R23a",
+        "R23b",
+        "R23c",
+        "R24",
+        "R24a",
+        "R24b",
+        "R24c",
+        "R24d",
+        "R24e",
+        "R24f",
+        "R25",
+        "R26",
+        "R26a",
+        "R26b",
+        "R26c",
+        "R26d",
+        "R26e",
+        "R26f",
+        "R26g",
+        "R27",
+        "R28",
+        "R29",
+        "R30",
+        "R31",
+        "R32",
+        "R33",
+        "R33a",
+        "R34",
+        "R35",
+        "R36",
+        "R37",
+        "R38",
+        "R39",
+        "R39a",
+        "R40",
+        "R41",
+        "R42",
+        "R43",
+        "R44",
+        "R45",
+        "R46",
+        "R47",
+        "R48",
+        "R48a",
+        "R48b",
+        "R49",
+        "R50",
+        "R51",
+        "R51a",
+        "R52",
+        "R53",
+        "R54",
+        "R55",
+        "R55a",
+        "R56",
+        "R57",
+        "R58",
+        "R59",
+        "R60",
+        "R61",
+        "R62",
+        "R63",
+        "R64",
+        "R65",
+        "R66",
+        "R67",
+        "R68",
+        "R69",
+        "R70"
+      ]
+    }
+  ]
+}

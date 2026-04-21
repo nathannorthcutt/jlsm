@@ -1,0 +1,637 @@
+{
+  "source_spec": "F07",
+  "source_path": "query/F07-sql-query-support.md",
+  "source_state": "APPROVED",
+  "total_requirements": 103,
+  "requirements": {
+    "R1": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R1",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R2": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R2",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R3": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R3",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R4": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R4",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R5": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R5",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R6": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R6",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R7": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R7",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R8": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R8",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R9": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R9",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R10": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R10",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R11": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R11",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R12": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R12",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R13": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R13",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R14": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R14",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R15": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R15",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R16": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R16",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R17": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R17",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R18": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R18",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R19": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R19",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R20": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R20",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R21": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R21",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R22": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R22",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R23": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R23",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R24": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R24",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R25": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R25",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R26": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R26",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R27": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R27",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R28": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R28",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R29": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R29",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R30": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R30",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R31": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R31",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R32": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R32",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R33": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R33",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R34": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R34",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R35": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R35",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R36": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R36",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R37": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R37",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R38": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R38",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R39": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R39",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R40": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R40",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R41": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R41",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R42": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R42",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R43": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R43",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R44": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R44",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R45": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R45",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R46": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R46",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R47": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R47",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R48": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R48",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R49": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R49",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R50": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R50",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R51": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R51",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R52": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R52",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R53": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R53",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R54": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R54",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R55": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R55",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R56": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R56",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R57": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R57",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R58": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R58",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R59": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R59",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R60": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R60",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R61": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R61",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R62": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R62",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R63": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R63",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R64": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R64",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R65": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R65",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R66": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R66",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R67": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R67",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R68": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R68",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R69": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R69",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R70": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R70",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R71": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R71",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R72": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R72",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R73": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R73",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R74": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R74",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R75": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R75",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R76": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R76",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R77": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R77",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R78": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R78",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R79": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R79",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R80": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R80",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R81": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R81",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R82": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R82",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R83": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R83",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R84": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R84",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R85": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R85",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R86": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R86",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R87": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R87",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R88": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R88",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R89": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R89",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R90": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R90",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R91": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R91",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R92": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R92",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R93": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R93",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R94": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R94",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R95": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R95",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R96": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R96",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R97": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R97",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R98": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R98",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R99": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R99",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R100": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R100",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R101": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R101",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R102": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R102",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    },
+    "R103": {
+      "new_spec": "query.sql-query-support",
+      "new_rn": "R103",
+      "new_path": ".spec/domains/query/sql-query-support.md"
+    }
+  },
+  "destinations": [
+    {
+      "new_spec": "query.sql-query-support",
+      "new_path": ".spec/domains/query/sql-query-support.md",
+      "domains": [
+        "query"
+      ],
+      "source_requirements": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R22",
+        "R23",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R28",
+        "R29",
+        "R30",
+        "R31",
+        "R32",
+        "R33",
+        "R34",
+        "R35",
+        "R36",
+        "R37",
+        "R38",
+        "R39",
+        "R40",
+        "R41",
+        "R42",
+        "R43",
+        "R44",
+        "R45",
+        "R46",
+        "R47",
+        "R48",
+        "R49",
+        "R50",
+        "R51",
+        "R52",
+        "R53",
+        "R54",
+        "R55",
+        "R56",
+        "R57",
+        "R58",
+        "R59",
+        "R60",
+        "R61",
+        "R62",
+        "R63",
+        "R64",
+        "R65",
+        "R66",
+        "R67",
+        "R68",
+        "R69",
+        "R70",
+        "R71",
+        "R72",
+        "R73",
+        "R74",
+        "R75",
+        "R76",
+        "R77",
+        "R78",
+        "R79",
+        "R80",
+        "R81",
+        "R82",
+        "R83",
+        "R84",
+        "R85",
+        "R86",
+        "R87",
+        "R88",
+        "R89",
+        "R90",
+        "R91",
+        "R92",
+        "R93",
+        "R94",
+        "R95",
+        "R96",
+        "R97",
+        "R98",
+        "R99",
+        "R100",
+        "R101",
+        "R102",
+        "R103"
+      ]
+    }
+  ]
+}
