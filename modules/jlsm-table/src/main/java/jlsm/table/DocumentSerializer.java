@@ -238,12 +238,12 @@ public final class DocumentSerializer {
                     encryptedPayloads[i] = enc.encrypt(plainBytes);
                     hasEncryptedFields = true;
                 } else if (fd.encryption() instanceof EncryptionSpec.DistancePreserving) {
-                    // @spec encryption.primitives-dispatch.R11,R12 — serializer owns DCPE encryption: encrypt the
+                    // @spec serialization.encrypted-field-serialization.R3,R12 — serializer owns DCPE encryption: encrypt the
                     // @spec encryption.primitives-variants.R55 — serializer owns DCPE encryption: encrypt the
                     // float[] directly and produce a [seed | values | MAC] blob.
                     final DcpeSapEncryptor dcpe = encryptionDispatch.dcpeEncryptorFor(i);
                     if (dcpe == null) {
-                        // @spec encryption.primitives-dispatch.R14 — refuse to silently store plaintext for a field that
+                        // @spec serialization.encrypted-field-serialization.R6 — refuse to silently store plaintext for a field that
                         // was declared to require encryption. The serializer was built without
                         // a key holder, and this document is not pre-encrypted.
                         throw new IllegalStateException("Cannot serialize field '" + fd.name()
@@ -257,7 +257,7 @@ public final class DocumentSerializer {
                     encryptedPayloads[i] = DcpeSapEncryptor.toBlob(ev);
                     hasEncryptedFields = true;
                 } else if (!(fd.encryption() instanceof EncryptionSpec.None)) {
-                    // @spec encryption.primitives-dispatch.R14 — schema declares encryption for this field, we have no
+                    // @spec serialization.encrypted-field-serialization.R6 — schema declares encryption for this field, we have no
                     // encryptor (no key holder), and the document is not pre-encrypted.
                     // Refuse rather than silently store plaintext.
                     throw new IllegalStateException("Cannot serialize field '" + fd.name() + "' ("
@@ -450,7 +450,7 @@ public final class DocumentSerializer {
                         final Cursor plainCursor = new Cursor(plainBytes, 0);
                         values[i] = decoders[i].decode(plainBytes, plainCursor);
                     } else if (dcpe != null) {
-                        // @spec encryption.primitives-dispatch.R11,R12 — DCPE blob: [seed | values | MAC]
+                        // @spec serialization.encrypted-field-serialization.R3,R12 — DCPE blob: [seed | values | MAC]
                         // @spec encryption.primitives-variants.R55 — DCPE blob: [seed | values | MAC]
                         final int blobLen = readVarInt(buf, cursor);
                         final byte[] blob = new byte[blobLen];

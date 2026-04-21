@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "generated_at": "2026-04-20",
-  "spec_count": 71,
+  "spec_count": 75,
   "specs": [
     {
       "id": "compression.codec-contract",
@@ -753,6 +753,38 @@
       ]
     },
     {
+      "id": "query.encrypted-index-compatibility",
+      "path": ".spec/domains/query/encrypted-index-compatibility.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "query",
+        "encryption"
+      ],
+      "requires": [
+        "encryption.primitives-variants"
+      ],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "query.encrypted-positional-posting",
+      "path": ".spec/domains/query/encrypted-positional-posting.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "query",
+        "encryption"
+      ],
+      "requires": [
+        "encryption.primitives-variants"
+      ],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
       "id": "query.encrypted-prefix-index",
       "path": ".spec/domains/query/encrypted-prefix-index.md",
       "state": "APPROVED",
@@ -773,6 +805,23 @@
         "algorithms/encryption/prefix-fuzzy-searchable-encryption",
         "algorithms/encryption/searchable-encryption-schemes"
       ]
+    },
+    {
+      "id": "query.encrypted-sse-index",
+      "path": ".spec/domains/query/encrypted-sse-index.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "query",
+        "encryption"
+      ],
+      "requires": [
+        "encryption.primitives-variants",
+        "encryption.primitives-key-holder"
+      ],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
     },
     {
       "id": "query.field-index",
@@ -1049,6 +1098,23 @@
         "serialization"
       ],
       "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "serialization.encrypted-field-serialization",
+      "path": ".spec/domains/serialization/encrypted-field-serialization.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "serialization",
+        "encryption"
+      ],
+      "requires": [
+        "encryption.primitives-variants",
+        "encryption.primitives-dispatch"
+      ],
       "invalidates": [],
       "decision_refs": [],
       "kb_refs": []

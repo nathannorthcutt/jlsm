@@ -235,7 +235,7 @@ class DcpeSapEncryptorTest {
 
     // ── Blob encoding ──────────────────────────────────────────────────────
 
-    // @spec encryption.primitives-dispatch.R12, F41.R22 — blob round-trips through toBlob/fromBlob
+    // @spec serialization.encrypted-field-serialization.R4, F41.R22 — blob round-trips through toBlob/fromBlob
     @Test
     void blob_roundTrip() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);

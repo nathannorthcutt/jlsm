@@ -27,7 +27,6 @@
   ]
 }
 ---
-
 # encryption.primitives-variants — Primitives Variants
 
 ## Requirements
@@ -99,44 +98,6 @@ R27. DCPE encryption must be non-deterministic: encrypting the same vector twice
 R28. DCPE decryption must require the perturbation seed that was generated during encryption. Without the correct seed, exact reconstruction of the plaintext vector is not possible.
 
 R29. DCPE encrypted output must contain only finite float values. If the scaling or perturbation produces NaN or Infinity in any component, the encryptor must reject the operation rather than producing a vector with non-finite components.
-
-### Index registry validation
-
-R30. The index registry must validate encryption-to-index compatibility at construction time using the encryption specification's capability methods. An index type that requires a capability the field's encryption specification does not provide must be rejected with an IllegalArgumentException.
-
-R31. An equality or unique index on a field with opaque or distance-preserving encryption must be rejected. Only none, deterministic, and order-preserving encryption specifications report equality support.
-
-R32. A range index on a field with deterministic, opaque, or distance-preserving encryption must be rejected. Only none and order-preserving encryption specifications report range support.
-
-R33. A full-text index on a field with opaque, order-preserving, or distance-preserving encryption must be rejected. Only none and deterministic encryption specifications report keyword search support.
-
-R34. A vector index on a field with deterministic, order-preserving, or opaque encryption must be rejected. Only none and distance-preserving encryption specifications report approximate nearest-neighbor support.
-
-R35. Validation of encryption compatibility must use the capability methods on the encryption specification, not pattern matching on variant types. This ensures that if capability methods are overridden in future variants, the validation remains correct.
-
-### SSE encrypted index
-
-R36. The SSE encrypted index must derive two sub-keys from the master key: one for the PRF (search token derivation) and one for posting encryption. Sub-key derivation must use HMAC-SHA256 with distinct labels. The master key array must be zeroed after derivation.
-
-R37. Search token derivation must be deterministic: the same term under the same PRF key must always produce the same token. This is required for the caller to search without revealing the plaintext term to the index after initial token derivation.
-
-R38. Each add operation must increment a per-term state counter and derive a unique storage address from the token and counter value. This provides forward privacy: a new addition cannot be linked to previous additions for the same term by observing storage addresses alone.
-
-R39. The SSE index search method must accept a pre-derived token (not a plaintext term). The index must iterate storage addresses for counter values 0 through N until a miss is encountered, collecting and decrypting all live entries.
-
-R40. The SSE index must support soft deletion by marking entries with a deleted marker byte. Deleted entries must remain in storage (to preserve counter continuity) but must be excluded from search results.
-
-R41. SSE posting encryption must use AES-GCM with the storage address as authenticated associated data. This binds each encrypted posting to its address: moving an encrypted entry to a different address must cause decryption failure.
-
-### Positional posting codec
-
-R42. The positional posting codec must encrypt term positions using order-preserving encryption. Encrypted positions must preserve the relative ordering of plaintext positions, enabling phrase queries (consecutive positions) and proximity queries (position difference within a threshold) on encrypted data.
-
-R43. The positional posting encoding format must be: 4-byte big-endian document ID length, document ID bytes, 4-byte big-endian position count, followed by position count OPE-encrypted positions as 8-byte big-endian longs.
-
-R44. The positional posting codec must reject null document IDs and null position arrays at the public API boundary with NullPointerException.
-
-R45. Positional posting deserialization must validate that the encoded byte array is at least the minimum posting size (4 + 1 + 4 + 8 = 17 bytes). Undersized input must be rejected with an IllegalArgumentException, not an ArrayIndexOutOfBoundsException.
 
 ### Ciphertext structural validation
 

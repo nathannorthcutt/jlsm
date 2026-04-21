@@ -284,7 +284,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * @param values the encrypted vector components (same dimensionality as plaintext)
      * @param tag the detached HMAC-SHA256 authentication tag (16 bytes)
      */
-    // @spec encryption.primitives-dispatch.R12, F41.R22 — authenticated DCPE ciphertext
+    // @spec serialization.encrypted-field-serialization.R4, F41.R22 — authenticated DCPE ciphertext
     // @spec encryption.primitives-variants.R55, F41.R22 — authenticated DCPE ciphertext
     public record EncryptedVector(long seed, float[] values, byte[] tag) {
         public EncryptedVector {
@@ -330,7 +330,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * Encodes an encrypted vector as the on-wire blob format
      * {@code [8B BE seed | 4N BE floats | 16B tag]}.
      */
-    // @spec encryption.primitives-dispatch.R12, F41.R22 — serialized DCPE blob layout
+    // @spec serialization.encrypted-field-serialization.R4, F41.R22 — serialized DCPE blob layout
     public static byte[] toBlob(EncryptedVector ev) {
         Objects.requireNonNull(ev, "ev must not be null");
         final float[] values = ev.values();
@@ -359,7 +359,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      *
      * @throws IllegalArgumentException if blob length does not match {@code 8 + dims*4 + 16}
      */
-    // @spec encryption.primitives-dispatch.R12, F41.R22 — decode serialized DCPE blob
+    // @spec serialization.encrypted-field-serialization.R4, F41.R22 — decode serialized DCPE blob
     public static EncryptedVector fromBlob(byte[] blob, int dims) {
         Objects.requireNonNull(blob, "blob must not be null");
         if (dims <= 0) {
