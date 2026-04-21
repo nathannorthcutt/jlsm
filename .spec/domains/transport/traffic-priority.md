@@ -8,17 +8,17 @@
     "transport"
   ],
   "requires": [
-    "F19"
+    "transport.multiplexed-framing"
   ],
   "invalidates": [
-    "F19.R15",
-    "F19.R15a",
-    "F19.R16"
+    "transport.multiplexed-framing.R15",
+    "transport.multiplexed-framing.R15a",
+    "transport.multiplexed-framing.R16"
   ],
   "amends": [
-    "F19.R43",
-    "F19.R26a",
-    "F19.R44"
+    "transport.multiplexed-framing.R43",
+    "transport.multiplexed-framing.R26a",
+    "transport.multiplexed-framing.R44"
   ],
   "decision_refs": [
     "transport-traffic-priority",

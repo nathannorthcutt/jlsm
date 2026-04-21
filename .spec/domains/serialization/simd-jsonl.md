@@ -8,13 +8,10 @@
     "serialization"
   ],
   "requires": [
-    "F13",
-    "F14"
+    "schema.schema-construction",
+    "schema.document-construction"
   ],
-  "invalidates": [
-    "F14.R48",
-    "F14.R49"
-  ],
+  "invalidates": [],
   "amends": null,
   "amended_by": null,
   "decision_refs": [],

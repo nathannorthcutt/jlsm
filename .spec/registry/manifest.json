@@ -1,403 +1,1422 @@
 {
-  "version": 1,
-  "generated": "2026-04-02T00:00:00Z",
-  "domains": {
-    "vector-indexing": {
-      "shard_path": "domains/vector-indexing/INDEX.md",
-      "description": "vector search hnsw ivf-flat ann similarity float16 precision encoding",
-      "feature_count": 2
-    },
-    "serialization": {
-      "shard_path": "domains/serialization/INDEX.md",
-      "description": "encoding decoding sstable document serializer binary format footer integrity checksum varint",
-      "feature_count": 8
-    },
-    "storage": {
-      "shard_path": "domains/storage/INDEX.md",
-      "description": "memtable wal flush compaction object-store block cache manifest block-size byte-budget",
-      "feature_count": 4
-    },
-    "encryption": {
-      "shard_path": "domains/encryption/INDEX.md",
-      "description": "aes gcm kms tmk sek key-derivation cipher block-encryption",
-      "feature_count": 6
-    },
-    "query": {
-      "shard_path": "domains/query/INDEX.md",
-      "description": "sql query plan statistics join index scan filter",
-      "feature_count": 2
-    },
-    "engine": {
-      "shard_path": "domains/engine/INDEX.md",
-      "description": "database engine table catalog schema partition transaction",
-      "feature_count": 15
-    },
-    "cluster-membership": {
-      "shard_path": "domains/cluster-membership/INDEX.md",
-      "description": "membership protocol discovery rediscovery health stall recovery slow-node detection heartbeat metadata",
-      "feature_count": 2
-    },
-    "cluster-transport": {
-      "shard_path": "domains/cluster-transport/INDEX.md",
-      "description": "transport framing multiplexing connection NIO TCP wire-protocol stream-id backpressure",
-      "feature_count": 3
-    },
-    "partitioning": {
-      "shard_path": "domains/partitioning/INDEX.md",
-      "description": "partition rebalancing ownership transfer drain catch-up epoch state-machine safety trigger policy weighted capacity affinity hotspot compaction-scheduling vector-pruning cross-partition transactions percolator snapshot-isolation replication raft consensus leader-election quorum snapshot learner migration cutover rollback corruption repair quarantine scrubbing anti-entropy",
-      "feature_count": 9
-    }
-  },
-  "features": {
-    "F01": {
-      "latest_file": "domains/vector-indexing/F01-float16-vector-support.md",
+  "schema_version": 2,
+  "generated_at": "2026-04-20",
+  "spec_count": 71,
+  "specs": [
+    {
+      "id": "compression.codec-contract",
+      "path": ".spec/domains/compression/codec-contract.md",
       "state": "APPROVED",
+      "version": 1,
       "domains": [
-        "vector-indexing",
-        "serialization"
+        "compression"
+      ],
+      "requires": [
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "sstable-block-compression-format",
+        "compression-codec-api-design",
+        "codec-dictionary-support",
+        "compaction-recompression",
+        "wal-compression",
+        "codec-thread-safety",
+        "max-compressed-length"
+      ],
+      "kb_refs": [
+        "algorithms/compression/block-compression-algorithms",
+        "algorithms/compression/wal-compression-patterns"
       ]
     },
-    "F02": {
-      "latest_file": "domains/serialization/F02-block-compression.md",
+    {
+      "id": "compression.deflate-codec",
+      "path": ".spec/domains/compression/deflate-codec.md",
       "state": "APPROVED",
+      "version": 1,
       "domains": [
-        "serialization",
-        "storage"
+        "compression"
+      ],
+      "requires": [
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "wal-compression",
+        "compression-codec-api-design",
+        "codec-thread-safety",
+        "max-compressed-length",
+        "codec-dictionary-support"
+      ],
+      "kb_refs": [
+        "algorithms/compression/wal-compression-patterns",
+        "algorithms/compression/block-compression-algorithms"
       ]
     },
-    "F03": {
-      "latest_file": "domains/encryption/F03-encrypt-memory-data.md",
+    {
+      "id": "compression.none-codec",
+      "path": ".spec/domains/compression/none-codec.md",
       "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "compression"
+      ],
+      "requires": [
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "wal-compression",
+        "compression-codec-api-design",
+        "codec-thread-safety",
+        "max-compressed-length",
+        "codec-dictionary-support"
+      ],
+      "kb_refs": [
+        "algorithms/compression/wal-compression-patterns",
+        "algorithms/compression/block-compression-algorithms"
+      ]
+    },
+    {
+      "id": "compression.streaming-decompression",
+      "path": ".spec/domains/compression/streaming-decompression.md",
+      "state": "APPROVED",
+      "version": 3,
+      "domains": [
+        "compression"
+      ],
+      "requires": [
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "sstable-block-compression-format",
+        "compression-codec-api-design"
+      ],
+      "kb_refs": [
+        "algorithms/compression/block-compression-algorithms",
+        "systems/lsm-index-patterns/index-scan-patterns"
+      ]
+    },
+    {
+      "id": "compression.zstd-codec",
+      "path": ".spec/domains/compression/zstd-codec.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "compression"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "sstable-block-compression-format",
+        "compression-codec-api-design",
+        "codec-dictionary-support",
+        "compaction-recompression"
+      ],
+      "kb_refs": [
+        "algorithms/compression/block-compression-algorithms"
+      ]
+    },
+    {
+      "id": "compression.zstd-dictionary",
+      "path": ".spec/domains/compression/zstd-dictionary.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "compression"
+      ],
+      "requires": [
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "codec-dictionary-support",
+        "compaction-recompression",
+        "compression-codec-api-design"
+      ],
+      "kb_refs": [
+        "algorithms/compression/zstd-dictionary-compression",
+        "algorithms/compression/block-compression-algorithms"
+      ]
+    },
+    {
+      "id": "encryption.client-side-sdk",
+      "path": ".spec/domains/encryption/client-side-sdk.md",
+      "state": "APPROVED",
+      "version": 2,
       "domains": [
         "encryption"
+      ],
+      "requires": [
+        "encryption.primitives-variants",
+        "encryption.primitives-lifecycle",
+        "schema.document-construction"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "client-side-encryption-sdk",
+        "per-field-pre-encryption",
+        "pre-encrypted-flag-persistence"
+      ],
+      "kb_refs": [
+        "systems/security/client-side-encryption-patterns",
+        "systems/security/jvm-key-handling-patterns",
+        "systems/security/encryption-key-rotation-patterns"
       ]
     },
-    "F04": {
-      "latest_file": "domains/engine/F04-engine-clustering.md",
+    {
+      "id": "encryption.primitives-configuration",
+      "path": ".spec/domains/encryption/primitives-configuration.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "field-encryption-api-design",
+        "encrypted-index-strategy",
+        "pre-encrypted-document-signaling"
+      ],
+      "kb_refs": [
+        "algorithms/encryption/searchable-encryption-schemes",
+        "algorithms/encryption/vector-encryption-approaches",
+        "systems/security/jvm-key-handling-patterns"
+      ]
+    },
+    {
+      "id": "encryption.primitives-dispatch",
+      "path": ".spec/domains/encryption/primitives-dispatch.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "field-encryption-api-design",
+        "encrypted-index-strategy",
+        "pre-encrypted-document-signaling"
+      ],
+      "kb_refs": [
+        "algorithms/encryption/searchable-encryption-schemes",
+        "algorithms/encryption/vector-encryption-approaches",
+        "systems/security/jvm-key-handling-patterns"
+      ]
+    },
+    {
+      "id": "encryption.primitives-key-holder",
+      "path": ".spec/domains/encryption/primitives-key-holder.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "field-encryption-api-design",
+        "encrypted-index-strategy",
+        "pre-encrypted-document-signaling"
+      ],
+      "kb_refs": [
+        "algorithms/encryption/searchable-encryption-schemes",
+        "algorithms/encryption/vector-encryption-approaches",
+        "systems/security/jvm-key-handling-patterns"
+      ]
+    },
+    {
+      "id": "encryption.primitives-lifecycle",
+      "path": ".spec/domains/encryption/primitives-lifecycle.md",
       "state": "DRAFT",
+      "version": 4,
+      "domains": [
+        "encryption"
+      ],
+      "requires": [
+        "encryption.primitives-variants",
+        "schema.document-construction"
+      ],
+      "invalidates": [
+        "encryption.primitives-dispatch.R3",
+        "encryption.primitives-dispatch.R5"
+      ],
+      "decision_refs": [
+        "per-field-pre-encryption",
+        "per-field-key-binding",
+        "encryption-key-rotation",
+        "unencrypted-to-encrypted-migration",
+        "index-access-pattern-leakage"
+      ],
+      "kb_refs": [
+        "systems/security/encryption-key-rotation-patterns",
+        "systems/security/jvm-key-handling-patterns",
+        "systems/security/client-side-encryption-patterns",
+        "algorithms/encryption/index-access-pattern-leakage"
+      ]
+    },
+    {
+      "id": "encryption.primitives-variants",
+      "path": ".spec/domains/encryption/primitives-variants.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "field-encryption-api-design",
+        "encrypted-index-strategy",
+        "pre-encrypted-document-signaling"
+      ],
+      "kb_refs": [
+        "algorithms/encryption/searchable-encryption-schemes",
+        "algorithms/encryption/vector-encryption-approaches",
+        "systems/security/jvm-key-handling-patterns"
+      ]
+    },
+    {
+      "id": "engine.catalog-operations",
+      "path": ".spec/domains/engine/catalog-operations.md",
+      "state": "APPROVED",
+      "version": 2,
       "domains": [
         "engine"
+      ],
+      "requires": [
+        "engine.in-process-database-engine",
+        "transport.multiplexed-framing",
+        "partitioning.partition-replication",
+        "serialization.remote-serialization"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "table-catalog-persistence"
+      ],
+      "kb_refs": [
+        "systems/database-engines/catalog-persistence-patterns",
+        "distributed-systems/replication/catalog-replication-strategies"
       ]
     },
-    "F05": {
-      "latest_file": "domains/engine/F05-in-process-database-engine.md",
-      "state": "APPROVED",
+    {
+      "id": "engine.clustering",
+      "path": ".spec/domains/engine/clustering.md",
+      "state": "DRAFT",
+      "version": 6,
       "domains": [
         "engine"
-      ]
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "cluster-membership-protocol",
+        "partition-to-node-ownership",
+        "rebalancing-grace-period-strategy",
+        "scatter-gather-query-execution",
+        "discovery-spi-design",
+        "transport-abstraction-design"
+      ],
+      "kb_refs": []
     },
-    "F06": {
-      "latest_file": "domains/serialization/F06-optimize-document-serializer.md",
+    {
+      "id": "engine.cross-table-transactions",
+      "path": ".spec/domains/engine/cross-table-transactions.md",
       "state": "APPROVED",
+      "version": 2,
       "domains": [
-        "serialization"
+        "engine"
+      ],
+      "requires": [
+        "engine.in-process-database-engine",
+        "engine.handle-lifecycle"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "engine-api-surface-design"
+      ],
+      "kb_refs": [
+        "systems/database-engines/cross-table-transaction-patterns"
       ]
     },
-    "F07": {
-      "latest_file": "domains/query/F07-sql-query-support.md",
+    {
+      "id": "engine.handle-lifecycle",
+      "path": ".spec/domains/engine/handle-lifecycle.md",
       "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "engine"
+      ],
+      "requires": [
+        "engine.in-process-database-engine"
+      ],
+      "invalidates": [
+        "engine.in-process-database-engine.R29"
+      ],
+      "decision_refs": [
+        "engine-api-surface-design"
+      ],
+      "kb_refs": [
+        "systems/database-engines/handle-lifecycle-patterns"
+      ]
+    },
+    {
+      "id": "engine.in-process-database-engine",
+      "path": ".spec/domains/engine/in-process-database-engine.md",
+      "state": "DRAFT",
+      "version": 3,
+      "domains": [
+        "engine"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "table-catalog-persistence",
+        "engine-api-surface-design"
+      ],
+      "kb_refs": []
+    },
+    {
+      "id": "membership.cluster-health-and-recovery",
+      "path": ".spec/domains/membership/cluster-health-and-recovery.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "membership"
+      ],
+      "requires": [
+        "membership.continuous-rediscovery"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "piggybacked-state-exchange",
+        "slow-node-detection",
+        "membership-view-stall-recovery",
+        "cluster-membership-protocol"
+      ],
+      "kb_refs": [
+        "distributed-systems/cluster-membership/cluster-membership-protocols",
+        "distributed-systems/cluster-membership/view-stall-recovery",
+        "distributed-systems/cluster-membership/fail-slow-detection"
+      ]
+    },
+    {
+      "id": "membership.continuous-rediscovery",
+      "path": ".spec/domains/membership/continuous-rediscovery.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "membership"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "continuous-rediscovery",
+        "discovery-spi-design"
+      ],
+      "kb_refs": [
+        "distributed-systems/cluster-membership/service-discovery-patterns"
+      ]
+    },
+    {
+      "id": "partitioning.corruption-repair-recovery",
+      "path": ".spec/domains/partitioning/corruption-repair-recovery.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "sstable.end-to-end-integrity",
+        "partitioning.partition-replication"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "corruption-repair-recovery",
+        "per-block-checksums",
+        "sstable-end-to-end-integrity"
+      ],
+      "kb_refs": [
+        "systems/database-engines/corruption-detection-repair",
+        "systems/database-engines/wal-recovery-patterns"
+      ]
+    },
+    {
+      "id": "partitioning.cross-partition-transactions",
+      "path": ".spec/domains/partitioning/cross-partition-transactions.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "partitioning.table-partitioning",
+        "partitioning.rebalancing-safety"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "table-partitioning"
+      ],
+      "kb_refs": [
+        "distributed-systems/transactions/cross-partition-protocols"
+      ]
+    },
+    {
+      "id": "partitioning.partition-data-operations",
+      "path": ".spec/domains/partitioning/partition-data-operations.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "partitioning.table-partitioning"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "table-partitioning"
+      ],
+      "kb_refs": [
+        "distributed-systems/data-partitioning/partitioning-strategies",
+        "distributed-systems/data-partitioning/vector-search-partitioning"
+      ]
+    },
+    {
+      "id": "partitioning.partition-replication",
+      "path": ".spec/domains/partitioning/partition-replication.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "partitioning.table-partitioning",
+        "partitioning.rebalancing-safety"
+      ],
+      "invalidates": [
+        "partitioning.rebalancing-safety.R28",
+        "partitioning.rebalancing-safety.R29"
+      ],
+      "decision_refs": [
+        "table-partitioning"
+      ],
+      "kb_refs": [
+        "distributed-systems/consensus/partition-replication-consensus",
+        "distributed-systems/data-partitioning/partition-rebalancing-protocols"
+      ]
+    },
+    {
+      "id": "partitioning.rebalancing-operations",
+      "path": ".spec/domains/partitioning/rebalancing-operations.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "partitioning.rebalancing-safety",
+        "partitioning.rebalancing-policy"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "rebalancing-grace-period-strategy"
+      ],
+      "kb_refs": [
+        "distributed-systems/data-partitioning/partition-rebalancing-protocols"
+      ]
+    },
+    {
+      "id": "partitioning.rebalancing-policy",
+      "path": ".spec/domains/partitioning/rebalancing-policy.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "partitioning.table-partitioning",
+        "partitioning.rebalancing-safety"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "partition-to-node-ownership"
+      ],
+      "kb_refs": [
+        "distributed-systems/data-partitioning/partition-rebalancing-protocols",
+        "distributed-systems/data-partitioning/partitioning-strategies"
+      ]
+    },
+    {
+      "id": "partitioning.rebalancing-safety",
+      "path": ".spec/domains/partitioning/rebalancing-safety.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "partitioning.table-partitioning"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "rebalancing-grace-period-strategy",
+        "partition-to-node-ownership"
+      ],
+      "kb_refs": [
+        "distributed-systems/data-partitioning/partition-rebalancing-protocols",
+        "distributed-systems/data-partitioning/multi-writer-wal"
+      ]
+    },
+    {
+      "id": "partitioning.sequential-insert-hotspot-mitigation",
+      "path": ".spec/domains/partitioning/sequential-insert-hotspot-mitigation.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "partitioning.partition-data-operations",
+        "partitioning.table-partitioning"
+      ],
+      "invalidates": [
+        "partitioning.partition-data-operations.R1",
+        "partitioning.partition-data-operations.R2",
+        "partitioning.partition-data-operations.R3",
+        "partitioning.partition-data-operations.R4",
+        "partitioning.partition-data-operations.R5",
+        "partitioning.partition-data-operations.R6",
+        "partitioning.partition-data-operations.R7",
+        "partitioning.partition-data-operations.R8",
+        "partitioning.partition-data-operations.R9",
+        "partitioning.partition-data-operations.R10",
+        "partitioning.partition-data-operations.R11",
+        "partitioning.partition-data-operations.R12",
+        "partitioning.partition-data-operations.R13",
+        "partitioning.partition-data-operations.R14",
+        "partitioning.partition-data-operations.R15",
+        "partitioning.partition-data-operations.R16",
+        "partitioning.partition-data-operations.R17",
+        "partitioning.partition-data-operations.R18",
+        "partitioning.partition-data-operations.R19"
+      ],
+      "decision_refs": [
+        "sequential-insert-hotspot",
+        "table-partitioning"
+      ],
+      "kb_refs": [
+        "distributed-systems/data-partitioning/partitioning-strategies"
+      ]
+    },
+    {
+      "id": "partitioning.table-migration",
+      "path": ".spec/domains/partitioning/table-migration.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "partitioning.table-partitioning",
+        "transport.multiplexed-framing",
+        "partitioning.rebalancing-safety",
+        "partitioning.rebalancing-policy",
+        "partitioning.rebalancing-operations",
+        "partitioning.partition-data-operations",
+        "partitioning.partition-replication",
+        "engine.catalog-operations"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "table-catalog-persistence"
+      ],
+      "kb_refs": [
+        "distributed-systems/replication/catalog-replication-strategies",
+        "distributed-systems/data-partitioning/partition-rebalancing-protocols"
+      ]
+    },
+    {
+      "id": "partitioning.table-partitioning",
+      "path": ".spec/domains/partitioning/table-partitioning.md",
+      "state": "APPROVED",
+      "version": 3,
+      "domains": [
+        "partitioning"
+      ],
+      "requires": [
+        "query.index-types"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "table-partitioning"
+      ],
+      "kb_refs": [
+        "distributed-systems/data-partitioning/partitioning-strategies",
+        "distributed-systems/data-partitioning/vector-search-partitioning"
+      ]
+    },
+    {
+      "id": "query.aggregation-merge",
+      "path": ".spec/domains/query/aggregation-merge.md",
+      "state": "APPROVED",
+      "version": 2,
       "domains": [
         "query"
-      ]
-    },
-    "F08": {
-      "latest_file": "domains/serialization/F08-streaming-block-decompression.md",
-      "state": "APPROVED",
-      "domains": [
-        "serialization",
-        "storage"
-      ]
-    },
-    "F09": {
-      "latest_file": "domains/storage/F09-striped-block-cache.md",
-      "state": "APPROVED",
-      "domains": [
-        "storage"
       ],
-      "version": 2
+      "requires": [
+        "engine.clustering",
+        "transport.scatter-gather-flow-control"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "aggregation-query-merge",
+        "scatter-backpressure",
+        "scatter-gather-query-execution"
+      ],
+      "kb_refs": [
+        "distributed-systems/query-execution/distributed-join-strategies",
+        "distributed-systems/query-execution/distributed-scan-cursors"
+      ]
     },
-    "F10": {
-      "latest_file": "domains/query/F10-table-indices-and-queries.md",
+    {
+      "id": "query.distributed-join-strategy",
+      "path": ".spec/domains/query/distributed-join-strategy.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "query"
+      ],
+      "requires": [
+        "engine.clustering",
+        "partitioning.table-partitioning",
+        "transport.scatter-gather-flow-control"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "distributed-join-execution",
+        "scatter-backpressure",
+        "scatter-gather-query-execution",
+        "table-partitioning"
+      ],
+      "kb_refs": [
+        "distributed-systems/query-execution/distributed-join-strategies",
+        "systems/query-processing/lsm-join-algorithms",
+        "systems/query-processing/lsm-join-snapshot-consistency"
+      ]
+    },
+    {
+      "id": "query.distributed-pagination",
+      "path": ".spec/domains/query/distributed-pagination.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "query"
+      ],
+      "requires": [
+        "engine.clustering",
+        "transport.scatter-gather-flow-control"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "limit-offset-pushdown",
+        "scatter-backpressure",
+        "scatter-gather-query-execution"
+      ],
+      "kb_refs": [
+        "distributed-systems/query-execution/distributed-scan-cursors",
+        "distributed-systems/query-execution/distributed-join-strategies"
+      ]
+    },
+    {
+      "id": "query.encrypted-fuzzy-matcher",
+      "path": ".spec/domains/query/encrypted-fuzzy-matcher.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "query"
+      ],
+      "requires": [
+        "encryption.primitives-variants",
+        "encryption.primitives-lifecycle"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "encrypted-fuzzy-matching",
+        "encrypted-index-strategy"
+      ],
+      "kb_refs": [
+        "algorithms/encryption/prefix-fuzzy-searchable-encryption",
+        "algorithms/encryption/searchable-encryption-schemes"
+      ]
+    },
+    {
+      "id": "query.encrypted-prefix-index",
+      "path": ".spec/domains/query/encrypted-prefix-index.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "query"
+      ],
+      "requires": [
+        "encryption.primitives-variants",
+        "encryption.primitives-lifecycle"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "encrypted-prefix-wildcard-queries",
+        "encrypted-index-strategy"
+      ],
+      "kb_refs": [
+        "algorithms/encryption/prefix-fuzzy-searchable-encryption",
+        "algorithms/encryption/searchable-encryption-schemes"
+      ]
+    },
+    {
+      "id": "query.field-index",
+      "path": ".spec/domains/query/field-index.md",
       "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "query",
-        "engine"
-      ]
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
     },
-    "F11": {
-      "latest_file": "domains/engine/F11-table-partitioning.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F12": {
-      "latest_file": "domains/vector-indexing/F12-vector-field-type.md",
-      "state": "APPROVED",
-      "domains": [
-        "vector-indexing"
-      ]
-    },
-    "F13": {
-      "latest_file": "domains/engine/F13-jlsm-schema.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F14": {
-      "latest_file": "domains/engine/F14-jlsm-document.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F15": {
-      "latest_file": "domains/serialization/F15-json-only-simd-jsonl.md",
-      "state": "APPROVED",
-      "domains": [
-        "serialization",
-        "engine"
-      ]
-    },
-    "F16": {
-      "latest_file": "domains/serialization/F16-sstable-v3-format-upgrade.md",
-      "state": "APPROVED",
-      "domains": [
-        "serialization",
-        "storage"
-      ]
-    },
-    "F17": {
-      "latest_file": "domains/serialization/F17-wal-compression-codec-api.md",
-      "state": "APPROVED",
-      "domains": [
-        "serialization",
-        "storage"
-      ]
-    },
-    "F18": {
-      "latest_file": "domains/serialization/F18-zstd-dictionary-compression.md",
-      "state": "APPROVED",
-      "domains": [
-        "serialization",
-        "storage"
-      ]
-    },
-    "F19": {
-      "latest_file": "domains/cluster-transport/F19-multiplexed-transport-framing.md",
+    {
+      "id": "query.field-value-codec",
+      "path": ".spec/domains/query/field-value-codec.md",
       "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "cluster-transport"
-      ]
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
     },
-    "F20": {
-      "latest_file": "domains/cluster-transport/F20-transport-traffic-priority.md",
+    {
+      "id": "query.full-text-index",
+      "path": ".spec/domains/query/full-text-index.md",
       "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "cluster-transport"
-      ]
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
     },
-    "F21": {
-      "latest_file": "domains/cluster-transport/F21-scatter-gather-flow-control.md",
+    {
+      "id": "query.index-registry",
+      "path": ".spec/domains/query/index-registry.md",
       "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "cluster-transport"
-      ]
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
     },
-    "F22": {
-      "latest_file": "domains/cluster-membership/F22-continuous-rediscovery.md",
+    {
+      "id": "query.index-types",
+      "path": ".spec/domains/query/index-types.md",
       "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "cluster-membership"
-      ]
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
     },
-    "F23": {
-      "latest_file": "domains/cluster-membership/F23-cluster-health-and-recovery.md",
+    {
+      "id": "query.query-executor",
+      "path": ".spec/domains/query/query-executor.md",
       "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "cluster-membership"
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "query.scan-lease-gc-watermark",
+      "path": ".spec/domains/query/scan-lease-gc-watermark.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "query"
+      ],
+      "requires": [
+        "query.distributed-pagination",
+        "transport.scatter-gather-flow-control"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "scan-lease-gc-watermark",
+        "scatter-backpressure"
+      ],
+      "kb_refs": [
+        "distributed-systems/query-execution/distributed-scan-cursors"
       ]
     },
-    "F24": {
-      "latest_file": "domains/storage/F24-pool-aware-block-size.md",
+    {
+      "id": "query.sql-query-support",
+      "path": ".spec/domains/query/sql-query-support.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": [
+        "algorithms/sql-extensions/vector-similarity-sql-syntax"
+      ]
+    },
+    {
+      "id": "query.table-query",
+      "path": ".spec/domains/query/table-query.md",
       "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "storage"
-      ]
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
     },
-    "F25": {
-      "latest_file": "domains/storage/F25-byte-budget-block-cache.md",
+    {
+      "id": "query.vector-index",
+      "path": ".spec/domains/query/vector-index.md",
       "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "storage"
+        "query"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.document-construction",
+      "path": ".spec/domains/schema/document-construction.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema"
+      ],
+      "requires": [
+        "schema.schema-construction"
+      ],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.document-field-access",
+      "path": ".spec/domains/schema/document-field-access.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema"
+      ],
+      "requires": [
+        "schema.schema-construction"
+      ],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.document-invariants",
+      "path": ".spec/domains/schema/document-invariants.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema"
+      ],
+      "requires": [
+        "schema.schema-construction"
+      ],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.document-serialization",
+      "path": ".spec/domains/schema/document-serialization.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema",
+        "serialization"
+      ],
+      "requires": [
+        "schema.schema-construction"
+      ],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.schema-construction",
+      "path": ".spec/domains/schema/schema-construction.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.schema-field-access",
+      "path": ".spec/domains/schema/schema-field-access.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.schema-field-definition",
+      "path": ".spec/domains/schema/schema-field-definition.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.schema-invariants",
+      "path": ".spec/domains/schema/schema-invariants.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "schema.schema-nesting",
+      "path": ".spec/domains/schema/schema-nesting.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "schema"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "serialization.document-serializer",
+      "path": ".spec/domains/serialization/document-serializer.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "serialization"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "serialization.remote-serialization",
+      "path": ".spec/domains/serialization/remote-serialization.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "serialization"
+      ],
+      "requires": [
+        "engine.in-process-database-engine",
+        "transport.multiplexed-framing",
+        "transport.traffic-priority",
+        "engine.handle-lifecycle",
+        "engine.cross-table-transactions"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "engine-api-surface-design",
+        "connection-pooling"
+      ],
+      "kb_refs": [
+        "distributed-systems/networking/transport-framing-patterns"
       ]
     },
-    "F26": {
-      "latest_file": "domains/serialization/F26-sstable-end-to-end-integrity.md",
+    {
+      "id": "serialization.simd-jsonl",
+      "path": ".spec/domains/serialization/simd-jsonl.md",
+      "state": "APPROVED",
+      "version": 3,
+      "domains": [
+        "serialization"
+      ],
+      "requires": [
+        "schema.schema-construction",
+        "schema.document-construction"
+      ],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": [
+        "algorithms/serialization/simd-on-demand-serialization",
+        "algorithms/serialization/panama-ffm-inline-machine-code",
+        "algorithms/serialization/simd-serialization-java-fallbacks"
+      ]
+    },
+    {
+      "id": "sstable.byte-budget-block-cache",
+      "path": ".spec/domains/sstable/byte-budget-block-cache.md",
       "state": "DRAFT",
+      "version": 2,
       "domains": [
-        "serialization",
-        "storage"
+        "sstable"
+      ],
+      "requires": [
+        "sstable.striped-block-cache"
+      ],
+      "invalidates": [
+        "sstable.striped-block-cache.R8",
+        "sstable.striped-block-cache.R9",
+        "sstable.striped-block-cache.R15",
+        "sstable.striped-block-cache.R43",
+        "sstable.striped-block-cache.R44"
+      ],
+      "decision_refs": [
+        "block-cache-block-size-interaction",
+        "cross-stripe-eviction"
+      ],
+      "kb_refs": [
+        "data-structures/caching/concurrent-cache-eviction-strategies"
       ]
     },
-    "F27": {
-      "latest_file": "domains/partitioning/F27-rebalancing-safety.md",
+    {
+      "id": "sstable.compaction",
+      "path": ".spec/domains/sstable/compaction.md",
       "state": "APPROVED",
+      "version": 1,
       "domains": [
-        "partitioning"
+        "sstable"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "sstable-block-compression-format",
+        "compression-codec-api-design",
+        "codec-dictionary-support",
+        "compaction-recompression"
+      ],
+      "kb_refs": [
+        "algorithms/compression/block-compression-algorithms"
       ]
     },
-    "F28": {
-      "latest_file": "domains/partitioning/F28-rebalancing-policy.md",
-      "state": "APPROVED",
-      "domains": [
-        "partitioning"
-      ]
-    },
-    "F29": {
-      "latest_file": "domains/partitioning/F29-rebalancing-operations.md",
-      "state": "APPROVED",
-      "domains": [
-        "partitioning"
-      ]
-    },
-    "F30": {
-      "latest_file": "domains/partitioning/F30-partition-data-operations.md",
-      "state": "APPROVED",
-      "domains": [
-        "partitioning"
-      ]
-    },
-    "F31": {
-      "latest_file": "domains/partitioning/F31-cross-partition-transactions.md",
-      "state": "APPROVED",
-      "domains": [
-        "partitioning"
-      ]
-    },
-    "F32": {
-      "latest_file": "domains/partitioning/F32-partition-replication.md",
-      "state": "APPROVED",
-      "domains": [
-        "partitioning"
-      ]
-    },
-    "F33": {
-      "latest_file": "domains/partitioning/F33-table-migration.md",
-      "state": "APPROVED",
-      "domains": [
-        "partitioning"
-      ]
-    },
-    "F34": {
-      "latest_file": "domains/engine/F34-handle-lifecycle.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F35": {
-      "latest_file": "domains/engine/F35-cross-table-transactions.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F36": {
-      "latest_file": "domains/engine/F36-remote-serialization.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F37": {
-      "latest_file": "domains/engine/F37-catalog-operations.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F38": {
-      "latest_file": "domains/engine/F38-aggregation-query-merge.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F39": {
-      "latest_file": "domains/engine/F39-distributed-pagination.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F40": {
-      "latest_file": "domains/engine/F40-distributed-join-strategy.md",
-      "state": "APPROVED",
-      "domains": [
-        "engine"
-      ]
-    },
-    "F41": {
-      "latest_file": "domains/encryption/F41-encryption-lifecycle.md",
+    {
+      "id": "sstable.end-to-end-integrity",
+      "path": ".spec/domains/sstable/end-to-end-integrity.md",
       "state": "DRAFT",
+      "version": 2,
       "domains": [
-        "encryption",
-        "engine"
+        "sstable"
+      ],
+      "requires": [
+        "sstable.v3-format-upgrade"
+      ],
+      "invalidates": [
+        "sstable.v3-format-upgrade.R16",
+        "sstable.v3-format-upgrade.R17"
+      ],
+      "decision_refs": [
+        "sstable-end-to-end-integrity",
+        "per-block-checksums"
+      ],
+      "kb_refs": [
+        "systems/database-engines/corruption-detection-repair"
       ]
     },
-    "F42": {
-      "latest_file": "domains/encryption/F42-wal-encryption.md",
+    {
+      "id": "sstable.format-v2",
+      "path": ".spec/domains/sstable/format-v2.md",
       "state": "APPROVED",
+      "version": 1,
       "domains": [
-        "encryption",
-        "storage"
+        "sstable"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "sstable-block-compression-format",
+        "compression-codec-api-design",
+        "codec-dictionary-support",
+        "compaction-recompression"
+      ],
+      "kb_refs": [
+        "algorithms/compression/block-compression-algorithms"
       ]
     },
-    "F43": {
-      "latest_file": "domains/partitioning/F43-sequential-insert-hotspot-mitigation.md",
-      "state": "APPROVED",
+    {
+      "id": "sstable.pool-aware-block-size",
+      "path": ".spec/domains/sstable/pool-aware-block-size.md",
+      "state": "DRAFT",
+      "version": 2,
       "domains": [
-        "partitioning"
+        "sstable"
+      ],
+      "requires": [
+        "sstable.v3-format-upgrade"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "automatic-backend-detection",
+        "backend-optimal-block-size"
+      ],
+      "kb_refs": []
+    },
+    {
+      "id": "sstable.striped-block-cache",
+      "path": ".spec/domains/sstable/striped-block-cache.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "sstable"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "stripe-hash-function",
+        "cross-stripe-eviction",
+        "power-of-two-stripe-optimization"
+      ],
+      "kb_refs": []
+    },
+    {
+      "id": "sstable.v3-format-upgrade",
+      "path": ".spec/domains/sstable/v3-format-upgrade.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "sstable"
+      ],
+      "requires": [
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "per-block-checksums",
+        "backend-optimal-block-size",
+        "sstable-block-compression-format"
+      ],
+      "kb_refs": [
+        "algorithms/compression/block-compression-algorithms"
       ]
     },
-    "F44": {
-      "latest_file": "domains/engine/F44-scan-lease-gc-watermark.md",
+    {
+      "id": "sstable.writer",
+      "path": ".spec/domains/sstable/writer.md",
       "state": "APPROVED",
+      "version": 1,
       "domains": [
-        "engine"
+        "sstable",
+        "compression"
+      ],
+      "requires": [
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "sstable-block-compression-format",
+        "compression-codec-api-design",
+        "codec-dictionary-support",
+        "compaction-recompression",
+        "wal-compression",
+        "codec-thread-safety",
+        "max-compressed-length"
+      ],
+      "kb_refs": [
+        "algorithms/compression/block-compression-algorithms",
+        "algorithms/compression/wal-compression-patterns"
       ]
     },
-    "F45": {
-      "latest_file": "domains/encryption/F45-client-side-encryption-sdk.md",
-      "state": "APPROVED",
+    {
+      "id": "transport.multiplexed-framing",
+      "path": ".spec/domains/transport/multiplexed-framing.md",
+      "state": "DRAFT",
+      "version": 1,
       "domains": [
-        "encryption",
-        "engine"
+        "transport"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "connection-pooling",
+        "transport-abstraction-design"
+      ],
+      "kb_refs": [
+        "distributed-systems/networking/multiplexed-transport-framing"
       ]
     },
-    "F46": {
-      "latest_file": "domains/encryption/F46-encrypted-prefix-index.md",
-      "state": "APPROVED",
+    {
+      "id": "transport.scatter-gather-flow-control",
+      "path": ".spec/domains/transport/scatter-gather-flow-control.md",
+      "state": "DRAFT",
+      "version": 1,
       "domains": [
+        "transport"
+      ],
+      "requires": [
+        "transport.multiplexed-framing"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "scatter-backpressure",
+        "scatter-gather-query-execution"
+      ],
+      "kb_refs": [
+        "distributed-systems/networking/scatter-gather-backpressure",
+        "distributed-systems/query-execution/distributed-scan-cursors"
+      ]
+    },
+    {
+      "id": "transport.traffic-priority",
+      "path": ".spec/domains/transport/traffic-priority.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "transport"
+      ],
+      "requires": [
+        "transport.multiplexed-framing"
+      ],
+      "invalidates": [
+        "transport.multiplexed-framing.R15",
+        "transport.multiplexed-framing.R15a",
+        "transport.multiplexed-framing.R16"
+      ],
+      "decision_refs": [
+        "transport-traffic-priority",
+        "connection-pooling"
+      ],
+      "kb_refs": [
+        "distributed-systems/networking/transport-traffic-priority"
+      ]
+    },
+    {
+      "id": "vector.field-type",
+      "path": ".spec/domains/vector/field-type.md",
+      "state": "APPROVED",
+      "version": 2,
+      "domains": [
+        "vector"
+      ],
+      "requires": [
+        "vector.float16-vector-support"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "vector-type-serialization-encoding",
+        "index-definition-api-simplification"
+      ],
+      "kb_refs": []
+    },
+    {
+      "id": "vector.float16-vector-support",
+      "path": ".spec/domains/vector/float16-vector-support.md",
+      "state": "APPROVED",
+      "version": 4,
+      "domains": [
+        "vector"
+      ],
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [
+        "vector-type-serialization-encoding"
+      ],
+      "kb_refs": [
+        "algorithms/vector-encoding/flat-vector-encoding",
+        "algorithms/vector-encoding/precision-overflow-silent-data-loss",
+        "algorithms/vector-encoding/non-finite-vector-element",
+        "algorithms/vector-encoding/float16-vector-support"
+      ]
+    },
+    {
+      "id": "wal.compression",
+      "path": ".spec/domains/wal/compression.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "wal",
+        "compression"
+      ],
+      "requires": [
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "wal-compression",
+        "compression-codec-api-design",
+        "codec-thread-safety",
+        "max-compressed-length",
+        "codec-dictionary-support"
+      ],
+      "kb_refs": [
+        "algorithms/compression/wal-compression-patterns",
+        "algorithms/compression/block-compression-algorithms"
+      ]
+    },
+    {
+      "id": "wal.encryption",
+      "path": ".spec/domains/wal/encryption.md",
+      "state": "APPROVED",
+      "version": 3,
+      "domains": [
+        "wal",
         "encryption"
-      ]
-    },
-    "F47": {
-      "latest_file": "domains/encryption/F47-encrypted-fuzzy-matcher.md",
-      "state": "APPROVED",
-      "domains": [
-        "encryption"
-      ]
-    },
-    "F48": {
-      "latest_file": "domains/partitioning/F48-corruption-repair-recovery.md",
-      "state": "APPROVED",
-      "domains": [
-        "partitioning",
-        "storage"
+      ],
+      "requires": [
+        "encryption.primitives-lifecycle",
+        "compression.codec-contract"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "wal-entry-encryption"
+      ],
+      "kb_refs": [
+        "systems/security/wal-encryption-approaches",
+        "systems/security/encryption-key-rotation-patterns",
+        "systems/security/jvm-key-handling-patterns"
       ]
     }
-  }
+  ]
 }

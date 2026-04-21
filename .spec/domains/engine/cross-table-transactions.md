@@ -8,8 +8,8 @@
     "engine"
   ],
   "requires": [
-    "F05",
-    "F34"
+    "engine.in-process-database-engine",
+    "engine.handle-lifecycle"
   ],
   "invalidates": [],
   "amends": null,

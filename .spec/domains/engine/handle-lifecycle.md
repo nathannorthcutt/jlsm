@@ -8,10 +8,10 @@
     "engine"
   ],
   "requires": [
-    "F05"
+    "engine.in-process-database-engine"
   ],
   "invalidates": [
-    "F05.R29"
+    "engine.in-process-database-engine.R29"
   ],
   "amends": null,
   "amended_by": null,

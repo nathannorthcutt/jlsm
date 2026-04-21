@@ -8,8 +8,7 @@
     "compression"
   ],
   "requires": [
-    "F02",
-    "F17"
+    "compression.codec-contract"
   ],
   "invalidates": [],
   "amends": null,

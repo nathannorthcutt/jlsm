@@ -8,16 +8,9 @@
     "compression"
   ],
   "requires": [
-    "F02"
+    "compression.codec-contract"
   ],
-  "invalidates": [
-    "F02.R2",
-    "F02.R3",
-    "F02.R4",
-    "F02.R8",
-    "F02.R9",
-    "F02.R10"
-  ],
+  "invalidates": [],
   "amends": null,
   "amended_by": null,
   "decision_refs": [
@@ -40,7 +33,6 @@
   ]
 }
 ---
-
 # compression.codec-contract — Codec Contract
 
 ## Requirements

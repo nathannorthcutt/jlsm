@@ -9,7 +9,7 @@
     "serialization"
   ],
   "requires": [
-    "F13"
+    "schema.schema-construction"
   ],
   "invalidates": [],
   "amends": null,
@@ -22,7 +22,6 @@
   ]
 }
 ---
-
 # schema.document-serialization — Document Serialization
 
 ## Requirements

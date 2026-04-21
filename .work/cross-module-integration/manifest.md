@@ -1,6 +1,6 @@
 # Work Group Manifest: cross-module-integration
 
-**Goal:** Wire stub index implementations through module boundaries to resolve F10 and F05 obligations
+**Goal:** Wire stub index implementations through module boundaries to resolve query.index-types and engine.in-process-database-engine obligations
 **Status:** active
 **Created:** 2026-04-19
 **Work definitions:** 3
@@ -16,10 +16,10 @@
 ## Dependency Graph
 
 ```
-WD-01 (Full-Text Index — F10.R79-R84)
-  └→ WD-03 (Query Binding — F05.R37)
+WD-01 (Full-Text Index — query.full-text-index.R1-R84)
+  └→ WD-03 (Query Binding — engine.in-process-database-engine.R37)
 
-WD-02 (Vector Index — F10.R85-R90) ─── independent
+WD-02 (Vector Index — query.vector-index.R1-R90) ─── independent
 ```
 
 WD-01 and WD-02 can run in parallel.

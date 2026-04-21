@@ -8,8 +8,8 @@
     "query"
   ],
   "requires": [
-    "F03",
-    "F41"
+    "encryption.primitives-variants",
+    "encryption.primitives-lifecycle"
   ],
   "invalidates": [],
   "amends": null,

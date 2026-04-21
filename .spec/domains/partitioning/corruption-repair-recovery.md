@@ -8,8 +8,8 @@
     "partitioning"
   ],
   "requires": [
-    "F26",
-    "F32"
+    "sstable.end-to-end-integrity",
+    "partitioning.partition-replication"
   ],
   "invalidates": [],
   "amends": null,

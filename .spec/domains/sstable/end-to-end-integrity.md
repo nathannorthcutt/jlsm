@@ -8,11 +8,11 @@
     "sstable"
   ],
   "requires": [
-    "F16"
+    "sstable.v3-format-upgrade"
   ],
   "invalidates": [
-    "F16.R16",
-    "F16.R17"
+    "sstable.v3-format-upgrade.R16",
+    "sstable.v3-format-upgrade.R17"
   ],
   "amends": null,
   "amended_by": null,

@@ -8,7 +8,7 @@
     "partitioning"
   ],
   "requires": [
-    "F11"
+    "partitioning.table-partitioning"
   ],
   "invalidates": [],
   "amends": null,

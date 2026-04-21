@@ -8,7 +8,7 @@
     "schema"
   ],
   "requires": [
-    "F13"
+    "schema.schema-construction"
   ],
   "invalidates": [],
   "amends": null,
@@ -21,7 +21,6 @@
   ]
 }
 ---
-
 # schema.document-invariants — Document Invariants
 
 ## Requirements

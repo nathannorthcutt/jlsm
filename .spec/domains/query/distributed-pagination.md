@@ -8,8 +8,8 @@
     "query"
   ],
   "requires": [
-    "F04",
-    "F21"
+    "engine.clustering",
+    "transport.scatter-gather-flow-control"
   ],
   "invalidates": [],
   "amends": null,

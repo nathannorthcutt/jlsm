@@ -8,7 +8,7 @@
     "transport"
   ],
   "requires": [
-    "F19"
+    "transport.multiplexed-framing"
   ],
   "invalidates": [],
   "decision_refs": [

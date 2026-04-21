@@ -8,8 +8,8 @@
     "query"
   ],
   "requires": [
-    "F39",
-    "F21"
+    "query.distributed-pagination",
+    "transport.scatter-gather-flow-control"
   ],
   "invalidates": [],
   "amends": null,

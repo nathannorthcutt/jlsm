@@ -8,32 +8,32 @@
     "partitioning"
   ],
   "requires": [
-    "F30",
-    "F11"
+    "partitioning.partition-data-operations",
+    "partitioning.table-partitioning"
   ],
   "invalidates": [
-    "F30.R1",
-    "F30.R2",
-    "F30.R3",
-    "F30.R4",
-    "F30.R5",
-    "F30.R6",
-    "F30.R7",
-    "F30.R8",
-    "F30.R9",
-    "F30.R10",
-    "F30.R11",
-    "F30.R12",
-    "F30.R13",
-    "F30.R14",
-    "F30.R15",
-    "F30.R16",
-    "F30.R17",
-    "F30.R18",
-    "F30.R19"
+    "partitioning.partition-data-operations.R1",
+    "partitioning.partition-data-operations.R2",
+    "partitioning.partition-data-operations.R3",
+    "partitioning.partition-data-operations.R4",
+    "partitioning.partition-data-operations.R5",
+    "partitioning.partition-data-operations.R6",
+    "partitioning.partition-data-operations.R7",
+    "partitioning.partition-data-operations.R8",
+    "partitioning.partition-data-operations.R9",
+    "partitioning.partition-data-operations.R10",
+    "partitioning.partition-data-operations.R11",
+    "partitioning.partition-data-operations.R12",
+    "partitioning.partition-data-operations.R13",
+    "partitioning.partition-data-operations.R14",
+    "partitioning.partition-data-operations.R15",
+    "partitioning.partition-data-operations.R16",
+    "partitioning.partition-data-operations.R17",
+    "partitioning.partition-data-operations.R18",
+    "partitioning.partition-data-operations.R19"
   ],
   "amends": [
-    "F30"
+    "partitioning.partition-data-operations"
   ],
   "amended_by": [],
   "displaced_by": [],

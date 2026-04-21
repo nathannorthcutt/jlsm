@@ -8,12 +8,12 @@
     "encryption"
   ],
   "requires": [
-    "F03",
-    "F14"
+    "encryption.primitives-variants",
+    "schema.document-construction"
   ],
   "invalidates": [
-    "F03.R20",
-    "F03.R22"
+    "encryption.primitives-dispatch.R3",
+    "encryption.primitives-dispatch.R5"
   ],
   "amends": null,
   "amended_by": null,

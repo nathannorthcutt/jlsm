@@ -1,6 +1,6 @@
 ---
 group: f04-obligation-resolution
-goal: Resolve 12 open F04 engine-clustering obligations identified by spec-verify
+goal: Resolve 12 open engine.clustering engine-clustering obligations identified by spec-verify
 status: active
 created: 2026-04-19
 ---
@@ -8,7 +8,7 @@ created: 2026-04-19
 ## Goal
 
 Fix the code bugs and implement the missing subsystems that spec-verify
-identified as violations of the F04 engine-clustering specification. 12
+identified as violations of the engine.clustering engine-clustering specification. 12
 obligations are implementable now; 3 remain blocked on external dependencies
 (replication layer, network transport, measurement data) and are excluded.
 
@@ -24,11 +24,11 @@ obligations are implementable now; 3 remain blocked on external dependencies
   partition pruning (R63)
 
 ### Out of scope
-- OBL-F04-R10 (dedup) — blocked on replication layer
-- OBL-F04-R20 (phi init) — blocked on measurement data
-- OBL-F04-R29 (transport timeout) — blocked on network transport (F19-F21)
-- F41 Encryption Lifecycle — separate multi-week project
-- F10/F05 cross-module integration stubs — separate work group
+- OBL-engine.clustering-R10 (dedup) — blocked on replication layer
+- OBL-engine.clustering-R20 (phi init) — blocked on measurement data
+- OBL-engine.clustering-R29 (transport timeout) — blocked on network transport (transport.multiplexed-framing-transport.scatter-gather-flow-control)
+- encryption.primitives-lifecycle Encryption Lifecycle — separate multi-week project
+- query.index-types/engine.in-process-database-engine cross-module integration stubs — separate work group
 
 ## Ordering Constraints
 
@@ -42,11 +42,11 @@ WD-04 (consensus) must complete before WD-05 (fault tolerance) — consensus
 defines quorum semantics used by split-brain detection.
 
 ## Shared Interfaces
-None — all changes are within F04's existing module boundaries (jlsm-core
+None — all changes are within engine.clustering's existing module boundaries (jlsm-core
 clustering, jlsm-table clustered).
 
 ## Success Criteria
 - All 12 obligation IDs resolved (status: resolved in _obligations.json)
-- F04 spec promoted from DRAFT to APPROVED
+- engine.clustering spec promoted from DRAFT to APPROVED
 - All new code has adversarial tests covering the spec requirements
-- No regressions in existing F04 tests
+- No regressions in existing engine.clustering tests

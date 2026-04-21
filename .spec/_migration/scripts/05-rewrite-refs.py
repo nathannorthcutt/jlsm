@@ -31,6 +31,7 @@ MIGRATION_DIR = REPO_ROOT / ".spec" / "_migration"
 SPEC_DOMAINS = REPO_ROOT / ".spec" / "domains"
 REGISTRY_OBLIGATIONS = REPO_ROOT / ".spec" / "registry" / "_obligations.json"
 FINAL_RN_TABLE_PATH = MIGRATION_DIR / "final-rn-table.json"
+SPLIT_RULES_PATH = MIGRATION_DIR / "split-rules.json"
 
 REF_FIELDS = ["requires", "invalidates", "displaced_by", "revives", "revived_by", "amends", "amended_by"]
 
@@ -40,6 +41,19 @@ def load_table():
         print(f"ERROR: {FINAL_RN_TABLE_PATH} not found", file=sys.stderr)
         sys.exit(1)
     return json.loads(FINAL_RN_TABLE_PATH.read_text())
+
+
+def load_dropped():
+    if not SPLIT_RULES_PATH.exists():
+        return set()
+    rules = json.loads(SPLIT_RULES_PATH.read_text())
+    dropped = set()
+    for fid, frules in rules.items():
+        if fid.startswith("$"):
+            continue
+        for rn in frules.get("dropped_requirements", {}):
+            dropped.add(f"{fid}.{rn}")
+    return dropped
 
 
 def build_feature_dest_map(table):
@@ -53,13 +67,18 @@ def build_feature_dest_map(table):
     return by_feature
 
 
-def rewrite_token(token, table, feature_dests, warnings):
-    """Rewrite a single FXX or FXX.RN token. Returns list of rewritten tokens
-    (always 1 unless an FXX maps to multiple destinations)."""
+def rewrite_token(token, table, feature_dests, dropped, warnings):
+    """Rewrite a single FXX or FXX.RN token. Returns list of rewritten tokens.
+    For dropped reqs, returns [] (filtered out — the requirement no longer exists).
+    For bare FXX with multiple destinations, returns ALL destinations (let downstream
+    consumers see the full dependency surface)."""
     m_full = re.match(r"^(F\d+)\.(R\d+[a-z]?)$", token)
     if m_full:
         feature, rn = m_full.groups()
         key = f"{feature}.{rn}"
+        if key in dropped:
+            warnings.append(f"dropped {token} — removed from refs (req no longer exists)")
+            return []
         entry = table.get(key)
         if not entry:
             warnings.append(f"unresolved RN reference: {token}")
@@ -73,9 +92,9 @@ def rewrite_token(token, table, feature_dests, warnings):
             warnings.append(f"unresolved bare feature reference: {token}")
             return [token]
         if len(dests) > 1:
-            warnings.append(f"{token} maps to multiple destinations {dests} — using first; review manually")
-        return [dests[0]]
-    return [token]  # not an FXX-style token; leave as-is
+            warnings.append(f"{token} expanded to {len(dests)} destinations: {dests}")
+        return list(dests)  # emit all destinations
+    return [token]
 
 
 def parse_frontmatter(text):
@@ -88,18 +107,20 @@ def parse_frontmatter(text):
         return None, text
 
 
-def rewrite_field_value(value, table, feature_dests, warnings):
+def rewrite_field_value(value, table, feature_dests, dropped, warnings):
     """Rewrite a single field value (string or list of strings)."""
     if value is None:
         return value
     if isinstance(value, str):
-        rewritten = rewrite_token(value, table, feature_dests, warnings)
+        rewritten = rewrite_token(value, table, feature_dests, dropped, warnings)
+        if not rewritten:
+            return None
         return rewritten[0] if len(rewritten) == 1 else rewritten
     if isinstance(value, list):
         out = []
         for item in value:
             if isinstance(item, str):
-                out.extend(rewrite_token(item, table, feature_dests, warnings))
+                out.extend(rewrite_token(item, table, feature_dests, dropped, warnings))
             else:
                 out.append(item)
         # dedupe preserving order
@@ -114,7 +135,7 @@ def rewrite_field_value(value, table, feature_dests, warnings):
     return value
 
 
-def rewrite_spec_file(path, table, feature_dests):
+def rewrite_spec_file(path, table, feature_dests, dropped):
     text = path.read_text()
     fm, body = parse_frontmatter(text)
     if fm is None:
@@ -126,7 +147,7 @@ def rewrite_spec_file(path, table, feature_dests):
         if field not in fm:
             continue
         old = fm[field]
-        new = rewrite_field_value(old, table, feature_dests, warnings)
+        new = rewrite_field_value(old, table, feature_dests, dropped, warnings)
         if new != old:
             fm[field] = new
             changed = True
@@ -137,7 +158,7 @@ def rewrite_spec_file(path, table, feature_dests):
     return changed, [(path.relative_to(REPO_ROOT), w) for w in warnings]
 
 
-def rewrite_obligations(table, feature_dests):
+def rewrite_obligations(table, feature_dests, dropped):
     if not REGISTRY_OBLIGATIONS.exists():
         return False, []
     data = json.loads(REGISTRY_OBLIGATIONS.read_text())
@@ -150,7 +171,7 @@ def rewrite_obligations(table, feature_dests):
     for obl in obligations:
         if "spec_id" in obl:
             old_id = obl["spec_id"]
-            new_id = rewrite_token(old_id, table, feature_dests, warnings)
+            new_id = rewrite_token(old_id, table, feature_dests, dropped, warnings)
             if new_id and new_id[0] != old_id:
                 obl["spec_id"] = new_id[0]
                 changed = True
@@ -158,7 +179,7 @@ def rewrite_obligations(table, feature_dests):
             if affects_key in obl and isinstance(obl[affects_key], list):
                 new_list = []
                 for ref in obl[affects_key]:
-                    new_list.extend(rewrite_token(ref, table, feature_dests, warnings))
+                    new_list.extend(rewrite_token(ref, table, feature_dests, dropped, warnings))
                 if new_list != obl[affects_key]:
                     obl[affects_key] = new_list
                     changed = True
@@ -170,6 +191,7 @@ def rewrite_obligations(table, feature_dests):
 
 def main():
     table = load_table()
+    dropped = load_dropped()
     feature_dests = build_feature_dest_map(table)
 
     files_scanned = 0
@@ -184,7 +206,7 @@ def main():
             continue
         files_scanned += 1
         try:
-            changed, warnings = rewrite_spec_file(path, table, feature_dests)
+            changed, warnings = rewrite_spec_file(path, table, feature_dests, dropped)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             print(f"  WARN: could not process {path.relative_to(REPO_ROOT)}: {e}", file=sys.stderr)
             continue
@@ -193,7 +215,7 @@ def main():
             print(f"  rewrote refs in {path.relative_to(REPO_ROOT)}")
         all_warnings.extend(warnings)
 
-    obl_changed, obl_warnings = rewrite_obligations(table, feature_dests)
+    obl_changed, obl_warnings = rewrite_obligations(table, feature_dests, dropped)
     if obl_changed:
         print(f"  rewrote refs in .spec/registry/_obligations.json")
     all_warnings.extend(obl_warnings)

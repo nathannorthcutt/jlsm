@@ -8,7 +8,7 @@
     "sstable"
   ],
   "requires": [
-    "F16"
+    "sstable.v3-format-upgrade"
   ],
   "invalidates": [],
   "amends": null,

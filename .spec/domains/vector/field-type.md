@@ -8,7 +8,7 @@
     "vector"
   ],
   "requires": [
-    "F01"
+    "vector.float16-vector-support"
   ],
   "invalidates": [],
   "amends": null,

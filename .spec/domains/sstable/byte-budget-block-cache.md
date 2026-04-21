@@ -8,14 +8,14 @@
     "sstable"
   ],
   "requires": [
-    "F09"
+    "sstable.striped-block-cache"
   ],
   "invalidates": [
-    "F09.R8",
-    "F09.R9",
-    "F09.R15",
-    "F09.R43",
-    "F09.R44"
+    "sstable.striped-block-cache.R8",
+    "sstable.striped-block-cache.R9",
+    "sstable.striped-block-cache.R15",
+    "sstable.striped-block-cache.R43",
+    "sstable.striped-block-cache.R44"
   ],
   "amends": null,
   "amended_by": null,

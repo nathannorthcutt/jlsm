@@ -8,7 +8,7 @@
     "membership"
   ],
   "requires": [
-    "F22"
+    "membership.continuous-rediscovery"
   ],
   "invalidates": [],
   "decision_refs": [

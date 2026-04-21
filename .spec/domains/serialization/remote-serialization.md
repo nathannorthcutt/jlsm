@@ -8,15 +8,15 @@
     "serialization"
   ],
   "requires": [
-    "F05",
-    "F19",
-    "F20",
-    "F34",
-    "F35"
+    "engine.in-process-database-engine",
+    "transport.multiplexed-framing",
+    "transport.traffic-priority",
+    "engine.handle-lifecycle",
+    "engine.cross-table-transactions"
   ],
   "invalidates": [],
   "amends": [
-    "F19.R2a"
+    "transport.multiplexed-framing.R2a"
   ],
   "amended_by": null,
   "decision_refs": [

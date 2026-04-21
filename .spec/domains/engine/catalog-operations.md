@@ -8,10 +8,10 @@
     "engine"
   ],
   "requires": [
-    "F05",
-    "F19",
-    "F32",
-    "F36"
+    "engine.in-process-database-engine",
+    "transport.multiplexed-framing",
+    "partitioning.partition-replication",
+    "serialization.remote-serialization"
   ],
   "invalidates": [],
   "amends": null,

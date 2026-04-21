@@ -8,7 +8,7 @@
     "sstable"
   ],
   "requires": [
-    "F02"
+    "compression.codec-contract"
   ],
   "invalidates": [],
   "amends": null,

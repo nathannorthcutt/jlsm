@@ -8,8 +8,8 @@
     "partitioning"
   ],
   "requires": [
-    "F27",
-    "F28"
+    "partitioning.rebalancing-safety",
+    "partitioning.rebalancing-policy"
   ],
   "invalidates": [],
   "amends": null,

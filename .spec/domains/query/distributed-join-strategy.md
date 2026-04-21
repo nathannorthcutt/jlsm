@@ -8,9 +8,9 @@
     "query"
   ],
   "requires": [
-    "F04",
-    "F11",
-    "F21"
+    "engine.clustering",
+    "partitioning.table-partitioning",
+    "transport.scatter-gather-flow-control"
   ],
   "invalidates": [],
   "amends": null,

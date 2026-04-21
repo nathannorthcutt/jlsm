@@ -8,12 +8,12 @@
     "partitioning"
   ],
   "requires": [
-    "F11",
-    "F27"
+    "partitioning.table-partitioning",
+    "partitioning.rebalancing-safety"
   ],
   "invalidates": [
-    "F27.R28",
-    "F27.R29"
+    "partitioning.rebalancing-safety.R28",
+    "partitioning.rebalancing-safety.R29"
   ],
   "amends": null,
   "amended_by": null,

@@ -8,9 +8,9 @@
     "encryption"
   ],
   "requires": [
-    "F03",
-    "F41",
-    "F14"
+    "encryption.primitives-variants",
+    "encryption.primitives-lifecycle",
+    "schema.document-construction"
   ],
   "invalidates": [],
   "amends": null,

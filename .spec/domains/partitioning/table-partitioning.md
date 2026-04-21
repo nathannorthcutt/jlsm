@@ -8,7 +8,7 @@
     "partitioning"
   ],
   "requires": [
-    "F10"
+    "query.index-types"
   ],
   "invalidates": [],
   "amends": null,

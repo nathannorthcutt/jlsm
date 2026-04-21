@@ -9,8 +9,8 @@
     "encryption"
   ],
   "requires": [
-    "F41",
-    "F17"
+    "encryption.primitives-lifecycle",
+    "compression.codec-contract"
   ],
   "invalidates": [],
   "amends": null,

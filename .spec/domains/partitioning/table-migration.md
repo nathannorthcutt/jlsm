@@ -8,14 +8,14 @@
     "partitioning"
   ],
   "requires": [
-    "F11",
-    "F19",
-    "F27",
-    "F28",
-    "F29",
-    "F30",
-    "F32",
-    "F37"
+    "partitioning.table-partitioning",
+    "transport.multiplexed-framing",
+    "partitioning.rebalancing-safety",
+    "partitioning.rebalancing-policy",
+    "partitioning.rebalancing-operations",
+    "partitioning.partition-data-operations",
+    "partitioning.partition-replication",
+    "engine.catalog-operations"
   ],
   "invalidates": [],
   "amends": null,
