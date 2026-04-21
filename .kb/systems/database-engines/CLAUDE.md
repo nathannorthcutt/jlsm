@@ -1,5 +1,6 @@
 # database-engines — Category Index
 *Topic: systems*
+*Tags: catalog, wal, recovery, handle-lifecycle, blob-store, block-size, arena, buffer-pool, alignment, slab, fragmentation, panama-ffm, cross-table-transaction, schema*
 
 Persistence patterns, metadata management, and recovery strategies for database
 engines. Covers catalog persistence, table lifecycle, and startup recovery.
@@ -19,6 +20,7 @@ engines. Covers catalog persistence, table lifecycle, and startup recovery.
 | [schema-type-systems.md](schema-type-systems.md) | Schema Type Systems for Document Databases | active | O(1) per field validation | Binary types, bounded fields, schema migration |
 | [cross-table-transaction-patterns.md](cross-table-transaction-patterns.md) | Cross-Table Transaction Patterns (Single-Node) | active | Shared WAL or WriteBatch | Multi-table atomicity without distributed coordination |
 | [blob-store-patterns.md](blob-store-patterns.md) | Blob Store Patterns for LSM-Tree Storage | active | LSM-backed + content-addressed | Large object storage, chunking, GC, dual-write |
+| [pool-aware-sstable-block-sizing.md](pool-aware-sstable-block-sizing.md) | Pool-Aware and Arena-Aware SSTable Block Size Selection | active | block_size = pool.slotSize aligned to page + cache-line | Choosing SSTable block size for Arena-backed pools |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->

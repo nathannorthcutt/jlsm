@@ -29,6 +29,8 @@ sources:
     accessed: "2026-03-18"
     type: "paper"
     note: "(not fetched — timeout/error)"
+related:
+  - "systems/database-engines/pool-aware-sstable-block-sizing.md"
 ---
 
 # Index Scan Patterns over LSM Storage

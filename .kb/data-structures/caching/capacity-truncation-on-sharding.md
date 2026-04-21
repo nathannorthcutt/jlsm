@@ -24,3 +24,6 @@ Integer division truncation is expected behavior, but developers store the origi
 
 ## Found in
 - striped-block-cache (audit round 1, 2026-03-25): `StripedBlockCache.capacity()` returned configured total but effective capacity was `(capacity / stripeCount) * stripeCount`
+
+## Related
+- [byte-budget-cache-variable-size-entries.md](byte-budget-cache-variable-size-entries.md) — byte-budget designs suffer the same per-shard floor effect if each shard holds a fixed `maxBytes / N`

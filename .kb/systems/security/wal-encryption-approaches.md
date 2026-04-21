@@ -14,6 +14,8 @@ last_researched: "2026-04-13"
 applies_to: []
 related:
   - "systems/security/jvm-key-handling-patterns.md"
+  - "systems/security/three-level-key-hierarchy.md"
+  - "systems/security/encryption-key-rotation-patterns.md"
 decision_refs: ["wal-entry-encryption"]
 sources:
   - url: "https://duckdb.org/2025/11/19/encryption-in-duckdb"

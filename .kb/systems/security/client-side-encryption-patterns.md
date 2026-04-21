@@ -15,6 +15,7 @@ applies_to: []
 related:
   - "systems/security/jvm-key-handling-patterns.md"
   - "systems/security/encryption-key-rotation-patterns.md"
+  - "systems/security/three-level-key-hierarchy.md"
   - "algorithms/encryption/searchable-encryption-schemes.md"
 decision_refs: ["client-side-encryption-sdk", "pre-encrypted-flag-persistence", "per-field-pre-encryption"]
 sources:

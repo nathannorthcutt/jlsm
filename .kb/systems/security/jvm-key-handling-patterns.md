@@ -12,6 +12,11 @@ research_status: "stable"
 last_researched: "2026-03-18"
 applies_to:
   - "modules/jlsm-table/src/main/java/jlsm/table/JlsmSchema.java"
+related:
+  - "systems/security/three-level-key-hierarchy.md"
+  - "systems/security/encryption-key-rotation-patterns.md"
+  - "systems/security/wal-encryption-approaches.md"
+  - "systems/security/client-side-encryption-patterns.md"
 sources:
   - url: "https://github.com/dbsystel/SecureSecretKeySpec"
     title: "SecureSecretKeySpec — AutoCloseable/Destroyable SecretKey"
