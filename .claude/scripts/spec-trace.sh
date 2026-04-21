@@ -1,35 +1,44 @@
 #!/usr/bin/env bash
-# spec-trace.sh — find @spec annotations for a feature across the codebase
-# Usage: spec-trace.sh <FXX> [project-root]
+# spec-trace.sh — find @spec annotations for a spec across the codebase
+# Usage: spec-trace.sh <spec-id> [project-root]
+#   spec-id: legacy FXX (e.g., F13) OR domain.slug (e.g., schema.field-access)
 # Optional env: SPEC_TRACE_DIRS="src,lib,test" — comma-separated dirs to scan (default: auto-detect)
 # Optional env: SPEC_TRACE_FORMAT="summary|detail|json" — output format (default: summary)
 # Output: grouped annotation report on stdout | diagnostics on stderr
 #
 # Scans implementation and test files for @spec annotations matching the given
-# feature ID. Groups results by file, distinguishes implementation vs test
+# spec ID. Groups results by file, distinguishes implementation vs test
 # locations, and reports per-requirement coverage.
 
 set -euo pipefail
 
-FEATURE_ID="${1:-}"
+SPEC_ID="${1:-}"
+# Backwards-compatible alias used internally by older code paths
 PROJECT_ROOT="${2:-}"
 FORMAT="${SPEC_TRACE_FORMAT:-summary}"
 
-[[ -z "$FEATURE_ID" ]] && {
-  echo "Usage: spec-trace.sh <FXX> [project-root]" >&2
-  echo "  Example: spec-trace.sh F13" >&2
-  echo "  Example: spec-trace.sh F13 /path/to/project" >&2
+[[ -z "$SPEC_ID" ]] && {
+  echo "Usage: spec-trace.sh <spec-id> [project-root]" >&2
+  echo "  Examples:" >&2
+  echo "    spec-trace.sh F13                      # legacy FXX format" >&2
+  echo "    spec-trace.sh schema.field-access      # domain.slug format" >&2
+  echo "    spec-trace.sh F13 /path/to/project" >&2
   echo "" >&2
   echo "  Env: SPEC_TRACE_DIRS='src,lib,test'  — dirs to scan" >&2
   echo "  Env: SPEC_TRACE_FORMAT='summary'      — summary|detail|json" >&2
   exit 1
 }
 
-# Validate feature ID format: FXX with zero-padded 2+ digits
-if ! echo "$FEATURE_ID" | grep -qE '^F[0-9]{2,}$'; then
-  echo "ERROR: Invalid feature ID '$FEATURE_ID'. Must be FXX format (e.g., F01, F13)." >&2
+# Validate spec ID format: legacy FXX (zero-padded 2+ digits) OR domain.slug
+# (lowercase letter + hyphenated segments separated by a single dot).
+if ! echo "$SPEC_ID" | grep -qE '^(F[0-9]{2,}|[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*)$'; then
+  echo "ERROR: Invalid spec ID '$SPEC_ID'." >&2
+  echo "  Expected: legacy FXX (e.g. F01, F13) OR domain.slug (e.g. schema.field-access)" >&2
   exit 1
 fi
+
+# Escape regex metachars in the spec ID so dots in domain.slug match literally
+SPEC_ID_RE=$(printf '%s' "$SPEC_ID" | sed 's/[.[\*^$()+?{|]/\\&/g')
 
 # ── Locate project root ────────────────────────────────────────────────────────
 if [[ -z "$PROJECT_ROOT" ]]; then
@@ -56,8 +65,10 @@ if [[ -n "${SPEC_TRACE_DIRS:-}" ]]; then
     [[ -d "$PROJECT_ROOT/$d" ]] && SCAN_DIRS+=("$PROJECT_ROOT/$d")
   done
 else
-  # Auto-detect: scan common source/test directory names
-  for candidate in src lib app main test tests spec; do
+  # Auto-detect: scan common source/test directory names. `modules` is included
+  # for multi-module Java/Kotlin projects (e.g., jlsm); `examples` and
+  # `benchmarks` cover sample/perf code that may also carry @spec annotations.
+  for candidate in src lib app main test tests spec modules examples benchmarks; do
     [[ -d "$PROJECT_ROOT/$candidate" ]] && SCAN_DIRS+=("$PROJECT_ROOT/$candidate")
   done
 fi
@@ -68,13 +79,12 @@ if [[ ${#SCAN_DIRS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-echo "[trace] Scanning for @spec $FEATURE_ID in: ${SCAN_DIRS[*]}" >&2
+echo "[trace] Scanning for @spec $SPEC_ID in: ${SCAN_DIRS[*]}" >&2
 
 # ── Grep pattern ────────────────────────────────────────────────────────────────
-# Match @spec annotations containing this feature ID.
-# Pattern: @spec followed by whitespace, then references that include our FXX.
-# We match the whole @spec line and filter in post-processing.
-GREP_PATTERN="@spec\s+.*${FEATURE_ID}\."
+# Match @spec annotations containing this spec ID. The spec ID is regex-escaped
+# (SPEC_ID_RE) so dots in domain.slug ids match literally.
+GREP_PATTERN="@spec\s+.*${SPEC_ID_RE}\."
 
 # Collect all matching lines: file:line_number:content
 MATCHES_FILE=$(mktemp)
@@ -91,8 +101,8 @@ grep -rnE "$GREP_PATTERN" "${SCAN_DIRS[@]}" \
 MATCH_COUNT=$(wc -l < "$MATCHES_FILE" | tr -d ' ')
 
 if [[ "$MATCH_COUNT" -eq 0 ]]; then
-  echo "No @spec annotations found for $FEATURE_ID" >&2
-  echo "## $FEATURE_ID — Trace Report"
+  echo "No @spec annotations found for $SPEC_ID" >&2
+  echo "## $SPEC_ID — Trace Report"
   echo ""
   echo "**No annotations found.**"
   echo ""
@@ -103,7 +113,7 @@ fi
 echo "[trace] Found $MATCH_COUNT annotation(s)" >&2
 
 # ── Parse matches and extract requirement references ────────────────────────────
-# For each match line, extract all FXX.RN references belonging to our feature.
+# For each match line, extract all <spec-id>.RN references belonging to our spec.
 # Track: file, line number, requirement IDs, whether it's a test file.
 
 declare -A FILE_LINES       # file -> "line1:R1,R3|line2:R7"
@@ -131,28 +141,26 @@ while IFS= read -r line; do
   # Make path relative to project root for display
   rel_file="${file#"$PROJECT_ROOT"/}"
 
-  # Extract all FXX.RN references for our feature from the content.
-  # Handle both "F13.R1,R3,R7" (multi-req same spec) and "F13.R1 F08.R4" (multi-spec).
-  #
-  # Strategy: find the FXX. prefix, then collect subsequent R-numbers
-  # until we hit another FXX. prefix, whitespace without R, or end of refs.
+  # Extract all <spec>.RN references for our spec from the content.
+  # Handle both "<spec>.R1,R3,R7" (multi-req same spec) and "<spec>.R1 <other>.R4" (multi-spec).
+  # Letter-suffixed RNs (R51a, R39h) are supported.
 
   # First, extract the @spec portion (everything after @spec until end of line or --)
   spec_portion=$(echo "$content" | sed -E 's/.*@spec\s+//; s/\s*--.*//; s/\s*—.*//')
 
-  # Extract refs for our feature: FXX.RN[,RN,RN]
-  # This handles: F13.R1  F13.R1,R3,R7  F13.R1,R3 F08.R4
-  our_refs=$(echo "$spec_portion" | grep -oE "${FEATURE_ID}\\.R[0-9]+(,R[0-9]+)*" || true)
+  # Extract refs for our spec: <SPEC_ID>.RN[,RN,RN]
+  # SPEC_ID_RE has dots regex-escaped so domain.slug ids match literally.
+  our_refs=$(echo "$spec_portion" | grep -oE "${SPEC_ID_RE}\\.R[0-9]+[a-z]?(,R[0-9]+[a-z]?)*" || true)
 
   for ref_group in $our_refs; do
-    # ref_group is like "F13.R1,R3,R7" or "F13.R1"
-    # Strip the FXX. prefix, split on comma
-    req_part="${ref_group#"${FEATURE_ID}".}"
+    # ref_group is like "<spec>.R1,R3,R7" or "<spec>.R1"
+    # Strip the spec id prefix, split on comma
+    req_part="${ref_group#"${SPEC_ID}".}"
     IFS=',' read -ra req_ids <<< "$req_part"
     for rid in "${req_ids[@]}"; do
-      # Normalize: ensure it looks like RN
-      if echo "$rid" | grep -qE '^R[0-9]+$'; then
-        full_ref="${FEATURE_ID}.${rid}"
+      # Normalize: ensure it looks like Rn or Rn<letter>
+      if echo "$rid" | grep -qE '^R[0-9]+[a-z]?$'; then
+        full_ref="${SPEC_ID}.${rid}"
 
         # Track unique requirements
         if [[ -z "${REQ_FILES[$full_ref]+x}" ]]; then
@@ -172,8 +180,14 @@ while IFS= read -r line; do
   done
 done < "$MATCHES_FILE"
 
-# ── Sort requirements naturally (F13.R1, F13.R2, ..., F13.R10, ...) ────────────
-IFS=$'\n' SORTED_REQS=($(for r in "${ALL_REQS[@]}"; do echo "$r"; done | sort -t. -k2 -V))
+# ── Sort requirements naturally by trailing R-number (R1, R2, ..., R10, R51a, ...) ──
+# Strip the spec ID prefix to get just the RN, sort version-aware on that, then re-attach.
+IFS=$'\n' SORTED_REQS=($(
+  for r in "${ALL_REQS[@]}"; do
+    rn="${r##*.}"   # drop everything up to and including the last "."
+    printf "%s\t%s\n" "$rn" "$r"
+  done | sort -V | cut -f2-
+))
 unset IFS
 
 # ── Output ──────────────────────────────────────────────────────────────────────
@@ -181,7 +195,7 @@ unset IFS
 if [[ "$FORMAT" == "json" ]]; then
   # JSON output for machine consumption
   echo "{"
-  echo "  \"feature\": \"$FEATURE_ID\","
+  echo "  \"spec\": \"$SPEC_ID\","
   echo "  \"total_annotations\": $MATCH_COUNT,"
   echo "  \"requirements\": {"
   first=true
@@ -219,7 +233,7 @@ if [[ "$FORMAT" == "json" ]]; then
 
 elif [[ "$FORMAT" == "detail" ]]; then
   # Detailed output: per-requirement with all locations
-  echo "## $FEATURE_ID — Trace Report (detail)"
+  echo "## $SPEC_ID — Trace Report (detail)"
   echo ""
   echo "**Annotations:** $MATCH_COUNT | **Requirements traced:** ${#SORTED_REQS[@]}"
   echo ""
@@ -257,7 +271,7 @@ elif [[ "$FORMAT" == "detail" ]]; then
 
 else
   # Summary output (default): compact table
-  echo "## $FEATURE_ID — Trace Report"
+  echo "## $SPEC_ID — Trace Report"
   echo ""
   echo "**Annotations:** $MATCH_COUNT | **Requirements traced:** ${#SORTED_REQS[@]}"
   echo ""

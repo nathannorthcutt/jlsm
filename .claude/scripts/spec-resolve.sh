@@ -244,11 +244,12 @@ for f in "${ALL_FILES[@]+"${ALL_FILES[@]}"}"; do
   src_id=$(fm "$f" '.id')
   while IFS= read -r inv_ref; do
     [[ -z "$inv_ref" ]] && continue
-    # Extract the feature ID from FXX.RN format
-    target_fid=$(echo "$inv_ref" | grep -oE '^F[0-9]+' || true)
-    [[ -z "$target_fid" ]] && continue
-    if [[ -n "${INCLUDED_IDS[$target_fid]+x}" ]]; then
-      CONFLICTS+="INVALIDATES: $src_id invalidates $inv_ref, but $target_fid is also in this bundle"$'\n'
+    # Strip trailing .RN to get the target spec ID. Works for both
+    # FXX.RN (→ FXX) and domain.slug.RN (→ domain.slug).
+    target_id=$(echo "$inv_ref" | sed -E 's/\.R[0-9]+[a-z]?$//')
+    [[ -z "$target_id" ]] && continue
+    if [[ -n "${INCLUDED_IDS[$target_id]+x}" ]]; then
+      CONFLICTS+="INVALIDATES: $src_id invalidates $inv_ref, but $target_id is also in this bundle"$'\n'
     fi
   done < <(fm "$f" '.invalidates // [] | .[]')
 done
@@ -279,9 +280,9 @@ for f in "${ALL_FILES[@]+"${ALL_FILES[@]}"}"; do
         prev="${REQ_SUBJECTS[$token]}"
         prev_id="${prev%%|*}"
         prev_line="${prev#*|}"
-        # Only flag if from different specs
-        prev_spec=$(echo "$prev_id" | grep -oE '^F[0-9]+' || true)
-        [[ "$prev_spec" == "$src_id" ]] && continue
+        # Only flag if from different specs (compare full spec IDs directly —
+        # works for both FXX and domain.slug forms)
+        [[ "$prev_id" == "$src_id" ]] && continue
 
         prev_lower=$(echo "$prev_line" | tr '[:upper:]' '[:lower:]')
         # Check for contradictory language patterns
