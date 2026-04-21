@@ -55,7 +55,7 @@ public final class ClusteredEngine implements Engine {
     private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     /**
-     * Engine-level operational mode (@spec F04.R41). Transitions between NORMAL and READ_ONLY on
+     * Engine-level operational mode (@spec engine.clustering.R41). Transitions between NORMAL and READ_ONLY on
      * membership-view changes based on quorum. Exposed via {@link #operationalMode()} and consumed
      * by {@link ClusteredTable} to gate mutating operations.
      */
@@ -235,14 +235,14 @@ public final class ClusteredEngine implements Engine {
      *
      * <p>
      *
-     * @spec F04.R57 — the join orchestration registers with discovery first and then starts
+     * @spec engine.clustering.R57 — the join orchestration registers with discovery first and then starts
      *       membership. If {@code membership.start(seeds)} throws, the completed discovery
      *       registration is rolled back via {@code discovery.deregister(localAddress)} and the
      *       original failure is rethrown. Any exception thrown by the rollback deregister is
      *       attached via {@link Throwable#addSuppressed(Throwable)} on the original failure.
      *
      *       <p>
-     * @spec F04.R78 — null {@code seeds} is rejected with {@link NullPointerException}; seeds
+     * @spec engine.clustering.R78 — null {@code seeds} is rejected with {@link NullPointerException}; seeds
      *       containing a null element are rejected with {@link IllegalArgumentException}.
      *
      * @param seeds the seed addresses forwarded to the membership protocol; must not be null,
@@ -282,7 +282,7 @@ public final class ClusteredEngine implements Engine {
     }
 
     /**
-     * Returns the engine's current operational mode (@spec F04.R41).
+     * Returns the engine's current operational mode (@spec engine.clustering.R41).
      *
      * <p>
      * The mode is {@link ClusterOperationalMode#NORMAL} while the most recent membership view
@@ -550,7 +550,7 @@ public final class ClusteredEngine implements Engine {
          *
          * <p>
          *
-         * @spec F04.R56,R79 — discovery is a mandatory builder parameter; both the setter and
+         * @spec engine.clustering.R56,R79 — discovery is a mandatory builder parameter; both the setter and
          *       {@link #build()} reject a missing/null discovery with {@link NullPointerException}.
          *
          * @param discovery the discovery provider; must not be null

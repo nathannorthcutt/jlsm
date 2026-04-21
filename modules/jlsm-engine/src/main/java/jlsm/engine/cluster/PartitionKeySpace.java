@@ -16,7 +16,7 @@ import java.util.List;
  * Side effects: none.
  *
  * <p>
- * {@code @spec F04.R63}
+ * {@code @spec engine.clustering.R63}
  */
 public interface PartitionKeySpace {
 

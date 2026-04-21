@@ -39,9 +39,9 @@ import java.util.Objects;
  * <li>Type mismatches are rejected with descriptive error messages</li>
  * </ul>
  *
- * @spec F15.R44 — type validation and range checking matching JlsmDocument.of()
- * @spec F15.R57 — FLOAT64 rejects NaN/Infinity
- * @spec F15.R58 — distinct overflow vs format error messages
+ * @spec serialization.simd-jsonl.R44 — type validation and range checking matching JlsmDocument.of()
+ * @spec serialization.simd-jsonl.R57 — FLOAT64 rejects NaN/Infinity
+ * @spec serialization.simd-jsonl.R58 — distinct overflow vs format error messages
  */
 public final class JsonValueAdapter {
 

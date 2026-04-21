@@ -15,7 +15,7 @@ import java.io.IOException;
  * Side effects: none.
  *
  * <p>
- * {@code @spec F04.R41}
+ * {@code @spec engine.clustering.R41}
  */
 public final class QuorumLostException extends IOException {
 

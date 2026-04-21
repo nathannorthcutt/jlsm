@@ -37,7 +37,7 @@ import java.util.function.Supplier;
  * idempotent.
  *
  * <p>
- * {@code @spec F04.R47, R48, R50}
+ * {@code @spec engine.clustering.R47, R48, R50}
  */
 public final class GraceGatedRebalancer {
 

@@ -1476,9 +1476,9 @@ final class ConcurrencyAdversarialTest {
                 "ClusteredTable.java source must exist at " + source.toAbsolutePath());
         final String src = java.nio.file.Files.readString(source);
 
-        // Locate the whenComplete block by the marker comment for @spec F04.R100 / H-RL-6.
-        final int markerIdx = src.indexOf("@spec F04.R100");
-        assertTrue(markerIdx >= 0, "Expected @spec F04.R100 marker at the whenComplete close site");
+        // Locate the whenComplete block by the marker comment for @spec engine.clustering.R100 / H-RL-6.
+        final int markerIdx = src.indexOf("@spec engine.clustering.R100");
+        assertTrue(markerIdx >= 0, "Expected @spec engine.clustering.R100 marker at the whenComplete close site");
         // Scope: from marker to the end of the whenComplete lambda (closing brace + ");").
         // Use a window wide enough to cover the entire lambda body.
         final int windowEnd = Math.min(src.length(), markerIdx + 800);

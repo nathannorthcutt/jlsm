@@ -20,10 +20,10 @@ import java.util.Objects;
  * <p>
  * Stricter than RFC 8259: rejects duplicate keys, trailing content, and bounds nesting depth.
  *
- * @spec F15.R16 — two-stage architecture: structural index then materialization
- * @spec F15.R17 — parse returns fully materialized tree, no input references
- * @spec F15.R25 — handles all RFC 8259 types with stricter duplicate/trailing rules
- * @spec F15.R27 — configurable max depth (default 256), iterative not recursive
+ * @spec serialization.simd-jsonl.R16 — two-stage architecture: structural index then materialization
+ * @spec serialization.simd-jsonl.R17 — parse returns fully materialized tree, no input references
+ * @spec serialization.simd-jsonl.R25 — handles all RFC 8259 types with stricter duplicate/trailing rules
+ * @spec serialization.simd-jsonl.R27 — configurable max depth (default 256), iterative not recursive
  */
 public final class JsonParser {
 
@@ -58,11 +58,11 @@ public final class JsonParser {
      * @throws NullPointerException if json is null
      * @throws IllegalArgumentException if maxDepth is not positive
      * @throws JsonParseException if the input is malformed
-     * @spec F15.R28 — rejects trailing content after complete value
-     * @spec F15.R29 — detects truncated input
-     * @spec F15.R52 — depth bounds [1, 4096]
-     * @spec F15.R24 — throws JsonParseException with byte offset
-     * @spec F15.R26 — handles supplementary Unicode via surrogate pairs
+     * @spec serialization.simd-jsonl.R28 — rejects trailing content after complete value
+     * @spec serialization.simd-jsonl.R29 — detects truncated input
+     * @spec serialization.simd-jsonl.R52 — depth bounds [1, 4096]
+     * @spec serialization.simd-jsonl.R24 — throws JsonParseException with byte offset
+     * @spec serialization.simd-jsonl.R26 — handles supplementary Unicode via surrogate pairs
      */
     public static JsonValue parse(String json, int maxDepth) {
         Objects.requireNonNull(json, "json must not be null");
@@ -129,7 +129,7 @@ public final class JsonParser {
          * depth check is against {@code stack.size()} — one frame per nesting level — so the JVM
          * call stack depth is O(1) regardless of input nesting depth.
          *
-         * @spec F15.R27 — no recursion for depth traversal; iterative state machine
+         * @spec serialization.simd-jsonl.R27 — no recursion for depth traversal; iterative state machine
          */
         JsonValue parseValue() {
             Deque<Frame> stack = new ArrayDeque<>();

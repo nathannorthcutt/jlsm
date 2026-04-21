@@ -6,10 +6,10 @@ import java.util.Objects;
  * Stage 1 orchestrator that dispatches to the active tier's structural scanner and produces a
  * {@link StructuralIndex}.
  *
- * @spec F15.R18 — SIMD character classification for structural indexing
- * @spec F15.R19 — backslash-parity for escaped quote detection
- * @spec F15.R20 — three tiers: Panama FFM, Vector API, scalar
- * @spec F15.R21 — tier detected once at class-load, stored in static final
+ * @spec serialization.simd-jsonl.R18 — SIMD character classification for structural indexing
+ * @spec serialization.simd-jsonl.R19 — backslash-parity for escaped quote detection
+ * @spec serialization.simd-jsonl.R20 — three tiers: Panama FFM, Vector API, scalar
+ * @spec serialization.simd-jsonl.R21 — tier detected once at class-load, stored in static final
  */
 public final class StructuralIndexer {
 

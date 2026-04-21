@@ -12,15 +12,15 @@ import java.util.Objects;
  * Values are stored in schema-field order. A {@code null} entry means the field is absent (PATCH
  * semantics). Type validation is performed eagerly at construction.
  *
- * @spec F14.R1 — public final class in jlsm.table
- * @spec F14.R48,R49 — no YAML methods (absent, removed per F15.R1)
- * @spec F14.R56,R57 — no synchronization; effectively immutable from public API perspective
- * @spec F14.R62 — no toString() override (callers use toJson())
- * @spec F14.R63 — does not implement Serializable
- * @spec F14.R64 — nested JlsmDocument for ObjectType not validated against inner schema
- * @spec F14.R65 — no set/with mutator; document is write-once from public API
- * @spec F15.R1 — no YAML methods (absent behavior)
- * @spec F15.R2 — YamlParser/YamlWriter removed (confirmed absent)
+ * @spec schema.document-construction.R1 — public final class in jlsm.table
+ * (formerly @spec F14.R48,R49 — dropped during migration) — no YAML methods (absent, removed per F15.R1)
+ * @spec schema.document-invariants.R6,R7 — no synchronization; effectively immutable from public API perspective
+ * @spec schema.document-field-access.R16 — no toString() override (callers use toJson())
+ * @spec schema.document-field-access.R17 — does not implement Serializable
+ * @spec schema.document-field-access.R18 — nested JlsmDocument for ObjectType not validated against inner schema
+ * @spec schema.document-field-access.R19 — no set/with mutator; document is write-once from public API
+ * @spec serialization.simd-jsonl.R1 — no YAML methods (absent behavior)
+ * @spec serialization.simd-jsonl.R2 — YamlParser/YamlWriter removed (confirmed absent)
  */
 public final class JlsmDocument {
 
@@ -410,8 +410,8 @@ public final class JlsmDocument {
     /**
      * Serializes this document to a compact JSON string.
      *
-     * @spec F14.R45 — toJson() emits compact (no-indent) JSON
-     * @spec F15.R43 — uses jlsm-core JSON writer internally
+     * @spec schema.document-serialization.R1 — toJson() emits compact (no-indent) JSON
+     * @spec serialization.simd-jsonl.R43 — uses jlsm-core JSON writer internally
      */
     public String toJson() {
         return jlsm.core.json.JsonWriter
@@ -422,7 +422,7 @@ public final class JlsmDocument {
      * Serializes this document to a JSON string.
      *
      * @param pretty {@code true} for pretty-printed output (2-space indent)
-     * @spec F14.R46 — toJson(boolean) uses 2-space indent when pretty, compact otherwise
+     * @spec schema.document-serialization.R2 — toJson(boolean) uses 2-space indent when pretty, compact otherwise
      */
     public String toJson(boolean pretty) {
         return jlsm.core.json.JsonWriter
@@ -436,8 +436,8 @@ public final class JlsmDocument {
      * @param schema the target schema; must not be null
      * @return a new JlsmDocument
      * @throws IllegalArgumentException if the JSON is malformed or a field type does not match
-     * @spec F14.R47 — fromJson deserializes JSON into a JlsmDocument conforming to the schema
-     * @spec F15.R42 — uses jlsm-core JSON parser internally
+     * @spec schema.document-serialization.R3 — fromJson deserializes JSON into a JlsmDocument conforming to the schema
+     * @spec serialization.simd-jsonl.R42 — uses jlsm-core JSON parser internally
      */
     public static JlsmDocument fromJson(String json, JlsmSchema schema) {
         Objects.requireNonNull(json, "json must not be null");

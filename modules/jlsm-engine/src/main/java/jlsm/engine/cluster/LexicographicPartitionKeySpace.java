@@ -20,7 +20,7 @@ import java.util.Objects;
  * Side effects: none.
  *
  * <p>
- * {@code @spec F04.R63}
+ * {@code @spec engine.clustering.R63}
  */
 public final class LexicographicPartitionKeySpace implements PartitionKeySpace {
 

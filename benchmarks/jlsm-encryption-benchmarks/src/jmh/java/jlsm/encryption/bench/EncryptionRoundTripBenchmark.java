@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit;
  * Input sizes chosen to represent common field shapes: 64-byte string for byte-level schemes, INT16
  * domain for OPE, 128-dimension float vector for DCPE.
  *
- * @spec F03.R90 — performance impact measurable via JMH benchmarks across all four variants
+ * @spec encryption.primitives-dispatch.R21 — performance impact measurable via JMH benchmarks across all four variants
  */
 // @spec encryption.primitives-dispatch.R21
 @BenchmarkMode(Mode.Throughput)

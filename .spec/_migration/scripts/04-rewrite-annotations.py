@@ -37,10 +37,14 @@ SOURCE_DIRS = os.environ.get("SOURCE_DIRS", "modules,examples,benchmarks").split
 # File extensions whose @spec comments we rewrite. Anything text-y with line comments works.
 SOURCE_EXTS = {".java", ".kt", ".py", ".ts", ".tsx", ".js", ".rs", ".go"}
 
-# @spec line pattern (anchored to start-of-comment but tolerant of indentation)
-# Captures: leading whitespace+comment marker, then "@spec ", then F<id>.R<rn>[,<rn>]*
+# @spec line pattern. Matches all common comment styles:
+#   //  — Java/JS/Rust/Go/TS line comments
+#   *   — Javadoc/JSDoc continuation lines (within /** ... */ blocks)
+#   #   — Python/shell
+#   --  — SQL/Lua/Haskell
+# Captures: leading whitespace+marker, then "@spec ", then F<id>.R<rn>[,R<rn>]*
 ANNOT_RE = re.compile(
-    r"^(?P<lead>\s*(?://|#|--)\s*@spec\s+)(?P<feature>F\d+)\.(?P<rns>R\d+[a-z]?(?:,R\d+[a-z]?)*)(?P<trailer>.*)$",
+    r"^(?P<lead>\s*(?://|#|--|\*)\s*@spec\s+)(?P<feature>F\d+)\.(?P<rns>R\d+[a-z]?(?:,R\d+[a-z]?)*)(?P<trailer>.*)$",
     re.MULTILINE,
 )
 
@@ -114,7 +118,7 @@ def rewrite_file(path, table, dropped):
         trailer = m.group("trailer")
         # Extract the comment marker prefix (everything before "@spec")
         # so we can re-emit a plain comment for dropped reqs.
-        comment_prefix_m = re.match(r"^(\s*(?://|#|--))\s*@spec\s+", lead)
+        comment_prefix_m = re.match(r"^(\s*(?://|#|--|\*))\s*@spec\s+", lead)
         comment_prefix = comment_prefix_m.group(1) if comment_prefix_m else "//"
 
         by_dest, unresolved, dropped_rns = resolve_annotation(feature, rns_str, table, dropped)
@@ -148,8 +152,38 @@ def rewrite_file(path, table, dropped):
                 new_lines.append(f"{comment_prefix} (formerly {','.join(dropped_rns)} — dropped during migration){eol}")
             changed = True
 
+    # Second pass: handle inline @spec FXX.RN references that aren't at start-of-comment-line
+    # (e.g., mid-Javadoc-prose like "the write-path gate (@spec F04.R41).").
+    # These are word-level substitutions — no line restructuring.
+    text_after_pass1 = "".join(new_lines)
+    inline_re = re.compile(r"@spec\s+(F\d+)\.(R\d+[a-z]?(?:,R\d+[a-z]?)*)")
+
+    def inline_repl(m):
+        nonlocal changed
+        feature, rns_str = m.group(1), m.group(2)
+        by_dest, unresolved, dropped_rns = resolve_annotation(feature, rns_str, table, dropped)
+        if dropped_rns and not by_dest:
+            # Leave mid-prose dropped references untouched (they read fine as historical refs)
+            dropped_in_file.extend(dropped_rns)
+            return m.group(0)
+        if unresolved:
+            unresolved_in_file.extend(unresolved)
+            return m.group(0)
+        if len(by_dest) == 1:
+            dest, final_rns = next(iter(by_dest.items()))
+            changed = True
+            return f"@spec {dest}.{','.join(final_rns)}"
+        # Multi-destination inline — emit as space-separated list (keeps readability)
+        parts = [f"@spec {dest}.{','.join(rns)}" for dest, rns in by_dest.items()]
+        changed = True
+        return " ".join(parts)
+
+    new_text = inline_re.sub(inline_repl, text_after_pass1)
+    if new_text != text_after_pass1:
+        changed = True
+
     if changed:
-        path.write_text("".join(new_lines))
+        path.write_text(new_text)
     return changed, unresolved_in_file, dropped_in_file
 
 

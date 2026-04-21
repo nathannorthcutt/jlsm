@@ -107,6 +107,14 @@ def main():
             except UnicodeDecodeError:
                 continue
             for m in fxx_annot_re.finditer(text):
+                # Skip intentional historical markers from the dropped-req rewriter
+                line_start = text.rfind("\n", 0, m.start()) + 1
+                line_end = text.find("\n", m.end())
+                if line_end == -1:
+                    line_end = len(text)
+                line = text[line_start:line_end]
+                if "formerly @spec" in line or "dropped during migration" in line:
+                    continue
                 leftover_fxx.append(f"B: leftover FXX annotation in {path.relative_to(REPO_ROOT)}: {m.group(0)}")
             for m in annot_re.finditer(text):
                 spec_id, rns_str = m.group(1), m.group(2)

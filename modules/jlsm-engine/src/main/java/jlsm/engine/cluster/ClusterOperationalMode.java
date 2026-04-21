@@ -13,7 +13,7 @@ package jlsm.engine.cluster;
  * Side effects: none — this is a pure value type.
  *
  * <p>
- * {@code @spec F04.R41}
+ * {@code @spec engine.clustering.R41}
  */
 public enum ClusterOperationalMode {
 

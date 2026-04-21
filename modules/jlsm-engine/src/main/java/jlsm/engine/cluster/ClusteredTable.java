@@ -68,7 +68,7 @@ public final class ClusteredTable implements Table {
             .ofArray(new byte[]{ (byte) 0xFF });
 
     /**
-     * Virtual-thread executor used to launch per-node scatter calls in parallel (@spec F04.R77).
+     * Virtual-thread executor used to launch per-node scatter calls in parallel (@spec engine.clustering.R77).
      * The underlying cluster transport may perform synchronous work on the calling thread (e.g. the
      * in-JVM transport's delivery-delay model), so submitting each call on a virtual thread is
      * required to prevent the fanout from serializing.
@@ -83,14 +83,14 @@ public final class ClusteredTable implements Table {
     /** Nullable local engine handle used for in-process short-circuit routing. */
     private final Engine localEngine;
     /**
-     * The partition keyspace used for scan pruning (@spec F04.R63). Defaults to
+     * The partition keyspace used for scan pruning (@spec engine.clustering.R63). Defaults to
      * {@link SinglePartitionKeySpace} for backward compatibility when no keyspace is supplied —
      * scans then preserve the historical "fan out to every HRW owner of the sole partition"
      * behavior.
      */
     private final PartitionKeySpace keySpace;
     /**
-     * Supplies the engine's current operational mode (@spec F04.R41). When the supplier returns
+     * Supplies the engine's current operational mode (@spec engine.clustering.R41). When the supplier returns
      * {@link ClusterOperationalMode#READ_ONLY}, mutation methods throw {@link QuorumLostException}.
      * Defaults to a constant supplier returning {@link ClusterOperationalMode#NORMAL} so existing
      * call sites preserve prior behavior.
@@ -130,7 +130,7 @@ public final class ClusteredTable implements Table {
      *
      * <p>
      *
-     * @spec F04.R60 — when the partition owner is the local node and {@code localEngine} is
+     * @spec engine.clustering.R60 — when the partition owner is the local node and {@code localEngine} is
      *       non-null, CRUD and scan operations execute directly against
      *       {@code localEngine.getTable(name)} without invoking the cluster transport.
      *
@@ -155,7 +155,7 @@ public final class ClusteredTable implements Table {
     /**
      * Creates a new clustered table proxy with a shared ownership instance, an optional
      * local-engine short-circuit, and an explicit {@link PartitionKeySpace} used to prune
-     * {@code scan(fromKey, toKey)} fanout to owners of overlapping partitions (@spec F04.R63).
+     * {@code scan(fromKey, toKey)} fanout to owners of overlapping partitions (@spec engine.clustering.R63).
      *
      * @param tableMetadata the metadata for this table; must not be null
      * @param transport the cluster transport for remote communication; must not be null
@@ -193,7 +193,7 @@ public final class ClusteredTable implements Table {
      * @param keySpace the partition keyspace used for scan pruning; must not be null
      * @param modeSupplier supplies the engine's operational mode; must not be null. When it returns
      *            {@link ClusterOperationalMode#READ_ONLY}, {@code create}/{@code update}/
-     *            {@code delete}/{@code insert} throw {@link QuorumLostException} (@spec F04.R41).
+     *            {@code delete}/{@code insert} throw {@link QuorumLostException} (@spec engine.clustering.R41).
      */
     public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
@@ -212,7 +212,7 @@ public final class ClusteredTable implements Table {
 
     /**
      * Creates a new clustered table proxy with a {@link ClusterOperationalMode} supplier wired into
-     * the write-path gate (@spec F04.R41). Uses the default single-partition keyspace for scan
+     * the write-path gate (@spec engine.clustering.R41). Uses the default single-partition keyspace for scan
      * pruning. When {@code operationalModeSupplier.get()} returns
      * {@link ClusterOperationalMode#READ_ONLY}, mutation methods throw {@link QuorumLostException};
      * reads remain unaffected.
@@ -419,7 +419,7 @@ public final class ClusteredTable implements Table {
         final int totalQueried = owners.size();
         final List<NodeFuture> perNode = new ArrayList<>(totalQueried);
         // @spec engine.clustering.R77 — fan out to each partition owner in parallel. Local short-circuit
-        // (@spec F04.R60) runs inline; remote calls are submitted on a virtual-thread executor
+        // (@spec engine.clustering.R60) runs inline; remote calls are submitted on a virtual-thread executor
         // so the transport's synchronous per-call delay doesn't serialize the fanout.
         for (final NodeAddress node : owners) {
             if (isLocalOwner(node)) {
@@ -633,7 +633,7 @@ public final class ClusteredTable implements Table {
      *
      * <p>
      *
-     * @spec F04.R63 — when the configured keyspace exposes more than one partition, only owners of
+     * @spec engine.clustering.R63 — when the configured keyspace exposes more than one partition, only owners of
      *       partitions overlapping {@code [fromKey, toKey)} are returned; non-overlapping owners
      *       are pruned from the fanout. When the keyspace has a single partition (the default
      *       backward-compat case) no useful pruning is possible, so every live member is returned
@@ -713,7 +713,7 @@ public final class ClusteredTable implements Table {
 
     /**
      * Returns {@code true} when {@code owner} is the local node AND a local engine is available for
-     * in-process short-circuit routing (@spec F04.R60).
+     * in-process short-circuit routing (@spec engine.clustering.R60).
      */
     private boolean isLocalOwner(NodeAddress owner) {
         assert owner != null : "owner must not be null";
@@ -749,7 +749,7 @@ public final class ClusteredTable implements Table {
 
         // Initialize min-heap with first element from each iterator. The comparator assumes
         // non-null current entries and non-null keys; a runtime guard on it.next() (below)
-        // rejects malformed iterator elements so the comparator can rely on them. @spec F04.R67
+        // rejects malformed iterator elements so the comparator can rely on them. @spec engine.clustering.R67
         // — merge preserves ordering when every input iterator yields well-formed, sorted entries.
         final PriorityQueue<HeapEntry> heap = new PriorityQueue<>(iterators.size(),
                 Comparator.comparing(he -> he.current.key()));
@@ -815,13 +815,13 @@ public final class ClusteredTable implements Table {
 
     /**
      * Verifies the engine's operational mode permits mutations. Throws {@link QuorumLostException}
-     * when the engine is in {@link ClusterOperationalMode#READ_ONLY} (@spec F04.R41).
+     * when the engine is in {@link ClusterOperationalMode#READ_ONLY} (@spec engine.clustering.R41).
      */
     private void requireWritable(String op) throws QuorumLostException {
         final ClusterOperationalMode m = modeSupplier.get();
         if (m == ClusterOperationalMode.READ_ONLY) {
             throw new QuorumLostException(
-                    op + " rejected: engine is READ_ONLY (quorum lost — @spec F04.R41)");
+                    op + " rejected: engine is READ_ONLY (quorum lost — @spec engine.clustering.R41)");
         }
     }
 
