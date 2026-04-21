@@ -47,7 +47,7 @@ import java.util.Optional;
  */
 public final class SqlParser {
 
-    // @spec F07.R32 — maximum expression nesting depth is 128
+    // @spec query.sql-query-support.R32 — maximum expression nesting depth is 128
     private static final int MAX_EXPRESSION_DEPTH = 128;
 
     /** Maximum allowed bind-parameter count to prevent integer overflow and resource exhaustion. */
@@ -71,7 +71,7 @@ public final class SqlParser {
      * @return the parsed SELECT statement AST
      * @throws SqlParseException on syntax errors or unsupported SQL constructs
      */
-    // @spec F07.R28,R29,R30,R97 — non-null non-empty token list; reset all state on each call
+    // @spec query.sql-query-support.R28,R29,R30,R97 — non-null non-empty token list; reset all state on each call
     public SqlAst.SelectStatement parse(List<Token> tokens) throws SqlParseException {
         Objects.requireNonNull(tokens, "tokens");
         if (tokens.isEmpty()) {
@@ -97,7 +97,7 @@ public final class SqlParser {
         return tokens.get(pos);
     }
 
-    // @spec F07.R45 — parser must not advance past EOF; repeated reads at EOF return EOF without
+    // @spec query.sql-query-support.R45 — parser must not advance past EOF; repeated reads at EOF return EOF without
     // error
     private Token advance() throws SqlParseException {
         final Token token = peek();
@@ -107,7 +107,7 @@ public final class SqlParser {
         return token;
     }
 
-    // @spec F07.R44 — unexpected token raises SqlParseException carrying the token's position
+    // @spec query.sql-query-support.R44 — unexpected token raises SqlParseException carrying the token's position
     private Token expect(TokenType type) throws SqlParseException {
         final Token token = peek();
         if (token.type() != type) {
@@ -131,7 +131,7 @@ public final class SqlParser {
 
     // ── Statement parsing ────────────────────────────────────────
 
-    // @spec F07.R31 — reject non-SELECT statements with explicit keyword in the error message
+    // @spec query.sql-query-support.R31 — reject non-SELECT statements with explicit keyword in the error message
     private SqlAst.SelectStatement parseSelectStatement() throws SqlParseException {
         final Token first = peek();
 
@@ -180,7 +180,7 @@ public final class SqlParser {
             offset = Optional.of(parseIntegerLiteral());
         }
 
-        // @spec F07.R103 — consume all tokens up to EOF; reject trailing tokens
+        // @spec query.sql-query-support.R103 — consume all tokens up to EOF; reject trailing tokens
         final Token trailing = peek();
         if (trailing.type() != TokenType.EOF) {
             throw new SqlParseException("Unexpected trailing token " + trailing.type() + " '"
@@ -191,7 +191,7 @@ public final class SqlParser {
         return new SqlAst.SelectStatement(columns, tableName.text(), where, orderBy, limit, offset);
     }
 
-    // @spec F07.R41 — LIMIT/OFFSET require integer literals; decimals or other tokens throw
+    // @spec query.sql-query-support.R41 — LIMIT/OFFSET require integer literals; decimals or other tokens throw
     private int parseIntegerLiteral() throws SqlParseException {
         final Token num = expect(TokenType.NUMBER_LITERAL);
         try {
@@ -205,7 +205,7 @@ public final class SqlParser {
 
     // ── Column list ──────────────────────────────────────────────
 
-    // @spec F07.R38,R39 — SELECT * yields a single Wildcard; otherwise named columns with optional
+    // @spec query.sql-query-support.R38,R39 — SELECT * yields a single Wildcard; otherwise named columns with optional
     // AS alias
     private List<SqlAst.Column> parseColumnList() throws SqlParseException {
         if (match(TokenType.STAR)) {
@@ -260,7 +260,7 @@ public final class SqlParser {
         return clauses;
     }
 
-    // @spec F07.R40 — ORDER BY clauses default to ASC; DESC recorded as ascending=false
+    // @spec query.sql-query-support.R40 — ORDER BY clauses default to ASC; DESC recorded as ascending=false
     private SqlAst.OrderByClause parseOrderByClause() throws SqlParseException {
         final SqlAst.Expression expr = parseOrderByExpression();
         boolean ascending = true;
@@ -274,7 +274,7 @@ public final class SqlParser {
         return new SqlAst.OrderByClause(expr, ascending);
     }
 
-    // @spec F07.R43 — parser allows MATCH and VECTOR_DISTANCE function calls in ORDER BY position
+    // @spec query.sql-query-support.R43 — parser allows MATCH and VECTOR_DISTANCE function calls in ORDER BY position
     private SqlAst.Expression parseOrderByExpression() throws SqlParseException {
         // Could be a function call (VECTOR_DISTANCE) or a column ref
         if (check(TokenType.VECTOR_DISTANCE) || check(TokenType.MATCH)) {
@@ -286,7 +286,7 @@ public final class SqlParser {
 
     // ── Expression parsing (precedence climbing) ─────────────────
 
-    // @spec F07.R33 — operator precedence: OR < AND < NOT < comparison/BETWEEN/IS NULL
+    // @spec query.sql-query-support.R33 — operator precedence: OR < AND < NOT < comparison/BETWEEN/IS NULL
     private SqlAst.Expression parseExpression() throws SqlParseException {
         return parseOr();
     }
@@ -351,7 +351,7 @@ public final class SqlParser {
         return parseComparison();
     }
 
-    // @spec F07.R34,R35 — BETWEEN expr AND expr consumes AND as range syntax; IS [NOT] NULL parsed
+    // @spec query.sql-query-support.R34,R35 — BETWEEN expr AND expr consumes AND as range syntax; IS [NOT] NULL parsed
     private SqlAst.Expression parseComparison() throws SqlParseException {
         final SqlAst.Expression left = parsePrimary();
 
@@ -412,7 +412,7 @@ public final class SqlParser {
 
     // ── Primary expressions ──────────────────────────────────────
 
-    // @spec F07.R36,R37 — parenthesised expressions; bind parameters assigned sequential zero-based
+    // @spec query.sql-query-support.R36,R37 — parenthesised expressions; bind parameters assigned sequential zero-based
     // indices
     private SqlAst.Expression parsePrimary() throws SqlParseException {
         final Token token = peek();
@@ -471,7 +471,7 @@ public final class SqlParser {
         };
     }
 
-    // @spec F07.R42,R43 — MATCH/VECTOR_DISTANCE parsed as FunctionCall with uppercased name in both
+    // @spec query.sql-query-support.R42,R43 — MATCH/VECTOR_DISTANCE parsed as FunctionCall with uppercased name in both
     // WHERE and ORDER BY
     private SqlAst.Expression.FunctionCall parseFunctionCall() throws SqlParseException {
         final Token name = advance(); // MATCH or VECTOR_DISTANCE

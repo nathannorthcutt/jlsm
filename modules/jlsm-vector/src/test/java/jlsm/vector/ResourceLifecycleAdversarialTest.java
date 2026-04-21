@@ -81,7 +81,7 @@ class ResourceLifecycleAdversarialTest {
     // and does NOT re-invoke lsmTree.close()
     // Fix location: Hnsw.close() (LsmVectorIndex.java) — add a closed guard
     // Regression watch: Ensure the first close() still properly closes the LsmTree
-    // @spec F01.R33 — close() must be idempotent across repeated calls
+    // @spec vector.float16-vector-support.R33 — close() must be idempotent across repeated calls
     @Test
     void test_hnsw_close_idempotent_doubleCloseDoesNotReclose() throws Exception {
         var closeCount = new AtomicLong(0);
@@ -144,7 +144,7 @@ class ResourceLifecycleAdversarialTest {
     // tree only if build() was never called (ownership not transferred).
     // Fix location: AbstractBuilder (LsmVectorIndex.java:321-385) — implement AutoCloseable
     // Regression watch: build() must clear the lsmTree reference so close() doesn't double-close
-    // @spec F01.R32 — builder implements AutoCloseable; abandoned builder releases storage tree
+    // @spec vector.float16-vector-support.R32 — builder implements AutoCloseable; abandoned builder releases storage tree
     @Test
     void test_abstractBuilder_abandonedBuilder_closesLsmTree() throws Exception {
         LsmTree tree = buildTree(1024 * 1024);

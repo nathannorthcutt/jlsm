@@ -53,7 +53,7 @@ import java.util.function.Supplier;
  * Governed by: {@code .decisions/engine-api-surface-design/adr.md},
  * {@code .decisions/table-catalog-persistence/adr.md}
  */
-// @spec F05.R1 — the builder indirection behind Engine.builder()
+// @spec engine.in-process-database-engine.R1 — the builder indirection behind Engine.builder()
 public final class LocalEngine implements Engine {
 
     private final Path rootDirectory;
@@ -97,7 +97,7 @@ public final class LocalEngine implements Engine {
     /**
      * Throws {@link IllegalStateException} if the engine has been closed.
      */
-    // @spec F05.R8,R9 — post-close mutating and read operations throw ISE
+    // @spec engine.in-process-database-engine.R8,R9 — post-close mutating and read operations throw ISE
     private void ensureOpen() {
         if (closed.get()) {
             throw new IllegalStateException("Engine is closed");
@@ -105,7 +105,7 @@ public final class LocalEngine implements Engine {
     }
 
     @Override
-    // @spec F05.R10,R11,R12,R13,R14,R15,R16,R17,R70 — create-table API surface
+    // @spec engine.in-process-database-engine.R10,R11,R12,R13,R14,R15,R16,R17,R70 — create-table API surface
     public Table createTable(String name, JlsmSchema schema) throws IOException {
         ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
@@ -115,7 +115,7 @@ public final class LocalEngine implements Engine {
         }
 
         // Register in catalog (throws if already exists)
-        // @spec F05.R14 — duplicate-name check throws IOException
+        // @spec engine.in-process-database-engine.R14 — duplicate-name check throws IOException
         final TableMetadata metadata = catalog.register(name, schema);
 
         // Atomically get or create the live table — computeIfAbsent ensures only one
@@ -179,7 +179,7 @@ public final class LocalEngine implements Engine {
         final TableMetadata metadata = catalog.get(name)
                 .orElseThrow(() -> new IOException("Table does not exist: " + name));
 
-        // @spec F05.R19,R23,R24,R25 — only READY tables are served; other states throw IOException
+        // @spec engine.in-process-database-engine.R19,R23,R24,R25 — only READY tables are served; other states throw IOException
         switch (metadata.state()) {
             case READY -> {
                 /* fall through to normal retrieval */ }
@@ -204,7 +204,7 @@ public final class LocalEngine implements Engine {
         }
 
         // Register handle — use threadId() for unique per-thread identity
-        // @spec F05.R42,R91 — sourceId is the JVM thread ID
+        // @spec engine.in-process-database-engine.R42,R91 — sourceId is the JVM thread ID
         final String sourceId = String.valueOf(Thread.currentThread().threadId());
         final HandleRegistration registration = handleTracker.register(name, sourceId);
 
@@ -212,7 +212,7 @@ public final class LocalEngine implements Engine {
     }
 
     @Override
-    // @spec F05.R28,R29,R70 — drop-table API surface; drop of unknown table throws IOException
+    // @spec engine.in-process-database-engine.R28,R29,R70 — drop-table API surface; drop of unknown table throws IOException
     public void dropTable(String name) throws IOException {
         ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
@@ -230,7 +230,7 @@ public final class LocalEngine implements Engine {
         // Invalidate all handles for this table
         handleTracker.invalidateTable(name, HandleEvictedException.Reason.TABLE_DROPPED);
 
-        // @spec F05.R26,R27,R31 — mark DROPPED (atomic write-then-rename), preserve tombstone,
+        // @spec engine.in-process-database-engine.R26,R27,R31 — mark DROPPED (atomic write-then-rename), preserve tombstone,
         // best-effort cleanup of data files. Throws IOException only if the DROPPED-state
         // metadata write itself fails or the table was never registered.
         catalog.markDropped(name);
@@ -242,12 +242,12 @@ public final class LocalEngine implements Engine {
     @Override
     public Collection<TableMetadata> listTables() {
         ensureOpen();
-        // @spec F05.R20 — READY-only snapshot (not a live view)
+        // @spec engine.in-process-database-engine.R20 — READY-only snapshot (not a live view)
         return catalog.listReady();
     }
 
     @Override
-    // @spec F05.R18,R21,R70 — tableMetadata returns full metadata or null for unknown
+    // @spec engine.in-process-database-engine.R18,R21,R70 — tableMetadata returns full metadata or null for unknown
     public TableMetadata tableMetadata(String name) {
         ensureOpen();
         Objects.requireNonNull(name, "name must not be null");
@@ -258,14 +258,14 @@ public final class LocalEngine implements Engine {
     public EngineMetrics metrics() {
         ensureOpen();
         final EngineMetrics snapshot = handleTracker.snapshot();
-        // @spec F05.R62 — tableCount metric reflects READY tables only
+        // @spec engine.in-process-database-engine.R62 — tableCount metric reflects READY tables only
         final int catalogTableCount = catalog.listReady().size();
         return new EngineMetrics(catalogTableCount, snapshot.totalOpenHandles(),
                 snapshot.handlesPerTable(), snapshot.handlesPerSourcePerTable());
     }
 
     @Override
-    // @spec F05.R6,R7,R78,R79 — idempotent close; accumulate errors from closing multiple tables
+    // @spec engine.in-process-database-engine.R6,R7,R78,R79 — idempotent close; accumulate errors from closing multiple tables
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) {
             return; // already closed — idempotent
@@ -389,7 +389,7 @@ public final class LocalEngine implements Engine {
         private Builder() {
         }
 
-        // @spec F05.R2 — reject null rootDirectory with NPE identifying the parameter
+        // @spec engine.in-process-database-engine.R2 — reject null rootDirectory with NPE identifying the parameter
         public Builder rootDirectory(Path rootDirectory) {
             this.rootDirectory = Objects.requireNonNull(rootDirectory,
                     "rootDirectory must not be null");
@@ -443,12 +443,12 @@ public final class LocalEngine implements Engine {
             if (rootDirectory == null) {
                 throw new IllegalStateException("rootDirectory must be set");
             }
-            // @spec F05.R3 — rootDirectory must be absolute
+            // @spec engine.in-process-database-engine.R3 — rootDirectory must be absolute
             if (!rootDirectory.isAbsolute()) {
                 throw new IllegalArgumentException(
                         "rootDirectory must be absolute: " + rootDirectory);
             }
-            // @spec F05.R72,R73,R90 — handle-limit hierarchy
+            // @spec engine.in-process-database-engine.R72,R73,R90 — handle-limit hierarchy
             if (maxHandlesPerSourcePerTable > maxHandlesPerTable) {
                 throw new IllegalArgumentException("maxHandlesPerSourcePerTable ("
                         + maxHandlesPerSourcePerTable + ") must not exceed maxHandlesPerTable ("

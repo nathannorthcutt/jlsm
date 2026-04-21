@@ -99,7 +99,7 @@ class EntryCodecTest {
         assertEquals(encoded.length, EntryCodec.encodedSize(entry));
     }
 
-    // @spec F02.R40 — data-dependent offset guard must be a runtime check, not assert-only
+    // @spec sstable.writer.R7 — data-dependent offset guard must be a runtime check, not assert-only
     @Test
     void decodeRejectsOffsetBeyondBufferWithIllegalArgumentException() {
         byte[] buf = new byte[10];
@@ -111,7 +111,7 @@ class EntryCodecTest {
                 "expected descriptive offset-out-of-range message, got: " + ex.getMessage());
     }
 
-    // @spec F02.R40 — negative offset must also produce a runtime IllegalArgumentException
+    // @spec sstable.writer.R7 — negative offset must also produce a runtime IllegalArgumentException
     @Test
     void decodeRejectsNegativeOffsetWithIllegalArgumentException() {
         byte[] buf = new byte[10];

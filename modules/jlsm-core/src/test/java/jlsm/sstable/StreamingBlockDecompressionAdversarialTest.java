@@ -88,7 +88,7 @@ class StreamingBlockDecompressionAdversarialTest {
      * CompressedBlockIterator.advance() never checks the closed flag. For eager readers, the data
      * is still in memory so iteration succeeds silently — violating close semantics.
      */
-    // @spec F08.R19 — closed eager reader detected, throws IllegalStateException
+    // @spec compression.streaming-decompression.R19 — closed eager reader detected, throws IllegalStateException
     @Test
     void testEagerScanIteratorFailsAfterClose(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(500);
@@ -119,7 +119,7 @@ class StreamingBlockDecompressionAdversarialTest {
      * ClosedChannelException wrapped in UncheckedIOException instead of IllegalStateException. This
      * test requires advancing past the current block to trigger a channel read.
      */
-    // @spec F08.R19,R29 — closed lazy reader throws IllegalStateException (v2 streaming divergence)
+    // @spec compression.streaming-decompression.R19,R29 — closed lazy reader throws IllegalStateException (v2 streaming divergence)
     @Test
     void testLazyScanIteratorFailsAfterClose(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(500);
@@ -151,7 +151,7 @@ class StreamingBlockDecompressionAdversarialTest {
      * flag. For eager readers, readAndDecompressBlockNoCache reads from eagerData (still in memory)
      * so iteration silently succeeds.
      */
-    // @spec F08.R20 — closed reader detected by range-scan iterator
+    // @spec compression.streaming-decompression.R20 — closed reader detected by range-scan iterator
     @Test
     void testEagerRangeScanIteratorFailsAfterClose(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(500);
@@ -180,7 +180,7 @@ class StreamingBlockDecompressionAdversarialTest {
      * CG-2: Lazy v2 range scan within a single block — exercises the block cache reuse path on a
      * lazy reader (readAndDecompressBlockNoCache via lazyChannel).
      */
-    // @spec F08.R5,R23,R27 — lazy reader range scan reuses cached block within single block
+    // @spec compression.streaming-decompression.R5,R23,R27 — lazy reader range scan reuses cached block within single block
     @Test
     void testLazyReaderRangeScanSameBlock(@TempDir Path dir) throws IOException {
         List<Entry> entries = List.of(put("aaa", "v1", 1), put("aab", "v2", 2), put("aac", "v3", 3),
@@ -202,7 +202,7 @@ class StreamingBlockDecompressionAdversarialTest {
      * CG-2: Lazy v2 range scan spanning multiple blocks — exercises block cache transitions on a
      * lazy reader.
      */
-    // @spec F08.R6,R15 — lazy reader cross-block range scan replaces cached block
+    // @spec compression.streaming-decompression.R6,R15 — lazy reader cross-block range scan replaces cached block
     @Test
     void testLazyReaderRangeScanCrossBlock(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(500);
@@ -235,7 +235,7 @@ class StreamingBlockDecompressionAdversarialTest {
      * All existing tests use only Entry.Put. Entry.Delete has a different encoding (type=1, no
      * value bytes). Verifies the streaming scan handles mixed entry types.
      */
-    // @spec F08.R4,R14 — scan decodes all entry types including deletes, preserves order
+    // @spec compression.streaming-decompression.R4,R14 — scan decodes all entry types including deletes, preserves order
     @Test
     void testStreamingScanWithDeleteEntries(@TempDir Path dir) throws IOException {
         List<Entry> entries = List.of(put("alpha", "one", 1), delete("beta", 2),
@@ -272,7 +272,7 @@ class StreamingBlockDecompressionAdversarialTest {
     /**
      * CG-3: Delete entries through IndexRangeIterator v2 path with block caching.
      */
-    // @spec F08.R5,R15 — range scan handles delete entries correctly
+    // @spec compression.streaming-decompression.R5,R15 — range scan handles delete entries correctly
     @Test
     void testRangeScanWithDeleteEntries(@TempDir Path dir) throws IOException {
         List<Entry> entries = List.of(put("aaa", "one", 1), delete("bbb", 2),
@@ -313,7 +313,7 @@ class StreamingBlockDecompressionAdversarialTest {
      * Existing test only verifies keys via mismatch(). A misaligned decode could produce correct
      * keys but wrong values. This test cross-checks all three fields.
      */
-    // @spec F08.R4,R14 — scan preserves values and sequence numbers per entry
+    // @spec compression.streaming-decompression.R4,R14 — scan preserves values and sequence numbers per entry
     @Test
     void testStreamingScanVerifiesValuesAndSequenceNumbers(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(200);
@@ -349,7 +349,7 @@ class StreamingBlockDecompressionAdversarialTest {
      * Two independent scan() iterators on the same eager v2 reader must produce identical results
      * without interfering with each other.
      */
-    // @spec F08.R26 — multiple independent iterators maintain separate block state
+    // @spec compression.streaming-decompression.R26 — multiple independent iterators maintain separate block state
     @Test
     void testMultipleIndependentScanIterators(@TempDir Path dir) throws IOException {
         List<Entry> entries = multiBlockEntries(100);

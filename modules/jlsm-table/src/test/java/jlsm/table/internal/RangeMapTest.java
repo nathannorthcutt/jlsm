@@ -48,7 +48,7 @@ class RangeMapTest {
         assertDoesNotThrow(() -> new RangeMap(config));
     }
 
-    // @spec F11.R27
+    // @spec partitioning.table-partitioning.R27
     @Test
     void rejectsNullConfig() {
         assertThrows(NullPointerException.class, () -> new RangeMap(null));
@@ -56,7 +56,7 @@ class RangeMapTest {
 
     // --- all() ---
 
-    // @spec F11.R37
+    // @spec partitioning.table-partitioning.R37
     @Test
     void allReturnsAllDescriptorsInOrder() {
         var rm = new RangeMap(config);
@@ -93,7 +93,7 @@ class RangeMapTest {
         assertEquals(p1, rm.routeKey(seg(0x3F)));
     }
 
-    // @spec F11.R32 — boundary routes to partition N+1
+    // @spec partitioning.table-partitioning.R32 — boundary routes to partition N+1
     @Test
     void routesKeyAtMidBoundary() {
         // 0x40 is the inclusive start of p2
@@ -127,7 +127,7 @@ class RangeMapTest {
         assertEquals(p3, rm.routeKey(seg(0xFE)));
     }
 
-    // @spec F11.R30
+    // @spec partitioning.table-partitioning.R30
     @Test
     void throwsForKeyBelowAllPartitions() {
         // Keys before 0x00 are impossible with byte values, but test multi-byte
@@ -139,7 +139,7 @@ class RangeMapTest {
         assertThrows(IllegalArgumentException.class, () -> rm.routeKey(seg(0x05)));
     }
 
-    // @spec F11.R31
+    // @spec partitioning.table-partitioning.R31
     @Test
     void throwsForKeyAtOrAboveHighBound() {
         // 0xFF is the exclusive upper bound of p3 — should not be in any partition
@@ -147,7 +147,7 @@ class RangeMapTest {
         assertThrows(IllegalArgumentException.class, () -> rm.routeKey(seg(0xFF)));
     }
 
-    // @spec F11.R29
+    // @spec partitioning.table-partitioning.R29
     @Test
     void rejectsNullKeyInRouteKey() {
         var rm = new RangeMap(config);
@@ -156,7 +156,7 @@ class RangeMapTest {
 
     // --- overlapping() ---
 
-    // @spec F11.R33 — overlap across full range
+    // @spec partitioning.table-partitioning.R33 — overlap across full range
     @Test
     void overlappingEntireRangeReturnsAll() {
         var rm = new RangeMap(config);
@@ -199,14 +199,14 @@ class RangeMapTest {
         assertThrows(UnsupportedOperationException.class, result::clear);
     }
 
-    // @spec F11.R36
+    // @spec partitioning.table-partitioning.R36
     @Test
     void rejectsNullFromKeyInOverlapping() {
         var rm = new RangeMap(config);
         assertThrows(NullPointerException.class, () -> rm.overlapping(null, seg(0xFF)));
     }
 
-    // @spec F11.R36
+    // @spec partitioning.table-partitioning.R36
     @Test
     void rejectsNullToKeyInOverlapping() {
         var rm = new RangeMap(config);

@@ -1160,7 +1160,7 @@ final class ConcurrencyAdversarialTest {
             ownership.assignOwner("partition-" + i, view);
         }
 
-        // @spec F04.R93 — per-epoch cache must be bounded by maxEntriesPerEpoch, evicting the
+        // @spec engine.clustering.R93 — per-epoch cache must be bounded by maxEntriesPerEpoch, evicting the
         // oldest entry when the bound is reached. Inspect the cache via reflection through the
         // EpochCache.size() method.
         Field cacheField = RendezvousOwnership.class.getDeclaredField("cache");
@@ -1180,7 +1180,7 @@ final class ConcurrencyAdversarialTest {
                         + ownership.maxEntriesPerEpoch() + ".");
     }
 
-    // @spec F04.R93 — the cache bound must be configurable and a smaller bound must cap the cache
+    // @spec engine.clustering.R93 — the cache bound must be configurable and a smaller bound must cap the cache
     // strictly at that value, evicting the oldest entry when a new key arrives at the limit.
     @Test
     @Timeout(10)

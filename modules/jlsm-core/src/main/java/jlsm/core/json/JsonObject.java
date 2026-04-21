@@ -47,7 +47,7 @@ public final class JsonObject implements JsonValue {
      * @return a new immutable JsonObject
      * @throws NullPointerException if members, any key, or any value is null
      */
-    // @spec F15.R15 — keys must be non-null and non-blank; blank keys are rejected eagerly
+    // @spec serialization.simd-jsonl.R15 — keys must be non-null and non-blank; blank keys are rejected eagerly
     // (stricter than RFC 8259; see F15.R25 for the list of stricter-than-RFC parser behaviors).
     public static JsonObject of(Map<String, JsonValue> members) {
         Objects.requireNonNull(members, "members must not be null");
@@ -190,7 +190,7 @@ public final class JsonObject implements JsonValue {
          * @throws NullPointerException if key or value is null
          * @throws IllegalArgumentException if the key is already present
          */
-        // @spec F15.R15 — keys must be non-null and non-blank
+        // @spec serialization.simd-jsonl.R15 — keys must be non-null and non-blank
         public Builder put(String key, JsonValue value) {
             if (built) {
                 throw new IllegalStateException(

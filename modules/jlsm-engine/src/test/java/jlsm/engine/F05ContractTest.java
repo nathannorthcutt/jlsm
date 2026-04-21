@@ -25,7 +25,7 @@ class F05ContractTest {
                 .field("value", FieldType.Primitive.STRING).build();
     }
 
-    // @spec F05.R1 — Engine.builder() must be reachable from the exported public API package
+    // @spec engine.in-process-database-engine.R1 — Engine.builder() must be reachable from the exported public API package
     // without reflection or deep-module tricks.
     @Test
     void engineBuilderIsAccessibleFromPublicApi(@TempDir Path tempDir) throws IOException {
@@ -34,7 +34,7 @@ class F05ContractTest {
         }
     }
 
-    // @spec F05.R3 — builder must reject a relative root path with IllegalArgumentException
+    // @spec engine.in-process-database-engine.R3 — builder must reject a relative root path with IllegalArgumentException
     @Test
     void builderRejectsRelativeRootDirectory() {
         final Path relative = Paths.get("relative-not-absolute");
@@ -46,7 +46,7 @@ class F05ContractTest {
                 "exception message must reference 'absolute'; got: " + thrown.getMessage());
     }
 
-    // @spec F05.R19,R25 — getTable on a LOADING-state table must throw IOException
+    // @spec engine.in-process-database-engine.R19,R25 — getTable on a LOADING-state table must throw IOException
     @Test
     void getTableThrowsForLoadingState(@TempDir Path tempDir) throws Exception {
         final JlsmSchema schema = testSchema();
@@ -61,7 +61,7 @@ class F05ContractTest {
         }
     }
 
-    // @spec F05.R19,R25 — getTable on an ERROR-state table must throw IOException
+    // @spec engine.in-process-database-engine.R19,R25 — getTable on an ERROR-state table must throw IOException
     @Test
     void getTableThrowsForErrorState(@TempDir Path tempDir) throws Exception {
         final JlsmSchema schema = testSchema();
@@ -76,7 +76,7 @@ class F05ContractTest {
         }
     }
 
-    // @spec F05.R20 — listTables must return only READY tables and must be a snapshot copy
+    // @spec engine.in-process-database-engine.R20 — listTables must return only READY tables and must be a snapshot copy
     @Test
     void listTablesReturnsReadyOnlySnapshot(@TempDir Path tempDir) throws Exception {
         final JlsmSchema schema = testSchema();
@@ -98,7 +98,7 @@ class F05ContractTest {
         }
     }
 
-    // @spec F05.R24,R26,R27,R30,R57 — drop persists DROPPED state; on restart getTable throws
+    // @spec engine.in-process-database-engine.R24,R26,R27,R30,R57 — drop persists DROPPED state; on restart getTable throws
     // IOException identifying the dropped state and the table is not listed
     @Test
     void dropPersistsDroppedStateAndIsNotServedAfterRestart(@TempDir Path tempDir)
@@ -121,7 +121,7 @@ class F05ContractTest {
         }
     }
 
-    // @spec F05.R31 — a drop whose data-file deletion fails must still complete successfully;
+    // @spec engine.in-process-database-engine.R31 — a drop whose data-file deletion fails must still complete successfully;
     // the DROPPED tombstone must be persisted regardless of cleanup outcome. We inject deletion
     // failure by placing data files inside a read-only subdirectory (parent of table.meta stays
     // writable so the tombstone rewrite can succeed).
@@ -150,7 +150,7 @@ class F05ContractTest {
                 "DROPPED tombstone must remain even when data-file deletion fails");
     }
 
-    // @spec F05.R54 — per-table metadata writes must be atomic via write-then-rename.
+    // @spec engine.in-process-database-engine.R54 — per-table metadata writes must be atomic via write-then-rename.
     // Verified by (a) confirming no temp files leak on the happy path; (b) the file is non-empty.
     @Test
     void metadataWriteIsAtomic(@TempDir Path tempDir) throws Exception {

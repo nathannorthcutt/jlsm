@@ -81,7 +81,8 @@ class VectorTableIntegrationTest {
                 .valueSerializer(codec).build();
     }
 
-    // @spec F10.R6,R85,R86,R87,R88,R89,R90 — table with VECTOR index accepts writes and serves
+    // @spec query.index-types.R6 — table with VECTOR index accepts writes and serves
+    // @spec query.vector-index.R1,R2,R3,R4,R5,R6 — table with VECTOR index accepts writes and serves
     // nearest-neighbour queries via the registry's VectorFieldIndex adapter.
     @Test
     void createReadDeleteTable_withVectorIndex_endToEnd() throws IOException {
@@ -136,7 +137,7 @@ class VectorTableIntegrationTest {
         }
     }
 
-    // @spec F10.R85 — table builder must reject a VECTOR definition when no factory is
+    // @spec query.vector-index.R1 — table builder must reject a VECTOR definition when no factory is
     // supplied, surfacing mis-wiring at build() rather than on the first write.
     @Test
     void tableBuilder_rejectsVectorWithoutFactory() throws IOException {
@@ -153,7 +154,7 @@ class VectorTableIntegrationTest {
                 "failure message must explain the missing factory: " + iae.getMessage());
     }
 
-    // @spec F10.R90 — closing the table closes the registry which closes the VectorFieldIndex
+    // @spec query.vector-index.R6 — closing the table closes the registry which closes the VectorFieldIndex
     // adapter which closes the underlying VectorIndex; no resources leak.
     @Test
     void tableClose_closesVectorIndex() throws IOException {
@@ -188,7 +189,7 @@ class VectorTableIntegrationTest {
             table.create("k1", JlsmDocument.of(schema, "embedding", new float[]{ 1.0f, 2.0f }));
             assertEquals(1.0f, table.get("k1").orElseThrow().getFloat32Vector("embedding")[0],
                     1e-6);
-            // @spec F05.R37 (WD-03) — a schema-configured table always materialises an
+            // @spec engine.in-process-database-engine.R37 (WD-03) — a schema-configured table always materialises an
             // IndexRegistry (even with zero index definitions) so table.query() can execute
             // scan-and-filter queries. The registry must be present and empty.
             assertTrue(

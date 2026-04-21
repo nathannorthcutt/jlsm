@@ -64,7 +64,7 @@ final class RapidMembershipReconciliationTest {
             throw first;
     }
 
-    // @spec F04.R43 — on view-change acceptance, per-member reconciliation preserves the
+    // @spec engine.clustering.R43 — on view-change acceptance, per-member reconciliation preserves the
     // dominant per-member record. The proposal must satisfy R90 (no-drop-alive). Within that
     // constraint, reconciliation must pick the higher-incarnation record per address rather
     // than wholesale-replacing the local view.

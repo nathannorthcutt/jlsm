@@ -14,10 +14,10 @@ import java.util.Objects;
  * @param score relevance score (higher = more relevant)
  * @param <K> the key type
  */
-// @spec F11.R22 — public record in jlsm.table with key/document/score components
+// @spec partitioning.table-partitioning.R22 — public record in jlsm.table with key/document/score components
 public record ScoredEntry<K>(K key, JlsmDocument document, double score) {
 
-    // @spec F11.R23,R24,R25 — null key→NPE (R23); null document→NPE (R24); NaN score→IAE (R25)
+    // @spec partitioning.table-partitioning.R23,R24,R25 — null key→NPE (R23); null document→NPE (R24); NaN score→IAE (R25)
     public ScoredEntry {
         Objects.requireNonNull(key, "key must not be null");
         Objects.requireNonNull(document, "document must not be null");

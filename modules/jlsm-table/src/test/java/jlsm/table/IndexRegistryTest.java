@@ -13,7 +13,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 
-// @spec F10.R91,R92,R93,R94,R95,R96,R97,R98,R99,R100,R101,R102,R103,R104,R105,R128,R131,R135,R136,R137,R138,R139
+// @spec query.index-registry.R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15,R18,R19,R20,R21,R22,R23
+// @spec query.query-executor.R21
 //       — covers IndexRegistry lifecycle + validation: schema-check per field-type/index-type pair
 //         (including EQUALITY-on-BOOLEAN rejection and VECTOR/VectorType match), routing of
 //         insert/update/delete to all indices, two-phase unique-check with rollback, close with

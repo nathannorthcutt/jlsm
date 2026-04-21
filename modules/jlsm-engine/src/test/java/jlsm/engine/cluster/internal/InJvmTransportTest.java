@@ -86,7 +86,7 @@ class InJvmTransportTest {
         assertArrayEquals(new byte[]{ 99 }, response.payload());
     }
 
-    // @spec F04.R28 — delivery failure (target not registered) must be silently absorbed by the
+    // @spec engine.clustering.R28 — delivery failure (target not registered) must be silently absorbed by the
     // transport. The failure detector is the mechanism for detecting unreachable nodes.
     @Test
     void sendToUnregisteredTargetSilentlyAbsorbs() throws IOException {
@@ -97,7 +97,7 @@ class InJvmTransportTest {
         transportA.send(ADDR_B, msg);
     }
 
-    // @spec F04.R28 — delivery failure (no handler on target) must be silently absorbed.
+    // @spec engine.clustering.R28 — delivery failure (no handler on target) must be silently absorbed.
     @Test
     void sendWithNoHandlerForTypeSilentlyAbsorbs() throws IOException {
         var transportA = new InJvmTransport(ADDR_A);
@@ -119,7 +119,7 @@ class InJvmTransportTest {
         assertNotNull(transportA2);
     }
 
-    // @spec F04.R81 — closed transport rejects send with IllegalStateException
+    // @spec engine.clustering.R81 — closed transport rejects send with IllegalStateException
     @Test
     void sendAfterCloseThrowsIllegalStateException() throws Exception {
         var transportA = new InJvmTransport(ADDR_A);
@@ -130,7 +130,7 @@ class InJvmTransportTest {
         assertThrows(IllegalStateException.class, () -> transportA.send(ADDR_B, msg));
     }
 
-    // @spec F04.R81 — closed transport rejects request with IllegalStateException via the future
+    // @spec engine.clustering.R81 — closed transport rejects request with IllegalStateException via the future
     @Test
     void requestAfterCloseCompletesWithIllegalStateException() throws Exception {
         var transportA = new InJvmTransport(ADDR_A);
@@ -143,7 +143,7 @@ class InJvmTransportTest {
         assertInstanceOf(IllegalStateException.class, ex.getCause());
     }
 
-    // @spec F04.R32 — InJvmTransport must accept configurable delivery delay and loss rate,
+    // @spec engine.clustering.R32 — InJvmTransport must accept configurable delivery delay and loss rate,
     // with zero defaults. Negative delay and out-of-range rates are rejected.
     @Test
     void faultInjectionKnobsValidateArguments() {
@@ -158,7 +158,7 @@ class InJvmTransportTest {
         transport.setDeliveryDelay(java.time.Duration.ZERO);
     }
 
-    // @spec F04.R32 — a 100% loss rate drops every send without invoking the remote handler.
+    // @spec engine.clustering.R32 — a 100% loss rate drops every send without invoking the remote handler.
     @Test
     void fullMessageLossDropsAllSends() throws IOException {
         var transportA = new InJvmTransport(ADDR_A);

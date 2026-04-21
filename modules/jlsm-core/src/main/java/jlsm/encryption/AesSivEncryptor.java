@@ -49,7 +49,7 @@ public final class AesSivEncryptor implements AutoCloseable {
             throw new IllegalArgumentException(
                     "AES-SIV requires a 512-bit (64-byte) key, got " + keyHolder.keyLength());
         }
-        // @spec F03.R81, F41.R16 — zero intermediate key material in finally, even on exception
+        // @spec encryption.primitives-key-holder.R8, F41.R16 — zero intermediate key material in finally, even on exception
         byte[] fullKey = null;
         byte[] cmacKey = null;
         byte[] ctrKey = null;

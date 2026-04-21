@@ -38,7 +38,7 @@ public class RendezvousOwnership {
     /** Default bound on the number of cached assignments per epoch when none is supplied. */
     public static final int DEFAULT_MAX_CACHE_ENTRIES_PER_EPOCH = 10_000;
 
-    // @spec F04.R93 — bound must be configurable; eviction policy is oldest-first within an epoch.
+    // @spec engine.clustering.R93 — bound must be configurable; eviction policy is oldest-first within an epoch.
     private final int maxEntriesPerEpoch;
     private final ConcurrentHashMap<Long, EpochCache> cache = new ConcurrentHashMap<>();
 
@@ -100,7 +100,7 @@ public class RendezvousOwnership {
         assert !ranked.isEmpty() : "ranked list must not be empty after live-member check";
 
         final NodeAddress owner = ranked.getFirst();
-        // @spec F04.R93 — EpochCache evicts its oldest entry when the configured bound is reached
+        // @spec engine.clustering.R93 — EpochCache evicts its oldest entry when the configured bound is reached
         // before accepting the new one, giving O(1) amortized put cost and a hard upper bound on
         // per-epoch memory usage.
         epochCache.put(id, owner);

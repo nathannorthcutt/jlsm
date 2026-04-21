@@ -291,7 +291,7 @@ public final class JsonParser {
             }
             String key = parseStringValue();
             if (key.isBlank()) {
-                // @spec F15.R15 — blank keys are rejected (stricter than RFC 8259)
+                // @spec serialization.simd-jsonl.R15 — blank keys are rejected (stricter than RFC 8259)
                 throw new JsonParseException("Object key must not be blank", pos);
             }
             if (of.members.containsKey(key)) {

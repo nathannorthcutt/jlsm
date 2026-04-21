@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * actually present in the test environment. The tier must be a valid enum value and detection must
  * be deterministic (cached at class-load time).
  */
-// @spec F18.R4,R4a,R5
+// @spec compression.zstd-dictionary.R4,R4a,R5
 class ZstdNativeBindingsTest {
 
     @Test
@@ -66,7 +66,7 @@ class ZstdNativeBindingsTest {
         assertNotNull(ZstdNativeBindings.trainFromBuffer());
     }
 
-    // @spec F02.R39b — tier detection must select PURE_JAVA_DECOMPRESSOR when native is
+    // @spec compression.zstd-codec.R1 — tier detection must select PURE_JAVA_DECOMPRESSOR when native is
     // unavailable; DEFLATE_FALLBACK is reserved for cases where the pure-Java decoder itself
     // is not loadable, which cannot happen in this codebase (pure-Java class is always on the
     // classpath).

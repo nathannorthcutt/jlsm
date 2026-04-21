@@ -13,7 +13,7 @@ class JlsmSqlTest {
             .field("name", FieldType.string()).field("age", FieldType.int32())
             .field("active", FieldType.boolean_()).build();
 
-    // @spec F07.R2,R7,R75
+    // @spec query.sql-query-support.R2,R7,R75
     @Test
     void parsesSimpleSelectQuery() throws SqlParseException {
         var query = JlsmSql.parse("SELECT * FROM users", SCHEMA);
@@ -22,7 +22,7 @@ class JlsmSqlTest {
         assertTrue(query.predicate().isEmpty());
     }
 
-    // @spec F07.R2,R7,R57,R62
+    // @spec query.sql-query-support.R2,R7,R57,R62
     @Test
     void parsesQueryWithWhereClause() throws SqlParseException {
         var query = JlsmSql.parse("SELECT name FROM users WHERE age > 30", SCHEMA);
@@ -33,19 +33,19 @@ class JlsmSqlTest {
         assertInstanceOf(Predicate.Gt.class, query.predicate().get());
     }
 
-    // @spec F07.R5
+    // @spec query.sql-query-support.R5
     @Test
     void rejectsBlankSql() {
         assertThrows(SqlParseException.class, () -> JlsmSql.parse("   ", SCHEMA));
     }
 
-    // @spec F07.R3
+    // @spec query.sql-query-support.R3
     @Test
     void rejectsNullSql() {
         assertThrows(NullPointerException.class, () -> JlsmSql.parse(null, SCHEMA));
     }
 
-    // @spec F07.R4
+    // @spec query.sql-query-support.R4
     @Test
     void rejectsNullSchema() {
         assertThrows(NullPointerException.class, () -> JlsmSql.parse("SELECT * FROM t", null));

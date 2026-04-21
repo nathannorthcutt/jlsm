@@ -35,9 +35,9 @@ import java.util.Optional;
  * @see <a href="../../../../.spec/domains/serialization/F18-zstd-dictionary-compression.md">F18 R4,
  *      R4a, R5</a>
  */
-// @spec F18.R4 — class-load detection via Panama FFM, catches all Throwable, cached
-// @spec F18.R4a — activeTier() exposes Tier enum for operator visibility
-// @spec F18.R5 — binds all required ZSTD downcall handles; fall through to Tier 2 on failure
+// @spec compression.zstd-dictionary.R4 — class-load detection via Panama FFM, catches all Throwable, cached
+// @spec compression.zstd-dictionary.R4a — activeTier() exposes Tier enum for operator visibility
+// @spec compression.zstd-dictionary.R5 — binds all required ZSTD downcall handles; fall through to Tier 2 on failure
 final class ZstdNativeBindings {
 
     /**
@@ -189,7 +189,7 @@ final class ZstdNativeBindings {
 
             detectedTier = Tier.NATIVE;
         } catch (Throwable _) {
-            // @spec F02.R39b — native detection failed; fall through to Tier 2 (pure-Java
+            // @spec compression.zstd-codec.R1 — native detection failed; fall through to Tier 2 (pure-Java
             // decompressor) rather than Tier 3. PureJavaZstdDecompressor ships with this
             // module and needs no native support; DEFLATE_FALLBACK is reserved for cases
             // where even the pure-Java path is unusable.

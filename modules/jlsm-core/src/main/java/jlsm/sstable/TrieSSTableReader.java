@@ -55,13 +55,13 @@ import java.util.zip.CRC32C;
  * demand</li>
  * </ul>
  */
-// @spec F02.R35 — lazy reader synchronizes channel reads
-// @spec F02.R43 — iterator after close is undefined (documented)
-// @spec F08.R28 — decompressAllBlocks method removed (absent behavior)
-// @spec F18.R19a — v4-capable reader also reads v1, v2, v3 via magic dispatch
-// @spec F18.R19b,R19c — v4 section-ordering invariants + v3-style compression map
-// @spec F18.R20,R20a,R21 — on-disk metadata determines codec for ID 0x03 (see override methods)
-// @spec F18.R22 — v1-only reader on v4/v3/v2 file throws descriptive IOException
+// @spec sstable.writer.R4 — lazy reader synchronizes channel reads
+// @spec sstable.writer.R10 — iterator after close is undefined (documented)
+// @spec compression.streaming-decompression.R28 — decompressAllBlocks method removed (absent behavior)
+// @spec compression.zstd-dictionary.R19a — v4-capable reader also reads v1, v2, v3 via magic dispatch
+// @spec compression.zstd-dictionary.R19b,R19c — v4 section-ordering invariants + v3-style compression map
+// @spec compression.zstd-dictionary.R20,R20a,R21 — on-disk metadata determines codec for ID 0x03 (see override methods)
+// @spec compression.zstd-dictionary.R22 — v1-only reader on v4/v3/v2 file throws descriptive IOException
 public final class TrieSSTableReader implements SSTableReader {
 
     private final SSTableMetadata metadata;
@@ -85,7 +85,7 @@ public final class TrieSSTableReader implements SSTableReader {
     // v3: per-block CRC32C verification
     private final boolean hasChecksums;
 
-    // @spec F16.R15 — block size recorded at write time (v3+) or default (v1/v2)
+    // @spec sstable.v3-format-upgrade.R15 — block size recorded at write time (v3+) or default (v1/v2)
     private final long blockSize;
 
     private volatile boolean closed = false;
@@ -143,7 +143,7 @@ public final class TrieSSTableReader implements SSTableReader {
      * v2 files (which predate the footer blockSize field) this returns
      * {@link SSTableFormat#DEFAULT_BLOCK_SIZE} — the value v2 writers hardcoded.
      */
-    // @spec F16.R15,R18 — exposes blockSize from footer (v3+) or 4096 default (v1/v2)
+    // @spec sstable.v3-format-upgrade.R15,R18 — exposes blockSize from footer (v3+) or 4096 default (v1/v2)
     public long blockSize() {
         return blockSize;
     }
@@ -155,7 +155,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return open(path, bloomDeserializer, null);
     }
 
-    // @spec F16.R19 — v1 path: no compression map, no decompression, no CRC32C (per F02 R15)
+    // @spec sstable.v3-format-upgrade.R19 — v1 path: no compression map, no decompression, no CRC32C (per F02 R15)
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
             BlockCache blockCache) throws IOException {
         Objects.requireNonNull(path, "path must not be null");
@@ -227,9 +227,9 @@ public final class TrieSSTableReader implements SSTableReader {
      * @return a new reader
      * @throws IOException if the file cannot be read or contains an unknown codec ID
      */
-    // @spec F02.R15 — detects v1 by magic, falls back to v1 reading
-    // @spec F02.R16 — v1 reader on v2 file throws descriptive IOException
-    // @spec F02.R17 — self-describing, no external config needed
+    // @spec sstable.format-v2.R5 — detects v1 by magic, falls back to v1 reading
+    // @spec sstable.format-v2.R6 — v1 reader on v2 file throws descriptive IOException
+    // @spec sstable.format-v2.R7 — self-describing, no external config needed
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
             BlockCache blockCache, CompressionCodec... codecs) throws IOException {
         Objects.requireNonNull(path, "path must not be null");
@@ -254,7 +254,7 @@ public final class TrieSSTableReader implements SSTableReader {
                 compressionMap = CompressionMap.deserialize(mapBytes, mapVersion);
                 codecMap = buildCodecMap(codecs);
 
-                // @spec F18.R20a,R21 — file on-disk metadata determines ZSTD decompression
+                // @spec compression.zstd-dictionary.R20a,R21 — file on-disk metadata determines ZSTD decompression
                 // configuration for codec ID 0x03, not the caller-provided codec list.
                 // v4 with dictionary: replace with dictionary-bound codec from meta-block.
                 // v3 or earlier (no dictionary): inject plain ZSTD codec.
@@ -327,7 +327,7 @@ public final class TrieSSTableReader implements SSTableReader {
                 compressionMap = CompressionMap.deserialize(mapBytes, mapVersion);
                 codecMap = buildCodecMap(codecs);
 
-                // @spec F18.R20a,R21 — file metadata wins for codec ID 0x03: dict-bound
+                // @spec compression.zstd-dictionary.R20a,R21 — file metadata wins for codec ID 0x03: dict-bound
                 // for v4+dict, plain ZSTD for v3 or earlier. Caller's codec for 0x03 is ignored.
                 if (footer.version >= 4 && footer.dictLength > 0) {
                     codecMap = overrideWithDictionaryCodec(ch, footer, codecMap);
@@ -368,7 +368,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return metadata;
     }
 
-    // @spec F08.R13 — get() uses readAndDecompressBlock (with BlockCache), not streaming path
+    // @spec compression.streaming-decompression.R13 — get() uses readAndDecompressBlock (with BlockCache), not streaming path
     @Override
     public Optional<Entry> get(MemorySegment key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
@@ -419,9 +419,9 @@ public final class TrieSSTableReader implements SSTableReader {
      *
      * @return an iterator over all entries; valid only until {@link #close()} is called
      */
-    // @spec F02.R43 — iterator behavior after close is undefined; documented in public API
-    // @spec F08.R1 — v2 scan returns lazy iterator, not upfront decompression
-    // @spec F08.R11 — v1 scan uses existing DataRegionIterator unchanged
+    // @spec sstable.writer.R10 — iterator behavior after close is undefined; documented in public API
+    // @spec compression.streaming-decompression.R1 — v2 scan returns lazy iterator, not upfront decompression
+    // @spec compression.streaming-decompression.R11 — v1 scan uses existing DataRegionIterator unchanged
     @Override
     public Iterator<Entry> scan() throws IOException {
         checkNotClosed();
@@ -446,8 +446,8 @@ public final class TrieSSTableReader implements SSTableReader {
      * @param toKey exclusive upper bound of the key range
      * @return an iterator over entries in the range; valid only until {@link #close()} is called
      */
-    // @spec F02.R43 — iterator behavior after close is undefined; documented in public API
-    // @spec F08.R12 — v1 uses absolute offsets/readDataAtV1; v2 uses IndexRangeIterator with block
+    // @spec sstable.writer.R10 — iterator behavior after close is undefined; documented in public API
+    // @spec compression.streaming-decompression.R12 — v1 uses absolute offsets/readDataAtV1; v2 uses IndexRangeIterator with block
     // cache
     @Override
     public Iterator<Entry> scan(MemorySegment fromKey, MemorySegment toKey) throws IOException {
@@ -469,7 +469,7 @@ public final class TrieSSTableReader implements SSTableReader {
      * <p>
      * {@code close()} is idempotent — repeated calls are no-ops.
      */
-    // @spec F02.R43 — iterator behavior after close is undefined; documented in public API
+    // @spec sstable.writer.R10 — iterator behavior after close is undefined; documented in public API
     @Override
     public void close() throws IOException {
         if (!CLOSED.compareAndSet(this, false, true))
@@ -481,16 +481,16 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- v2 compression helpers ----
 
-    // @spec F02.R36 — cache stores decompressed blocks; decompress before cache, cache hit returns
+    // @spec sstable.writer.R5 — cache stores decompressed blocks; decompress before cache, cache hit returns
     // decompressed
-    // @spec F02.R40 — runtime checks for untrusted on-disk data, not assertions
-    // @spec F02.R41 — corrupt blocks produce IOException
-    // @spec F17.R38 — MemorySegment decompress, no byte[] conversion
-    // @spec F17.R39 — compression map format unchanged
+    // @spec sstable.writer.R7 — runtime checks for untrusted on-disk data, not assertions
+    // @spec sstable.writer.R8 — corrupt blocks produce IOException
+    // @spec sstable.writer.R12 — MemorySegment decompress, no byte[] conversion
+    // @spec sstable.writer.R13 — compression map format unchanged
     /**
      * Reads and decompresses a single block by index using the compression map.
      */
-    // @spec F16.R6,R7,R8 — CRC32C verify before decompress; cache hit skips; skipped when v2
+    // @spec sstable.v3-format-upgrade.R6,R7,R8 — CRC32C verify before decompress; cache hit skips; skipped when v2
     private byte[] readAndDecompressBlock(int blockIndex) throws IOException {
         assert compressionMap != null : "readAndDecompressBlock called on v1 reader";
         assert codecMap != null : "codecMap must not be null for v2";
@@ -559,13 +559,13 @@ public final class TrieSSTableReader implements SSTableReader {
         return decompressed;
     }
 
-    // @spec F08.R10 — same decompression logic as readAndDecompressBlock, no BlockCache get/put
-    // @spec F08.R8,R9 — scan iterators bypass shared BlockCache via this method
+    // @spec compression.streaming-decompression.R10 — same decompression logic as readAndDecompressBlock, no BlockCache get/put
+    // @spec compression.streaming-decompression.R8,R9 — scan iterators bypass shared BlockCache via this method
     /**
      * Reads and decompresses a single block by index, bypassing the BlockCache. Used by scan
      * iterators to avoid polluting the shared cache with sequential reads.
      */
-    // @spec F16.R7 — scan paths verify CRC32C on every disk read (no BlockCache coupling)
+    // @spec sstable.v3-format-upgrade.R7 — scan paths verify CRC32C on every disk read (no BlockCache coupling)
     private byte[] readAndDecompressBlockNoCache(int blockIndex) throws IOException {
         assert compressionMap != null : "readAndDecompressBlockNoCache called on v1 reader";
         assert codecMap != null : "codecMap must not be null for v2";
@@ -620,13 +620,13 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
-    // @spec F02.R42 — trailing bytes in compression map/deflate silently ignored (documented)
+    // @spec sstable.writer.R9 — trailing bytes in compression map/deflate silently ignored (documented)
     /**
      * Verifies the CRC32C checksum of compressed block bytes.
      *
      * @throws CorruptBlockException if the computed checksum does not match the expected value
      */
-    // @spec F16.R5,R6,R9 — java.util.zip.CRC32C over on-disk bytes; mismatch →
+    // @spec sstable.v3-format-upgrade.R5,R6,R9 — java.util.zip.CRC32C over on-disk bytes; mismatch →
     // CorruptBlockException
     private static void verifyCrc32c(byte[] data, int blockIndex, int expectedChecksum)
             throws CorruptBlockException {
@@ -638,9 +638,9 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
-    // @spec F02.R18 — explicit duplicate codec ID rejection
-    // @spec F02.R19 — auto-includes NONE codec
-    // @spec F02.R21 — null codec element rejected with index
+    // @spec sstable.format-v2.R8 — explicit duplicate codec ID rejection
+    // @spec sstable.format-v2.R9 — auto-includes NONE codec
+    // @spec sstable.format-v2.R11 — null codec element rejected with index
     private static Map<Byte, CompressionCodec> buildCodecMap(CompressionCodec... codecs) {
         Map<Byte, CompressionCodec> map = new HashMap<>();
         // Always include NoneCodec — the writer falls back to NONE for incompressible blocks,
@@ -674,7 +674,7 @@ public final class TrieSSTableReader implements SSTableReader {
      * codec (ID 0x03) with a dictionary-bound codec. Returns a new mutable codec map with the
      * override applied.
      */
-    // @spec F18.R20,R20a — v4 with dictLength > 0: replace caller's codec for ID 0x03 with
+    // @spec compression.zstd-dictionary.R20,R20a — v4 with dictLength > 0: replace caller's codec for ID 0x03 with
     // a codec bound to the file's embedded dictionary
     private static Map<Byte, CompressionCodec> overrideWithDictionaryCodec(SeekableByteChannel ch,
             Footer footer, Map<Byte, CompressionCodec> originalMap) throws IOException {
@@ -696,7 +696,7 @@ public final class TrieSSTableReader implements SSTableReader {
      * but the override is harmless — the injected codec is only used if the file's compression map
      * references ID 0x03.
      */
-    // @spec F18.R20a,R21 — v3 or earlier: reader always uses plain ZSTD for ID 0x03
+    // @spec compression.zstd-dictionary.R20a,R21 — v3 or earlier: reader always uses plain ZSTD for ID 0x03
     private static Map<Byte, CompressionCodec> overrideWithPlainZstdCodec(
             Map<Byte, CompressionCodec> originalMap) {
         Map<Byte, CompressionCodec> mutableMap = new HashMap<>(originalMap);
@@ -704,7 +704,7 @@ public final class TrieSSTableReader implements SSTableReader {
         return Collections.unmodifiableMap(mutableMap);
     }
 
-    // @spec F02.R20 — unknown codec ID throws IOException
+    // @spec sstable.format-v2.R10 — unknown codec ID throws IOException
     private static void validateCodecMap(CompressionMap compressionMap,
             Map<Byte, CompressionCodec> codecMap) throws IOException {
         for (int i = 0; i < compressionMap.blockCount(); i++) {
@@ -789,11 +789,11 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Footer / index / filter loading ----
 
-    // @spec F02.R29 — non-negative offset/length validation
-    // @spec F02.R30 — long-to-int truncation guarded
-    // @spec F02.R31 — all offsets as long, no int narrowing
-    // @spec F02.R34 — section overlap detection
-    // @spec F16.R15 — v3+ footer carries blockSize; v1/v2 populate with 4096 (pre-v3 default)
+    // @spec sstable.format-v2.R16 — non-negative offset/length validation
+    // @spec sstable.format-v2.R17 — long-to-int truncation guarded
+    // @spec sstable.format-v2.R18 — all offsets as long, no int narrowing
+    // @spec sstable.format-v2.R21 — section overlap detection
+    // @spec sstable.v3-format-upgrade.R15 — v3+ footer carries blockSize; v1/v2 populate with 4096 (pre-v3 default)
     private record Footer(int version, long mapOffset, long mapLength, long dictOffset,
             long dictLength, long idxOffset, long idxLength, long fltOffset, long fltLength,
             long entryCount, long blockSize) {
@@ -804,7 +804,7 @@ public final class TrieSSTableReader implements SSTableReader {
          *
          * @throws IOException if any field is invalid
          */
-        // @spec F16.R20,R21 — non-negative offsets/lengths, section-ordering, all IOException
+        // @spec sstable.v3-format-upgrade.R20,R21 — non-negative offsets/lengths, section-ordering, all IOException
         void validate(long fileSize) throws IOException {
             if (entryCount < 0) {
                 throw new IOException("corrupt SSTable footer: negative entryCount " + entryCount);
@@ -896,8 +896,8 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
-    // @spec F02.R15 — detects v1 by magic, falls back to v1 reading
-    // @spec F02.R16 — v1 reader on v2 file throws descriptive IOException
+    // @spec sstable.format-v2.R5 — detects v1 by magic, falls back to v1 reading
+    // @spec sstable.format-v2.R6 — v1 reader on v2 file throws descriptive IOException
     /** Reads a v1-only footer. Throws on v2 magic. */
     private static Footer readFooterV1(SeekableByteChannel ch, long fileSize) throws IOException {
         if (fileSize < SSTableFormat.FOOTER_SIZE) {
@@ -937,7 +937,7 @@ public final class TrieSSTableReader implements SSTableReader {
     }
 
     /** Reads footer detecting v1, v2, or v3 format from magic bytes. */
-    // @spec F16.R17,R20,R21 — magic-based version dispatch; validates blockSize + section ordering
+    // @spec sstable.v3-format-upgrade.R17,R20,R21 — magic-based version dispatch; validates blockSize + section ordering
     private static Footer readFooter(SeekableByteChannel ch, long fileSize) throws IOException {
         if (fileSize < SSTableFormat.FOOTER_SIZE) {
             throw new IOException("not a valid SSTable file: too small");
@@ -1035,7 +1035,7 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltOffset = readLong(buf, 32);
             long fltLength = readLong(buf, 40);
             long entryCount = readLong(buf, 48);
-            // @spec F16.R18 — v2 files predate the block-size footer field; writers hardcoded 4096
+            // @spec sstable.v3-format-upgrade.R18 — v2 files predate the block-size footer field; writers hardcoded 4096
             Footer footer = new Footer(2, mapOffset, mapLength, 0, 0, idxOffset, idxLength,
                     fltOffset, fltLength, entryCount, SSTableFormat.DEFAULT_BLOCK_SIZE);
             footer.validate(fileSize);
@@ -1088,7 +1088,7 @@ public final class TrieSSTableReader implements SSTableReader {
      * with {@link IOException} rather than propagating as internal
      * {@link IndexOutOfBoundsException} downstream.
      */
-    // @spec F02.R33 — validate blockIndex in [0, blockCount) and intraBlockOffset >= 0 at read
+    // @spec sstable.format-v2.R20 — validate blockIndex in [0, blockCount) and intraBlockOffset >= 0 at read
     // time; spec R40 forbids assert-only guards on data reachable from untrusted on-disk state.
     private static KeyIndex readKeyIndexV2(SeekableByteChannel ch, Footer footer, int blockCount)
             throws IOException {
@@ -1155,7 +1155,7 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Low-level I/O ----
 
-    // @spec F02.R35 — lazy reader synchronizes channel reads
+    // @spec sstable.writer.R4 — lazy reader synchronizes channel reads
     /**
      * Reads {@code length} bytes from the channel starting at {@code offset}.
      *
@@ -1254,21 +1254,21 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
-    // @spec F08.R1 — decompresses blocks incrementally as iteration advances
-    // @spec F08.R2 — holds at most one decompressed block in memory
-    // @spec F08.R3 — decompresses blocks in ascending block-index order
-    // @spec F08.R4 — yields entries in same order as DataRegionIterator
-    // @spec F08.R8 — full-scan bypasses shared BlockCache
-    // @spec F08.R14 — reads 4-byte big-endian entry count, decodes exactly that many entries
-    // @spec F08.R16 — hasNext returns false after last entry of last block
-    // @spec F08.R17 — throws NoSuchElementException when no more entries
-    // @spec F08.R18 — wraps IOException in UncheckedIOException
-    // @spec F08.R19 — detects closed reader, throws IllegalStateException
-    // @spec F08.R21 — zero blocks yields immediate hasNext()==false
-    // @spec F08.R22 — single block decompresses, yields entries, then hasNext()==false
-    // @spec F08.R24 — decompression failure propagates as UncheckedIOException, no skip
-    // @spec F08.R26 — independent iterators maintain own block-index position
-    // @spec F08.R29 — v2 iterator throws on close (vs v1 snapshot continuation)
+    // @spec compression.streaming-decompression.R1 — decompresses blocks incrementally as iteration advances
+    // @spec compression.streaming-decompression.R2 — holds at most one decompressed block in memory
+    // @spec compression.streaming-decompression.R3 — decompresses blocks in ascending block-index order
+    // @spec compression.streaming-decompression.R4 — yields entries in same order as DataRegionIterator
+    // @spec compression.streaming-decompression.R8 — full-scan bypasses shared BlockCache
+    // @spec compression.streaming-decompression.R14 — reads 4-byte big-endian entry count, decodes exactly that many entries
+    // @spec compression.streaming-decompression.R16 — hasNext returns false after last entry of last block
+    // @spec compression.streaming-decompression.R17 — throws NoSuchElementException when no more entries
+    // @spec compression.streaming-decompression.R18 — wraps IOException in UncheckedIOException
+    // @spec compression.streaming-decompression.R19 — detects closed reader, throws IllegalStateException
+    // @spec compression.streaming-decompression.R21 — zero blocks yields immediate hasNext()==false
+    // @spec compression.streaming-decompression.R22 — single block decompresses, yields entries, then hasNext()==false
+    // @spec compression.streaming-decompression.R24 — decompression failure propagates as UncheckedIOException, no skip
+    // @spec compression.streaming-decompression.R26 — independent iterators maintain own block-index position
+    // @spec compression.streaming-decompression.R29 — v2 iterator throws on close (vs v1 snapshot continuation)
     /**
      * Iterates entries from a v2 compressed SSTable by decompressing one block at a time. Only one
      * decompressed block is held in memory at any point — O(single block uncompressed size).
@@ -1336,7 +1336,7 @@ public final class TrieSSTableReader implements SSTableReader {
             }
         }
 
-        // @spec F08.R19 — signal mid-iteration reader close via hasNext(); silently returning
+        // @spec compression.streaming-decompression.R19 — signal mid-iteration reader close via hasNext(); silently returning
         // false would let a for-each loop terminate without the caller noticing the close.
         @Override
         public boolean hasNext() {
@@ -1365,19 +1365,19 @@ public final class TrieSSTableReader implements SSTableReader {
         }
     }
 
-    // @spec F08.R5 — caches most recently decompressed block, reuses for same-block entries
-    // @spec F08.R6 — replaces cached block when next entry is in different block
-    // @spec F08.R7 — cached block index initialized to -1 (sentinel, no valid block match)
-    // @spec F08.R9 — range-scan bypasses shared BlockCache
-    // @spec F08.R12 — v1 uses absolute file offsets, v2 uses block cache path
-    // @spec F08.R15 — decodes single entry at intra-block offset in decompressed data
-    // @spec F08.R17 — throws NoSuchElementException when no more entries
-    // @spec F08.R18 — wraps IOException in UncheckedIOException
-    // @spec F08.R20 — detects closed reader, throws IllegalStateException
-    // @spec F08.R23 — single-block range decompresses block exactly once
-    // @spec F08.R25 — decompression failure propagates, cached block not updated
-    // @spec F08.R26 — independent iterators maintain own cached-block state
-    // @spec F08.R27 — channel reads synchronized (via readLazyChannel)
+    // @spec compression.streaming-decompression.R5 — caches most recently decompressed block, reuses for same-block entries
+    // @spec compression.streaming-decompression.R6 — replaces cached block when next entry is in different block
+    // @spec compression.streaming-decompression.R7 — cached block index initialized to -1 (sentinel, no valid block match)
+    // @spec compression.streaming-decompression.R9 — range-scan bypasses shared BlockCache
+    // @spec compression.streaming-decompression.R12 — v1 uses absolute file offsets, v2 uses block cache path
+    // @spec compression.streaming-decompression.R15 — decodes single entry at intra-block offset in decompressed data
+    // @spec compression.streaming-decompression.R17 — throws NoSuchElementException when no more entries
+    // @spec compression.streaming-decompression.R18 — wraps IOException in UncheckedIOException
+    // @spec compression.streaming-decompression.R20 — detects closed reader, throws IllegalStateException
+    // @spec compression.streaming-decompression.R23 — single-block range decompresses block exactly once
+    // @spec compression.streaming-decompression.R25 — decompression failure propagates, cached block not updated
+    // @spec compression.streaming-decompression.R26 — independent iterators maintain own cached-block state
+    // @spec compression.streaming-decompression.R27 — channel reads synchronized (via readLazyChannel)
     /**
      * Iterates entries via key index range results, reading each entry at its offset. Handles both
      * v1 (absolute file offset) and v2 (packed blockIndex + intraBlockOffset) formats.

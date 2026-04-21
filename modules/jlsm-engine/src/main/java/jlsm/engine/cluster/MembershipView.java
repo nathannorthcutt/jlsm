@@ -81,7 +81,7 @@ public final class MembershipView implements Comparable<MembershipView> {
         return count;
     }
 
-    // @spec F04.R17,R82 — current member = ALIVE or SUSPECTED; DEAD is a departed non-member
+    // @spec engine.clustering.R17,R82 — current member = ALIVE or SUSPECTED; DEAD is a departed non-member
     /**
      * Returns whether the given address is a current member (ALIVE or SUSPECTED) of this view.
      *
@@ -121,7 +121,7 @@ public final class MembershipView implements Comparable<MembershipView> {
         return false;
     }
 
-    // @spec F04.R16 — quorum excludes DEAD from the denominator (count ALIVE + SUSPECTED only)
+    // @spec engine.clustering.R16 — quorum excludes DEAD from the denominator (count ALIVE + SUSPECTED only)
     /**
      * Returns whether the live members form a quorum at the given percentage threshold.
      *

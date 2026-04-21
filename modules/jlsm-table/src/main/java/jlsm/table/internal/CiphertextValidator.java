@@ -24,7 +24,7 @@ public final class CiphertextValidator {
      * Exact ciphertext length for Boldyreva OPE: 1-byte length prefix + 8-byte encrypted long +
      * 16-byte detached HMAC-SHA256 authentication tag. See F03.R72.
      */
-    // @spec F03.R39,R72, F41.R22 — 25-byte OPE ciphertext with detached MAC
+    // @spec encryption.primitives-variants.R21,R48, F41.R22 — 25-byte OPE ciphertext with detached MAC
     private static final int OPE_EXACT_LENGTH = 25;
 
     private CiphertextValidator() {
@@ -81,7 +81,7 @@ public final class CiphertextValidator {
             }
 
             case EncryptionSpec.DistancePreserving _ -> {
-                // @spec F03.R73, F41.R22 — DCPE layout = 8B seed + 4N values + 16B MAC
+                // @spec encryption.primitives-variants.R49, F41.R22 — DCPE layout = 8B seed + 4N values + 16B MAC
                 if (!( field.type() instanceof FieldType.VectorType vt)) {
                     throw new IllegalArgumentException("Field '" + fieldName
                             + "' (DistancePreserving): field type must be VectorType, got "

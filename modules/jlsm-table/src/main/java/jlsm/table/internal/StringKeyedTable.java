@@ -181,7 +181,7 @@ public final class StringKeyedTable implements JlsmTable.StringKeyed {
     }
 
     @Override
-    // @spec F05.R37, F10.R37 — when schema + IndexRegistry are present, return a TableQuery
+    // @spec engine.in-process-database-engine.R37, F10.R37 — when schema + IndexRegistry are present, return a TableQuery
     // bound to a QueryExecutor over this table's registry. When no schema/registry is
     // configured, fall back to the interface's default unbound query (execute() → UOE) so
     // callers get a clear failure pointing at the missing configuration rather than silent

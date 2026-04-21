@@ -45,21 +45,21 @@ class MembershipViewTest {
         assertFalse(view.isMember(A2));
     }
 
-    // @spec F04.R17,R82 — isMember must report DEAD as non-member
+    // @spec engine.clustering.R17,R82 — isMember must report DEAD as non-member
     @Test
     void isMemberExcludesDeadMembers() {
         var view = new MembershipView(0, Set.of(new Member(A1, MemberState.DEAD, 0)), NOW);
         assertFalse(view.isMember(A1));
     }
 
-    // @spec F04.R17 — SUSPECTED counts as a current member
+    // @spec engine.clustering.R17 — SUSPECTED counts as a current member
     @Test
     void isMemberIncludesSuspectedMembers() {
         var view = new MembershipView(0, Set.of(new Member(A1, MemberState.SUSPECTED, 0)), NOW);
         assertTrue(view.isMember(A1));
     }
 
-    // @spec F04.R82 — isKnown exposes DEAD records distinctly from isMember
+    // @spec engine.clustering.R82 — isKnown exposes DEAD records distinctly from isMember
     @Test
     void isKnownIncludesDeadMembers() {
         var view = new MembershipView(0, Set.of(new Member(A1, MemberState.DEAD, 0)), NOW);
@@ -99,7 +99,7 @@ class MembershipViewTest {
         assertTrue(view.hasQuorum(50));
     }
 
-    // @spec F04.R16 — DEAD members must not factor into quorum calculation
+    // @spec engine.clustering.R16 — DEAD members must not factor into quorum calculation
     @Test
     void hasQuorumExcludesDeadFromDenominator() {
         // 2 ALIVE + 1 DEAD: under R16, denominator is 2 (excluding DEAD), not 3.

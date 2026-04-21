@@ -25,9 +25,9 @@ import java.util.Objects;
  * @see <a href="../../.decisions/compression-codec-api-design/adr.md">ADR: Compression Codec API
  *      Design</a>
  */
-// @spec F02.R4 — passthrough, copy in both directions
-// @spec F02.R8 — rejects null input
-// @spec F17.R6 — rejects null segments
+// (formerly @spec F02.R4 — dropped during migration) — passthrough, copy in both directions
+// (formerly @spec F02.R8 — dropped during migration) — rejects null input
+// @spec compression.codec-contract.R10 — rejects null segments
 final class NoneCodec implements CompressionCodec {
 
     /** Singleton instance. */
@@ -57,18 +57,18 @@ final class NoneCodec implements CompressionCodec {
 
         final long srcSize = src.byteSize();
 
-        // @spec F17.R7 — zero-length source returns zero-length slice
+        // @spec compression.codec-contract.R11 — zero-length source returns zero-length slice
         if (srcSize == 0) {
             return dst.asSlice(0, 0);
         }
 
-        // @spec F17.R11 — throws if destination too small
+        // @spec compression.codec-contract.R15 — throws if destination too small
         if (dst.byteSize() < srcSize) {
             throw new IllegalStateException("dst.byteSize()=%d < maxCompressedLength(%d)=%d"
                     .formatted(dst.byteSize(), srcSize, srcSize));
         }
 
-        // @spec F17.R12 — MemorySegment.copy, no byte[] intermediary
+        // @spec compression.none-codec.R1 — MemorySegment.copy, no byte[] intermediary
         MemorySegment.copy(src, 0, dst, 0, srcSize);
         return dst.asSlice(0, srcSize);
     }
@@ -78,24 +78,24 @@ final class NoneCodec implements CompressionCodec {
         Objects.requireNonNull(src, "src must not be null");
         Objects.requireNonNull(dst, "dst must not be null");
 
-        // @spec F17.R10 — rejects negative uncompressedLength
+        // @spec compression.codec-contract.R14 — rejects negative uncompressedLength
         if (uncompressedLength < 0) {
             throw new IllegalArgumentException(
                     "uncompressedLength must be non-negative, got: " + uncompressedLength);
         }
 
-        // @spec F17.R8 — empty source + zero length returns zero-length
+        // @spec compression.codec-contract.R12 — empty source + zero length returns zero-length
         if (uncompressedLength == 0 && src.byteSize() == 0) {
             return dst.asSlice(0, 0);
         }
 
-        // @spec F17.R9 — non-empty source + zero length throws
+        // @spec compression.codec-contract.R13 — non-empty source + zero length throws
         if (uncompressedLength == 0 && src.byteSize() > 0) {
             throw new UncheckedIOException(new IOException(
                     "Cannot decompress %d bytes into 0 bytes".formatted(src.byteSize())));
         }
 
-        // @spec F17.R13 — MemorySegment.copy, size must match
+        // @spec compression.none-codec.R2 — MemorySegment.copy, size must match
         if (src.byteSize() != uncompressedLength) {
             throw new UncheckedIOException(new IOException(
                     "NoneCodec size mismatch: src.byteSize()=%d, expected uncompressedLength=%d"

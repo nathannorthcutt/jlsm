@@ -24,7 +24,7 @@ class ContractBoundariesAdversarialTest {
         return translator.translate(parser.parse(lexer.tokenize(sql)), SCHEMA);
     }
 
-    // @spec F07.R83
+    // @spec query.sql-query-support.R83
     // Finding: F-R1.cb.1.2
     // Bug: BindMarker index validated by assert only — negative index accepted in production
     // Correct behavior: BindMarker constructor must reject negative index with
@@ -37,7 +37,7 @@ class ContractBoundariesAdversarialTest {
                 "BindMarker must reject negative index with IllegalArgumentException");
     }
 
-    // @spec F07.R84
+    // @spec query.sql-query-support.R84
     // Finding: F-R1.cb.1.3
     // Bug: VectorDistanceOrder parameterIndex validated by assert only — negative index accepted in
     // production
@@ -52,7 +52,7 @@ class ContractBoundariesAdversarialTest {
                 "VectorDistanceOrder must reject negative parameterIndex with IllegalArgumentException");
     }
 
-    // @spec F07.R101
+    // @spec query.sql-query-support.R101
     // Finding: F-R1.cb.1.4
     // Bug: Lexer accepts trailing-dot numeric literals (e.g., "42.") producing Double instead of
     // Integer
@@ -68,7 +68,7 @@ class ContractBoundariesAdversarialTest {
                 "Trailing-dot numeric literal '42.' must be rejected as malformed");
     }
 
-    // @spec F07.R15
+    // @spec query.sql-query-support.R15
     // Finding: F-R1.cb.1.5
     // Bug: Negative number literals not expressible — no minus token in lexer
     // Correct behavior: SQL with negative numeric literals (e.g., WHERE temp > -10) must parse
@@ -83,7 +83,7 @@ class ContractBoundariesAdversarialTest {
         assertTrue(query.predicate().isPresent(), "predicate should be present");
     }
 
-    // @spec F07.R15
+    // @spec query.sql-query-support.R15
     // Finding: F-R1.cb.1.5 (supplemental — negative decimal)
     @Test
     void test_SqlLexer_negativeDecimalLiteral_parseable() throws SqlParseException {
@@ -92,7 +92,7 @@ class ContractBoundariesAdversarialTest {
         assertTrue(query.predicate().isPresent(), "predicate should be present");
     }
 
-    // @spec F07.R60,R89
+    // @spec query.sql-query-support.R60,R89
     // Finding: F-R1.cb.2.6
     // Bug: validateValueType accepts Number for integer types without range checking
     // Correct behavior: INT8 field must reject values outside [-128, 127] with SqlParseException
@@ -118,7 +118,7 @@ class ContractBoundariesAdversarialTest {
                 "Error message should mention range issue, got: " + ex.getMessage());
     }
 
-    // @spec F07.R71
+    // @spec query.sql-query-support.R71
     // Finding: F-R1.cb.2.7
     // Bug: validateFieldIsVector accepts ArrayType without element type checking —
     // ArrayType(STRING) passes as a valid vector field for VECTOR_DISTANCE
@@ -141,7 +141,7 @@ class ContractBoundariesAdversarialTest {
                 "VECTOR_DISTANCE must reject ArrayType(STRING) — not a numeric vector field");
     }
 
-    // @spec F07.R73
+    // @spec query.sql-query-support.R73
     // Finding: F-R1.cb.2.8
     // Bug: VECTOR_DISTANCE metric value not validated against known metrics —
     // arbitrary strings like 'banana' pass through to VectorDistanceOrder
@@ -156,7 +156,7 @@ class ContractBoundariesAdversarialTest {
                 "VECTOR_DISTANCE must reject unknown metric 'banana'");
     }
 
-    // @spec F07.R63
+    // @spec query.sql-query-support.R63
     // Finding: F-R1.cb.2.10
     // Bug: translateBetween does not validate low <= high — inverted range silently returns no
     // results
@@ -172,7 +172,7 @@ class ContractBoundariesAdversarialTest {
                 "BETWEEN must reject inverted range where low > high");
     }
 
-    // @spec F07.R86
+    // @spec query.sql-query-support.R86
     // Finding: F-R1.cb.2.11
     // Bug: SqlParseException position not validated — arbitrary negative values accepted
     // Correct behavior: position must be >= -1; values < -1 must throw IllegalArgumentException
@@ -184,7 +184,7 @@ class ContractBoundariesAdversarialTest {
                 "SqlParseException must reject position < -1");
     }
 
-    // @spec F07.R86
+    // @spec query.sql-query-support.R86
     @Test
     void test_SqlParseException_minValuePosition_rejected() {
         assertThrows(IllegalArgumentException.class,
@@ -192,7 +192,7 @@ class ContractBoundariesAdversarialTest {
                 "SqlParseException must reject Integer.MIN_VALUE position");
     }
 
-    // @spec F07.R86
+    // @spec query.sql-query-support.R86
     @Test
     void test_SqlParseException_validPositions_accepted() {
         // -1 means unknown position — must be accepted
@@ -207,7 +207,7 @@ class ContractBoundariesAdversarialTest {
         assertEquals(42, positive.position());
     }
 
-    // @spec F07.R84
+    // @spec query.sql-query-support.R84
     // Finding: F-R1.cb.1.1
     // Bug: VECTOR_DISTANCE ORDER BY direction (ASC/DESC) is silently discarded —
     // VectorDistanceOrder has no ascending field, translateVectorDistance ignores

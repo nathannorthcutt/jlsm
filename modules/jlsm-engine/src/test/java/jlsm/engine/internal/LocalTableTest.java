@@ -79,7 +79,7 @@ class LocalTableTest {
 
     // ---- create delegates ----
 
-    // @spec F05.R32 — create delegates to the underlying table implementation
+    // @spec engine.in-process-database-engine.R32 — create delegates to the underlying table implementation
     @Test
     void createDelegatesToStub() throws IOException {
         try (final LocalTable table = createTable()) {
@@ -106,7 +106,7 @@ class LocalTableTest {
 
     // ---- get delegates ----
 
-    // @spec F05.R33 — get delegates to the underlying table implementation
+    // @spec engine.in-process-database-engine.R33 — get delegates to the underlying table implementation
     @Test
     void getDelegatesToStub() throws IOException {
         try (final LocalTable table = createTable()) {
@@ -125,7 +125,7 @@ class LocalTableTest {
 
     // ---- update delegates ----
 
-    // @spec F05.R34 — update delegates to the underlying table implementation
+    // @spec engine.in-process-database-engine.R34 — update delegates to the underlying table implementation
     @Test
     void updateDelegatesToStub() throws IOException {
         try (final LocalTable table = createTable()) {
@@ -162,7 +162,7 @@ class LocalTableTest {
 
     // ---- delete delegates ----
 
-    // @spec F05.R35 — delete delegates to the underlying table implementation
+    // @spec engine.in-process-database-engine.R35 — delete delegates to the underlying table implementation
     @Test
     void deleteDelegatesToStub() throws IOException {
         try (final LocalTable table = createTable()) {
@@ -200,7 +200,7 @@ class LocalTableTest {
 
     // ---- query delegates to underlying table ----
 
-    // @spec F05.R37 — query() now delegates to the underlying JlsmTable.StringKeyed
+    // @spec engine.in-process-database-engine.R37 — query() now delegates to the underlying JlsmTable.StringKeyed
     // (OBL-F05-R37 resolved by WD-03). The stub delegate does not override query() so it
     // returns the interface default — an unbound TableQuery whose execute() throws UOE.
     @Test
@@ -216,7 +216,7 @@ class LocalTableTest {
 
     // ---- scan delegates ----
 
-    // @spec F05.R38,R39 — scan delegates to the underlying table and checks validity
+    // @spec engine.in-process-database-engine.R38,R39 — scan delegates to the underlying table and checks validity
     @Test
     void scanDelegatesToStub() throws IOException {
         try (final LocalTable table = createTable()) {
@@ -251,7 +251,7 @@ class LocalTableTest {
 
     // ---- close releases registration ----
 
-    // @spec F05.R77 — closing a table handle releases its registration
+    // @spec engine.in-process-database-engine.R77 — closing a table handle releases its registration
     @Test
     void closeReleasesRegistration() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
@@ -274,7 +274,7 @@ class LocalTableTest {
         assertThrows(HandleEvictedException.class, () -> table.create("k1", doc));
     }
 
-    // @spec F05.R36,R47,R48 — evicted handle rejects operations with HandleEvictedException
+    // @spec engine.in-process-database-engine.R36,R47,R48 — evicted handle rejects operations with HandleEvictedException
     @Test
     void evictedHandleThrowsOnGet() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");

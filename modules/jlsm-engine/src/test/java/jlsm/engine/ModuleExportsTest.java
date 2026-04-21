@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ModuleExportsTest {
 
-    // @spec F05.R74,R75,R76 — jlsm.engine + jlsm.engine.cluster exported; internal packages hidden;
+    // @spec engine.in-process-database-engine.R74,R75,R76 — jlsm.engine + jlsm.engine.cluster exported; internal packages hidden;
     // public API depends only on exported types from jlsm.table
     @Test
     void testModuleCompiles() {

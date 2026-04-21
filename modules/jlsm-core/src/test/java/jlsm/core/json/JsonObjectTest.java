@@ -91,7 +91,7 @@ class JsonObjectTest {
     // F-R1.cb.4.4 audit fix that had relaxed the check to match RFC 8259. The override is
     // documented in F15 v3 verification notes.
 
-    // @spec F15.R15 — JsonObject.of must reject empty-string keys with IAE
+    // @spec serialization.simd-jsonl.R15 — JsonObject.of must reject empty-string keys with IAE
     @Test
     void ofRejectsEmptyKey() {
         Map<String, JsonValue> map = new LinkedHashMap<>();
@@ -99,7 +99,7 @@ class JsonObjectTest {
         assertThrows(IllegalArgumentException.class, () -> JsonObject.of(map));
     }
 
-    // @spec F15.R15 — JsonObject.of must reject whitespace-only keys with IAE
+    // @spec serialization.simd-jsonl.R15 — JsonObject.of must reject whitespace-only keys with IAE
     @Test
     void ofRejectsWhitespaceOnlyKey() {
         Map<String, JsonValue> map = new LinkedHashMap<>();
@@ -107,14 +107,14 @@ class JsonObjectTest {
         assertThrows(IllegalArgumentException.class, () -> JsonObject.of(map));
     }
 
-    // @spec F15.R15 — Builder.put must reject empty-string keys with IAE
+    // @spec serialization.simd-jsonl.R15 — Builder.put must reject empty-string keys with IAE
     @Test
     void builderRejectsEmptyKey() {
         assertThrows(IllegalArgumentException.class,
                 () -> JsonObject.builder().put("", JsonPrimitive.ofNumber("1")));
     }
 
-    // @spec F15.R15 — Builder.put must reject whitespace-only keys with IAE
+    // @spec serialization.simd-jsonl.R15 — Builder.put must reject whitespace-only keys with IAE
     @Test
     void builderRejectsWhitespaceOnlyKey() {
         assertThrows(IllegalArgumentException.class,

@@ -292,7 +292,7 @@ final class ResourceLifecycleAdversarialTest {
                         + "scheduler and discovery registration leaked");
     }
 
-    // @spec F04.R83 — RapidMembership must wire failureDetector.remove when a member departs so
+    // @spec engine.clustering.R83 — RapidMembership must wire failureDetector.remove when a member departs so
     // the detector does not retain heartbeat history for nodes that have left the view. Without
     // this wiring, the remove() method exists but the membership protocol never calls it.
     @Test

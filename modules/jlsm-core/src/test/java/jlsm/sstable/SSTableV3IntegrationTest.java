@@ -80,7 +80,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 1: Write and read v3 with compression ----
 
-    // @spec F16.R4,R5,R6,R7,R14,R17 — end-to-end v3 write/read with CRC32C verification
+    // @spec sstable.v3-format-upgrade.R4,R5,R6,R7,R14,R17 — end-to-end v3 write/read with CRC32C verification
     @Test
     void writeAndReadV3WithCompression(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-compressed.sst");
@@ -120,7 +120,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 2: Write and read v3 with custom block size ----
 
-    // @spec F16.R10,R12,R13,R14 — writer honors blockSize via Builder, roundtrip preserves data
+    // @spec sstable.v3-format-upgrade.R10,R12,R13,R14 — writer honors blockSize via Builder, roundtrip preserves data
     @Test
     void writeAndReadV3WithCustomBlockSize(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-large-blocks.sst");
@@ -150,7 +150,7 @@ class SSTableV3IntegrationTest {
         }
     }
 
-    // @spec F16.R15 — reader exposes the blockSize stored in the v3 footer
+    // @spec sstable.v3-format-upgrade.R15 — reader exposes the blockSize stored in the v3 footer
     @Test
     void readerExposesStoredBlockSizeFromV3Footer(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-blocksize-roundtrip.sst");
@@ -170,7 +170,7 @@ class SSTableV3IntegrationTest {
         }
     }
 
-    // @spec F16.R15,R18 — v1/v2 files return the default block size (4096)
+    // @spec sstable.v3-format-upgrade.R15,R18 — v1/v2 files return the default block size (4096)
     @Test
     void readerReportsDefaultBlockSizeForV1Files(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v1-blocksize-default.sst");
@@ -188,7 +188,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 3: Writer with codec produces v3 magic ----
 
-    // @spec F16.R16 — codec-configured writer writes MAGIC_V3 (never MAGIC_V2)
+    // @spec sstable.v3-format-upgrade.R16 — codec-configured writer writes MAGIC_V3 (never MAGIC_V2)
     @Test
     void writerWithCodecProducesV3Magic(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-magic.sst");
@@ -206,7 +206,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 4: Writer without codec produces v1 magic ----
 
-    // @spec F16.R16 — uncompressed writes (no codec) continue to produce v1 format
+    // @spec sstable.v3-format-upgrade.R16 — uncompressed writes (no codec) continue to produce v1 format
     @Test
     void writerWithoutCodecProducesV1(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v1-magic.sst");
@@ -221,7 +221,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 5: Builder rejects non-default block size without codec ----
 
-    // @spec F16.R16 — non-default blockSize without codec rejected at construction
+    // @spec sstable.v3-format-upgrade.R16 — non-default blockSize without codec rejected at construction
     @Test
     void builderRejectsNonDefaultBlockSizeWithoutCodec() {
         assertThrows(IllegalArgumentException.class,
@@ -234,7 +234,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 6: v3 reader reads file written via legacy constructor (now v3 per R16) ----
 
-    // @spec F16.R16 — codec-configured legacy constructor produces v3 (not v2)
+    // @spec sstable.v3-format-upgrade.R16 — codec-configured legacy constructor produces v3 (not v2)
     @Test
     void v3ReaderReadsFileFromLegacyConstructor(@TempDir Path dir) throws IOException {
         // Before F16 this constructor produced v2; after R16 it produces v3.
@@ -265,7 +265,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 7: v3 reader reads v1 file correctly ----
 
-    // @spec F16.R8,R17,R19 — v3-capable reader falls back to v1 (hasChecksums=false branch);
+    // @spec sstable.v3-format-upgrade.R8,R17,R19 — v3-capable reader falls back to v1 (hasChecksums=false branch);
     // v2 (also hasChecksums=false) is the same code path — version dispatch sets the flag
     @Test
     void v3ReaderReadsV1FileCorrectly(@TempDir Path dir) throws IOException {
@@ -289,7 +289,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 8: Corrupted block throws CorruptBlockException ----
 
-    // @spec F16.R6,R9 — corruption surfaces as CorruptBlockException with diagnostic fields
+    // @spec sstable.v3-format-upgrade.R6,R9 — corruption surfaces as CorruptBlockException with diagnostic fields
     @Test
     void corruptedBlockThrowsCorruptBlockException(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-corrupt.sst");
@@ -336,7 +336,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 9: v3 footer with invalid block size throws IOException ----
 
-    // @spec F16.R20 — invalid blockSize from on-disk v3 footer produces IOException
+    // @spec sstable.v3-format-upgrade.R20 — invalid blockSize from on-disk v3 footer produces IOException
     @Test
     void v3FooterWithInvalidBlockSizeThrowsIOException(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-bad-blocksize.sst");
@@ -374,7 +374,7 @@ class SSTableV3IntegrationTest {
 
     // ---- Test 10: CRC32C computed after compression fallback ----
 
-    // @spec F16.R4 — CRC32C computed over post-fallback bytes (raw when NONE fallback triggers)
+    // @spec sstable.v3-format-upgrade.R4 — CRC32C computed over post-fallback bytes (raw when NONE fallback triggers)
     @Test
     void crc32cComputedAfterCompressionFallback(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-incompressible.sst");
@@ -413,7 +413,7 @@ class SSTableV3IntegrationTest {
         }
     }
 
-    // @spec F16.R21 — v3 section ordering validation rejects overlapping sections with IOException
+    // @spec sstable.v3-format-upgrade.R21 — v3 section ordering validation rejects overlapping sections with IOException
     @Test
     void v3FooterRejectsFlSectionOverlappingFooter(@TempDir Path dir) throws IOException {
         Path path = dir.resolve("v3-overlap.sst");

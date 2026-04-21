@@ -70,7 +70,7 @@ public final class ClusteredEngine implements Engine {
         this.transport = Objects.requireNonNull(builder.transport, "transport");
         this.config = Objects.requireNonNull(builder.config, "config");
         this.localAddress = Objects.requireNonNull(builder.localAddress, "localAddress");
-        // @spec F04.R56,R79 — discovery is a mandatory builder parameter rejected at build time.
+        // @spec engine.clustering.R56,R79 — discovery is a mandatory builder parameter rejected at build time.
         this.discovery = Objects.requireNonNull(builder.discovery, "discovery");
 
         // H-RL-10 / Finding F-R1.concurrency.1.2 — publish `this` to the membership protocol
@@ -85,7 +85,7 @@ public final class ClusteredEngine implements Engine {
         final MembershipListener membershipListener = new ClusterMembershipListener();
         membership.addListener(membershipListener);
 
-        // @spec F04.R68 — register the server-side QUERY_REQUEST dispatcher so remote
+        // @spec engine.clustering.R68 — register the server-side QUERY_REQUEST dispatcher so remote
         // RemotePartitionClient requests can route to local tables. H-RL-10: any failure in
         // registerHandler propagates out of the ctor so no partially-initialized engine leaks.
         //
@@ -125,7 +125,7 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public Table createTable(String name, JlsmSchema schema) throws IOException {
-        // @spec F04.R78 — null arguments must be rejected with NullPointerException
+        // @spec engine.clustering.R78 — null arguments must be rejected with NullPointerException
         Objects.requireNonNull(name, "name must not be null");
         Objects.requireNonNull(schema, "schema must not be null");
         if (name.isEmpty()) {
@@ -141,7 +141,7 @@ public final class ClusteredEngine implements Engine {
         final ClusteredTable clustered;
         try {
             final TableMetadata metadata = localTable.metadata();
-            // @spec F04.R60 — supply the local engine so ClusteredTable can short-circuit
+            // @spec engine.clustering.R60 — supply the local engine so ClusteredTable can short-circuit
             // locally-owned partitions.
             clustered = new ClusteredTable(metadata, transport, membership, localAddress, ownership,
                     localEngine);
@@ -181,7 +181,7 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public Table getTable(String name) throws IOException {
-        // @spec F04.R78 — null arguments must be rejected with NullPointerException
+        // @spec engine.clustering.R78 — null arguments must be rejected with NullPointerException
         Objects.requireNonNull(name, "name must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
@@ -194,7 +194,7 @@ public final class ClusteredEngine implements Engine {
 
     @Override
     public void dropTable(String name) throws IOException {
-        // @spec F04.R78 — null arguments must be rejected with NullPointerException
+        // @spec engine.clustering.R78 — null arguments must be rejected with NullPointerException
         Objects.requireNonNull(name, "name must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
@@ -251,7 +251,7 @@ public final class ClusteredEngine implements Engine {
      *             registration surfaces an I/O error
      */
     public void join(List<NodeAddress> seeds) throws IOException {
-        // @spec F04.R78 — eager argument validation before any side effects.
+        // @spec engine.clustering.R78 — eager argument validation before any side effects.
         Objects.requireNonNull(seeds, "seeds must not be null");
         for (final NodeAddress seed : seeds) {
             if (seed == null) {
@@ -267,7 +267,7 @@ public final class ClusteredEngine implements Engine {
         try {
             membership.start(seeds);
         } catch (IOException | RuntimeException failure) {
-            // @spec F04.R57 — rollback catches any Exception from discovery.deregister (mirroring
+            // @spec engine.clustering.R57 — rollback catches any Exception from discovery.deregister (mirroring
             // the symmetric defence in close() at the deregister call site) so a non-compliant
             // DiscoveryProvider impl that leaks a checked exception cannot hide the original
             // membership.start failure. The rollback failure is attached via addSuppressed and
@@ -337,7 +337,7 @@ public final class ClusteredEngine implements Engine {
             }
         }
 
-        // @spec F04.R58 — deregister from discovery symmetrically with register during join.
+        // @spec engine.clustering.R58 — deregister from discovery symmetrically with register during join.
         // Deregister errors are accumulated into the deferred-exception pattern so the remaining
         // resources still close.
         try {
@@ -357,7 +357,7 @@ public final class ClusteredEngine implements Engine {
             errors.add(e);
         }
 
-        // @spec F04.R68 — deregister the QUERY_REQUEST handler symmetrically with registration.
+        // @spec engine.clustering.R68 — deregister the QUERY_REQUEST handler symmetrically with registration.
         // H-RL-8: deregister MUST happen before transport.close so we don't call deregister on a
         // closed transport. Any exception is accumulated into the deferred-exception pattern so
         // remaining resources still close.
@@ -422,7 +422,7 @@ public final class ClusteredEngine implements Engine {
             return;
         }
 
-        // @spec F04.R41 — transition operational mode based on quorum status of the new view.
+        // @spec engine.clustering.R41 — transition operational mode based on quorum status of the new view.
         // Empty views (no members) cannot satisfy quorum; hasQuorum returns false in that case
         // which correctly leaves us in READ_ONLY if we enter it.
         final Set<Member> newMembers = newView.members();

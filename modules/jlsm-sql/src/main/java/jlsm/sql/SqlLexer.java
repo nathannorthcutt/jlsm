@@ -25,7 +25,7 @@ import java.util.Objects;
  * {@code <}, {@code <=}, {@code >}, {@code >=}), punctuation, and positional bind parameters
  * ({@code ?}).
  */
-// @spec F07.R96 — stateless, safe for concurrent use; no shared mutable state between tokenize
+// @spec query.sql-query-support.R96 — stateless, safe for concurrent use; no shared mutable state between tokenize
 // calls
 public final class SqlLexer {
 
@@ -51,7 +51,7 @@ public final class SqlLexer {
      * @throws SqlParseException if the input contains unrecognised characters or unterminated
      *             string literals
      */
-    // @spec F07.R8,R9,R10,R11,R17,R18,R19,R20,R21,R22,R27,R100 — tokenization contract
+    // @spec query.sql-query-support.R8,R9,R10,R11,R17,R18,R19,R20,R21,R22,R27,R100 — tokenization contract
     public List<Token> tokenize(String sql) throws SqlParseException {
         Objects.requireNonNull(sql, "sql");
 
@@ -160,7 +160,7 @@ public final class SqlLexer {
         return List.copyOf(tokens);
     }
 
-    // @spec F07.R12,R13,R14 — string literal content, escaped '', unterminated throws at opening
+    // @spec query.sql-query-support.R12,R13,R14 — string literal content, escaped '', unterminated throws at opening
     // quote
     private int readStringLiteral(String sql, int start, List<Token> tokens)
             throws SqlParseException {
@@ -192,7 +192,7 @@ public final class SqlLexer {
                 start);
     }
 
-    // @spec F07.R15,R101 — digits with optional single decimal point; reject trailing dot without
+    // @spec query.sql-query-support.R15,R101 — digits with optional single decimal point; reject trailing dot without
     // digits
     private int readNumericLiteral(String sql, int start, List<Token> tokens)
             throws SqlParseException {
@@ -223,7 +223,7 @@ public final class SqlLexer {
         return pos;
     }
 
-    // @spec F07.R10,R11,R16,R102 — letter/underscore start; digits allowed after; exact uppercase
+    // @spec query.sql-query-support.R10,R11,R16,R102 — letter/underscore start; digits allowed after; exact uppercase
     // keyword match
     private int readIdentifierOrKeyword(String sql, int start, List<Token> tokens) {
         int pos = start;

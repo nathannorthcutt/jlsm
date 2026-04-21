@@ -75,7 +75,7 @@ public sealed interface JlsmTable extends Closeable
          *
          * @return a {@link TableQuery} for building and executing predicate queries
          */
-        // @spec F05.R37, F10.R37 — query() must return a functional TableQuery wired to the
+        // @spec engine.in-process-database-engine.R37, F10.R37 — query() must return a functional TableQuery wired to the
         // underlying table when the table has a schema; unbound otherwise.
         default TableQuery<String> query() {
             return TableQuery.unbound();

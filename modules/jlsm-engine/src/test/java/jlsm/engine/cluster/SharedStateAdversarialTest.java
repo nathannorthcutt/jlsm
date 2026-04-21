@@ -142,7 +142,7 @@ final class SharedStateAdversarialTest {
                 "At most 1 DEAD member should remain (the most recent departure)");
     }
 
-    // @spec F04.R17,R82 — isMember excludes DEAD; a DEAD member cannot itself be the sender of a
+    // @spec engine.clustering.R17,R82 — isMember excludes DEAD; a DEAD member cannot itself be the sender of a
     // VIEW_CHANGE_PROPOSAL (the protocol-level flow for a DEAD node to rejoin is JOIN_REQUEST).
     // This test validates that when an ALIVE proposer broadcasts a proposal transitioning a
     // DEAD peer back to ALIVE, onMemberJoined fires for the rejoined member.
@@ -711,7 +711,7 @@ final class SharedStateAdversarialTest {
                 "ClusteredTable should accept a shared RendezvousOwnership instance");
     }
 
-    // @spec F04.R28 — fire-and-forget send: delivery failures (unreachable target or missing
+    // @spec engine.clustering.R28 — fire-and-forget send: delivery failures (unreachable target or missing
     // handler) must be silently absorbed by the transport. The failure detector is the mechanism
     // for detecting unreachable nodes, so the send operation must not propagate delivery failures
     // as exceptions to the sender. This supersedes the earlier audit finding

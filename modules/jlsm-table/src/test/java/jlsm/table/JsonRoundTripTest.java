@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JsonRoundTripTest {
 
-    // @spec F14.R45,R47 — JSON round-trip for all primitive types
+    // @spec schema.document-serialization.R1,R3 — JSON round-trip for all primitive types
     @Test
     void roundTrip_allPrimitiveTypes() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("s", FieldType.Primitive.STRING)
@@ -25,7 +25,8 @@ class JsonRoundTripTest {
         assertEquals(1700000000000L, out.getTimestamp("ts"));
     }
 
-    // @spec F14.R43,R45,R47 — JSON round-trip preserves null field; isNull reports it
+    // @spec schema.document-field-access.R11 — JSON round-trip preserves null field; isNull reports it
+    // @spec schema.document-serialization.R1,R3 — JSON round-trip preserves null field; isNull reports it
     @Test
     void roundTrip_nullField() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
@@ -36,7 +37,7 @@ class JsonRoundTripTest {
         assertEquals(25, out.getInt("age"));
     }
 
-    // @spec F14.R45,R47 — JSON round-trip preserves escaped characters
+    // @spec schema.document-serialization.R1,R3 — JSON round-trip preserves escaped characters
     @Test
     void roundTrip_stringWithEscapes() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("msg", FieldType.Primitive.STRING)
@@ -47,7 +48,8 @@ class JsonRoundTripTest {
         assertEquals(original, out.getString("msg"));
     }
 
-    // @spec F14.R28,R45,R47 — JSON round-trip preserves nested ObjectType
+    // @spec schema.document-construction.R28 — JSON round-trip preserves nested ObjectType
+    // @spec schema.document-serialization.R1,R3 — JSON round-trip preserves nested ObjectType
     @Test
     void roundTrip_nestedObject() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).objectField("addr", inner -> inner
@@ -62,7 +64,8 @@ class JsonRoundTripTest {
         assertEquals(2101, out.getObject("addr").getInt("zip"));
     }
 
-    // @spec F14.R24,R45,R47 — JSON round-trip preserves ArrayType of primitives
+    // @spec schema.document-construction.R24 — JSON round-trip preserves ArrayType of primitives
+    // @spec schema.document-serialization.R1,R3 — JSON round-trip preserves ArrayType of primitives
     @Test
     void roundTrip_primitiveArray() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -72,7 +75,8 @@ class JsonRoundTripTest {
         assertArrayEquals(new Object[]{ 1, 2, 3, 4, 5 }, out.getArray("nums"));
     }
 
-    // @spec F14.R24,R45,R47 — JSON round-trip preserves ArrayType of strings
+    // @spec schema.document-construction.R24 — JSON round-trip preserves ArrayType of strings
+    // @spec schema.document-serialization.R1,R3 — JSON round-trip preserves ArrayType of strings
     @Test
     void roundTrip_objectArray() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -82,7 +86,7 @@ class JsonRoundTripTest {
         assertArrayEquals(new Object[]{ "a", "b", "c" }, out.getArray("tags"));
     }
 
-    // @spec F14.R46,R47 — toJson(boolean) and fromJson round-trip both formats identically
+    // @spec schema.document-serialization.R2,R3 — toJson(boolean) and fromJson round-trip both formats identically
     @Test
     void roundTrip_prettyVsCompact_equivalent() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)
@@ -94,7 +98,7 @@ class JsonRoundTripTest {
         assertEquals(compact.getString("y"), pretty.getString("y"));
     }
 
-    // @spec F14.R47 — fromJson rejects malformed JSON as IAE
+    // @spec schema.document-serialization.R3 — fromJson rejects malformed JSON as IAE
     @Test
     void fromJson_malformed_throws() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("x", FieldType.Primitive.INT32)
@@ -103,7 +107,8 @@ class JsonRoundTripTest {
                 () -> JlsmDocument.fromJson("not valid json", schema));
     }
 
-    // @spec F14.R29,R47 — fromJson surfaces type mismatches as IAE
+    // @spec schema.document-construction.R29 — fromJson surfaces type mismatches as IAE
+    // @spec schema.document-serialization.R3 — fromJson surfaces type mismatches as IAE
     @Test
     void fromJson_wrongType_throws() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("num", FieldType.Primitive.INT32)

@@ -267,8 +267,8 @@ public final class ClusteredTable implements Table {
         this(tableMetadata, transport, membership, localAddress, new RendezvousOwnership(), null);
     }
 
-    // @spec F04.R60 — local-owner operations execute directly on the local engine.
-    // @spec F04.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
+    // @spec engine.clustering.R60 — local-owner operations execute directly on the local engine.
+    // @spec engine.clustering.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
     @Override
     public void create(String key, JlsmDocument doc) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
@@ -289,7 +289,7 @@ public final class ClusteredTable implements Table {
         }
     }
 
-    // @spec F04.R60 — local-owner operations execute directly on the local engine.
+    // @spec engine.clustering.R60 — local-owner operations execute directly on the local engine.
     @Override
     public Optional<JlsmDocument> get(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
@@ -307,8 +307,8 @@ public final class ClusteredTable implements Table {
         }
     }
 
-    // @spec F04.R60 — local-owner operations execute directly on the local engine.
-    // @spec F04.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
+    // @spec engine.clustering.R60 — local-owner operations execute directly on the local engine.
+    // @spec engine.clustering.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
     @Override
     public void update(String key, JlsmDocument doc, UpdateMode mode) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
@@ -330,8 +330,8 @@ public final class ClusteredTable implements Table {
         }
     }
 
-    // @spec F04.R60 — local-owner operations execute directly on the local engine.
-    // @spec F04.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
+    // @spec engine.clustering.R60 — local-owner operations execute directly on the local engine.
+    // @spec engine.clustering.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
     @Override
     public void delete(String key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
@@ -351,7 +351,7 @@ public final class ClusteredTable implements Table {
         }
     }
 
-    // @spec F04.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
+    // @spec engine.clustering.R41 — mutating ops are rejected with QuorumLostException in READ_ONLY mode.
     @Override
     public void insert(JlsmDocument doc) throws IOException {
         Objects.requireNonNull(doc, "doc must not be null");
@@ -370,9 +370,9 @@ public final class ClusteredTable implements Table {
                 "TableQuery is not yet supported in clustered mode; use scan() instead");
     }
 
-    // @spec F04.R60 — per-node local short-circuit preserved.
-    // @spec F04.R64,R67,R73,R100 — partial metadata, ordered merge, client close preserved.
-    // @spec F04.R77 — fanout uses getRangeAsync + CompletableFuture.allOf; per-future timeout via
+    // @spec engine.clustering.R60 — per-node local short-circuit preserved.
+    // @spec engine.clustering.R64,R67,R73,R100 — partial metadata, ordered merge, client close preserved.
+    // @spec engine.clustering.R77 — fanout uses getRangeAsync + CompletableFuture.allOf; per-future timeout via
     // orTimeout; client close on whenComplete; blocking await only at the gather barrier.
     /**
      * Scans entries across all live partition owners and returns a merged, ordered iterator.
@@ -418,7 +418,7 @@ public final class ClusteredTable implements Table {
 
         final int totalQueried = owners.size();
         final List<NodeFuture> perNode = new ArrayList<>(totalQueried);
-        // @spec F04.R77 — fan out to each partition owner in parallel. Local short-circuit
+        // @spec engine.clustering.R77 — fan out to each partition owner in parallel. Local short-circuit
         // (@spec F04.R60) runs inline; remote calls are submitted on a virtual-thread executor
         // so the transport's synchronous per-call delay doesn't serialize the fanout.
         for (final NodeAddress node : owners) {
@@ -459,7 +459,7 @@ public final class ClusteredTable implements Table {
                             supplierThread.set(null);
                         }
                     }, SCATTER_EXECUTOR).thenCompose(Function.identity())
-                    // @spec F04.R100 / H-RL-6 — close every client on both normal and exceptional
+                    // @spec engine.clustering.R100 / H-RL-6 — close every client on both normal and exceptional
                     // completion. whenComplete runs regardless of success/failure/cancellation.
                     // Catch Throwable: the Closeable contract permits non-IOException throwables
                     // from close(), and a RuntimeException here would escape the handler and be

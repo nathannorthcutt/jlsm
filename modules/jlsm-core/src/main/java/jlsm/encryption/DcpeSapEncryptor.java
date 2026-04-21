@@ -61,7 +61,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * @param dimensions the expected vector dimensionality; must be positive
      * @throws IllegalArgumentException if dimensions is not positive
      */
-    // @spec F03.R79, F41.R22 — derive MAC sub-key with domain-separated label
+    // @spec encryption.primitives-variants.R55, F41.R22 — derive MAC sub-key with domain-separated label
     public DcpeSapEncryptor(EncryptionKeyHolder keyHolder, int dimensions) {
         Objects.requireNonNull(keyHolder, "keyHolder must not be null");
         if (dimensions <= 0) {
@@ -84,7 +84,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
             dcpeMacKey = hmacSha256(keyBytes, "dcpe-mac-key");
             this.macKeySpec = new SecretKeySpec(dcpeMacKey, "HmacSHA256");
         } finally {
-            // @spec F03.R81, F41.R16 — zero intermediates in finally, even on exception
+            // @spec encryption.primitives-key-holder.R8, F41.R16 — zero intermediates in finally, even on exception
             Arrays.fill(keyBytes, (byte) 0);
             if (dcpeMacKey != null) {
                 Arrays.fill(dcpeMacKey, (byte) 0);
@@ -105,7 +105,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * @throws IllegalStateException if the scaling or perturbation produces any non-finite
      *             component (NaN or Infinity)
      */
-    // @spec F03.R42,R43,R45,R47,R79 — dimensionality preservation, rejection, non-determinism,
+    // @spec encryption.primitives-variants.R24,R25,R27,R29,R55 — dimensionality preservation, rejection, non-determinism,
     // finite output, authenticated wrapping
     public EncryptedVector encrypt(float[] vector, byte[] associatedData) {
         if (closed) {
@@ -125,7 +125,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
         for (int i = 0; i < dimensions; i++) {
             final float component = (float) (scaleFactor * vector[i]) + noise[i];
             if (!Float.isFinite(component)) {
-                // @spec F03.R47 — reject non-finite output rather than storing NaN/Infinity
+                // @spec encryption.primitives-variants.R29 — reject non-finite output rather than storing NaN/Infinity
                 throw new IllegalStateException(
                         "DCPE encryption produced a non-finite component at index " + i
                                 + "; input vector magnitude likely exceeds representable range "
@@ -148,7 +148,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * @throws SecurityException if the MAC tag does not match (wrong key, tampered data, or
      *             cross-field substitution)
      */
-    // @spec F03.R46,R79 — authenticate before decrypt
+    // @spec encryption.primitives-variants.R28,R55 — authenticate before decrypt
     public float[] decrypt(EncryptedVector encrypted, byte[] associatedData) {
         if (closed) {
             throw new IllegalStateException("DcpeSapEncryptor is closed");
@@ -284,7 +284,8 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * @param values the encrypted vector components (same dimensionality as plaintext)
      * @param tag the detached HMAC-SHA256 authentication tag (16 bytes)
      */
-    // @spec F03.R51,R79, F41.R22 — authenticated DCPE ciphertext
+    // @spec encryption.primitives-dispatch.R12, F41.R22 — authenticated DCPE ciphertext
+    // @spec encryption.primitives-variants.R55, F41.R22 — authenticated DCPE ciphertext
     public record EncryptedVector(long seed, float[] values, byte[] tag) {
         public EncryptedVector {
             Objects.requireNonNull(values, "values must not be null");
@@ -329,7 +330,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * Encodes an encrypted vector as the on-wire blob format
      * {@code [8B BE seed | 4N BE floats | 16B tag]}.
      */
-    // @spec F03.R51, F41.R22 — serialized DCPE blob layout
+    // @spec encryption.primitives-dispatch.R12, F41.R22 — serialized DCPE blob layout
     public static byte[] toBlob(EncryptedVector ev) {
         Objects.requireNonNull(ev, "ev must not be null");
         final float[] values = ev.values();
@@ -358,7 +359,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      *
      * @throws IllegalArgumentException if blob length does not match {@code 8 + dims*4 + 16}
      */
-    // @spec F03.R51, F41.R22 — decode serialized DCPE blob
+    // @spec encryption.primitives-dispatch.R12, F41.R22 — decode serialized DCPE blob
     public static EncryptedVector fromBlob(byte[] blob, int dims) {
         Objects.requireNonNull(blob, "blob must not be null");
         if (dims <= 0) {

@@ -29,6 +29,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATION_DIR = REPO_ROOT / ".spec" / "_migration"
 FINAL_RN_TABLE_PATH = MIGRATION_DIR / "final-rn-table.json"
+SPLIT_RULES_PATH = MIGRATION_DIR / "split-rules.json"
 
 # Source directories to scan (override with SOURCE_DIRS env var: comma-separated)
 SOURCE_DIRS = os.environ.get("SOURCE_DIRS", "modules,examples,benchmarks").split(",")
@@ -51,34 +52,55 @@ def load_final_rn_table():
     return json.loads(FINAL_RN_TABLE_PATH.read_text())
 
 
-def resolve_annotation(feature, rns_str, table):
+def load_dropped_requirements():
+    """Return dict {feature.rn: reason} for every requirement explicitly dropped
+    during migration (e.g., F02 reqs invalidated by F17, F14 YAML reqs)."""
+    if not SPLIT_RULES_PATH.exists():
+        return {}
+    rules = json.loads(SPLIT_RULES_PATH.read_text())
+    dropped = {}
+    for fid, frules in rules.items():
+        if fid.startswith("$"):
+            continue
+        for rn, reason in frules.get("dropped_requirements", {}).items():
+            dropped[f"{fid}.{rn}"] = reason
+    return dropped
+
+
+def resolve_annotation(feature, rns_str, table, dropped):
     """Resolve a single @spec FXX.R1[,R2,...] occurrence.
 
-    Returns: list of (destination, [final_rns]) tuples — one tuple per destination
-    that any of the input RNs map to. Multi-destination splits the annotation.
+    Returns: (by_dest, unresolved, dropped_rns)
+      - by_dest: {destination: [final_rns]} for resolvable RNs
+      - unresolved: list of FXX.RN with no mapping (real errors)
+      - dropped_rns: list of FXX.RN that were intentionally dropped during migration
     """
     rns = rns_str.split(",")
     by_dest = {}
     unresolved = []
+    dropped_rns = []
     for rn in rns:
         key = f"{feature}.{rn}"
+        if key in dropped:
+            dropped_rns.append(key)
+            continue
         entry = table.get(key)
         if not entry:
             unresolved.append(key)
             continue
         dest = entry["destination"]
         by_dest.setdefault(dest, []).append(entry["final_rn"])
-    return by_dest, unresolved
+    return by_dest, unresolved, dropped_rns
 
 
-def rewrite_file(path, table):
+def rewrite_file(path, table, dropped):
     text = path.read_text()
     new_lines = []
     changed = False
     unresolved_in_file = []
+    dropped_in_file = []
 
     for line in text.splitlines(keepends=True):
-        # Strip trailing newline for matching, re-add when emitting
         stripped = line.rstrip("\n")
         eol = line[len(stripped):]
         m = ANNOT_RE.match(stripped)
@@ -90,37 +112,57 @@ def rewrite_file(path, table):
         rns_str = m.group("rns")
         lead = m.group("lead")
         trailer = m.group("trailer")
+        # Extract the comment marker prefix (everything before "@spec")
+        # so we can re-emit a plain comment for dropped reqs.
+        comment_prefix_m = re.match(r"^(\s*(?://|#|--))\s*@spec\s+", lead)
+        comment_prefix = comment_prefix_m.group(1) if comment_prefix_m else "//"
 
-        by_dest, unresolved = resolve_annotation(feature, rns_str, table)
+        by_dest, unresolved, dropped_rns = resolve_annotation(feature, rns_str, table, dropped)
+
+        # If ALL RNs in the annotation were dropped, convert to a historical comment
+        # (preserves the trailing text but loses the @spec trace so spec-trace ignores it)
+        if dropped_rns and not by_dest and not unresolved:
+            dropped_in_file.extend(dropped_rns)
+            historical = f"{comment_prefix} (formerly @spec {feature}.{rns_str} — dropped during migration){trailer}"
+            new_lines.append(historical + eol)
+            changed = True
+            continue
+
         if unresolved:
             unresolved_in_file.extend(unresolved)
             new_lines.append(line)  # leave unchanged so reviewer can see
             continue
 
         if len(by_dest) == 1:
-            # Single destination — one rewritten line
             dest, final_rns = next(iter(by_dest.items()))
             new_annot = f"{lead}{dest}.{','.join(final_rns)}{trailer}"
+            if dropped_rns:
+                # Some RNs resolved, some dropped — annotate the dropped ones in trailer
+                new_annot += f"  /* dropped: {','.join(dropped_rns)} */"
             new_lines.append(new_annot + eol)
             changed = True
         else:
-            # Multi-destination — emit one line per destination
             for dest, final_rns in by_dest.items():
                 new_lines.append(f"{lead}{dest}.{','.join(final_rns)}{trailer}{eol}")
+            if dropped_rns:
+                new_lines.append(f"{comment_prefix} (formerly {','.join(dropped_rns)} — dropped during migration){eol}")
             changed = True
 
     if changed:
         path.write_text("".join(new_lines))
-    return changed, unresolved_in_file
+    return changed, unresolved_in_file, dropped_in_file
 
 
 def main():
     table = load_final_rn_table()
+    dropped = load_dropped_requirements()
     print(f"Loaded {len(table)} (source.rn → destination.final_rn) mappings")
+    print(f"Loaded {len(dropped)} explicitly-dropped requirements")
 
     files_scanned = 0
     files_changed = 0
     all_unresolved = []
+    all_dropped_seen = []
 
     for source_dir in SOURCE_DIRS:
         root = REPO_ROOT / source_dir.strip()
@@ -135,17 +177,27 @@ def main():
                 continue
             files_scanned += 1
             try:
-                changed, unresolved = rewrite_file(path, table)
+                changed, unresolved, dropped_seen = rewrite_file(path, table, dropped)
             except UnicodeDecodeError:
-                continue  # binary file with extension match; skip
+                continue
             if changed:
                 files_changed += 1
             if unresolved:
                 rel = path.relative_to(REPO_ROOT)
                 for u in unresolved:
                     all_unresolved.append(f"{rel}: {u}")
+            if dropped_seen:
+                rel = path.relative_to(REPO_ROOT)
+                for d in dropped_seen:
+                    all_dropped_seen.append(f"{rel}: {d}")
 
     print(f"\nScanned {files_scanned} source files, modified {files_changed}")
+    if all_dropped_seen:
+        print(f"\nConverted {len(all_dropped_seen)} dropped-requirement annotation(s) to historical comments:")
+        for d in all_dropped_seen[:20]:
+            print(f"  {d}")
+        if len(all_dropped_seen) > 20:
+            print(f"  ... and {len(all_dropped_seen) - 20} more")
     if all_unresolved:
         print(f"\nERROR: {len(all_unresolved)} unresolved annotation(s) — leftover @spec FXX.RN with no final-rn mapping:")
         for u in all_unresolved[:30]:

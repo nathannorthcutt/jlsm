@@ -16,7 +16,7 @@ import java.util.Iterator;
  *
  * @param <K> the primary key type
  */
-// @spec F05.R37,F10.R37 — binding contract between TableQuery.execute() and the executor that
+// @spec engine.in-process-database-engine.R37,F10.R37 — binding contract between TableQuery.execute() and the executor that
 // resolves index-backed predicates and scan-and-filter fallback.
 @FunctionalInterface
 public interface QueryRunner<K> {

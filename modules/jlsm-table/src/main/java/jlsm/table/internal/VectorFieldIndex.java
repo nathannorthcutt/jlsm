@@ -36,8 +36,9 @@ import jlsm.table.Predicate;
  * The adapter does not own algorithm choice, similarity computation, or storage layout — those are
  * configuration on the backing {@link VectorIndex} instance.
  */
-// @spec F10.R85 — final class in jlsm.table.internal implementing SecondaryIndex
-// @spec F10.R6,R86,R87,R88,R89,R90 — delegates to VectorIndex<MemorySegment> backing,
+// @spec query.vector-index.R1 — final class in jlsm.table.internal implementing SecondaryIndex
+// @spec query.index-types.R6 — delegates to VectorIndex<MemorySegment> backing,
+// @spec query.vector-index.R2,R3,R4,R5,R6 — delegates to VectorIndex<MemorySegment> backing,
 // resolving OBL-F10-vector
 public final class VectorFieldIndex implements SecondaryIndex {
 
@@ -67,7 +68,8 @@ public final class VectorFieldIndex implements SecondaryIndex {
         return definition;
     }
 
-    // @spec F10.R55,R56,R87 — extract vector from field value and index; null value is a no-op
+    // @spec query.field-index.R3,R4 — extract vector from field value and index; null value is a no-op
+    // @spec query.vector-index.R3 — extract vector from field value and index; null value is a no-op
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
         ensureOpen();
@@ -78,7 +80,8 @@ public final class VectorFieldIndex implements SecondaryIndex {
         backing.index(primaryKey, toFloats(fieldValue));
     }
 
-    // @spec F10.R57,R58,R88 — remove old vector (if non-null) then insert new vector (if non-null)
+    // @spec query.field-index.R5,R6 — remove old vector (if non-null) then insert new vector (if non-null)
+    // @spec query.vector-index.R4 — remove old vector (if non-null) then insert new vector (if non-null)
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
@@ -98,7 +101,8 @@ public final class VectorFieldIndex implements SecondaryIndex {
         }
     }
 
-    // @spec F10.R59,R60,R89 — remove the (pk, vector) entry; null value is a no-op
+    // @spec query.field-index.R7,R8 — remove the (pk, vector) entry; null value is a no-op
+    // @spec query.vector-index.R5 — remove the (pk, vector) entry; null value is a no-op
     @Override
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
         ensureOpen();
@@ -112,7 +116,8 @@ public final class VectorFieldIndex implements SecondaryIndex {
         backing.remove(primaryKey);
     }
 
-    // @spec F10.R61,R90 — translate VectorNearest → VectorIndex.search and return matching PKs;
+    // @spec query.field-index.R9 — translate VectorNearest → VectorIndex.search and return matching PKs;
+    // @spec query.vector-index.R6 — translate VectorNearest → VectorIndex.search and return matching PKs;
     // reject other predicate shapes with UOE
     @Override
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
@@ -149,7 +154,8 @@ public final class VectorFieldIndex implements SecondaryIndex {
         };
     }
 
-    // @spec F10.R62,R86 — true only for VectorNearest whose field matches this index's field
+    // @spec query.field-index.R10 — true only for VectorNearest whose field matches this index's field
+    // @spec query.vector-index.R2 — true only for VectorNearest whose field matches this index's field
     @Override
     public boolean supports(Predicate predicate) {
         if (closed) {
@@ -159,7 +165,7 @@ public final class VectorFieldIndex implements SecondaryIndex {
                 && vn.field().equals(definition.fieldName());
     }
 
-    // @spec F10.R90 — idempotent close; propagates once to backing
+    // @spec query.vector-index.R6 — idempotent close; propagates once to backing
     @Override
     public void close() throws IOException {
         if (closed) {

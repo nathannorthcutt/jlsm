@@ -17,7 +17,7 @@ class SharedStateAdversarialTest {
     private final SqlLexer lexer = new SqlLexer();
     private final SqlParser parser = new SqlParser();
 
-    // @spec F07.R32
+    // @spec query.sql-query-support.R32
     // Finding: F-R1.shared_state.1.2
     // Bug: parseOr()/parseAnd() while loops build unbounded left-associative binary AST
     // without incrementing expressionDepth, so chains of OR/AND clauses bypass depth limit
@@ -40,7 +40,7 @@ class SharedStateAdversarialTest {
                 "Long OR chain should throw SqlParseException due to expression depth limit");
     }
 
-    // @spec F07.R37
+    // @spec query.sql-query-support.R37
     // Finding: F-R1.shared_state.1.3
     // Bug: parameterIndex++ overflows on Integer.MAX_VALUE+ parameters (no bound check).
     // More practically, there is no upper bound on parameter count at all, allowing
@@ -65,7 +65,7 @@ class SharedStateAdversarialTest {
                 "Excessive parameter count should throw SqlParseException");
     }
 
-    // @spec F07.R45
+    // @spec query.sql-query-support.R45
     // Finding: F-R1.shared_state.1.4
     // Bug: peek() uses assert-only bounds check — IndexOutOfBoundsException in production
     // Correct behavior: peek() should throw SqlParseException when pos >= tokens.size()
@@ -89,7 +89,7 @@ class SharedStateAdversarialTest {
                 "Token list without EOF should produce SqlParseException, not IndexOutOfBoundsException");
     }
 
-    // @spec F07.R32
+    // @spec query.sql-query-support.R32
     // Finding: F-R1.shared_state.1.6
     // Bug: parseFunctionCall skips expressionDepth tracking for its LPAREN/RPAREN pair,
     // so deeply nested MATCH(MATCH(MATCH(...))) bypasses MAX_EXPRESSION_DEPTH guard
@@ -114,7 +114,7 @@ class SharedStateAdversarialTest {
                 "Deeply nested function calls should throw SqlParseException, not StackOverflowError");
     }
 
-    // @spec F07.R39
+    // @spec query.sql-query-support.R39
     // Finding: F-R1.shared_state.1.7
     // Bug: parseColumnList, parseOrderBy, and parseFunctionCall use unbounded ArrayLists
     // that grow without limit on crafted input, enabling resource exhaustion (OOM).
@@ -137,7 +137,7 @@ class SharedStateAdversarialTest {
                 "Excessively long column list should throw SqlParseException");
     }
 
-    // @spec F07.R40
+    // @spec query.sql-query-support.R40
     @Test
     void test_parseOrderBy_unboundedGrowth_throwsSqlParseException() {
         // Build "SELECT * FROM t ORDER BY a, a, ..., a" with 2000 ORDER BY clauses.
@@ -151,7 +151,7 @@ class SharedStateAdversarialTest {
                 "Excessively long ORDER BY list should throw SqlParseException");
     }
 
-    // @spec F07.R42
+    // @spec query.sql-query-support.R42
     @Test
     void test_parseFunctionCall_unboundedArgList_throwsSqlParseException() {
         // Build "SELECT * FROM t WHERE MATCH(?, ?, ..., ?) = 'x'" with 2000 args.
@@ -169,7 +169,7 @@ class SharedStateAdversarialTest {
                 "Excessively long function argument list should throw SqlParseException");
     }
 
-    // @spec F07.R39
+    // @spec query.sql-query-support.R39
     @Test
     void test_parseColumnList_moderateSize_succeeds() {
         // Ensure a moderate column list (50) still works fine.
@@ -183,7 +183,7 @@ class SharedStateAdversarialTest {
                 "Moderate column list should parse without error");
     }
 
-    // @spec F07.R10,R11
+    // @spec query.sql-query-support.R10,R11
     // Finding: F-R1.shared_state.2.1
     // Bug: toUpperCase() without Locale.ROOT produces locale-dependent uppercase (e.g., Turkish 'i'
     // → 'İ')
@@ -208,7 +208,7 @@ class SharedStateAdversarialTest {
         }
     }
 
-    // @spec F07.R32
+    // @spec query.sql-query-support.R32
     // Finding: F-R1.shared_state.1.1
     // Bug: parseNot() self-recurses without incrementing expressionDepth,
     // so a chain of NOT tokens causes StackOverflowError instead of SqlParseException.

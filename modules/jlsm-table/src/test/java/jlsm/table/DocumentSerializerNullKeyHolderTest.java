@@ -29,7 +29,7 @@ class DocumentSerializerNullKeyHolderTest {
 
     // ── Allowed: unencrypted schema → byte-identical to plain serializer ──────
 
-    // @spec F03.R53 — null keyHolder + unencrypted schema behaves as plain serializer
+    // @spec encryption.primitives-dispatch.R14 — null keyHolder + unencrypted schema behaves as plain serializer
     @Test
     void unencryptedSchema_nullKeyHolder_serializesNormally() {
         JlsmSchema schema = JlsmSchema.builder("plain", 1).field("name", FieldType.string())
@@ -47,7 +47,7 @@ class DocumentSerializerNullKeyHolderTest {
 
     // ── Rejected: deterministic field, no keyHolder, not pre-encrypted ────────
 
-    // @spec F03.R53 — library-encrypted Deterministic field requires a key holder
+    // @spec encryption.primitives-dispatch.R14 — library-encrypted Deterministic field requires a key holder
     @Test
     void deterministicField_nullKeyHolder_serializeRejects() {
         JlsmSchema schema = JlsmSchema.builder("s", 1)
@@ -64,7 +64,7 @@ class DocumentSerializerNullKeyHolderTest {
 
     // ── Rejected: opaque field, no keyHolder, not pre-encrypted ───────────────
 
-    // @spec F03.R53 — library-encrypted Opaque field requires a key holder
+    // @spec encryption.primitives-dispatch.R14 — library-encrypted Opaque field requires a key holder
     @Test
     void opaqueField_nullKeyHolder_serializeRejects() {
         JlsmSchema schema = JlsmSchema.builder("s", 1)
@@ -81,7 +81,7 @@ class DocumentSerializerNullKeyHolderTest {
 
     // ── Rejected: OPE field, no keyHolder, not pre-encrypted ──────────────────
 
-    // @spec F03.R53 — library-encrypted OrderPreserving field requires a key holder
+    // @spec encryption.primitives-dispatch.R14 — library-encrypted OrderPreserving field requires a key holder
     @Test
     void orderPreservingField_nullKeyHolder_serializeRejects() {
         JlsmSchema schema = JlsmSchema.builder("s", 1)
@@ -98,7 +98,7 @@ class DocumentSerializerNullKeyHolderTest {
 
     // ── Rejected: DCPE field, no keyHolder, not pre-encrypted ─────────────────
 
-    // @spec F03.R53 — library-encrypted DistancePreserving field requires a key holder
+    // @spec encryption.primitives-dispatch.R14 — library-encrypted DistancePreserving field requires a key holder
     @Test
     void distancePreservingField_nullKeyHolder_serializeRejects() {
         JlsmSchema schema = JlsmSchema.builder("s", 1)
@@ -117,7 +117,7 @@ class DocumentSerializerNullKeyHolderTest {
 
     // ── Allowed: null value in encrypted field ────────────────────────────────
 
-    // @spec F03.R53 — null values for encrypted fields bypass encryption entirely (bitmask path)
+    // @spec encryption.primitives-dispatch.R14 — null values for encrypted fields bypass encryption entirely (bitmask path)
     @Test
     void encryptedField_nullValue_nullKeyHolder_serializesOk() {
         JlsmSchema schema = JlsmSchema.builder("s", 1)
@@ -134,7 +134,7 @@ class DocumentSerializerNullKeyHolderTest {
 
     // ── Allowed: library encryption with key holder ───────────────────────────
 
-    // @spec F03.R53 — library-encrypted path works normally when key holder is supplied
+    // @spec encryption.primitives-dispatch.R14 — library-encrypted path works normally when key holder is supplied
     @Test
     void encryptedField_withKeyHolder_serializesOk() {
         JlsmSchema schema = JlsmSchema.builder("s", 1)
@@ -153,7 +153,7 @@ class DocumentSerializerNullKeyHolderTest {
 
     // ── Mixed schema: plain fields serialize even if encrypted fields are null ──
 
-    // @spec F03.R53 — null-keyHolder can serialize unencrypted fields alongside null encrypted
+    // @spec encryption.primitives-dispatch.R14 — null-keyHolder can serialize unencrypted fields alongside null encrypted
     @Test
     void mixedSchema_nullKeyHolder_nullEncryptedFields_serializesOk() {
         JlsmSchema schema = JlsmSchema.builder("s", 1).field("id", FieldType.int64())

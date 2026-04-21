@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * The v4 format adds a dictionary meta-block between the compression map and the key index, with an
  * 88-byte footer containing dictOffset and dictLength fields.
  */
-// @spec F18.R19
+// @spec compression.zstd-dictionary.R19
 class SSTableFormatV4Test {
 
     @Test

@@ -25,7 +25,7 @@ class PartitionDescriptorAdversarialTest {
      * original array after construction corrupts the descriptor's key range. KB match:
      * mutable-array-in-record
      */
-    // @spec F11.R6 — defensive copy of lowKey
+    // @spec partitioning.table-partitioning.R6 — defensive copy of lowKey
     @Test
     void lowKey_mutationOfBackingArray_doesNotCorruptDescriptor() {
         final byte[] lowBytes = "aaa".getBytes(StandardCharsets.UTF_8);
@@ -50,7 +50,7 @@ class PartitionDescriptorAdversarialTest {
     /**
      * Finding PD-1: Same as above for highKey.
      */
-    // @spec F11.R6 — defensive copy of highKey
+    // @spec partitioning.table-partitioning.R6 — defensive copy of highKey
     @Test
     void highKey_mutationOfBackingArray_doesNotCorruptDescriptor() {
         final byte[] highBytes = "zzz".getBytes(StandardCharsets.UTF_8);
@@ -77,7 +77,7 @@ class PartitionDescriptorAdversarialTest {
      * Finding PD-2: Constructor does not validate that lowKey is strictly less than highKey. A
      * descriptor with lowKey == highKey represents an empty range — meaningless partition.
      */
-    // @spec F11.R8 — reject lowKey == highKey
+    // @spec partitioning.table-partitioning.R8 — reject lowKey == highKey
     @Test
     void constructor_lowKeyEqualsHighKey_throwsIllegalArgumentException() {
         final MemorySegment key = seg("mmm");
@@ -90,7 +90,7 @@ class PartitionDescriptorAdversarialTest {
      * Finding PD-2: Constructor does not validate that lowKey < highKey. A descriptor with lowKey >
      * highKey represents an inverted range.
      */
-    // @spec F11.R8 — reject lowKey > highKey
+    // @spec partitioning.table-partitioning.R8 — reject lowKey > highKey
     @Test
     void constructor_lowKeyGreaterThanHighKey_throwsIllegalArgumentException() {
         assertThrows(IllegalArgumentException.class,
@@ -112,7 +112,7 @@ class PartitionDescriptorAdversarialTest {
      * internal state via desc.lowKey().set(...). The accessor should either return a read-only
      * segment or an independent copy.
      */
-    // @spec F11.R7 — lowKey accessor returns read-only segment
+    // @spec partitioning.table-partitioning.R7 — lowKey accessor returns read-only segment
     @Test
     void lowKey_mutationViaAccessor_doesNotCorruptDescriptor() {
         var low = segOf((byte) 0x10);
@@ -139,7 +139,7 @@ class PartitionDescriptorAdversarialTest {
     /**
      * Finding PD-3: Same as above but for highKey().
      */
-    // @spec F11.R7 — highKey accessor returns read-only segment
+    // @spec partitioning.table-partitioning.R7 — highKey accessor returns read-only segment
     @Test
     void highKey_mutationViaAccessor_doesNotCorruptDescriptor() {
         var low = segOf((byte) 0x10);
@@ -167,7 +167,7 @@ class PartitionDescriptorAdversarialTest {
      * Record auto-generated equals uses MemorySegment identity (address + size), not content
      * comparison. This breaks the record contract that identity is determined by fields alone.
      */
-    // @spec F11.R9 — content-based equality
+    // @spec partitioning.table-partitioning.R9 — content-based equality
     @Test
     void equals_identicalParameters_areEqual() {
         var desc1 = new PartitionDescriptor(1L, segOf((byte) 0x00), segOf((byte) 0xFF), "node-1",
@@ -182,7 +182,7 @@ class PartitionDescriptorAdversarialTest {
     /**
      * Finding PD-4: hashCode must be consistent with equals.
      */
-    // @spec F11.R10 — content-based hashCode consistent with equals
+    // @spec partitioning.table-partitioning.R10 — content-based hashCode consistent with equals
     @Test
     void hashCode_identicalParameters_areEqual() {
         var desc1 = new PartitionDescriptor(1L, segOf((byte) 0x00), segOf((byte) 0xFF), "node-1",

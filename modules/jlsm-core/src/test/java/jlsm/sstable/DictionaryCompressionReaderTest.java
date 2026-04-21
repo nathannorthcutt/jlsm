@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Most tests require native libzstd to write v4 files with dictionary-compressed blocks. Tests are
  * guarded with {@code assumeTrue(ZstdDictionaryTrainer.isAvailable())}.
  */
-// @spec F18.R19,R19a,R19b,R19c,R20,R20a,R21,R22
+// @spec compression.zstd-dictionary.R19,R19a,R19b,R19c,R20,R20a,R21,R22
 class DictionaryCompressionReaderTest {
 
     private static MemorySegment seg(String s) {
@@ -325,7 +325,7 @@ class DictionaryCompressionReaderTest {
 
     // ---- Test 9: R20a/R21 — v3 reader must always use plain ZSTD for codec ID 0x03 ----
 
-    // @spec F18.R20a,R21 — regression test: on v3 (no dictionary meta-block) the reader
+    // @spec compression.zstd-dictionary.R20a,R21 — regression test: on v3 (no dictionary meta-block) the reader
     // must use a plain ZSTD codec for ID 0x03 regardless of the caller-supplied codec list.
     // Before the fix, the reader only honored caller-supplied codecs; opening without a
     // ZSTD codec threw "unknown compression codec ID 0x03" even though plain ZSTD is the
@@ -364,7 +364,7 @@ class DictionaryCompressionReaderTest {
         }
     }
 
-    // @spec F18.R20a,R21 — openLazy path must perform the same injection as open()
+    // @spec compression.zstd-dictionary.R20a,R21 — openLazy path must perform the same injection as open()
     @Test
     void lazyReaderInjectsPlainZstdCodecForV3File(@TempDir Path dir) throws IOException {
         assumeTrue(ZstdDictionaryTrainer.isAvailable(),

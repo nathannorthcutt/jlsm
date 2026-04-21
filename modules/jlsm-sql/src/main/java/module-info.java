@@ -1,4 +1,4 @@
-// @spec F07.R1 — jlsm-sql exports only the jlsm.sql package
+// @spec query.sql-query-support.R1 — jlsm-sql exports only the jlsm.sql package
 module jlsm.sql {
     requires transitive jlsm.table;
 
