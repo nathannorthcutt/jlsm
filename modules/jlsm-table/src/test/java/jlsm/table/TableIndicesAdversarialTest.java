@@ -108,6 +108,8 @@ class TableIndicesAdversarialTest {
     // Finding: IndexRegistry.onInsert inserts into first unique index before
     // checking second. If second rejects, first has orphan entry.
 
+    // @spec query.field-index.R24 — IndexRegistry.onInsert must validate all unique constraints
+    // across all unique indices BEFORE mutating any index (two-phase / pre-flight check).
     @Test
     void testMultipleUniqueIndicesAtomicity() throws IOException {
         var schema = JlsmSchema.builder("test", 1).field("email", FieldType.string())
@@ -298,6 +300,8 @@ class TableIndicesAdversarialTest {
     // ── Multiple unique indices atomicity on update (fix-forward) ──────
     // Same atomicity pattern as onInsert, found via fix-forward scan.
 
+    // @spec query.field-index.R25 — IndexRegistry.onUpdate must validate all unique constraints
+    // for changed values across all unique indices BEFORE mutating any index (two-phase).
     @Test
     void testMultipleUniqueIndicesAtomicityOnUpdate() throws IOException {
         var schema = JlsmSchema.builder("test", 1).field("email", FieldType.string())
@@ -332,6 +336,41 @@ class TableIndicesAdversarialTest {
         var emailA = collect(registry.findIndex(new Predicate.Eq("email", "a@test.com"))
                 .lookup(new Predicate.Eq("email", "a@test.com")));
         assertEquals(1, emailA.size(), "Original email 'a@test.com' should still be indexed");
+
+        registry.close();
+    }
+
+    // ── Unique constraint null-skip at registry level ──────────────────
+    // R26: null field values bypass uniqueness enforcement so multiple rows
+    // with null for a UNIQUE field must coexist without DuplicateKeyException.
+    // Direct registry-level coverage (not transitive via FieldIndex) so the
+    // pre-flight check path (R24) is verified to skip null participants too.
+
+    // @spec query.field-index.R26 — IndexRegistry unique pre-flight must skip null field values
+    @Test
+    void testUniqueConstraintAtRegistrySkipsNullValues() throws IOException {
+        var schema = JlsmSchema.builder("test", 1).field("email", FieldType.string())
+                .field("username", FieldType.string()).build();
+
+        var defs = List.of(new IndexDefinition("email", IndexType.UNIQUE),
+                new IndexDefinition("username", IndexType.UNIQUE));
+
+        var registry = new IndexRegistry(schema, defs);
+
+        // Two docs with null email must not conflict under the unique pre-flight.
+        var doc1 = JlsmDocument.of(schema, "email", null, "username", "alice");
+        var doc2 = JlsmDocument.of(schema, "email", null, "username", "bob");
+        assertDoesNotThrow(() -> registry.onInsert(stringKey("pk1"), doc1));
+        assertDoesNotThrow(() -> registry.onInsert(stringKey("pk2"), doc2),
+                "Null-valued unique field must not trigger DuplicateKeyException");
+
+        // A non-null value afterwards is still indexed correctly.
+        var doc3 = JlsmDocument.of(schema, "email", "carol@test.com", "username", "carol");
+        registry.onInsert(stringKey("pk3"), doc3);
+        var carolResults = collect(registry.findIndex(new Predicate.Eq("email", "carol@test.com"))
+                .lookup(new Predicate.Eq("email", "carol@test.com")));
+        assertEquals(1, carolResults.size(),
+                "Non-null values remain indexable after null-valued inserts");
 
         registry.close();
     }

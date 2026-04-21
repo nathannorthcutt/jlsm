@@ -8,17 +8,23 @@ import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import jlsm.table.internal.FieldIndex;
+import jlsm.table.internal.FullTextFieldIndex;
+import jlsm.table.internal.SecondaryIndex;
+import jlsm.table.internal.VectorFieldIndex;
 import org.junit.jupiter.api.Test;
 
-// @spec query.field-index.R11,R12,R13,R14,R15,R16,R17,R18,R19,R20,R21,R22,R23,R27,R28
+// @spec query.field-index.R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15,R16,R17,R18,R19,R20,R21,R22,R23,R26,R27,R28
 // @spec query.query-executor.R1,R2,R3,R4,R5,R22
 // @spec query.index-registry.R16,R17
-//       — covers FieldIndex lifecycle + lookup semantics: EQUALITY-only Eq/Ne support, RANGE/UNIQUE
-//         full comparator set, sort-preserving encoded keys via ByteArrayKey, UNIQUE constraint
-//         enforcement (onInsert + onUpdate), null field no-op on insert/update/delete, remove-then-
-//         insert on update, close behavior + post-close rejection.
+//       — covers SecondaryIndex interface contract (sealed, definition, null handling on
+//         insert/update/delete) + FieldIndex lifecycle + lookup semantics: EQUALITY-only Eq/Ne,
+//         RANGE/UNIQUE full comparator set, sort-preserving encoded keys via ByteArrayKey, UNIQUE
+//         constraint enforcement (onInsert + onUpdate), null field no-op on insert/update/delete,
+//         unique-check null-skip, remove-then-insert on update, close + post-close rejection.
+//         R24/R25 (multi-unique-index atomicity) live in TableIndicesAdversarialTest.
 class FieldIndexTest {
 
     private MemorySegment stringKey(String key) {
@@ -162,5 +168,92 @@ class FieldIndexTest {
         assertEquals(1, results.size(), "Only non-null values should be indexed");
 
         index.close();
+    }
+
+    // @spec query.field-index.R1 — SecondaryIndex is sealed with exactly three permitted impls
+    @Test
+    void secondaryIndexIsSealedWithThreePermittedImplementations() {
+        assertTrue(SecondaryIndex.class.isSealed(),
+                "SecondaryIndex must be a sealed interface");
+        var permitted = Set.of(SecondaryIndex.class.getPermittedSubclasses());
+        var expected = Set.<Class<?>>of(FieldIndex.class, FullTextFieldIndex.class,
+                VectorFieldIndex.class);
+        assertEquals(expected, permitted,
+                "SecondaryIndex must permit exactly FieldIndex, FullTextFieldIndex, "
+                        + "VectorFieldIndex — adding/removing a permitted subclass is a contract "
+                        + "change that must be reflected in the query.field-index spec.");
+    }
+
+    // @spec query.field-index.R2 — definition() returns the IndexDefinition used at construction
+    @Test
+    void definitionReturnsTheDefinitionUsedAtConstruction() throws IOException {
+        var def = new IndexDefinition("name", IndexType.EQUALITY);
+        try (var index = new FieldIndex(def)) {
+            assertEquals(def, index.definition(),
+                    "definition() must return the IndexDefinition this index was created from");
+        }
+    }
+
+    // @spec query.field-index.R6 — onUpdate with null oldValue is insert-only
+    @Test
+    void onUpdateNullOldIsInsertOnly() throws IOException {
+        try (var index = new FieldIndex(new IndexDefinition("name", IndexType.EQUALITY))) {
+            index.onUpdate(stringKey("pk1"), null, "Alice");
+            var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
+            assertEquals(1, results.size(),
+                    "null oldValue: onUpdate must act as insert-only");
+        }
+    }
+
+    // @spec query.field-index.R6 — onUpdate with null newValue is delete-only
+    @Test
+    void onUpdateNullNewIsDeleteOnly() throws IOException {
+        try (var index = new FieldIndex(new IndexDefinition("name", IndexType.EQUALITY))) {
+            index.onInsert(stringKey("pk1"), "Alice");
+            index.onUpdate(stringKey("pk1"), "Alice", null);
+            var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
+            assertEquals(0, results.size(),
+                    "null newValue: onUpdate must act as delete-only");
+        }
+    }
+
+    // @spec query.field-index.R6 — onUpdate with null for both oldValue and newValue is a no-op
+    @Test
+    void onUpdateNullBothIsNoOp() throws IOException {
+        try (var index = new FieldIndex(new IndexDefinition("name", IndexType.EQUALITY))) {
+            index.onInsert(stringKey("pk1"), "Alice");
+            assertDoesNotThrow(() -> index.onUpdate(stringKey("pk2"), null, null));
+            var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
+            assertEquals(1, results.size(),
+                    "null/null onUpdate must leave the index unchanged");
+        }
+    }
+
+    // @spec query.field-index.R8 — onDelete with null fieldValue is a no-op
+    @Test
+    void onDeleteNullValueIsNoOp() throws IOException {
+        try (var index = new FieldIndex(new IndexDefinition("name", IndexType.EQUALITY))) {
+            index.onInsert(stringKey("pk1"), "Alice");
+            assertDoesNotThrow(() -> index.onDelete(stringKey("pk2"), null));
+            var results = collect(index.lookup(new Predicate.Eq("name", "Alice")));
+            assertEquals(1, results.size(),
+                    "null fieldValue delete must not affect indexed entries");
+        }
+    }
+
+    // @spec query.field-index.R26 — unique constraint checks skip null field values
+    @Test
+    void uniqueConstraintSkipsNullValuesOnInsert() throws IOException {
+        try (var index = new FieldIndex(new IndexDefinition("email", IndexType.UNIQUE))) {
+            assertDoesNotThrow(() -> index.onInsert(stringKey("pk1"), null));
+            assertDoesNotThrow(() -> index.onInsert(stringKey("pk2"), null));
+            assertDoesNotThrow(() -> index.onInsert(stringKey("pk3"), null),
+                    "multiple null field values must not trigger unique-constraint violation");
+
+            assertDoesNotThrow(() -> index.onInsert(stringKey("pk4"), "alice@test.com"));
+            var results = collect(index.lookup(new Predicate.Eq("email", "alice@test.com")));
+            assertEquals(1, results.size(),
+                    "non-null values remain indexable after repeated null inserts");
+        }
     }
 }

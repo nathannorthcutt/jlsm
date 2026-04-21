@@ -3,7 +3,7 @@
   "id": "query.field-value-codec",
   "version": 1,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "query"
   ],
@@ -19,7 +19,6 @@
   ]
 }
 ---
-
 # query.field-value-codec — Field Value Codec
 
 ## Requirements
@@ -63,3 +62,21 @@ R14. For FLOAT64, the encoding must sort NaN values above positive infinity in u
 Generated during the 2026-04-20 spec migration. See `.spec/MIGRATION.md` for
 the migration plan and `.spec/_archive/migration-2026-04-20/` for the
 pre-migration source spec(s) this spec was derived from.
+
+## Verification Notes
+
+### Verified: v1 — 2026-04-20
+
+Promoted DRAFT → APPROVED after migration verification. Pre-migration source
+(F10 v4) was DRAFT pending post-amendment re-verification. Migration preserved
+all requirements mechanically; the split redistributed F10's 139 reqs across
+8 query specs with global RN renumbering (see `.spec/_archive/migration-2026-04-20/`).
+
+Verification evidence:
+- Annotation coverage: 100% of reqs have `@spec` annotations in `modules/`
+  (implementation) and `tests/` (regression). Verified via `spec-trace.sh`.
+- Build + test green: `./gradlew test` BUILD SUCCESSFUL post-migration.
+- Round-trip validation passed: every source `F10.R*` maps to exactly one
+  `query.field-value-codec.R*` destination, preserving req content.
+
+No requirement text changed in this promotion; only frontmatter state.
