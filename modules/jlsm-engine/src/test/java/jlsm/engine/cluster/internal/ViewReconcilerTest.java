@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tests for {@link ViewReconciler} — pure reconciliation of two {@link MembershipView} snapshots.
  *
  * <p>
- * Rules under test ({@code @spec F04.R43}):
+ * Rules under test ({@code @spec engine.clustering.R43}):
  * <ul>
  * <li>higher incarnation wins</li>
  * <li>equal incarnation: DEAD &gt; SUSPECTED &gt; ALIVE</li>

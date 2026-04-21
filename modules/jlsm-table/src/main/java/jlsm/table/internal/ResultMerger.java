@@ -22,7 +22,7 @@ import java.util.PriorityQueue;
  * Governed by:
  * .kb/distributed-systems/data-partitioning/vector-search-partitioning.md#result-fusion
  */
-// @spec F11.R53 — final class in jlsm.table.internal with private constructor (static utility)
+// @spec partitioning.table-partitioning.R53 — final class in jlsm.table.internal with private constructor (static utility)
 public final class ResultMerger {
 
     private ResultMerger() {
@@ -47,7 +47,7 @@ public final class ResultMerger {
      * @throws NullPointerException if partitionResults is null
      * @throws IllegalArgumentException if k is not positive
      */
-    // @spec F11.R54,R55,R56,R57,R58,R59,R60,R108 — global top-k sorted desc (R54); null list→NPE
+    // @spec partitioning.table-partitioning.R54,R55,R56,R57,R58,R59,R60,R108 — global top-k sorted desc (R54); null list→NPE
     // (R55); non-positive k→IAE (R56); null partition→NPE with index (R57); partial results when
     // total < k (R58); priority queue / max-heap (R59); ties included (R60); null element→NPE with
     // partition+element index (R108)
@@ -114,7 +114,7 @@ public final class ResultMerger {
      * @return merged iterator in global key order
      * @throws NullPointerException if partitionIterators is null
      */
-    // @spec F11.R61,R62,R63,R64,R65,R66,R104,R105 — global key-order N-way merge (R61); null
+    // @spec partitioning.table-partitioning.R61,R62,R63,R64,R65,R66,R104,R105 — global key-order N-way merge (R61); null
     // list→NPE (R62); min-heap O(log N) per next (R63); exhausted iterator removed (R64); all
     // exhausted→hasNext=false, next→NoSuchElementException (R65); duplicate keys emitted (R66);
     // iterator is AutoCloseable (R104); source exceptions preserve heap entry (R105)

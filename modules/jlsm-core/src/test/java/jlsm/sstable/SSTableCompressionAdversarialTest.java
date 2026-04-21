@@ -361,7 +361,7 @@ class SSTableCompressionAdversarialTest {
         return path;
     }
 
-    // @spec F02.R33 — blockIndex out of [0, blockCount) must produce IOException at key-index
+    // @spec sstable.format-v2.R20 — blockIndex out of [0, blockCount) must produce IOException at key-index
     // read time, not IndexOutOfBoundsException later when accessing the compression map.
     @Test
     void v2KeyIndexRejectsBlockIndexOutOfRange_F02R33(@TempDir Path dir) throws IOException {
@@ -379,7 +379,7 @@ class SSTableCompressionAdversarialTest {
                 "R33: expected descriptive message naming blockIndex, got: " + ex.getMessage());
     }
 
-    // @spec F02.R33 — negative blockIndex must produce IOException at key-index read time.
+    // @spec sstable.format-v2.R20 — negative blockIndex must produce IOException at key-index read time.
     @Test
     void v2KeyIndexRejectsNegativeBlockIndex_F02R33(@TempDir Path dir) throws IOException {
         Path path = writeAndPatchFirstKeyIndexEntry(dir, "neg-block-index.sst", -1, null);
@@ -391,7 +391,7 @@ class SSTableCompressionAdversarialTest {
                         + ex.getClass().getName() + " — " + ex.getMessage());
     }
 
-    // @spec F02.R33 — negative intraBlockOffset must produce IOException at key-index read time.
+    // @spec sstable.format-v2.R20 — negative intraBlockOffset must produce IOException at key-index read time.
     @Test
     void v2KeyIndexRejectsNegativeIntraBlockOffset_F02R33(@TempDir Path dir) throws IOException {
         Path path = writeAndPatchFirstKeyIndexEntry(dir, "neg-intra-offset.sst", 0, -1);

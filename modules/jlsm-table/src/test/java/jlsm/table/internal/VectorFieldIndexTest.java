@@ -33,7 +33,7 @@ import jlsm.table.Predicate;
  * update, supports/lookup dispatch, and close propagation — without requiring a real LSM-backed
  * vector index. Integration coverage against {@code LsmVectorIndex} lives in jlsm-vector tests.
  */
-// @spec F10.R85,R86,R87,R88,R89,R90 — exercises the adapter wiring satisfied by WD-02
+// @spec query.vector-index.R1,R2,R3,R4,R5,R6 — exercises the adapter wiring satisfied by WD-02
 class VectorFieldIndexTest {
 
     /**
@@ -116,7 +116,7 @@ class VectorFieldIndexTest {
         return new IndexDefinition("embedding", IndexType.VECTOR, SimilarityFunction.COSINE);
     }
 
-    // @spec F10.R85 — VectorFieldIndex is a final class implementing SecondaryIndex.
+    // @spec query.vector-index.R1 — VectorFieldIndex is a final class implementing SecondaryIndex.
     @Test
     void classIsFinalImplementingSecondaryIndex() {
         Class<?> c = VectorFieldIndex.class;
@@ -153,7 +153,7 @@ class VectorFieldIndexTest {
         assertThrows(IllegalArgumentException.class, () -> new VectorFieldIndex(nonVector, fake));
     }
 
-    // @spec F10.R87 — onInsert extracts vector and inserts into backing
+    // @spec query.vector-index.R3 — onInsert extracts vector and inserts into backing
     @Test
     void onInsert_float32Vector_propagatesToBackingIndex() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -166,7 +166,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R87 — silent-drop safety fix: mutations are not silent no-ops.
+    // @spec query.vector-index.R3 — silent-drop safety fix: mutations are not silent no-ops.
     @Test
     void onInsert_isNotSilentNoOp_theSilentDropHazardIsGone() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -179,7 +179,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R87 — null vector is a no-op (matches SecondaryIndex R56)
+    // @spec query.vector-index.R3 — null vector is a no-op (matches SecondaryIndex R56)
     @Test
     void onInsert_nullVector_isNoOp() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -191,7 +191,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R87 — reject non-float[] non-short[] values with clear message (no silent drop)
+    // @spec query.vector-index.R3 — reject non-float[] non-short[] values with clear message (no silent drop)
     @Test
     void onInsert_rejectsNonVectorObject() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -203,7 +203,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R87 — float16 short[] values converted to float[] before indexing
+    // @spec query.vector-index.R3 — float16 short[] values converted to float[] before indexing
     @Test
     void onInsert_float16ShortArray_convertedToFloats() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -218,7 +218,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R88 — onUpdate removes old then inserts new
+    // @spec query.vector-index.R4 — onUpdate removes old then inserts new
     @Test
     void onUpdate_removesOldThenInsertsNew() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -230,7 +230,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R88 — null old value: insert-only
+    // @spec query.vector-index.R4 — null old value: insert-only
     @Test
     void onUpdate_nullOld_isInsertOnly() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -241,7 +241,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R88 — null new value: delete-only
+    // @spec query.vector-index.R4 — null new value: delete-only
     @Test
     void onUpdate_nullNew_isDeleteOnly() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -252,7 +252,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R88 — null both: no-op
+    // @spec query.vector-index.R4 — null both: no-op
     @Test
     void onUpdate_nullBoth_isNoOp() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -263,7 +263,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R89 — onDelete removes from backing
+    // @spec query.vector-index.R5 — onDelete removes from backing
     @Test
     void onDelete_removesFromBacking() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -273,7 +273,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R89 — null value: no-op on delete
+    // @spec query.vector-index.R5 — null value: no-op on delete
     @Test
     void onDelete_nullValue_isNoOp() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -283,7 +283,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R86 — supports returns true only for VectorNearest on matching field
+    // @spec query.vector-index.R2 — supports returns true only for VectorNearest on matching field
     @Test
     void supports_trueForVectorNearestOnMatchingField() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -293,7 +293,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R86 — supports returns false for mismatched field
+    // @spec query.vector-index.R2 — supports returns false for mismatched field
     @Test
     void supports_falseForVectorNearestOnWrongField() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -302,7 +302,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R86 — supports returns false for non-VectorNearest predicates
+    // @spec query.vector-index.R2 — supports returns false for non-VectorNearest predicates
     @Test
     void supports_falseForNonVectorPredicates() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -312,7 +312,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R86 — supports returns false after close
+    // @spec query.vector-index.R2 — supports returns false after close
     @Test
     void supports_falseAfterClose() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -321,7 +321,7 @@ class VectorFieldIndexTest {
         assertFalse(idx.supports(new Predicate.VectorNearest("embedding", new float[]{ 1.0f }, 5)));
     }
 
-    // @spec F10.R90 — lookup for VectorNearest returns topK PKs
+    // @spec query.vector-index.R6 — lookup for VectorNearest returns topK PKs
     @Test
     void lookup_vectorNearest_returnsTopKByBackingOrder() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -341,7 +341,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R90 — lookup rejects non-VectorNearest predicates
+    // @spec query.vector-index.R6 — lookup rejects non-VectorNearest predicates
     @Test
     void lookup_rejectsNonVectorNearest() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -351,7 +351,7 @@ class VectorFieldIndexTest {
         }
     }
 
-    // @spec F10.R90 — lookup on mismatched field returns empty iterator (defensive)
+    // @spec query.vector-index.R6 — lookup on mismatched field returns empty iterator (defensive)
     @Test
     void lookup_mismatchedField_returnsEmptyIterator() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();
@@ -377,7 +377,7 @@ class VectorFieldIndexTest {
                 () -> idx.lookup(new Predicate.VectorNearest("embedding", new float[]{ 1.0f }, 5)));
     }
 
-    // @spec F10.R90 — close propagates once to backing; idempotent
+    // @spec query.vector-index.R6 — close propagates once to backing; idempotent
     @Test
     void close_isIdempotent_andClosesBackingExactlyOnce() throws IOException {
         FakeVectorIndex fake = new FakeVectorIndex();

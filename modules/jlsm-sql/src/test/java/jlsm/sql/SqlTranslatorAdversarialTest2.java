@@ -39,7 +39,7 @@ class SqlTranslatorAdversarialTest2 {
 
     // ── FINDING-7: No field-type validation in translator ─────────────
 
-    // @spec F07.R60,R89
+    // @spec query.sql-query-support.R60,R89
     /** FINDING-7: string literal against int32 field should throw SqlParseException */
     @Test
     void rejectsStringLiteralForIntField() {
@@ -48,7 +48,7 @@ class SqlTranslatorAdversarialTest2 {
                 "String literal 'Alice' is incompatible with INT32 field 'age'");
     }
 
-    // @spec F07.R60,R90
+    // @spec query.sql-query-support.R60,R90
     /** FINDING-7: numeric literal against boolean field should throw SqlParseException */
     @Test
     void rejectsNumericLiteralForBooleanField() {
@@ -57,7 +57,7 @@ class SqlTranslatorAdversarialTest2 {
                 "Numeric literal 42 is incompatible with BOOLEAN field 'active'");
     }
 
-    // @spec F07.R60,R90
+    // @spec query.sql-query-support.R60,R90
     /** FINDING-7: boolean literal against string field should throw SqlParseException */
     @Test
     void rejectsBooleanLiteralForStringField() {
@@ -66,7 +66,7 @@ class SqlTranslatorAdversarialTest2 {
                 "Boolean literal TRUE is incompatible with STRING field 'name'");
     }
 
-    // @spec F07.R60,R89
+    // @spec query.sql-query-support.R60,R89
     /** FINDING-7: string literal against float64 field with range operator */
     @Test
     void rejectsStringLiteralForFloatFieldInRange() {
@@ -75,7 +75,7 @@ class SqlTranslatorAdversarialTest2 {
                 "String literal 'high' is incompatible with FLOAT64 field 'salary'");
     }
 
-    // @spec F07.R60,R90
+    // @spec query.sql-query-support.R60,R90
     /** FINDING-7: boolean literal against numeric field with equality */
     @Test
     void rejectsBooleanLiteralForNumericField() {
@@ -84,7 +84,7 @@ class SqlTranslatorAdversarialTest2 {
                 "Boolean literal FALSE is incompatible with INT32 field 'age'");
     }
 
-    // @spec F07.R60,R90
+    // @spec query.sql-query-support.R60,R90
     /** FINDING-7: numeric literal against boolean field in BETWEEN */
     @Test
     void rejectsNumericBetweenForBooleanField() {
@@ -93,7 +93,7 @@ class SqlTranslatorAdversarialTest2 {
                 "Numeric BETWEEN is incompatible with BOOLEAN field 'active'");
     }
 
-    // @spec F07.R88,R89,R90
+    // @spec query.sql-query-support.R88,R89,R90
     /** FINDING-7: correct type combination should still work — regression check */
     @Test
     void acceptsMatchingTypesAfterValidation() throws SqlParseException {
@@ -116,7 +116,7 @@ class SqlTranslatorAdversarialTest2 {
 
     // ── FINDING-8: MATCH on non-STRING field accepted ─────────────────
 
-    // @spec F07.R67
+    // @spec query.sql-query-support.R67
     /** FINDING-8: MATCH on an INT32 field should throw SqlParseException */
     @Test
     void rejectsMatchOnNonStringField() {
@@ -125,7 +125,7 @@ class SqlTranslatorAdversarialTest2 {
                 "MATCH requires a STRING field but 'age' is INT32");
     }
 
-    // @spec F07.R67
+    // @spec query.sql-query-support.R67
     /** FINDING-8: MATCH on a BOOLEAN field should throw SqlParseException */
     @Test
     void rejectsMatchOnBooleanField() {
@@ -134,7 +134,7 @@ class SqlTranslatorAdversarialTest2 {
                 "MATCH requires a STRING field but 'active' is BOOLEAN");
     }
 
-    // @spec F07.R65,R67
+    // @spec query.sql-query-support.R65,R67
     /** FINDING-8: MATCH on a STRING field should still work — regression check */
     @Test
     void acceptsMatchOnStringField() throws SqlParseException {
@@ -144,7 +144,7 @@ class SqlTranslatorAdversarialTest2 {
 
     // ── FINDING-9: VECTOR_DISTANCE on non-vector field accepted ───────
 
-    // @spec F07.R71
+    // @spec query.sql-query-support.R71
     /** FINDING-9: VECTOR_DISTANCE on a STRING field should throw SqlParseException */
     @Test
     void rejectsVectorDistanceOnNonVectorField() {
@@ -153,7 +153,7 @@ class SqlTranslatorAdversarialTest2 {
                 VECTOR_SCHEMA), "VECTOR_DISTANCE requires a vector field but 'title' is STRING");
     }
 
-    // @spec F07.R71
+    // @spec query.sql-query-support.R71
     /** FINDING-9: VECTOR_DISTANCE on an INT32 field should throw SqlParseException */
     @Test
     void rejectsVectorDistanceOnIntField() {
@@ -164,7 +164,7 @@ class SqlTranslatorAdversarialTest2 {
                 "VECTOR_DISTANCE requires a vector field but 'id' is INT32");
     }
 
-    // @spec F07.R69,R71
+    // @spec query.sql-query-support.R69,R71
     /** FINDING-9: VECTOR_DISTANCE on a vector field should still work — regression check */
     @Test
     void acceptsVectorDistanceOnVectorField() throws SqlParseException {
@@ -177,7 +177,7 @@ class SqlTranslatorAdversarialTest2 {
 
     // ── FINDING-12: Projections/aliases size mismatch ─────────────────
 
-    // @spec F07.R82
+    // @spec query.sql-query-support.R82
     /** FINDING-12: projections and aliases lists must have the same size */
     @Test
     void sqlQueryRejectsMismatchedProjectionsAndAliases() {

@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * All compression tests are guarded by {@link ZstdNativeBindings#isNativeAvailable()} since we need
  * native ZSTD to generate valid compressed frames as test vectors.
  */
-// @spec F18.R6,R8
+// @spec compression.zstd-dictionary.R6,R8
 class PureJavaZstdDecompressorTest {
 
     private static boolean nativeAvailable;

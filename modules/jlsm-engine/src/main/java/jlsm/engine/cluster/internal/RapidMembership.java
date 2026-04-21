@@ -622,7 +622,7 @@ public final class RapidMembership implements MembershipProtocol {
 
         // Notify listeners outside viewLock — callbacks must not block view mutations
         if (oldViewForNotify != null) {
-            // @spec F04.R83 — evict heartbeat history for the departed node so the failure
+            // @spec engine.clustering.R83 — evict heartbeat history for the departed node so the failure
             // detector does not accumulate records for members that have left the view.
             if (leftMember != null) {
                 failureDetector.remove(leftMember.address());
@@ -650,7 +650,7 @@ public final class RapidMembership implements MembershipProtocol {
             final MembershipView oldView = currentView;
             assert oldView != null : "view should not be null";
 
-            // @spec F04.R90 — reject proposals that drop ALIVE members from the membership set.
+            // @spec engine.clustering.R90 — reject proposals that drop ALIVE members from the membership set.
             // A member present in the proposed view with state DEAD is not "dropped" — it is
             // still known (isKnown=true) and carries the required DEAD record. Using isKnown
             // here rather than isMember preserves R90 intent now that isMember excludes DEAD.
@@ -664,7 +664,7 @@ public final class RapidMembership implements MembershipProtocol {
                     }
                 }
                 if (!dropsAlive) {
-                    // @spec F04.R43 — per-member reconciliation. Instead of a wholesale replace,
+                    // @spec engine.clustering.R43 — per-member reconciliation. Instead of a wholesale replace,
                     // merge by incarnation / severity rules so higher-incarnation local records
                     // survive conflicting proposed records.
                     currentView = ViewReconciler.reconcile(oldView, proposedView);
@@ -699,7 +699,7 @@ public final class RapidMembership implements MembershipProtocol {
                 if (!proposedView.isMember(oldMember.address())) {
                     // Previously ALIVE or SUSPECTED, now absent or DEAD in proposed view —
                     // this is a departure transition.
-                    // @spec F04.R83 — evict heartbeat history on ALIVE/SUSPECTED → DEAD.
+                    // @spec engine.clustering.R83 — evict heartbeat history on ALIVE/SUSPECTED → DEAD.
                     failureDetector.remove(oldMember.address());
                     notifyMemberLeft(oldMember);
                 }

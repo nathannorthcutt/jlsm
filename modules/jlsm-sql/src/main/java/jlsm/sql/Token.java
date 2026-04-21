@@ -17,7 +17,7 @@ import java.util.Objects;
  * @param text the source text of this token, never null
  * @param position zero-based character offset in the input SQL string
  */
-// @spec F07.R23,R24,R25,R26 — zero-based position; reject null type/text and negative position
+// @spec query.sql-query-support.R23,R24,R25,R26 — zero-based position; reject null type/text and negative position
 public record Token(TokenType type, String text, int position) {
 
     public Token {

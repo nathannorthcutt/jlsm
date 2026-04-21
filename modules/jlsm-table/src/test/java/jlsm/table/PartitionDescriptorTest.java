@@ -17,7 +17,7 @@ class PartitionDescriptorTest {
         return seg;
     }
 
-    // @spec F11.R1 — valid record construction
+    // @spec partitioning.table-partitioning.R1 — valid record construction
     @Test
     void constructsValidDescriptor() {
         var low = segOf((byte) 0x00);
@@ -28,7 +28,7 @@ class PartitionDescriptorTest {
         assertEquals(0L, d.epoch());
     }
 
-    // @spec F11.R2
+    // @spec partitioning.table-partitioning.R2
     @Test
     void rejectsNullLowKey() {
         var high = segOf((byte) 0x10);
@@ -36,7 +36,7 @@ class PartitionDescriptorTest {
                 () -> new PartitionDescriptor(1L, null, high, "node-1", 0L));
     }
 
-    // @spec F11.R3
+    // @spec partitioning.table-partitioning.R3
     @Test
     void rejectsNullHighKey() {
         var low = segOf((byte) 0x00);
@@ -44,7 +44,7 @@ class PartitionDescriptorTest {
                 () -> new PartitionDescriptor(1L, low, null, "node-1", 0L));
     }
 
-    // @spec F11.R4
+    // @spec partitioning.table-partitioning.R4
     @Test
     void rejectsNullNodeId() {
         var low = segOf((byte) 0x00);
@@ -53,7 +53,7 @@ class PartitionDescriptorTest {
                 () -> new PartitionDescriptor(1L, low, high, null, 0L));
     }
 
-    // @spec F11.R5
+    // @spec partitioning.table-partitioning.R5
     @Test
     void rejectsNegativeEpoch() {
         var low = segOf((byte) 0x00);

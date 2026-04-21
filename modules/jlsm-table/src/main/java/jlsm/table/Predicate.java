@@ -18,12 +18,12 @@ import java.util.Objects;
  * <li>Field name and type compatibility validated eagerly at construction</li>
  * </ul>
  */
-// @spec F10.R14 — sealed with exactly 11 implementations: Eq, Ne, Gt, Gte, Lt, Lte, Between,
+// @spec query.index-types.R14 — sealed with exactly 11 implementations: Eq, Ne, Gt, Gte, Lt, Lte, Between,
 // FullTextMatch, VectorNearest, And, Or
 public sealed interface Predicate {
 
     /** Equality: field == value. Usable with any primitive field type. */
-    // @spec F10.R15,R16 — reject null field and value with NPE
+    // @spec query.index-types.R15,R16 — reject null field and value with NPE
     record Eq(String field, Object value) implements Predicate {
         public Eq {
             Objects.requireNonNull(field);
@@ -32,7 +32,7 @@ public sealed interface Predicate {
     }
 
     /** Inequality: field != value. Usable with any primitive field type. */
-    // @spec F10.R15,R16 — reject null field and value with NPE
+    // @spec query.index-types.R15,R16 — reject null field and value with NPE
     record Ne(String field, Object value) implements Predicate {
         public Ne {
             Objects.requireNonNull(field);
@@ -41,7 +41,7 @@ public sealed interface Predicate {
     }
 
     /** Greater than: field > value. Requires an ordered field type. */
-    // @spec F10.R15,R17 — Comparable<?> value; reject null field and value with NPE
+    // @spec query.index-types.R15,R17 — Comparable<?> value; reject null field and value with NPE
     record Gt(String field, Comparable<?> value) implements Predicate {
         public Gt {
             Objects.requireNonNull(field);
@@ -74,7 +74,7 @@ public sealed interface Predicate {
     }
 
     /** Range: low <= field <= high. Requires an ordered field type. */
-    // @spec F10.R15,R18 — reject null field/low/high with NPE; enforce low/high same class
+    // @spec query.index-types.R15,R18 — reject null field/low/high with NPE; enforce low/high same class
     record Between(String field, Comparable<?> low, Comparable<?> high) implements Predicate {
         public Between {
             Objects.requireNonNull(field);
@@ -91,7 +91,7 @@ public sealed interface Predicate {
      * Full-text match: field contains the query terms. Requires a STRING field with FULL_TEXT
      * index.
      */
-    // @spec F10.R15,R19 — reject null field and query with NPE
+    // @spec query.index-types.R15,R19 — reject null field and query with NPE
     record FullTextMatch(String field, String query) implements Predicate {
         public FullTextMatch {
             Objects.requireNonNull(field);
@@ -106,7 +106,7 @@ public sealed interface Predicate {
      * Vector nearest neighbour: find the topK closest vectors to the query. Requires a VECTOR
      * index.
      */
-    // @spec F10.R20,R21,R22,R23 — reject null field/queryVector (NPE), reject non-positive topK
+    // @spec query.index-types.R20,R21,R22,R23 — reject null field/queryVector (NPE), reject non-positive topK
     // (IAE),
     // defensive copy queryVector on construction and on accessor
     record VectorNearest(String field, float[] queryVector, int topK) implements Predicate {
@@ -132,7 +132,7 @@ public sealed interface Predicate {
     }
 
     /** Logical AND: all children must match. */
-    // @spec F10.R24,R25,R26 — reject null children (NPE), require >=2 children (IAE),
+    // @spec query.index-types.R24,R25,R26 — reject null children (NPE), require >=2 children (IAE),
     // store defensively copied immutable list via List.copyOf
     record And(List<Predicate> children) implements Predicate {
         public And {
@@ -150,7 +150,7 @@ public sealed interface Predicate {
     }
 
     /** Logical OR: at least one child must match. */
-    // @spec F10.R27,R28,R29 — reject null children (NPE), require >=2 children (IAE),
+    // @spec query.index-types.R27,R28,R29 — reject null children (NPE), require >=2 children (IAE),
     // store defensively copied immutable list via List.copyOf
     record Or(List<Predicate> children) implements Predicate {
         public Or {

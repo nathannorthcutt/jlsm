@@ -46,7 +46,7 @@ public sealed interface VectorIndex<D> extends Closeable
      * Implementations should isolate each {@code (tableName, fieldName)} pair on its own backing
      * storage so multiple indices on the same root directory do not share state.
      */
-    // @spec F10.R85,R86,R87,R88,R89,R90 — factory SPI that bridges jlsm-core and jlsm-vector
+    // @spec query.vector-index.R1,R2,R3,R4,R5,R6 — factory SPI that bridges jlsm-core and jlsm-vector
     // without a static jlsm-table -> jlsm-vector dependency; resolves OBL-F10-vector.
     interface Factory {
 
@@ -83,7 +83,7 @@ public sealed interface VectorIndex<D> extends Closeable
      * @param vector the float vector; must not be null and must match the configured dimensions
      * @throws IOException if an I/O error occurs writing to backing storage
      */
-    // @spec F01.R23 — document re-indexing graph-quality degradation in public API
+    // @spec vector.float16-vector-support.R23 — document re-indexing graph-quality degradation in public API
     void index(D docId, float[] vector) throws IOException;
 
     /**
@@ -110,8 +110,8 @@ public sealed interface VectorIndex<D> extends Closeable
      *
      * @return the configured {@link VectorPrecision}; never null
      */
-    // @spec F01.R2 — precision is queryable after construction and never null
-    // @spec F01.R4 — precision is chosen at build time and does not change after construction
+    // @spec vector.float16-vector-support.R2 — precision is queryable after construction and never null
+    // @spec vector.float16-vector-support.R4 — precision is chosen at build time and does not change after construction
     VectorPrecision precision();
 
     @Override
@@ -124,7 +124,7 @@ public sealed interface VectorIndex<D> extends Closeable
      * @param score the similarity score (higher = more similar)
      * @param <D> the document ID type
      */
-    // @spec F01.R25,R25a — SearchResult accepts Infinity scores; Infinity exclusion is
+    // @spec vector.float16-vector-support.R25,R25a — SearchResult accepts Infinity scores; Infinity exclusion is
     // enforced by candidate-accumulation filtering in implementations (see LsmVectorIndex
     // IvfFlat.search and Hnsw.search), not by this record.
     record SearchResult<D>(D docId, float score) {

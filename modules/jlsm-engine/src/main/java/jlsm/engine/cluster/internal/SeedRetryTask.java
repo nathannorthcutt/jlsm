@@ -29,7 +29,7 @@ import java.util.function.BooleanSupplier;
  * {@code membership.start(seeds)} which itself performs network I/O.
  *
  * <p>
- * {@code @spec F04.R42}
+ * {@code @spec engine.clustering.R42}
  */
 public final class SeedRetryTask {
 

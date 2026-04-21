@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * {@code assumeTrue(ZstdDictionaryTrainer.isAvailable())} so they are skipped on systems without
  * native libzstd.
  */
-// @spec F18.R10,R11,R12,R13,R13a,R14,R19
+// @spec compression.zstd-dictionary.R10,R11,R12,R13,R13a,R14,R19
 class DictionaryCompressionWriterTest {
 
     private static MemorySegment seg(String s) {

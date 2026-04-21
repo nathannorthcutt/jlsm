@@ -12,7 +12,9 @@ import java.util.List;
 import jlsm.table.internal.FieldIndex;
 import org.junit.jupiter.api.Test;
 
-// @spec F10.R63,R64,R65,R66,R67,R68,R69,R70,R71,R72,R73,R74,R75,R106,R107,R108,R109,R110,R126,R127,R132,R133,R134
+// @spec query.field-index.R11,R12,R13,R14,R15,R16,R17,R18,R19,R20,R21,R22,R23,R27,R28
+// @spec query.query-executor.R1,R2,R3,R4,R5,R22
+// @spec query.index-registry.R16,R17
 //       — covers FieldIndex lifecycle + lookup semantics: EQUALITY-only Eq/Ne support, RANGE/UNIQUE
 //         full comparator set, sort-preserving encoded keys via ByteArrayKey, UNIQUE constraint
 //         enforcement (onInsert + onUpdate), null field no-op on insert/update/delete, remove-then-

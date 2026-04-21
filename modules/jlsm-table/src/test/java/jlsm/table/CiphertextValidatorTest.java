@@ -69,7 +69,7 @@ class CiphertextValidatorTest {
     // ── OPE (OrderPreserving): accept exactly 25 bytes ─────────────────────
     // 1-byte length + 8-byte encrypted long + 16-byte HMAC-SHA256 tag (F03.R39,R72,R78)
 
-    // @spec F03.R72 — 25-byte OPE ciphertext accepted
+    // @spec encryption.primitives-variants.R48 — 25-byte OPE ciphertext accepted
     @Test
     void orderPreserving_accepts25Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
@@ -78,7 +78,7 @@ class CiphertextValidatorTest {
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
-    // @spec F03.R72 — OPE ciphertext shorter than 25 bytes rejected
+    // @spec encryption.primitives-variants.R48 — OPE ciphertext shorter than 25 bytes rejected
     @Test
     void orderPreserving_rejects24Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
@@ -90,7 +90,7 @@ class CiphertextValidatorTest {
         assertTrue(ex.getMessage().contains("25"), "error should include expected constraint");
     }
 
-    // @spec F03.R72 — OPE ciphertext longer than 25 bytes rejected
+    // @spec encryption.primitives-variants.R48 — OPE ciphertext longer than 25 bytes rejected
     @Test
     void orderPreserving_rejects26Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
@@ -100,7 +100,7 @@ class CiphertextValidatorTest {
                 () -> CiphertextValidator.validate(field, ciphertext));
     }
 
-    // @spec F03.R72 — pre-v2 9-byte format no longer accepted
+    // @spec encryption.primitives-variants.R48 — pre-v2 9-byte format no longer accepted
     @Test
     void orderPreserving_rejectsLegacy9ByteFormat() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
@@ -114,7 +114,7 @@ class CiphertextValidatorTest {
     // ── DCPE (DistancePreserving): 8 + dims*4 + 16 bytes ────────────────────
     // 8B seed + dims*4 encrypted floats + 16B HMAC-SHA256 tag (F03.R73,R79)
 
-    // @spec F03.R73 — DCPE blob length accepted when 8 + dims*4 + 16
+    // @spec encryption.primitives-variants.R49 — DCPE blob length accepted when 8 + dims*4 + 16
     @Test
     void distancePreserving_acceptsCorrectLength() {
         int dimensions = 128;
@@ -125,7 +125,7 @@ class CiphertextValidatorTest {
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
-    // @spec F03.R73 — off-by-one DCPE length rejected
+    // @spec encryption.primitives-variants.R49 — off-by-one DCPE length rejected
     @Test
     void distancePreserving_rejectsWrongLength() {
         int dimensions = 128;
@@ -138,7 +138,7 @@ class CiphertextValidatorTest {
         assertTrue(ex.getMessage().contains("embedding"), "error should include field name");
     }
 
-    // @spec F03.R73 — pre-v2 dims*4 format no longer accepted
+    // @spec encryption.primitives-variants.R49 — pre-v2 dims*4 format no longer accepted
     @Test
     void distancePreserving_rejectsLegacyFormat() {
         int dimensions = 128;

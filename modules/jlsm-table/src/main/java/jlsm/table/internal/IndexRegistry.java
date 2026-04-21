@@ -31,12 +31,12 @@ import jlsm.table.Predicate;
  * Manages all secondary indices for a table. Routes write operations to the appropriate indices and
  * provides index lookup for query execution.
  */
-// @spec F10.R91 — final class in jlsm.table.internal implementing Closeable
-// @spec F10.R103 — maintains document store mapping primary keys to documents
-// @spec F10.R131 — AtomicBoolean closed flag with compareAndSet guarantees single close winner
-// @spec F12.R18,R19,R20,R21 — rejects VECTOR index on non-VectorType field with IAE
-// @spec F12.R22 — accepts VECTOR index on VectorType field
-// @spec F12.R23 — vector dimensions derive from schema's VectorType, not IndexDefinition
+// @spec query.index-registry.R1 — final class in jlsm.table.internal implementing Closeable
+// @spec query.index-registry.R13 — maintains document store mapping primary keys to documents
+// @spec query.query-executor.R21 — AtomicBoolean closed flag with compareAndSet guarantees single close winner
+// @spec vector.field-type.R18,R19,R20,R21 — rejects VECTOR index on non-VectorType field with IAE
+// @spec vector.field-type.R22 — accepts VECTOR index on VectorType field
+// @spec vector.field-type.R23 — vector dimensions derive from schema's VectorType, not IndexDefinition
 public final class IndexRegistry implements Closeable {
 
     private final JlsmSchema schema;
@@ -46,7 +46,7 @@ public final class IndexRegistry implements Closeable {
     private final AtomicBoolean closed = new AtomicBoolean();
     private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 
-    // @spec F10.R92 — accept JlsmSchema and List<IndexDefinition>; validate each against schema
+    // @spec query.index-registry.R2 — accept JlsmSchema and List<IndexDefinition>; validate each against schema
     public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions) throws IOException {
         this(schema, definitions, null);
     }
@@ -85,7 +85,7 @@ public final class IndexRegistry implements Closeable {
      *            present
      * @throws IOException if an index fails to initialise
      */
-    // @spec F10.R92 — schema-validated definitions; factories are injected so FULL_TEXT
+    // @spec query.index-registry.R2 — schema-validated definitions; factories are injected so FULL_TEXT
     // resolves OBL-F10-fulltext via LsmFullTextIndex in jlsm-indexing and VECTOR resolves
     // OBL-F10-vector via LsmVectorIndex in jlsm-vector
     public IndexRegistry(JlsmSchema schema, List<IndexDefinition> definitions,
@@ -144,7 +144,9 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    // @spec F10.R76,R78,R98,R106 — two-phase: validate all unique constraints across indices (skip
+    // @spec query.field-index.R24,R26 — two-phase: validate all unique constraints across indices (skip
+    // @spec query.index-registry.R8 — two-phase: validate all unique constraints across indices (skip
+    // @spec query.query-executor.R1 — two-phase: validate all unique constraints across indices (skip
     // null),
     // then apply inserts with rollback on failure
     public void onInsert(MemorySegment primaryKey, JlsmDocument document) throws IOException {
@@ -201,7 +203,9 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    // @spec F10.R77,R78,R99,R107,R136 — two-phase unique check on changed values; rollback scope
+    // @spec query.field-index.R25,R26 — two-phase unique check on changed values; rollback scope
+    // @spec query.index-registry.R9,R20 — two-phase unique check on changed values; rollback scope
+    // @spec query.query-executor.R2 — two-phase unique check on changed values; rollback scope
     // wraps documentStore mutation
     public void onUpdate(MemorySegment primaryKey, JlsmDocument oldDocument,
             JlsmDocument newDocument) throws IOException {
@@ -268,7 +272,8 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    // @spec F10.R100,R108,R136 — route delete to all indices; rollback scope wraps documentStore
+    // @spec query.index-registry.R10,R20 — route delete to all indices; rollback scope wraps documentStore
+    // @spec query.query-executor.R3 — route delete to all indices; rollback scope wraps documentStore
     // mutation
     public void onDelete(MemorySegment primaryKey, JlsmDocument document) throws IOException {
         rwLock.readLock().lock();
@@ -309,7 +314,7 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    // @spec F10.R101,R135 — return first SecondaryIndex supporting predicate, or null; acquire read
+    // @spec query.index-registry.R11,R19 — return first SecondaryIndex supporting predicate, or null; acquire read
     // lock before check
     public SecondaryIndex findIndex(Predicate predicate) {
         rwLock.readLock().lock();
@@ -371,7 +376,7 @@ public final class IndexRegistry implements Closeable {
     }
 
     @Override
-    // @spec F10.R102,R128,R137 — deferred-exception pattern across indices + arena; never leaks on
+    // @spec query.index-registry.R12,R18,R21 — deferred-exception pattern across indices + arena; never leaks on
     // partial failure
     public void close() throws IOException {
         if (!closed.compareAndSet(false, true))
@@ -413,7 +418,7 @@ public final class IndexRegistry implements Closeable {
     /**
      * Resolves a primary key to its stored document, or null if not found.
      */
-    // @spec F10.R104,R135 — return stored entry or null; acquire read lock before check
+    // @spec query.index-registry.R14,R19 — return stored entry or null; acquire read lock before check
     public StoredEntry resolveEntry(MemorySegment primaryKey) {
         rwLock.readLock().lock();
         try {
@@ -430,7 +435,7 @@ public final class IndexRegistry implements Closeable {
      * is held while building the snapshot, preventing {@link #close()} from tearing down the arena
      * while entries are being copied.
      */
-    // @spec F10.R105,R135 — snapshot iterator via List.copyOf safe against concurrent modification
+    // @spec query.index-registry.R15,R19 — snapshot iterator via List.copyOf safe against concurrent modification
     public Iterator<StoredEntry> allEntries() {
         rwLock.readLock().lock();
         try {
@@ -495,7 +500,7 @@ public final class IndexRegistry implements Closeable {
 
     // ── Private helpers ─────────────────────────────────────────────────
 
-    // @spec F10.R93,R94,R95,R96,R97,R138 — reject unknown field (IAE); enforce per-IndexType
+    // @spec query.index-registry.R3,R4,R5,R6,R7,R22 — reject unknown field (IAE); enforce per-IndexType
     // field-type constraints
     // including EQUALITY-on-BOOLEAN rejection alongside RANGE/UNIQUE
     private static void validate(JlsmSchema schema, IndexDefinition def) {
@@ -708,7 +713,7 @@ public final class IndexRegistry implements Closeable {
         }
     }
 
-    // @spec F10.R139 — VectorType FLOAT32/FLOAT16 arrays returned as defensive copies, not internal
+    // @spec query.index-registry.R23 — VectorType FLOAT32/FLOAT16 arrays returned as defensive copies, not internal
     // references
     private Object extractFieldValue(JlsmDocument document, String fieldName) {
         if (document.isNull(fieldName)) {

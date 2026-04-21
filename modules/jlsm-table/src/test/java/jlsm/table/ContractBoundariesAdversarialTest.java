@@ -792,7 +792,7 @@ class ContractBoundariesAdversarialTest {
     // ObjectType's fields, and of() will accept it. This test pins that
     // limitation so a future change that adds deeper validation (a likely
     // enhancement) will deliberately touch this assertion.
-    // @spec F14.R64 — nested ObjectType values NOT validated against inner schema
+    // @spec schema.document-field-access.R18 — nested ObjectType values NOT validated against inner schema
     @Test
     void test_JlsmDocument_objectType_notValidatedAgainstInnerSchema() {
         JlsmSchema outerSchema = JlsmSchema.builder("outer", 1).objectField("addr", inner -> inner
@@ -814,7 +814,7 @@ class ContractBoundariesAdversarialTest {
                 "nested JlsmDocument is stored by reference without conformance check");
     }
 
-    // @spec F14.R51 — regression test for values() defensive clone
+    // @spec schema.document-invariants.R1 — regression test for values() defensive clone
     @Test
     void test_JlsmDocument_values_returnsDefensiveCopy() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string())

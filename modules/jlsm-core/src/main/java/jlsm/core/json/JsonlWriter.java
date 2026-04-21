@@ -15,12 +15,12 @@ import java.util.Objects;
  * Implements {@link AutoCloseable}; closing the writer flushes and closes the underlying output
  * stream.
  *
- * @spec F15.R36 — writes one compact JSON per line with \n
- * @spec F15.R37 — no unbounded buffering
- * @spec F15.R38 — AutoCloseable, flushes and closes stream
- * @spec F15.R39 — rejects null JsonValue with NullPointerException
- * @spec F15.R55 — close() idempotent
- * @spec F15.R56 — close() releases stream even if flush throws
+ * @spec serialization.simd-jsonl.R36 — writes one compact JSON per line with \n
+ * @spec serialization.simd-jsonl.R37 — no unbounded buffering
+ * @spec serialization.simd-jsonl.R38 — AutoCloseable, flushes and closes stream
+ * @spec serialization.simd-jsonl.R39 — rejects null JsonValue with NullPointerException
+ * @spec serialization.simd-jsonl.R55 — close() idempotent
+ * @spec serialization.simd-jsonl.R56 — close() releases stream even if flush throws
  */
 public final class JsonlWriter implements AutoCloseable {
 

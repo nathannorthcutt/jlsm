@@ -35,8 +35,9 @@ import jlsm.table.Predicate;
  * The adapter does not own tokenisation, stemming, or stop-word filtering — those are configuration
  * on the underlying {@link FullTextIndex} implementation.
  */
-// @spec F10.R79 — final class in jlsm.table.internal implementing SecondaryIndex
-// @spec F10.R5,R80,R81,R82,R83,R84 — delegates to FullTextIndex<MemorySegment> backing,
+// @spec query.full-text-index.R1 — final class in jlsm.table.internal implementing SecondaryIndex
+// @spec query.index-types.R5 — delegates to FullTextIndex<MemorySegment> backing,
+// @spec query.full-text-index.R2,R3,R4,R5,R6 — delegates to FullTextIndex<MemorySegment> backing,
 // resolving OBL-F10-fulltext
 public final class FullTextFieldIndex implements SecondaryIndex {
 
@@ -68,7 +69,8 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         return definition;
     }
 
-    // @spec F10.R55,R56,R81 — tokenise field value and index per term; null value is a no-op
+    // @spec query.field-index.R3,R4 — tokenise field value and index per term; null value is a no-op
+    // @spec query.full-text-index.R3 — tokenise field value and index per term; null value is a no-op
     @Override
     public void onInsert(MemorySegment primaryKey, Object fieldValue) throws IOException {
         ensureOpen();
@@ -79,7 +81,8 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         backing.index(primaryKey, Map.of(definition.fieldName(), String.valueOf(fieldValue)));
     }
 
-    // @spec F10.R57,R58,R82 — remove old terms (if non-null) then insert new terms (if non-null)
+    // @spec query.field-index.R5,R6 — remove old terms (if non-null) then insert new terms (if non-null)
+    // @spec query.full-text-index.R4 — remove old terms (if non-null) then insert new terms (if non-null)
     @Override
     public void onUpdate(MemorySegment primaryKey, Object oldFieldValue, Object newFieldValue)
             throws IOException {
@@ -95,7 +98,8 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         }
     }
 
-    // @spec F10.R59,R60,R83 — remove terms for the given PK; null value is a no-op
+    // @spec query.field-index.R7,R8 — remove terms for the given PK; null value is a no-op
+    // @spec query.full-text-index.R5 — remove terms for the given PK; null value is a no-op
     @Override
     public void onDelete(MemorySegment primaryKey, Object fieldValue) throws IOException {
         ensureOpen();
@@ -106,7 +110,8 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         backing.remove(primaryKey, Map.of(definition.fieldName(), String.valueOf(fieldValue)));
     }
 
-    // @spec F10.R61,R82,R84 — translate FullTextMatch → Query.TermQuery and delegate; throw for
+    // @spec query.field-index.R9 — translate FullTextMatch → Query.TermQuery and delegate; throw for
+    // @spec query.full-text-index.R4,R6 — translate FullTextMatch → Query.TermQuery and delegate; throw for
     // unsupported predicates
     @Override
     public Iterator<MemorySegment> lookup(Predicate predicate) throws IOException {
@@ -125,7 +130,8 @@ public final class FullTextFieldIndex implements SecondaryIndex {
         return backing.search(new Query.TermQuery(ftm.field(), ftm.query()));
     }
 
-    // @spec F10.R62,R80 — true only for FullTextMatch whose field matches this index's field
+    // @spec query.field-index.R10 — true only for FullTextMatch whose field matches this index's field
+    // @spec query.full-text-index.R2 — true only for FullTextMatch whose field matches this index's field
     @Override
     public boolean supports(Predicate predicate) {
         if (closed) {
@@ -135,7 +141,7 @@ public final class FullTextFieldIndex implements SecondaryIndex {
                 && ftm.field().equals(definition.fieldName());
     }
 
-    // @spec F10.R84 — idempotent close; propagates once to backing
+    // @spec query.full-text-index.R6 — idempotent close; propagates once to backing
     @Override
     public void close() throws IOException {
         if (closed) {

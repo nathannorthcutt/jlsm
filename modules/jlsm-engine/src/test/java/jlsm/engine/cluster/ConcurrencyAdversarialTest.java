@@ -1160,7 +1160,7 @@ final class ConcurrencyAdversarialTest {
             ownership.assignOwner("partition-" + i, view);
         }
 
-        // @spec F04.R93 — per-epoch cache must be bounded by maxEntriesPerEpoch, evicting the
+        // @spec engine.clustering.R93 — per-epoch cache must be bounded by maxEntriesPerEpoch, evicting the
         // oldest entry when the bound is reached. Inspect the cache via reflection through the
         // EpochCache.size() method.
         Field cacheField = RendezvousOwnership.class.getDeclaredField("cache");
@@ -1180,7 +1180,7 @@ final class ConcurrencyAdversarialTest {
                         + ownership.maxEntriesPerEpoch() + ".");
     }
 
-    // @spec F04.R93 — the cache bound must be configurable and a smaller bound must cap the cache
+    // @spec engine.clustering.R93 — the cache bound must be configurable and a smaller bound must cap the cache
     // strictly at that value, evicting the oldest entry when a new key arrives at the limit.
     @Test
     @Timeout(10)
@@ -1476,9 +1476,9 @@ final class ConcurrencyAdversarialTest {
                 "ClusteredTable.java source must exist at " + source.toAbsolutePath());
         final String src = java.nio.file.Files.readString(source);
 
-        // Locate the whenComplete block by the marker comment for @spec F04.R100 / H-RL-6.
-        final int markerIdx = src.indexOf("@spec F04.R100");
-        assertTrue(markerIdx >= 0, "Expected @spec F04.R100 marker at the whenComplete close site");
+        // Locate the whenComplete block by the marker comment for @spec engine.clustering.R100 / H-RL-6.
+        final int markerIdx = src.indexOf("@spec engine.clustering.R100");
+        assertTrue(markerIdx >= 0, "Expected @spec engine.clustering.R100 marker at the whenComplete close site");
         // Scope: from marker to the end of the whenComplete lambda (closing brace + ");").
         // Use a window wide enough to cover the entire lambda body.
         final int windowEnd = Math.min(src.length(), markerIdx + 800);

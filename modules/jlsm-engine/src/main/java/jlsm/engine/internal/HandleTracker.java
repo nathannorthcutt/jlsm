@@ -90,7 +90,7 @@ final class HandleTracker implements Closeable {
      * @param sourceId the source identifier; must not be null
      * @return a registration token that must be released when the handle is closed
      */
-    // @spec F05.R40,R43,R80,R89 — tracked registration with eviction-on-register; reject
+    // @spec engine.in-process-database-engine.R40,R43,R80,R89 — tracked registration with eviction-on-register; reject
     // registration after tracker close with IllegalStateException
     HandleRegistration register(String tableName, String sourceId) {
         Objects.requireNonNull(tableName, "tableName must not be null");
@@ -151,7 +151,7 @@ final class HandleTracker implements Closeable {
      *
      * @param registration the registration to release; must not be null
      */
-    // @spec F05.R77,R82 — close/release decrements handle count; released registration is
+    // @spec engine.in-process-database-engine.R77,R82 — close/release decrements handle count; released registration is
     // immediately invalidated before being removed from the tracker
     void release(HandleRegistration registration) {
         Objects.requireNonNull(registration, "registration must not be null");
@@ -189,7 +189,7 @@ final class HandleTracker implements Closeable {
      *
      * @param tableName the table to check; must not be null
      */
-    // @spec F05.R41,R44,R45,R46,R69,R81 — greedy-source-first eviction; total-limit evicts from
+    // @spec engine.in-process-database-engine.R41,R44,R45,R46,R69,R81 — greedy-source-first eviction; total-limit evicts from
     // globally greediest table; safe under concurrent access
     void evictIfNeeded(String tableName) {
         Objects.requireNonNull(tableName, "tableName must not be null");

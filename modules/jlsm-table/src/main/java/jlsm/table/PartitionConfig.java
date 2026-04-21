@@ -17,7 +17,7 @@ import java.util.Set;
  * Governed by: .decisions/table-partitioning/adr.md — static partitions, boundaries fixed at
  * creation.
  */
-// @spec F11.R14 — public final class in jlsm.table with static factory
+// @spec partitioning.table-partitioning.R14 — public final class in jlsm.table with static factory
 // of(List<PartitionDescriptor>)
 public final class PartitionConfig {
 
@@ -46,7 +46,7 @@ public final class PartitionConfig {
      * @param descriptors the partition descriptors in key order
      * @return a validated partition configuration
      */
-    // @spec F11.R15,R16,R17,R18,R19 — null list→NPE (R15); empty→IAE (R16); null element→NPE with
+    // @spec partitioning.table-partitioning.R15,R16,R17,R18,R19 — null list→NPE (R15); empty→IAE (R16); null element→NPE with
     // index (R17); duplicate id→IAE with id+index (R18); gap/overlap→IAE identifying index (R19)
     public static PartitionConfig of(List<PartitionDescriptor> descriptors) {
         Objects.requireNonNull(descriptors, "descriptors must not be null");
@@ -82,7 +82,7 @@ public final class PartitionConfig {
      *
      * @return partition descriptors
      */
-    // @spec F11.R20 — returns unmodifiable list via List.copyOf in constructor
+    // @spec partitioning.table-partitioning.R20 — returns unmodifiable list via List.copyOf in constructor
     public List<PartitionDescriptor> descriptors() {
         return descriptors;
     }
@@ -92,7 +92,7 @@ public final class PartitionConfig {
      *
      * @return partition count
      */
-    // @spec F11.R21 — returns descriptors.size()
+    // @spec partitioning.table-partitioning.R21 — returns descriptors.size()
     public int partitionCount() {
         return descriptors.size();
     }

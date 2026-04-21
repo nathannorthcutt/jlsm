@@ -11,7 +11,7 @@ package jlsm.table;
  * <li>{@link #VECTOR} — approximate nearest-neighbour search on float array fields</li>
  * </ul>
  */
-// @spec F10.R1 — exactly five constants: EQUALITY, RANGE, UNIQUE, FULL_TEXT, VECTOR
+// @spec query.index-types.R1 — exactly five constants: EQUALITY, RANGE, UNIQUE, FULL_TEXT, VECTOR
 public enum IndexType {
 
     /** Equality lookups (eq, ne) on any primitive field type. */

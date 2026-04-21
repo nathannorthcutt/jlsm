@@ -38,9 +38,9 @@ import java.util.concurrent.TimeUnit;
  * Input sizes chosen to represent common field shapes: 64-byte string for byte-level schemes, INT16
  * domain for OPE, 128-dimension float vector for DCPE.
  *
- * @spec F03.R90 — performance impact measurable via JMH benchmarks across all four variants
+ * @spec encryption.primitives-dispatch.R21 — performance impact measurable via JMH benchmarks across all four variants
  */
-// @spec F03.R90
+// @spec encryption.primitives-dispatch.R21
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @State(Scope.Benchmark)
@@ -116,7 +116,7 @@ public class EncryptionRoundTripBenchmark {
         }
     }
 
-    // @spec F03.R90 — SIV round-trip
+    // @spec encryption.primitives-dispatch.R21 — SIV round-trip
     @Benchmark
     public void sivRoundTrip(Blackhole bh) {
         final byte[] ct = siv.encrypt(PLAIN_64, FIELD_AD);
@@ -124,7 +124,7 @@ public class EncryptionRoundTripBenchmark {
         bh.consume(pt);
     }
 
-    // @spec F03.R90 — GCM round-trip
+    // @spec encryption.primitives-dispatch.R21 — GCM round-trip
     @Benchmark
     public void gcmRoundTrip(Blackhole bh) {
         final byte[] ct = gcm.encrypt(PLAIN_64);
@@ -132,7 +132,7 @@ public class EncryptionRoundTripBenchmark {
         bh.consume(pt);
     }
 
-    // @spec F03.R90 — OPE encrypt + decrypt on the domain endpoint (worst case for recursion)
+    // @spec encryption.primitives-dispatch.R21 — OPE encrypt + decrypt on the domain endpoint (worst case for recursion)
     @Benchmark
     public void opeRoundTrip(Blackhole bh) {
         final long ct = ope.encrypt(42L);
@@ -140,7 +140,7 @@ public class EncryptionRoundTripBenchmark {
         bh.consume(pt);
     }
 
-    // @spec F03.R90 — DCPE round-trip on 128-dim float vector with MAC
+    // @spec encryption.primitives-dispatch.R21 — DCPE round-trip on 128-dim float vector with MAC
     @Benchmark
     public void dcpeRoundTrip(Blackhole bh) {
         final DcpeSapEncryptor.EncryptedVector ev = dcpe.encrypt(vector128, FIELD_AD);

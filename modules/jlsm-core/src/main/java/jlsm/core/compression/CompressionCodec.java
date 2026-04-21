@@ -27,9 +27,9 @@ import java.lang.foreign.MemorySegment;
  * @see <a href="../../.decisions/compression-codec-api-design/adr.md">ADR: Compression Codec API
  *      Design</a>
  */
-// @spec F02.R7 — concurrent safe, stateless
-// @spec F17.R3 — byte[] methods removed (clean break, pre-1.0)
-// @spec F17.R5 — all operations safe for concurrent calls
+// @spec compression.codec-contract.R4 — concurrent safe, stateless
+// @spec compression.codec-contract.R7 — byte[] methods removed (clean break, pre-1.0)
+// @spec compression.codec-contract.R9 — all operations safe for concurrent calls
 public interface CompressionCodec {
 
     /**
@@ -41,8 +41,8 @@ public interface CompressionCodec {
      *
      * @return codec identifier byte (e.g. 0x00 for none, 0x02 for deflate)
      */
-    // @spec F02.R1 — unique byte ID, 0x00-0x7F reserved, 0x80-0xFF consumer
-    // @spec F17.R4 — retained unchanged
+    // @spec compression.codec-contract.R1 — unique byte ID, 0x00-0x7F reserved, 0x80-0xFF consumer
+    // @spec compression.codec-contract.R8 — retained unchanged
     byte codecId();
 
     /**
@@ -66,8 +66,8 @@ public interface CompressionCodec {
      *             {@code dst.byteSize() < maxCompressedLength(src.byteSize())}
      * @throws java.io.UncheckedIOException if compression fails
      */
-    // @spec F02.R2 — stateless compression (note: byte[] API removed per F17.R3)
-    // @spec F17.R1 — compress with caller-provided destination
+    // (formerly @spec F02.R2 — dropped during migration) — stateless compression (note: byte[] API removed per F17.R3)
+    // @spec compression.codec-contract.R5 — compress with caller-provided destination
     MemorySegment compress(MemorySegment src, MemorySegment dst);
 
     /**
@@ -87,8 +87,8 @@ public interface CompressionCodec {
      * @throws java.io.UncheckedIOException if decompression fails or output size does not match
      *             {@code uncompressedLength}
      */
-    // @spec F02.R3 — returns exact expected length or throws
-    // @spec F17.R2 — decompress to expected length, throws on mismatch
+    // (formerly @spec F02.R3 — dropped during migration) — returns exact expected length or throws
+    // @spec compression.codec-contract.R6 — decompress to expected length, throws on mismatch
     MemorySegment decompress(MemorySegment src, MemorySegment dst, int uncompressedLength);
 
     /**
@@ -107,7 +107,7 @@ public interface CompressionCodec {
      * @throws IllegalArgumentException if {@code inputLength < 0}
      * @see <a href="../../.decisions/max-compressed-length/adr.md">ADR: Max Compressed Length</a>
      */
-    // @spec F17.R4 — retained unchanged
+    // @spec compression.codec-contract.R8 — retained unchanged
     default int maxCompressedLength(int inputLength) {
         if (inputLength < 0) {
             throw new IllegalArgumentException(
@@ -153,7 +153,7 @@ public interface CompressionCodec {
      * @return a new {@code ZstdCodec} instance
      * @see ZstdCodec
      */
-    // @spec F18.R1 — zstd() factory
+    // @spec compression.zstd-dictionary.R1 — zstd() factory
     static CompressionCodec zstd() {
         return new ZstdCodec(3, null);
     }
@@ -165,7 +165,7 @@ public interface CompressionCodec {
      * @return a new {@code ZstdCodec} instance
      * @throws IllegalArgumentException if level is outside the range 1–22
      */
-    // @spec F18.R1,R2 — zstd(level) factory, level validated at construction
+    // @spec compression.zstd-dictionary.R1,R2 — zstd(level) factory, level validated at construction
     static CompressionCodec zstd(int level) {
         return new ZstdCodec(level, null);
     }
@@ -177,7 +177,7 @@ public interface CompressionCodec {
      * @return a new {@code ZstdCodec} instance
      * @throws NullPointerException if {@code dictionary} is null
      */
-    // @spec F18.R1 — zstd(dictionary) factory
+    // @spec compression.zstd-dictionary.R1 — zstd(dictionary) factory
     static CompressionCodec zstd(MemorySegment dictionary) {
         return new ZstdCodec(3, dictionary);
     }
@@ -191,7 +191,7 @@ public interface CompressionCodec {
      * @throws IllegalArgumentException if level is outside the range 1–22
      * @throws NullPointerException if {@code dictionary} is null
      */
-    // @spec F18.R1,R2 — zstd(level, dictionary) factory
+    // @spec compression.zstd-dictionary.R1,R2 — zstd(level, dictionary) factory
     static CompressionCodec zstd(int level, MemorySegment dictionary) {
         return new ZstdCodec(level, dictionary);
     }

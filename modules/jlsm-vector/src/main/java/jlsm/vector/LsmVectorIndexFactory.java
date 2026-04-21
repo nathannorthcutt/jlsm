@@ -42,7 +42,7 @@ import jlsm.wal.local.LocalWriteAheadLog;
  * factory happens outside {@code jlsm-table}; the resulting factory is passed into table builders
  * that register VECTOR indices.
  */
-// @spec F10.R85,R86,R87,R88,R89,R90 — factory produces a VectorIndex<MemorySegment> per
+// @spec query.vector-index.R1,R2,R3,R4,R5,R6 — factory produces a VectorIndex<MemorySegment> per
 // (tableName, fieldName); the adapter in VectorFieldIndex routes mutations through it.
 public final class LsmVectorIndexFactory {
 

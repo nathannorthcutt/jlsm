@@ -26,7 +26,7 @@ import java.util.Set;
  * Side effects: none.
  *
  * <p>
- * {@code @spec F04.R43}
+ * {@code @spec engine.clustering.R43}
  */
 public final class ViewReconciler {
 

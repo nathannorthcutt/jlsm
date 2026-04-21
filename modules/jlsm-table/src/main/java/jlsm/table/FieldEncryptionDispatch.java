@@ -43,7 +43,7 @@ public final class FieldEncryptionDispatch {
      * encode/decode. {@code null} for non-DCPE fields and for any field when no key holder is
      * provided.
      */
-    // @spec F03.R24, R50 — DCPE handled by serializer directly, not byte-level dispatch
+    // @spec encryption.primitives-dispatch.R7, R50 — DCPE handled by serializer directly, not byte-level dispatch
     private final DcpeSapEncryptor[] dcpeEncryptors;
     private final byte[][] dcpeAssociatedData;
 
@@ -80,14 +80,14 @@ public final class FieldEncryptionDispatch {
         this.dcpeAssociatedData = new byte[fieldCount][];
 
         if (keyHolder == null) {
-            // @spec F03.R19 — without a key holder, no field receives an encryptor/decryptor.
+            // @spec encryption.primitives-dispatch.R2 — without a key holder, no field receives an encryptor/decryptor.
             // A DCPE field in this configuration cannot be serialized by the library — the
             // DocumentSerializer rejects such writes per F03.R53.
             return;
         }
 
         // Build DCPE encryptors up front for any DistancePreserving field.
-        // @spec F03.R24, R50 — DCPE does not use the byte-level FieldEncryptor interface;
+        // @spec encryption.primitives-dispatch.R7, R50 — DCPE does not use the byte-level FieldEncryptor interface;
         // encryption happens inline in DocumentSerializer using these instances.
         for (int i = 0; i < fieldCount; i++) {
             final FieldDefinition fd = fields.get(i);
@@ -116,14 +116,14 @@ public final class FieldEncryptionDispatch {
                     // No encryption for this field
                 }
                 case EncryptionSpec.DistancePreserving _ -> {
-                    // @spec F03.R24 — serializer invokes DcpeSapEncryptor from dcpeEncryptors[i]
+                    // @spec encryption.primitives-dispatch.R7 — serializer invokes DcpeSapEncryptor from dcpeEncryptors[i]
                     // directly. No byte-level encryptor/decryptor installed.
                 }
                 case EncryptionSpec.Deterministic _ -> {
                     // AES-SIV requires a 64-byte key split into independent CMAC and CTR
                     // sub-keys. If the table key is 32 bytes, derive two independent
                     // 32-byte sub-keys via HMAC-SHA256 with domain-separated info strings.
-                    // @spec F03.R81, F41.R16 — zero intermediates in finally, even on exception
+                    // @spec encryption.primitives-key-holder.R8, F41.R16 — zero intermediates in finally, even on exception
                     final AesSivEncryptor siv;
                     if (keyHolder.keyLength() == 32) {
                         byte[] masterKey = null;
@@ -172,7 +172,7 @@ public final class FieldEncryptionDispatch {
                     final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder,
                             bounds[0], bounds[1]);
                     final int maxBytes = opeMaxBytes(fd.type());
-                    // @spec F03.R78, F41.R22 — derive per-field MAC key and bind MAC to field name
+                    // @spec encryption.primitives-variants.R54, F41.R22 — derive per-field MAC key and bind MAC to field name
                     final byte[] masterKey = keyHolder.getKeyBytes();
                     final SecretKeySpec macKeySpec;
                     try {
@@ -196,7 +196,7 @@ public final class FieldEncryptionDispatch {
                     // derive an independent 32-byte sub-key via HMAC-SHA256 with a
                     // domain-separated info string. Plain truncation would make the
                     // GCM key equal to the SIV CMAC sub-key, violating key independence.
-                    // @spec F03.R81, F41.R16 — zero intermediates in finally, even on exception
+                    // @spec encryption.primitives-key-holder.R8, F41.R16 — zero intermediates in finally, even on exception
                     final AesGcmEncryptor gcm;
                     if (keyHolder.keyLength() == 64) {
                         byte[] fullKey = null;
@@ -264,7 +264,7 @@ public final class FieldEncryptionDispatch {
      * @param fieldIndex the zero-based field index
      * @return the DCPE encryptor, or null
      */
-    // @spec F03.R24, R50 — serializer reads DCPE encryptors directly
+    // @spec encryption.primitives-dispatch.R7, R50 — serializer reads DCPE encryptors directly
     public DcpeSapEncryptor dcpeEncryptorFor(int fieldIndex) {
         if (fieldIndex < 0 || fieldIndex >= dcpeEncryptors.length) {
             throw new IllegalArgumentException("fieldIndex out of bounds: " + fieldIndex);
@@ -337,7 +337,7 @@ public final class FieldEncryptionDispatch {
      *
      * @see #opeDecryptTyped
      */
-    // @spec F03.R39,R78, F41.R22 — 25-byte OPE format with detached MAC
+    // @spec encryption.primitives-variants.R21,R54, F41.R22 — 25-byte OPE format with detached MAC
     private static byte[] opeEncryptTyped(BoldyrevaOpeEncryptor ope, byte[] plaintext, int maxBytes,
             SecretKeySpec macKeySpec, byte[] associatedData) {
         if (plaintext == null) {
@@ -367,7 +367,7 @@ public final class FieldEncryptionDispatch {
      *
      * @see #opeEncryptTyped
      */
-    // @spec F03.R39,R78, F41.R22 — verify MAC in constant time, then OPE inverse
+    // @spec encryption.primitives-variants.R21,R54, F41.R22 — verify MAC in constant time, then OPE inverse
     private static byte[] opeDecryptTyped(BoldyrevaOpeEncryptor ope, byte[] ciphertext,
             int maxBytes, SecretKeySpec macKeySpec, byte[] associatedData) {
         if (ciphertext == null || ciphertext.length != OPE_CIPHERTEXT_BYTES) {
@@ -404,7 +404,7 @@ public final class FieldEncryptionDispatch {
      * covers the inner ciphertext byte range {@code [innerOffset, innerOffset + innerLen)} and the
      * UTF-8 field name (associated data). Returns the first {@link #MAC_TAG_BYTES} bytes.
      */
-    // @spec F03.R78, R79 — detached HMAC-SHA256 tag bound to ciphertext + field name
+    // @spec encryption.primitives-variants.R54, R79 — detached HMAC-SHA256 tag bound to ciphertext + field name
     static byte[] computeMacTag(SecretKeySpec macKeySpec, byte[] inner, int innerOffset,
             int innerLen, byte[] associatedData) {
         try {

@@ -19,12 +19,12 @@ import java.util.Set;
  * Instances are created via the static factory {@link #of(Map)} or the {@link Builder}. Both
  * enforce non-null keys and values and reject duplicates.
  *
- * @spec F15.R9 — Map-like access: get, containsKey, keys, size, entrySet, getOrDefault
- * @spec F15.R10 — preserves insertion order
- * @spec F15.R11 — rejects duplicate keys at construction
- * @spec F15.R13 — deeply immutable after construction
- * @spec F15.R14 — structural deep equality
- * @spec F15.R15 — static factory/builder only, no public constructor
+ * @spec serialization.simd-jsonl.R9 — Map-like access: get, containsKey, keys, size, entrySet, getOrDefault
+ * @spec serialization.simd-jsonl.R10 — preserves insertion order
+ * @spec serialization.simd-jsonl.R11 — rejects duplicate keys at construction
+ * @spec serialization.simd-jsonl.R13 — deeply immutable after construction
+ * @spec serialization.simd-jsonl.R14 — structural deep equality
+ * @spec serialization.simd-jsonl.R15 — static factory/builder only, no public constructor
  */
 public final class JsonObject implements JsonValue {
 
@@ -47,7 +47,7 @@ public final class JsonObject implements JsonValue {
      * @return a new immutable JsonObject
      * @throws NullPointerException if members, any key, or any value is null
      */
-    // @spec F15.R15 — keys must be non-null and non-blank; blank keys are rejected eagerly
+    // @spec serialization.simd-jsonl.R15 — keys must be non-null and non-blank; blank keys are rejected eagerly
     // (stricter than RFC 8259; see F15.R25 for the list of stricter-than-RFC parser behaviors).
     public static JsonObject of(Map<String, JsonValue> members) {
         Objects.requireNonNull(members, "members must not be null");
@@ -171,7 +171,7 @@ public final class JsonObject implements JsonValue {
      * <p>
      * Rejects duplicate keys eagerly at {@link #put} time. Keys and values must not be null.
      *
-     * @spec F15.R48 — single-use builder, throws after build()
+     * @spec serialization.simd-jsonl.R48 — single-use builder, throws after build()
      */
     public static final class Builder {
 
@@ -190,7 +190,7 @@ public final class JsonObject implements JsonValue {
          * @throws NullPointerException if key or value is null
          * @throws IllegalArgumentException if the key is already present
          */
-        // @spec F15.R15 — keys must be non-null and non-blank
+        // @spec serialization.simd-jsonl.R15 — keys must be non-null and non-blank
         public Builder put(String key, JsonValue value) {
             if (built) {
                 throw new IllegalStateException(

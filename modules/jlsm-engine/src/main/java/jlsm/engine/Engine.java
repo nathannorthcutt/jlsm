@@ -27,7 +27,7 @@ public interface Engine extends Closeable {
      *
      * @return a new builder; never null
      */
-    // @spec F05.R1 — public factory exposed from the exported jlsm.engine package
+    // @spec engine.in-process-database-engine.R1 — public factory exposed from the exported jlsm.engine package
     static Builder builder() {
         return new Builder();
     }
@@ -97,7 +97,7 @@ public interface Engine extends Closeable {
      * filesystem. Delegates to the internal {@link LocalEngine.Builder}; the indirection keeps the
      * implementation class out of the exported public API surface.
      */
-    // @spec F05.R1 — public Builder type exposed from the exported jlsm.engine package
+    // @spec engine.in-process-database-engine.R1 — public Builder type exposed from the exported jlsm.engine package
     final class Builder {
 
         private final LocalEngine.Builder delegate;

@@ -1,6 +1,6 @@
 # Work Group Manifest: f04-obligation-resolution
 
-**Goal:** Resolve 12 open F04 engine-clustering obligations identified by spec-verify
+**Goal:** Resolve 12 open engine.clustering engine-clustering obligations identified by spec-verify
 **Status:** active
 **Created:** 2026-04-19
 **Work definitions:** 5
@@ -36,6 +36,6 @@ WD-01 and WD-02 can run in parallel.
 
 | Obligation | Blocked by | Pick up when |
 |-----------|-----------|--------------|
-| OBL-F04-R10 (dedup) | Replication layer | Replication feature ships |
-| OBL-F04-R20 (phi init) | Measurement data | False-positive rate measured in production |
-| OBL-F04-R29 (transport timeout) | Network transport (F19-F21) | Network transport feature ships |
+| OBL-engine.clustering-R10 (dedup) | Replication layer | Replication feature ships |
+| OBL-engine.clustering-R20 (phi init) | Measurement data | False-positive rate measured in production |
+| OBL-engine.clustering-R29 (transport timeout) | Network transport (transport.multiplexed-framing-transport.scatter-gather-flow-control) | Network transport feature ships |

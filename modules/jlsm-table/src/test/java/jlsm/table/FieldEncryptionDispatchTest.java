@@ -223,7 +223,7 @@ class FieldEncryptionDispatchTest {
     // cross-field substitution must throw SecurityException.
     // F41.R22 amended: on-disk OPE layout matches (DEK version tag is F41 future work).
 
-    // @spec F03.R39,R78 — OPE ciphertext is exactly 25 bytes
+    // @spec encryption.primitives-variants.R21,R54 — OPE ciphertext is exactly 25 bytes
     @Test
     void orderPreservingField_ciphertextIs25Bytes() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -237,7 +237,7 @@ class FieldEncryptionDispatchTest {
                 "OPE ciphertext must be 25 bytes (1 length + 8 OPE + 16 MAC tag)");
     }
 
-    // @spec F03.R40,R78 — round-trip works when MAC verifies
+    // @spec encryption.primitives-variants.R22,R54 — round-trip works when MAC verifies
     @Test
     void orderPreservingField_roundTrip() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -253,7 +253,7 @@ class FieldEncryptionDispatchTest {
         assertArrayEquals(plaintext, recovered);
     }
 
-    // @spec F03.R78 — tampered MAC bytes rejected with SecurityException
+    // @spec encryption.primitives-variants.R54 — tampered MAC bytes rejected with SecurityException
     @Test
     void orderPreservingField_tamperedMacRejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -270,7 +270,7 @@ class FieldEncryptionDispatchTest {
                 "Tampered MAC must throw SecurityException");
     }
 
-    // @spec F03.R78 — tampered OPE ciphertext bytes rejected with SecurityException
+    // @spec encryption.primitives-variants.R54 — tampered OPE ciphertext bytes rejected with SecurityException
     @Test
     void orderPreservingField_tamperedOpePortionRejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -287,7 +287,7 @@ class FieldEncryptionDispatchTest {
                 "Tampered OPE ciphertext must throw SecurityException");
     }
 
-    // @spec F03.R78 — tampered length prefix byte rejected with SecurityException
+    // @spec encryption.primitives-variants.R54 — tampered length prefix byte rejected with SecurityException
     @Test
     void orderPreservingField_tamperedLengthPrefixRejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -303,7 +303,7 @@ class FieldEncryptionDispatchTest {
                 "Tampered length prefix must throw SecurityException");
     }
 
-    // @spec F03.R78 — decryption with a different key rejects via MAC
+    // @spec encryption.primitives-variants.R54 — decryption with a different key rejects via MAC
     @Test
     void orderPreservingField_wrongKeyRejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -323,7 +323,7 @@ class FieldEncryptionDispatchTest {
         }
     }
 
-    // @spec F03.R78 — cross-field substitution rejected (MAC binds to field name)
+    // @spec encryption.primitives-variants.R54 — cross-field substitution rejected (MAC binds to field name)
     @Test
     void orderPreservingField_crossFieldSubstitutionRejected() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -338,7 +338,7 @@ class FieldEncryptionDispatchTest {
                 "Using field A's ciphertext on field B's decryptor must throw SecurityException");
     }
 
-    // @spec F03.R78 — two encryptions of the same plaintext in the same field produce
+    // @spec encryption.primitives-variants.R54 — two encryptions of the same plaintext in the same field produce
     // identical ciphertext (OPE + deterministic MAC = deterministic overall)
     @Test
     void orderPreservingField_deterministicAcrossCalls() {
@@ -354,7 +354,7 @@ class FieldEncryptionDispatchTest {
                 "OPE + deterministic MAC must produce identical ciphertext on repeated calls");
     }
 
-    // @spec F03.R37 — OPE preserves ordering on the 8-byte OPE portion; MAC does not
+    // @spec encryption.primitives-variants.R19 — OPE preserves ordering on the 8-byte OPE portion; MAC does not
     // disturb this property because range comparisons operate on bytes [1..8].
     @Test
     void orderPreservingField_preservesOrderOnOpePortion() {

@@ -22,8 +22,8 @@ import java.util.Objects;
  * This class is stateless and thread-safe.
  *
  */
-// @spec F15.R51 — escapes lone surrogates as \\uXXXX sequences
-// @spec F15.R59 — detects indentation overflow
+// @spec serialization.simd-jsonl.R51 — escapes lone surrogates as \\uXXXX sequences
+// @spec serialization.simd-jsonl.R59 — detects indentation overflow
 public final class JsonWriter {
 
     /**

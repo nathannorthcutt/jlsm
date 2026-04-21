@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class F07StructuralTest {
 
-    // @spec F07.R1 — jlsm-sql exports only jlsm.sql; no internal subpackages surface types
+    // @spec query.sql-query-support.R1 — jlsm-sql exports only jlsm.sql; no internal subpackages surface types
     @Test
     void jlsmSqlModuleExportsOnlyJlsmSqlPackage() throws Exception {
         // Tests run in the unnamed module, so Class.getModule() gives the unnamed module.
@@ -39,7 +39,7 @@ class F07StructuralTest {
         }
     }
 
-    // @spec F07.R6 — JlsmSql is final with a private no-arg constructor
+    // @spec query.sql-query-support.R6 — JlsmSql is final with a private no-arg constructor
     @Test
     void jlsmSqlIsFinalAndHasPrivateConstructor() throws ReflectiveOperationException {
         assertTrue(Modifier.isFinal(JlsmSql.class.getModifiers()), "JlsmSql must be final");
@@ -50,14 +50,14 @@ class F07StructuralTest {
         assertTrue(Modifier.isPrivate(ctor.getModifiers()), "constructor must be private");
     }
 
-    // @spec F07.R46 — SqlAst is a sealed interface
+    // @spec query.sql-query-support.R46 — SqlAst is a sealed interface
     @Test
     void sqlAstIsSealed() {
         assertTrue(SqlAst.class.isSealed(), "SqlAst must be sealed");
         assertTrue(SqlAst.class.isInterface(), "SqlAst must be an interface");
     }
 
-    // @spec F07.R49 — Column sealed, permits exactly Wildcard and Named
+    // @spec query.sql-query-support.R49 — Column sealed, permits exactly Wildcard and Named
     @Test
     void columnPermitsExactlyWildcardAndNamed() {
         assertTrue(SqlAst.Column.class.isSealed(), "Column must be sealed");
@@ -67,7 +67,7 @@ class F07StructuralTest {
         assertTrue(permitted.contains(SqlAst.Column.Named.class));
     }
 
-    // @spec F07.R50 — Expression sealed, permits exactly 11 listed implementations
+    // @spec query.sql-query-support.R50 — Expression sealed, permits exactly 11 listed implementations
     @Test
     void expressionPermitsExactlyElevenImplementations() {
         assertTrue(SqlAst.Expression.class.isSealed(), "Expression must be sealed");
@@ -86,13 +86,13 @@ class F07StructuralTest {
         assertTrue(permitted.contains(SqlAst.Expression.FunctionCall.class));
     }
 
-    // @spec F07.R79 — SqlQuery is a record type
+    // @spec query.sql-query-support.R79 — SqlQuery is a record type
     @Test
     void sqlQueryIsARecord() {
         assertTrue(SqlQuery.class.isRecord(), "SqlQuery must be a record");
     }
 
-    // @spec F07.R48 — SelectStatement defensively copies columns and orderBy
+    // @spec query.sql-query-support.R48 — SelectStatement defensively copies columns and orderBy
     @Test
     void selectStatementDefensivelyCopiesLists() {
         var columns = new java.util.ArrayList<SqlAst.Column>(
@@ -106,7 +106,7 @@ class F07StructuralTest {
         assertEquals(0, stmt.orderBy().size(), "SelectStatement.orderBy must be copied");
     }
 
-    // @spec F07.R52 — FunctionCall defensively copies its arguments list
+    // @spec query.sql-query-support.R52 — FunctionCall defensively copies its arguments list
     @Test
     void functionCallDefensivelyCopiesArguments() {
         var args = new java.util.ArrayList<SqlAst.Expression>(
@@ -116,7 +116,7 @@ class F07StructuralTest {
         assertEquals(1, fn.arguments().size(), "FunctionCall.arguments must be copied");
     }
 
-    // @spec F07.R81 — SqlQuery defensively copies projections, aliases, orderBy
+    // @spec query.sql-query-support.R81 — SqlQuery defensively copies projections, aliases, orderBy
     @Test
     void sqlQueryDefensivelyCopiesLists() {
         var projections = new java.util.ArrayList<>(List.of("a"));
@@ -132,7 +132,7 @@ class F07StructuralTest {
         assertEquals(1, q.orderBy().size());
     }
 
-    // @spec F07.R83 — BindMarker.compareTo orders by index
+    // @spec query.sql-query-support.R83 — BindMarker.compareTo orders by index
     @Test
     void bindMarkerCompareToOrdersByIndex() {
         var a = new SqlQuery.BindMarker(0);
@@ -143,7 +143,7 @@ class F07StructuralTest {
         assertEquals(0, b.compareTo(c), "equal indices compareTo must return 0");
     }
 
-    // @spec F07.R100 — whitespace-only input returns a single EOF token
+    // @spec query.sql-query-support.R100 — whitespace-only input returns a single EOF token
     @Test
     void whitespaceOnlyInputYieldsEofOnly() throws SqlParseException {
         var lexer = new SqlLexer();
@@ -152,7 +152,7 @@ class F07StructuralTest {
         assertEquals(TokenType.EOF, tokens.getFirst().type());
     }
 
-    // @spec F07.R77 — numeric widening: Integer if fits, Long if fits, Double for decimals
+    // @spec query.sql-query-support.R77 — numeric widening: Integer if fits, Long if fits, Double for decimals
     @Test
     void numericLiteralWidensIntegerToLongToDouble() throws SqlParseException {
         var schema = JlsmSchema.builder("t", 1).field("x", FieldType.int64())

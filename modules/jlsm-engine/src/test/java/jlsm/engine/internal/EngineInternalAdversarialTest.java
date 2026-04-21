@@ -115,7 +115,7 @@ class EngineInternalAdversarialTest {
     // ---- F5: HandleTracker.Builder assert-only validation ----
 
     /** F5 — Builder should throw IAE for zero maxHandlesPerSourcePerTable. */
-    // @spec F05.R71 — handle-limit builder rejects non-positive with IAE
+    // @spec engine.in-process-database-engine.R71 — handle-limit builder rejects non-positive with IAE
     @Test
     void handleTrackerBuilderRejectsZeroMaxPerSourcePerTable() {
         assertThrows(IllegalArgumentException.class,
@@ -142,7 +142,7 @@ class EngineInternalAdversarialTest {
     // ---- F6: LocalEngine.Builder assert-only validation ----
 
     /** F6 — Builder should throw IAE for zero maxHandlesPerSourcePerTable. */
-    // @spec F05.R71,R90 — LocalEngine.Builder rejects non-positive handle limits with IAE
+    // @spec engine.in-process-database-engine.R71,R90 — LocalEngine.Builder rejects non-positive handle limits with IAE
     @Test
     void localEngineBuilderRejectsZeroMaxPerSourcePerTable() {
         assertThrows(IllegalArgumentException.class,

@@ -11,14 +11,14 @@ class LruBlockCacheTest {
 
     // --- Builder ---
 
-    // @spec F09.R44
+    // @spec sstable.striped-block-cache.R44
     @Test
     void zeroCapacityRejected() {
         assertThrows(IllegalArgumentException.class,
                 () -> LruBlockCache.builder().capacity(0).build());
     }
 
-    // @spec F09.R44
+    // @spec sstable.striped-block-cache.R44
     @Test
     void negativeCapacityRejected() {
         assertThrows(IllegalArgumentException.class,
@@ -242,14 +242,14 @@ class LruBlockCacheTest {
 
     // --- close ---
 
-    // @spec F09.R32,R33 — close on empty or populated cache must not throw
+    // @spec sstable.striped-block-cache.R32,R33 — close on empty or populated cache must not throw
     @Test
     void closeDoesNotThrow() {
         var cache = LruBlockCache.builder().capacity(10).build();
         assertDoesNotThrow(cache::close);
     }
 
-    // @spec F09.R46
+    // @spec sstable.striped-block-cache.R46
     // Updated by audit block-cache-hardening: close() now rejects use-after-close on all methods
     // including size(). The old test asserted size()==0 after close, but the correct behavior is
     // that size() throws IllegalStateException on a closed cache.

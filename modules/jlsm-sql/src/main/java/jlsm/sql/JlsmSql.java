@@ -25,7 +25,7 @@ import jlsm.table.JlsmSchema;
  * SqlQuery query = JlsmSql.parse("SELECT name, age FROM users WHERE age > 30 LIMIT 10", schema);
  * }</pre>
  */
-// @spec F07.R6 — non-instantiable utility class with private constructor
+// @spec query.sql-query-support.R6 — non-instantiable utility class with private constructor
 public final class JlsmSql {
 
     private JlsmSql() {
@@ -40,7 +40,7 @@ public final class JlsmSql {
      * @return the parsed and validated query
      * @throws SqlParseException if the SQL is malformed or references invalid columns/types
      */
-    // @spec F07.R2,R3,R4,R5,R7,R99 — non-null args, blank rejection, lexer→parser→translator
+    // @spec query.sql-query-support.R2,R3,R4,R5,R7,R99 — non-null args, blank rejection, lexer→parser→translator
     // pipeline
     public static SqlQuery parse(String sql, JlsmSchema schema) throws SqlParseException {
         Objects.requireNonNull(sql, "sql");

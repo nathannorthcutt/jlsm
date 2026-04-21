@@ -8,7 +8,7 @@ import java.io.IOException;
  *
  * @see <a href="../.decisions/per-block-checksums/adr.md">ADR: Per-Block Checksums</a>
  */
-// @spec F16.R9 — IOException subclass carrying block index + expected/actual checksums
+// @spec sstable.v3-format-upgrade.R9 — IOException subclass carrying block index + expected/actual checksums
 public final class CorruptBlockException extends IOException {
 
     private final int blockIndex;

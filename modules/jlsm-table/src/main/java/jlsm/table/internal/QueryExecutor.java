@@ -34,7 +34,7 @@ import jlsm.table.TableEntry;
  *
  * @param <K> the primary key type (String or Long)
  */
-// @spec F10.R111 — final class in jlsm.table.internal parameterized by primary key type K
+// @spec query.query-executor.R6 — final class in jlsm.table.internal parameterized by primary key type K
 public final class QueryExecutor<K> {
 
     private final JlsmSchema schema;
@@ -78,7 +78,7 @@ public final class QueryExecutor<K> {
      * @return iterator over matching table entries
      * @throws IOException on I/O error
      */
-    // @spec F10.R112,R118 — reject null predicate with NPE; dedupe results via LinkedHashSet<PkKey>
+    // @spec query.query-executor.R7,R13 — reject null predicate with NPE; dedupe results via LinkedHashSet<PkKey>
     public Iterator<TableEntry<K>> execute(Predicate predicate) throws IOException {
         Objects.requireNonNull(predicate, "predicate");
         Set<PkKey> matchingKeys = executePredicate(predicate);
@@ -103,7 +103,7 @@ public final class QueryExecutor<K> {
         };
     }
 
-    // @spec F10.R115 — intersect children results via retainAll
+    // @spec query.query-executor.R10 — intersect children results via retainAll
     private Set<PkKey> executeAnd(Predicate.And and) throws IOException {
         Set<PkKey> result = null;
         for (Predicate child : and.children()) {
@@ -117,7 +117,7 @@ public final class QueryExecutor<K> {
         return result != null ? result : Set.of();
     }
 
-    // @spec F10.R116 — union children results via addAll into LinkedHashSet
+    // @spec query.query-executor.R11 — union children results via addAll into LinkedHashSet
     private Set<PkKey> executeOr(Predicate.Or or) throws IOException {
         Set<PkKey> result = new LinkedHashSet<>();
         for (Predicate child : or.children()) {
@@ -126,7 +126,7 @@ public final class QueryExecutor<K> {
         return result;
     }
 
-    // @spec F10.R113,R114 — index-backed lookup if a supporting index exists; else scan-and-filter
+    // @spec query.query-executor.R8,R9 — index-backed lookup if a supporting index exists; else scan-and-filter
     // fallback
     private Set<PkKey> executeLeaf(Predicate predicate) throws IOException {
         List<MemorySegment> results = indexRegistry.findAndLookup(predicate);
@@ -153,7 +153,7 @@ public final class QueryExecutor<K> {
     }
 
     @SuppressWarnings("unchecked")
-    // @spec F10.R119,R120,R121,R122,R123,R117 — scan-and-filter per predicate; null fields
+    // @spec query.query-executor.R14,R15,R16,R17,R18,R12 — scan-and-filter per predicate; null fields
     // non-matching;
     // numeric coercion on class mismatch; FullText/Vector throw UOE
     private boolean matchesPredicate(IndexRegistry.StoredEntry entry, Predicate predicate) {

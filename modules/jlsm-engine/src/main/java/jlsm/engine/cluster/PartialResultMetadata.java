@@ -23,7 +23,7 @@ import java.util.Set;
  *            be null (empty if all partitions responded)
  * @param isComplete {@code true} if every targeted partition contributed a result
  */
-// @spec F04.R64,R73 — expose total, responding, unavailable, completeness
+// @spec engine.clustering.R64,R73 — expose total, responding, unavailable, completeness
 public record PartialResultMetadata(int totalPartitionsQueried, int respondingPartitions,
         Set<String> unavailablePartitions, boolean isComplete) {
 

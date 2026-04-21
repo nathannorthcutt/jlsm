@@ -16,7 +16,7 @@ import java.util.Objects;
  * bytes are inside vs outside string literals. This is the same mathematical operation as
  * PCLMULQDQ/PMULL hardware instructions.
  *
- * @spec F15.R20 — Tier 1: Panama FFM with PCLMULQDQ/PMULL carry-less multiply
+ * @spec serialization.simd-jsonl.R20 — Tier 1: Panama FFM with PCLMULQDQ/PMULL carry-less multiply
  */
 public final class PanamaStage1 {
 

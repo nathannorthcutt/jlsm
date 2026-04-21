@@ -27,7 +27,7 @@ class SqlTranslatorAdversarialTest {
 
     // ── FINDING-1: Bind parameters with range operators ──────────────
 
-    // @spec F07.R61
+    // @spec query.sql-query-support.R61
     /** FINDING-1: bind parameter with > operator should not throw */
     @Test
     void bindParameterWithGreaterThan() throws SqlParseException {
@@ -36,7 +36,7 @@ class SqlTranslatorAdversarialTest {
         assertInstanceOf(Predicate.Gt.class, query.predicate().get());
     }
 
-    // @spec F07.R61
+    // @spec query.sql-query-support.R61
     /** FINDING-1: bind parameter with >= operator should not throw */
     @Test
     void bindParameterWithGreaterThanOrEqual() throws SqlParseException {
@@ -45,7 +45,7 @@ class SqlTranslatorAdversarialTest {
         assertInstanceOf(Predicate.Gte.class, query.predicate().get());
     }
 
-    // @spec F07.R61
+    // @spec query.sql-query-support.R61
     /** FINDING-1: bind parameter with < operator should not throw */
     @Test
     void bindParameterWithLessThan() throws SqlParseException {
@@ -54,7 +54,7 @@ class SqlTranslatorAdversarialTest {
         assertInstanceOf(Predicate.Lt.class, query.predicate().get());
     }
 
-    // @spec F07.R61
+    // @spec query.sql-query-support.R61
     /** FINDING-1: bind parameter with <= operator should not throw */
     @Test
     void bindParameterWithLessThanOrEqual() throws SqlParseException {
@@ -63,7 +63,7 @@ class SqlTranslatorAdversarialTest {
         assertInstanceOf(Predicate.Lte.class, query.predicate().get());
     }
 
-    // @spec F07.R61
+    // @spec query.sql-query-support.R61
     /** FINDING-1: bind parameters in BETWEEN should not throw */
     @Test
     void bindParametersInBetween() throws SqlParseException {
@@ -74,7 +74,7 @@ class SqlTranslatorAdversarialTest {
 
     // ── FINDING-2: Reversed comparisons (literal on left) ────────────
 
-    // @spec F07.R74
+    // @spec query.sql-query-support.R74
     /** FINDING-2: literal on left side of comparison should work */
     @Test
     void reversedComparisonLiteralOnLeft() throws SqlParseException {
@@ -83,7 +83,7 @@ class SqlTranslatorAdversarialTest {
         // 30 < age is equivalent to age > 30
     }
 
-    // @spec F07.R74
+    // @spec query.sql-query-support.R74
     /** FINDING-2: string literal on left side of equality */
     @Test
     void reversedEqualityStringLiteralOnLeft() throws SqlParseException {
@@ -94,7 +94,7 @@ class SqlTranslatorAdversarialTest {
 
     // ── FINDING-3: Numeric overflow in parseNumber ───────────────────
 
-    // @spec F07.R78
+    // @spec query.sql-query-support.R78
     /** FINDING-3: number exceeding Long.MAX_VALUE should throw SqlParseException, not NFE */
     @Test
     void numericOverflowThrowsSqlParseException() {
@@ -103,7 +103,7 @@ class SqlTranslatorAdversarialTest {
                 () -> translate("SELECT * FROM test WHERE age = 99999999999999999999"));
     }
 
-    // @spec F07.R60,R89
+    // @spec query.sql-query-support.R60,R89
     /**
      * FINDING-3: number just beyond Integer range is rejected for INT32 fields. Updated by audit
      * F-R1.cb.2.6 — translator now validates integer range per field type
@@ -115,7 +115,7 @@ class SqlTranslatorAdversarialTest {
                 () -> translate("SELECT * FROM test WHERE age = 2147483648"));
     }
 
-    // @spec F07.R78 — decimal numeric literals that overflow Double must throw, not become Infinity
+    // @spec query.sql-query-support.R78 — decimal numeric literals that overflow Double must throw, not become Infinity
     @Test
     void decimalOverflowThrowsSqlParseException() {
         // Double.parseDouble("1e400") returns Double.POSITIVE_INFINITY without throwing
@@ -125,7 +125,7 @@ class SqlTranslatorAdversarialTest {
                 () -> translate("SELECT * FROM test WHERE salary > 1e400"));
     }
 
-    // @spec F07.R78 — decimal underflow to -Infinity must also throw
+    // @spec query.sql-query-support.R78 — decimal underflow to -Infinity must also throw
     @Test
     void decimalNegativeOverflowThrowsSqlParseException() {
         assertThrows(SqlParseException.class,

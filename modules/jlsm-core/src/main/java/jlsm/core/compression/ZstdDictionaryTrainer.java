@@ -40,10 +40,10 @@ import java.util.Objects;
  * @see <a href="../../../../.spec/domains/serialization/F18-zstd-dictionary-compression.md">F18
  *      R15-R17</a>
  */
-// @spec F18.R15 — trainer: addSample, train(maxDictBytes), static isAvailable()
-// @spec F18.R15a — samples concatenated into contiguous region with parallel size array
-// @spec F18.R16 — train() invokes native ZDICT_trainFromBuffer, validates [256, 1 MiB]
-// @spec F18.R17 — at least one sample required; train() with zero samples throws ISE
+// @spec compression.zstd-dictionary.R15 — trainer: addSample, train(maxDictBytes), static isAvailable()
+// @spec compression.zstd-dictionary.R15a — samples concatenated into contiguous region with parallel size array
+// @spec compression.zstd-dictionary.R16 — train() invokes native ZDICT_trainFromBuffer, validates [256, 1 MiB]
+// @spec compression.zstd-dictionary.R17 — at least one sample required; train() with zero samples throws ISE
 public final class ZstdDictionaryTrainer {
 
     /** Minimum dictionary size in bytes (inclusive). */

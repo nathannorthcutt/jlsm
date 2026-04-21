@@ -54,7 +54,7 @@ class DcpeSapEncryptorTest {
 
     // ── Round-trip ──────────────────────────────────────────────────────────
 
-    // @spec F03.R46 — round-trip recovery via seed + tag
+    // @spec encryption.primitives-variants.R28 — round-trip recovery via seed + tag
     @Test
     void encryptDecrypt_roundTrip() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -80,7 +80,7 @@ class DcpeSapEncryptorTest {
 
     // ── Dimensionality preservation ─────────────────────────────────────────
 
-    // @spec F03.R42 — dimensionality preserved
+    // @spec encryption.primitives-variants.R24 — dimensionality preserved
     @Test
     void encrypt_preservesDimensionality() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -94,7 +94,7 @@ class DcpeSapEncryptorTest {
 
     // ── Distance approximate preservation ───────────────────────────────────
 
-    // @spec F03.R44 — approximate distance preservation
+    // @spec encryption.primitives-variants.R26 — approximate distance preservation
     @Test
     void encrypt_approximatelyPreservesDistanceOrdering() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, 3);
@@ -115,7 +115,7 @@ class DcpeSapEncryptorTest {
 
     // ── Non-determinism ─────────────────────────────────────────────────────
 
-    // @spec F03.R45 — each encryption uses a fresh seed
+    // @spec encryption.primitives-variants.R27 — each encryption uses a fresh seed
     @Test
     void encrypt_differentSeedsPerEncryption() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -131,7 +131,7 @@ class DcpeSapEncryptorTest {
 
     // ── Encrypted vector usable for distance computation ────────────────────
 
-    // @spec F03.R47 — encrypted output must be finite
+    // @spec encryption.primitives-variants.R29 — encrypted output must be finite
     @Test
     void encryptedVector_hasFloatArrayFormat() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -146,7 +146,7 @@ class DcpeSapEncryptorTest {
         }
     }
 
-    // @spec F03.R47 — non-finite output rejected with IllegalStateException
+    // @spec encryption.primitives-variants.R29 — non-finite output rejected with IllegalStateException
     @Test
     void encrypt_rejectsOverflowToInfinity() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -159,7 +159,7 @@ class DcpeSapEncryptorTest {
 
     // ── MAC authentication ──────────────────────────────────────────────────
 
-    // @spec F03.R79 — MAC binds to associated data (field name)
+    // @spec encryption.primitives-variants.R55 — MAC binds to associated data (field name)
     @Test
     void decrypt_wrongAssociatedDataRejected() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -171,7 +171,7 @@ class DcpeSapEncryptorTest {
                 "Decryption with different AD must throw SecurityException");
     }
 
-    // @spec F03.R79 — wrong key produces MAC mismatch
+    // @spec encryption.primitives-variants.R55 — wrong key produces MAC mismatch
     @Test
     void decrypt_wrongKeyRejected() {
         final DcpeSapEncryptor encryptorA = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -187,7 +187,7 @@ class DcpeSapEncryptorTest {
         }
     }
 
-    // @spec F03.R79 — tampered tag rejected
+    // @spec encryption.primitives-variants.R55 — tampered tag rejected
     @Test
     void decrypt_tamperedTagRejected() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -203,7 +203,7 @@ class DcpeSapEncryptorTest {
                 "Tampered tag must throw SecurityException");
     }
 
-    // @spec F03.R79 — tampered ciphertext values rejected
+    // @spec encryption.primitives-variants.R55 — tampered ciphertext values rejected
     @Test
     void decrypt_tamperedValuesRejected() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -219,7 +219,7 @@ class DcpeSapEncryptorTest {
                 "Tampered values must throw SecurityException");
     }
 
-    // @spec F03.R79 — tampered seed rejected
+    // @spec encryption.primitives-variants.R55 — tampered seed rejected
     @Test
     void decrypt_tamperedSeedRejected() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -235,7 +235,7 @@ class DcpeSapEncryptorTest {
 
     // ── Blob encoding ──────────────────────────────────────────────────────
 
-    // @spec F03.R51, F41.R22 — blob round-trips through toBlob/fromBlob
+    // @spec serialization.encrypted-field-serialization.R4, F41.R22 — blob round-trips through toBlob/fromBlob
     @Test
     void blob_roundTrip() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -253,7 +253,7 @@ class DcpeSapEncryptorTest {
         assertArrayEquals(original, recovered, 1e-4f);
     }
 
-    // @spec F03.R73 — blob with wrong length rejected
+    // @spec encryption.primitives-variants.R49 — blob with wrong length rejected
     @Test
     void blob_wrongLengthRejected() {
         assertThrows(IllegalArgumentException.class,

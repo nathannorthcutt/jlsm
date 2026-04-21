@@ -12,7 +12,7 @@ import java.nio.file.Path;
  * <p>
  * Each invocation must produce a writer that writes to a new, empty file at {@code path}.
  */
-// @spec F02.R38 — compactor uses SSTableWriterFactory
+// @spec sstable.compaction.R1 — compactor uses SSTableWriterFactory
 @FunctionalInterface
 public interface SSTableWriterFactory {
 

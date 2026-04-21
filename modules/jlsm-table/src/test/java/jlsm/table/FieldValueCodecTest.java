@@ -7,7 +7,8 @@ import java.lang.foreign.MemorySegment;
 import jlsm.table.internal.FieldValueCodec;
 import org.junit.jupiter.api.Test;
 
-// @spec F10.R39,R40,R41,R42,R43,R44,R45,R46,R47,R48,R49,R50,R51,R52,R124,R125
+// @spec query.field-value-codec.R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14
+// @spec query.index-types.R30,R31
 //       — covers FieldValueCodec encode/decode round-trips, sign-bit-flip for signed integers,
 //         IEEE 754 sort-preserving for FLOAT16/32/64, UTF-8 for STRING, BOOLEAN byte values,
 //         TIMESTAMP-as-INT64, NaN sorting above positive infinity, type mismatch rejection,

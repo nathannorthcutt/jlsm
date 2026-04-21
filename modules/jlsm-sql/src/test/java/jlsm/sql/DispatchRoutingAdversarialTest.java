@@ -24,7 +24,7 @@ class DispatchRoutingAdversarialTest {
         return translator.translate(parser.parse(lexer.tokenize(sql)), SCHEMA);
     }
 
-    // @spec F07.R62
+    // @spec query.sql-query-support.R62
     // Finding: F-R1.dispatch_routing.1.2
     // Bug: translateComparison has 2 branches for 4 cases — both-values (e.g., WHERE 5 = 10)
     // and both-fields (e.g., WHERE name = age) fall into the else branch, producing
@@ -54,7 +54,7 @@ class DispatchRoutingAdversarialTest {
                 "Error should NOT use misleading single-operand phrasing, got: " + ex.getMessage());
     }
 
-    // @spec F07.R50,R58
+    // @spec query.sql-query-support.R50,R58
     // Finding: F-R1.dispatch_routing.1.1
     // Bug: default branch in translateExpression switch on sealed Expression type
     // suppresses compile-time exhaustiveness checking — new subtypes are
@@ -81,7 +81,7 @@ class DispatchRoutingAdversarialTest {
                         + ex.getMessage());
     }
 
-    // @spec F07.R94
+    // @spec query.sql-query-support.R94
     // Finding: F-R1.dispatch_routing.1.3
     // Bug: translateFunctionCall lacks specific VECTOR_DISTANCE case in WHERE context —
     // user sees generic "Unsupported function in WHERE clause: VECTOR_DISTANCE"

@@ -34,7 +34,7 @@ import jlsm.table.Predicate;
  * <p>
  * Integration coverage against {@code LsmFullTextIndex} lives in jlsm-indexing tests.
  */
-// @spec F10.R79,R80,R81,R82,R83,R84 — exercises the adapter wiring satisfied by WD-01
+// @spec query.full-text-index.R1,R2,R3,R4,R5,R6 — exercises the adapter wiring satisfied by WD-01
 class FullTextFieldIndexTest {
 
     /**

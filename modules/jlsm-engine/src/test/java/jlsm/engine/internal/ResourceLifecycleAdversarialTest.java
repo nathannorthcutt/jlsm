@@ -22,7 +22,7 @@ class ResourceLifecycleAdversarialTest {
     // (the greediest table globally), not the table that triggered the eviction check.
     // Fix location: HandleTracker.evictIfNeeded() lines 216-227 — total limit loop
     // Regression watch: Per-table and per-source eviction should still target the triggering table
-    // @spec F05.R81 — global-limit eviction targets the greediest table globally
+    // @spec engine.in-process-database-engine.R81 — global-limit eviction targets the greediest table globally
     @Test
     void test_HandleTracker_evictIfNeeded_totalLimit_evictsFromWrongTable() {
         // Configure: maxTotalHandles=10, per-table=10, per-source=10
@@ -102,7 +102,7 @@ class ResourceLifecycleAdversarialTest {
     // isInvalidated() returns true.
     // Fix location: HandleTracker.release() — add registration.invalidate() call
     // Regression watch: Ensure release() remains idempotent for already-invalidated registrations
-    // @spec F05.R82 — release immediately invalidates the registration
+    // @spec engine.in-process-database-engine.R82 — release immediately invalidates the registration
     @Test
     void test_HandleTracker_release_doesNotInvalidateRegistration() {
         final HandleTracker tracker = HandleTracker.builder().maxHandlesPerSourcePerTable(10)

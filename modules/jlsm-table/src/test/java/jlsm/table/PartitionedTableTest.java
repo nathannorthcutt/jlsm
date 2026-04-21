@@ -110,7 +110,7 @@ class PartitionedTableTest {
     // Builder validation
     // -------------------------------------------------------------------------
 
-    // @spec F11.R71
+    // @spec partitioning.table-partitioning.R71
     @Test
     void builder_missingConfig_throwsIllegalStateException() {
         final JlsmSchema schema = testSchema();
@@ -118,7 +118,7 @@ class PartitionedTableTest {
                 .partitionClientFactory(desc -> null).build());
     }
 
-    // @spec F11.R72
+    // @spec partitioning.table-partitioning.R72
     @Test
     void builder_missingFactory_throwsIllegalStateException() {
         final PartitionDescriptor desc = new PartitionDescriptor(1L, seg("a"), seg("z"), "local",
@@ -128,14 +128,14 @@ class PartitionedTableTest {
                 () -> PartitionedTable.builder().partitionConfig(config).build());
     }
 
-    // @spec F11.R69
+    // @spec partitioning.table-partitioning.R69
     @Test
     void builder_nullConfig_throwsNullPointerException() {
         assertThrows(NullPointerException.class,
                 () -> PartitionedTable.builder().partitionConfig(null));
     }
 
-    // @spec F11.R70
+    // @spec partitioning.table-partitioning.R70
     @Test
     void builder_nullFactory_throwsNullPointerException() {
         assertThrows(NullPointerException.class,
@@ -161,7 +161,7 @@ class PartitionedTableTest {
     // CRUD routing — single-key operations
     // -------------------------------------------------------------------------
 
-    // @spec F11.R75,R76,R79 — create routes by UTF-8 key, get routes correctly
+    // @spec partitioning.table-partitioning.R75,R76,R79 — create routes by UTF-8 key, get routes correctly
     @Test
     void create_and_get_routesToCorrectPartition() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -214,7 +214,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R77 — update routes by key
+    // @spec partitioning.table-partitioning.R77 — update routes by key
     @Test
     void update_routesToCorrectPartition() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -233,7 +233,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R78 — delete routes by key
+    // @spec partitioning.table-partitioning.R78 — delete routes by key
     @Test
     void delete_routesToCorrectPartition() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -248,7 +248,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R30,R31 — key outside all partitions rejected by RangeMap via IAE
+    // @spec partitioning.table-partitioning.R30,R31 — key outside all partitions rejected by RangeMap via IAE
     @Test
     void create_keyOutsideAllRanges_throwsIllegalArgumentException() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -280,7 +280,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R80,R99 — multi-partition range with clipped boundaries, merged in key order
+    // @spec partitioning.table-partitioning.R80,R99 — multi-partition range with clipped boundaries, merged in key order
     @Test
     void getRange_acrossPartitions_mergesInKeyOrder() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -306,7 +306,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R82 — no partition overlap returns empty iterator
+    // @spec partitioning.table-partitioning.R82 — no partition overlap returns empty iterator
     @Test
     void getRange_emptyResult_returnsEmptyIterator() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -323,7 +323,7 @@ class PartitionedTableTest {
     // query — scatter-gather across partitions, top-k merge
     // -------------------------------------------------------------------------
 
-    // @spec F11.R85,R86 — scatter to all partitions, merge via ResultMerger.mergeTopK,
+    // @spec partitioning.table-partitioning.R85,R86 — scatter to all partitions, merge via ResultMerger.mergeTopK,
     // full limit per partition
     @Test
     void query_scatterGatherAcrossPartitions_mergesGlobalTopK() throws IOException {
@@ -348,7 +348,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R86 — each partition receives the full limit (not limit/P)
+    // @spec partitioning.table-partitioning.R86 — each partition receives the full limit (not limit/P)
     @Test
     void query_eachPartitionReceivesFullLimit() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -367,7 +367,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R83 — null predicate rejected with NPE
+    // @spec partitioning.table-partitioning.R83 — null predicate rejected with NPE
     @Test
     void query_nullPredicate_throwsNullPointerException() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -377,7 +377,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R84 — non-positive limit rejected with IAE
+    // @spec partitioning.table-partitioning.R84 — non-positive limit rejected with IAE
     @Test
     void query_nonPositiveLimit_throwsIllegalArgumentException() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -389,7 +389,7 @@ class PartitionedTableTest {
         }
     }
 
-    // @spec F11.R100 — CRUD and range operations rejected after close()
+    // @spec partitioning.table-partitioning.R100 — CRUD and range operations rejected after close()
     @Test
     void query_afterClose_throwsIllegalStateException() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -400,7 +400,7 @@ class PartitionedTableTest {
         assertThrows(IllegalStateException.class, () -> table.query(pred, 10));
     }
 
-    // @spec F11.R89 — partition IOException propagates to caller; partial results not returned
+    // @spec partitioning.table-partitioning.R89 — partition IOException propagates to caller; partial results not returned
     @Test
     void query_partitionThrowsIOException_propagates() {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -421,7 +421,7 @@ class PartitionedTableTest {
     // Lifecycle — close()
     // -------------------------------------------------------------------------
 
-    // @spec F11.R87
+    // @spec partitioning.table-partitioning.R87
     @Test
     void close_closesAllPartitionClients() throws IOException {
         final JlsmSchema schema = testSchema();
@@ -431,7 +431,7 @@ class PartitionedTableTest {
         assertDoesNotThrow(table::close);
     }
 
-    // @spec F11.R87,R88 — deferred close pattern; first exception thrown, others suppressed
+    // @spec partitioning.table-partitioning.R87,R88 — deferred close pattern; first exception thrown, others suppressed
     @Test
     void close_withFailingClient_accumulatesAndThrows() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",

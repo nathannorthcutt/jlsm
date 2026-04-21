@@ -27,7 +27,7 @@ class PartitionedTableAdversarialTest {
      * Finding PT-1: If the factory throws for partition N, clients 0..N-1 are leaked. KB match:
      * multi-index-atomicity — sequential operations leave inconsistent state on Nth failure.
      */
-    // @spec F11.R74 — factory failure closes previously created clients via deferred pattern
+    // @spec partitioning.table-partitioning.R74 — factory failure closes previously created clients via deferred pattern
     @Test
     void build_factoryThrowsOnSecondPartition_closesAlreadyCreatedClients() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -56,7 +56,7 @@ class PartitionedTableAdversarialTest {
      * Finding PT-1: Variant with 3 partitions — factory fails on the 3rd. Clients 1 and 2 must both
      * be closed.
      */
-    // @spec F11.R74 — N-way cleanup variant
+    // @spec partitioning.table-partitioning.R74 — N-way cleanup variant
     @Test
     void build_factoryThrowsOnThirdPartition_closesAllPriorClients() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("h"), "local",
@@ -88,7 +88,7 @@ class PartitionedTableAdversarialTest {
      * the map, leaking the first client. After PC-3 fix, PartitionConfig.of() now rejects duplicate
      * IDs at the config layer, providing defense-in-depth.
      */
-    // @spec F11.R18 — duplicate IDs rejected at PartitionConfig.of()
+    // @spec partitioning.table-partitioning.R18 — duplicate IDs rejected at PartitionConfig.of()
     @Test
     void build_duplicateDescriptorIds_rejectedAtConfigLayer() {
         // Two descriptors with the same id but different ranges — rejected by PartitionConfig.of()
@@ -108,7 +108,7 @@ class PartitionedTableAdversarialTest {
      * throws RuntimeException, remaining clients are never closed — resource leak. project-rule:
      * coding-guidelines (deferred close pattern must accumulate all exceptions).
      */
-    // @spec F11.R87,R88 — RuntimeException wrapped into IOException; others still closed
+    // @spec partitioning.table-partitioning.R87,R88 — RuntimeException wrapped into IOException; others still closed
     @Test
     void close_clientThrowsRuntimeException_remainingClientsStillClosed() throws IOException {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",
@@ -161,7 +161,7 @@ class PartitionedTableAdversarialTest {
      * starts with 0xF0 and toKey starts with 0xEF, so fromKey > toKey — this IS an inverted range
      * and must be rejected.
      */
-    // @spec F11.R98 — inverted-range check must use unsigned byte-lexicographic order
+    // @spec partitioning.table-partitioning.R98 — inverted-range check must use unsigned byte-lexicographic order
     @Test
     void getRange_invertedBySurrogatePair_rejectedWithByteLexCompare() throws IOException {
         final PartitionDescriptor desc = new PartitionDescriptor(1L, seg(" "), seg("\uFFFF"),
@@ -194,7 +194,7 @@ class PartitionedTableAdversarialTest {
      * added as suppressed exceptions to the original failure. project-rule: coding-guidelines
      * (deferred close pattern).
      */
-    // @spec F11.R74 — close exceptions during cleanup added as suppressed
+    // @spec partitioning.table-partitioning.R74 — close exceptions during cleanup added as suppressed
     @Test
     void build_factoryFails_closeExceptionsAddedAsSuppressed() {
         final PartitionDescriptor desc1 = new PartitionDescriptor(1L, seg("a"), seg("m"), "local",

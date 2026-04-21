@@ -47,7 +47,7 @@ class PartialResultMetadataTest {
                 () -> meta.unavailablePartitions().add("p2"));
     }
 
-    // @spec F04.R73 — metadata must expose total queried and responding counts
+    // @spec engine.clustering.R73 — metadata must expose total queried and responding counts
     @Test
     void canonicalConstructorExposesCounts() {
         var meta = new PartialResultMetadata(5, 3, Set.of("p4", "p5"), false);

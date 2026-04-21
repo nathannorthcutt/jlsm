@@ -24,15 +24,15 @@ import jlsm.core.indexing.SimilarityFunction;
  * @param indexType the type of index to create
  * @param similarityFunction similarity function for VECTOR indices; null for other types
  */
-// @spec F10.R7 — public record with components (fieldName, indexType, similarityFunction)
-// @spec F12.R13 — record with exactly three components: fieldName, indexType, similarityFunction
-// @spec F12.R14 — no vectorDimensions field; dimensions derive from schema's VectorType
-// @spec F10.R11,F12.R16 — null similarityFunction rejected when indexType is VECTOR
-// @spec F10.R12,F12.R17 — non-null similarityFunction rejected when indexType is not VECTOR
+// @spec query.index-types.R7 — public record with components (fieldName, indexType, similarityFunction)
+// @spec vector.field-type.R13 — record with exactly three components: fieldName, indexType, similarityFunction
+// @spec vector.field-type.R14 — no vectorDimensions field; dimensions derive from schema's VectorType
+// @spec query.index-types.R11,F12.R16 — null similarityFunction rejected when indexType is VECTOR
+// @spec query.index-types.R12,F12.R17 — non-null similarityFunction rejected when indexType is not VECTOR
 public record IndexDefinition(String fieldName, IndexType indexType,
         SimilarityFunction similarityFunction) {
 
-    // @spec F10.R13,F12.R15 — two-argument convenience constructor passes null for
+    // @spec query.index-types.R13,F12.R15 — two-argument convenience constructor passes null for
     // similarityFunction
     /**
      * Creates an index definition for non-vector index types.
@@ -42,11 +42,11 @@ public record IndexDefinition(String fieldName, IndexType indexType,
     }
 
     public IndexDefinition {
-        // @spec F10.R8 — reject null fieldName with NPE
+        // @spec query.index-types.R8 — reject null fieldName with NPE
         Objects.requireNonNull(fieldName, "fieldName");
-        // @spec F10.R10 — reject null indexType with NPE
+        // @spec query.index-types.R10 — reject null indexType with NPE
         Objects.requireNonNull(indexType, "indexType");
-        // @spec F10.R9 — reject blank fieldName with IAE
+        // @spec query.index-types.R9 — reject blank fieldName with IAE
         if (fieldName.isBlank()) {
             throw new IllegalArgumentException("fieldName must not be blank");
         }

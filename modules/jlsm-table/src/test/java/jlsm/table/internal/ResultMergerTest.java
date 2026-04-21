@@ -28,13 +28,13 @@ class ResultMergerTest {
     // mergeTopK — null / bad input
     // -------------------------------------------------------------------------
 
-    // @spec F11.R55
+    // @spec partitioning.table-partitioning.R55
     @Test
     void mergeTopK_nullPartitionResults_throwsNullPointerException() {
         assertThrows(NullPointerException.class, () -> ResultMerger.mergeTopK(null, 5));
     }
 
-    // @spec F11.R56
+    // @spec partitioning.table-partitioning.R56
     @Test
     void mergeTopK_negativeK_throwsIllegalArgumentException() {
         assertThrows(IllegalArgumentException.class, () -> ResultMerger.mergeTopK(List.of(), -1));
@@ -86,7 +86,7 @@ class ResultMergerTest {
         assertEquals("c", result.get(2).key(), "score 0.60 is third");
     }
 
-    // @spec F11.R58 — total < k returns all available
+    // @spec partitioning.table-partitioning.R58 — total < k returns all available
     @Test
     void mergeTopK_kExceedsTotalEntries_returnsAll() {
         final JlsmSchema schema = testSchema();
@@ -110,7 +110,7 @@ class ResultMergerTest {
         assertEquals("x", result.get(0).key());
     }
 
-    // @spec F11.R54,R59 — merged result sorted by score descending via max-heap
+    // @spec partitioning.table-partitioning.R54,R59 — merged result sorted by score descending via max-heap
     @Test
     void mergeTopK_resultIsSortedByScoreDescending() {
         final JlsmSchema schema = testSchema();
@@ -133,7 +133,7 @@ class ResultMergerTest {
     // mergeOrdered — null / bad input
     // -------------------------------------------------------------------------
 
-    // @spec F11.R62
+    // @spec partitioning.table-partitioning.R62
     @Test
     void mergeOrdered_nullList_throwsNullPointerException() {
         assertThrows(NullPointerException.class, () -> ResultMerger.mergeOrdered(null));
@@ -143,7 +143,7 @@ class ResultMergerTest {
     // mergeOrdered — correctness
     // -------------------------------------------------------------------------
 
-    // @spec F11.R65 — all exhausted → hasNext=false
+    // @spec partitioning.table-partitioning.R65 — all exhausted → hasNext=false
     @Test
     void mergeOrdered_emptyIteratorList_returnsEmptyIterator() {
         final Iterator<TableEntry<String>> it = ResultMerger.mergeOrdered(List.of());
@@ -166,7 +166,7 @@ class ResultMergerTest {
         assertEquals("c", result.get(2).key());
     }
 
-    // @spec F11.R61,R63 — N-way merge in global key order via min-heap
+    // @spec partitioning.table-partitioning.R61,R63 — N-way merge in global key order via min-heap
     @Test
     void mergeOrdered_twoDisjointPartitions_mergesInKeyOrder() {
         final JlsmSchema schema = testSchema();
@@ -186,7 +186,7 @@ class ResultMergerTest {
         assertEquals("d", result.get(3).key());
     }
 
-    // @spec F11.R64 — exhausted iterator removed from heap
+    // @spec partitioning.table-partitioning.R64 — exhausted iterator removed from heap
     @Test
     void mergeOrdered_oneEmptyPartition_returnsNonEmptyPartitionEntries() {
         final JlsmSchema schema = testSchema();

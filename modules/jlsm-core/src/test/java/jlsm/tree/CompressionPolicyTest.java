@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>
  * Covers spec requirements F18.R23, R24, R25, and F02.R38.
  */
-// @spec F18.R23,R24,R25
+// @spec compression.zstd-dictionary.R23,R24,R25
 class CompressionPolicyTest {
 
     @TempDir
@@ -121,7 +121,7 @@ class CompressionPolicyTest {
     // tree must still build and default to CompressionCodec.none()
     // -----------------------------------------------------------------------
 
-    // @spec F18.R25 — precedence: compressionPolicy > compression > user factories > default none
+    // @spec compression.zstd-dictionary.R25 — precedence: compressionPolicy > compression > user factories > default none
     @Test
     void treeWithNoCompressionAndNoFactoriesDefaultsToNone() throws IOException {
         // Nothing configured: no compression/compressionPolicy, no sstableWriterFactory,
@@ -353,7 +353,7 @@ class CompressionPolicyTest {
     // F16 R23: tree builder blockSize propagates to SSTables produced by the tree
     // -----------------------------------------------------------------------
 
-    // @spec F16.R23,R24 — blockSize propagates via the shared writerFactory; SpookyCompactor
+    // @spec sstable.v3-format-upgrade.R23,R24 — blockSize propagates via the shared writerFactory; SpookyCompactor
     // inherits this writerFactory (StandardLsmTree.Builder.build wires it in), so any SSTable
     // produced by compaction gets the same blockSize as flushed SSTables
     @Test
@@ -398,7 +398,7 @@ class CompressionPolicyTest {
         assertTrue(sawBlockSize, "expected at least one readable SSTable to verify blockSize");
     }
 
-    // @spec F16.R11 — invalid blockSize at tree builder rejected with IllegalArgumentException
+    // @spec sstable.v3-format-upgrade.R11 — invalid blockSize at tree builder rejected with IllegalArgumentException
     @Test
     void treeBlockSizeRejectsInvalidValues() {
         assertThrows(IllegalArgumentException.class, () -> StandardLsmTree.builder().blockSize(0),

@@ -9,7 +9,8 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── isPreEncrypted flag ────────────────────────────────────────────────
 
-    // @spec F14.R12,R50 — of() produces preEncrypted=false
+    // @spec schema.document-construction.R12 — of() produces preEncrypted=false
+    // @spec schema.document-field-access.R13 — of() produces preEncrypted=false
     @Test
     void of_returnsPreEncryptedFalse() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string()).build();
@@ -17,7 +18,8 @@ class JlsmDocumentPreEncryptedTest {
         assertFalse(doc.isPreEncrypted());
     }
 
-    // @spec F14.R18,R19,R50 — preEncrypted factory sets flag and accepts byte[] ciphertext
+    // @spec schema.document-construction.R18,R19 — preEncrypted factory sets flag and accepts byte[] ciphertext
+    // @spec schema.document-field-access.R13 — preEncrypted factory sets flag and accepts byte[] ciphertext
     @Test
     void preEncrypted_returnsPreEncryptedTrue() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -30,7 +32,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── Pre-encrypted factory accepts byte[] for encrypted fields ───────
 
-    // @spec F14.R18 — encrypted field accepts byte[] ciphertext
+    // @spec schema.document-construction.R18 — encrypted field accepts byte[] ciphertext
     @Test
     void preEncrypted_acceptsByteArrayForEncryptedField() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -41,7 +43,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── Pre-encrypted factory validates unencrypted fields normally ──────
 
-    // @spec F14.R17 — unencrypted fields validated normally via validateType
+    // @spec schema.document-construction.R17 — unencrypted fields validated normally via validateType
     @Test
     void preEncrypted_validatesUnencryptedFieldsNormally() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string()) // no
@@ -55,7 +57,7 @@ class JlsmDocumentPreEncryptedTest {
                 () -> JlsmDocument.preEncrypted(schema, "name", "Alice", "secret", ciphertext));
     }
 
-    // @spec F14.R17,R29 — type mismatch on unencrypted field → IAE
+    // @spec schema.document-construction.R17,R29 — type mismatch on unencrypted field → IAE
     @Test
     void preEncrypted_wrongTypeForUnencryptedField_throws() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("age", FieldType.int32()) // no
@@ -69,7 +71,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── Mixed schema: encrypted fields get byte[], unencrypted get normal ─
 
-    // @spec F14.R17,R18,R19 — mixed schema: unencrypted gets normal validation, encrypted gets
+    // @spec schema.document-construction.R17,R18,R19 — mixed schema: unencrypted gets normal validation, encrypted gets
     // byte[]
     @Test
     void preEncrypted_mixedSchema() {
@@ -85,7 +87,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── Null values still allowed for encrypted fields ──────────────────
 
-    // @spec F14.R18 — null is accepted for encrypted fields (absent field)
+    // @spec schema.document-construction.R18 — null is accepted for encrypted fields (absent field)
     @Test
     void preEncrypted_nullValueForEncryptedField() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -96,7 +98,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── Odd nameValuePairs length → IllegalArgumentException ────────────
 
-    // @spec F14.R14 — preEncrypted rejects odd-length nameValuePairs with IAE
+    // @spec schema.document-construction.R14 — preEncrypted rejects odd-length nameValuePairs with IAE
     @Test
     void preEncrypted_oddNameValuePairsLength_throws() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string()).build();
@@ -106,7 +108,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── Unknown field name → IllegalArgumentException ───────────────────
 
-    // @spec F14.R16 — preEncrypted rejects unknown field name with IAE
+    // @spec schema.document-construction.R16 — preEncrypted rejects unknown field name with IAE
     @Test
     void preEncrypted_unknownFieldName_throws() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string()).build();
@@ -116,7 +118,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── Null schema → NullPointerException ──────────────────────────────
 
-    // @spec F14.R13 — preEncrypted rejects null schema with NPE
+    // @spec schema.document-construction.R13 — preEncrypted rejects null schema with NPE
     @Test
     void preEncrypted_nullSchema_throws() {
         assertThrows(NullPointerException.class,
@@ -125,7 +127,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── Non-String at even index → IllegalArgumentException ─────────────
 
-    // @spec F14.R15 — preEncrypted rejects non-String at even index with IAE
+    // @spec schema.document-construction.R15 — preEncrypted rejects non-String at even index with IAE
     @Test
     void preEncrypted_nonStringAtEvenIndex_throws() {
         JlsmSchema schema = JlsmSchema.builder("test", 1).field("name", FieldType.string()).build();
@@ -135,7 +137,7 @@ class JlsmDocumentPreEncryptedTest {
 
     // ── preEncrypted defensively copies VectorType ──────────────────────
 
-    // @spec F14.R20,R32 — preEncrypted defensively clones VECTOR(FLOAT32) fields (consistent with
+    // @spec schema.document-construction.R20,R32 — preEncrypted defensively clones VECTOR(FLOAT32) fields (consistent with
     // of())
     @Test
     void preEncrypted_defensivelyClonesFloat32Vector() {
@@ -148,7 +150,7 @@ class JlsmDocumentPreEncryptedTest {
                 "preEncrypted must clone vector input to match of()'s defensive-copy behavior");
     }
 
-    // @spec F14.R20,R32 — preEncrypted defensively clones VECTOR(FLOAT16) fields
+    // @spec schema.document-construction.R20,R32 — preEncrypted defensively clones VECTOR(FLOAT16) fields
     @Test
     void preEncrypted_defensivelyClonesFloat16Vector() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
