@@ -33,7 +33,7 @@ while IFS= read -r -d '' f; do
     # Skip the verification-diff artifact (not a spec)
     [[ "$(basename "$f")" == "F04-verification-diff.md" ]] && continue
     rm "$f"
-    ((removed++))
+    removed=$((removed + 1))
 done < <(find .spec/domains -name "F*-*.md" -type f -print0)
 echo "Removed $removed legacy FXX-named spec files"
 

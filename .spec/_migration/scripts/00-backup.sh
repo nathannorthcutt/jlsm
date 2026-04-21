@@ -21,7 +21,7 @@ while IFS= read -r -d '' spec; do
     dest="$BACKUP_DIR/$rel"
     mkdir -p "$(dirname "$dest")"
     cp -p "$spec" "$dest"
-    ((count++))
+    count=$((count + 1))
 done < <(find .spec/domains -name "F*.md" -type f -print0)
 
 # Also back up registry artifacts
