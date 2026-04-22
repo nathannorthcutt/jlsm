@@ -15,6 +15,7 @@
 | decisions-backlog | Resolve deferred decision backlog per roadmap | 2026-04-20 | 2026-04-13 | 13 |
 | f04-obligation-resolution | Resolve 12 open F04 engine-clustering obligations | 2026-04-20 | 2026-04-19 | 5 |
 | cross-module-integration | Wire stub indices through module boundaries (F10, F05) | 2026-04-20 | 2026-04-19 | 3 |
+| close-coverage-gaps | Close @spec coverage gaps for 4 specs (engine.clustering, engine.in-process-database-engine, query.index-types, query.query-executor) | 2026-04-21 | 2026-04-20 | 2 |
 
 <!-- All three work groups closed 2026-04-20:
      - f04-obligation-resolution: shipped via PR #35.
