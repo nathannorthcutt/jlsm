@@ -12,3 +12,4 @@
 | fan-out-iterator-leak | [fan-out-iterator-leak.md](fan-out-iterator-leak.md) | Fan-out query collects iterators from partitions; partial failure or abandonment leaks unclosed sources | 2026-04-07 |
 | non-idempotent-close | [non-idempotent-close.md](non-idempotent-close.md) | close() re-delegates without tracking prior invocation; causes double-free or redundant I/O | 2026-04-07 |
 | multi-resource-close-ordering | [multi-resource-close-ordering.md](multi-resource-close-ordering.md) | Wrapper components creating internal closeables without tracking for close | 2026-04-12 |
+| fan-out-dispatch-deferred-exception-pattern | [fan-out-dispatch-deferred-exception-pattern.md](fan-out-dispatch-deferred-exception-pattern.md) | Fan-out operations short-circuit on first failure; must iterate all siblings with deferred exceptions | 2026-04-21 |

@@ -257,7 +257,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheEagerGetExistingEntry() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.open(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             Optional<Entry> result = r.get(seg("a"));
@@ -269,7 +269,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheEagerGetMissingKeyReturnsEmpty() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.open(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             assertTrue(r.get(seg("z")).isEmpty());
@@ -278,7 +278,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheLazyGetExistingEntry() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             Optional<Entry> result = r.get(seg("c"));
@@ -290,7 +290,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheLazyGetMissingKeyReturnsEmpty() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             assertTrue(r.get(seg("z")).isEmpty());
@@ -299,7 +299,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheLazyGetPopulatesCache() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             assertEquals(0, cache.size());
@@ -310,7 +310,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheLazyGetHitDoesNotGrowCache() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             r.get(seg("a"));
@@ -323,7 +323,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheMultipleDistinctGetsPopulateCacheForEachKey() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             r.get(seg("a"));
@@ -334,7 +334,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheLazyScanRangeReturnsCorrectEntries() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             List<Entry> entries = toList(r.scan(seg("b"), seg("d")));
@@ -346,7 +346,7 @@ class TrieSSTableReaderTest {
 
     @Test
     void withCacheLazyScanRangePopulatesCache() throws IOException {
-        try (var cache = LruBlockCache.builder().capacity(32).build();
+        try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             toList(r.scan(seg("a"), seg("z"))); // scan all 4 keys

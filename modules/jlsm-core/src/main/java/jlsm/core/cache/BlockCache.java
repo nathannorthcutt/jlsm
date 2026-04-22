@@ -53,6 +53,23 @@ public interface BlockCache extends Closeable {
      * Returns the cached block for the given SSTable and offset, loading and caching it via
      * {@code loader} on a miss.
      *
+     * <p>
+     * <b>Atomicity note (sstable.byte-budget-block-cache v3 R6):</b> the default implementation is
+     * non-atomic — it performs {@link #get} and {@link #put} as separate operations and
+     * synchronises on {@code this} to prevent duplicate loader invocations. Implementations that
+     * require atomic insertion (for example to funnel every insertion through a single
+     * byte-tracking chokepoint) MUST override this method.
+     *
+     * <p>
+     * <b>Monitor-collision warning:</b> the default implementation acquires this instance's
+     * intrinsic monitor (the object's {@code synchronized(this)} lock). Callers MUST NOT invoke
+     * {@code getOrLoad} while holding the cache instance's intrinsic monitor externally — doing so
+     * risks unexpected contention and, in combination with other callers, can produce deadlock.
+     * Third-party implementers that inherit this default MUST NOT guard their own internal state
+     * with {@code synchronized(this)} on the cache instance; use a private lock object or override
+     * this method. Implementations that override {@code getOrLoad} with a private lock (as both
+     * in-tree implementations do) are not subject to this restriction.
+     *
      * @param sstableId the unique identifier of the SSTable containing the block
      * @param blockOffset the byte offset of the block within the SSTable file; must be non-negative
      * @param loader called exactly once on a cache miss to supply the block; must not be null and
@@ -88,16 +105,33 @@ public interface BlockCache extends Closeable {
     long size();
 
     /**
-     * Returns the maximum number of blocks (or bytes, depending on the implementation's unit) that
-     * this cache can hold before eviction begins.
+     * Returns the byte budget of this cache — the maximum total bytes across all cached segments
+     * (measured via {@link MemorySegment#byteSize()}) that the cache holds before eviction begins.
      *
-     * @return cache capacity; always positive
+     * <p>
+     * <b>Unit (sstable.byte-budget-block-cache v3 R14):</b> bytes, not entries. Prior to that spec
+     * (F09) the unit was entries; all current and future implementations of this interface MUST
+     * report a byte budget. Implementations are free to cap the entry count internally as an
+     * invariant guard (see e.g. R28a), but this method's contract is byte-valued.
+     *
+     * @return cache byte budget; always positive
      */
     long capacity();
 
     /**
-     * Releases all resources held by this cache, including any off-heap or native memory. After
-     * this call, behavior of all other methods is undefined.
+     * Releases all resources held by this cache, including any off-heap or native memory.
+     *
+     * <p>
+     * <b>Use-after-close contract (sstable.byte-budget-block-cache v3 R31):</b> after this call
+     * returns, every subsequent invocation of {@link #get}, {@link #put}, {@link #getOrLoad},
+     * {@link #evict}, {@link #size}, or {@link #capacity} on this instance MUST throw
+     * {@link IllegalStateException}. Implementations must not serve cached segments from a released
+     * arena, silently return {@link Optional#empty()}, or continue to mutate accounting state.
+     * Callers that hold a reference through the {@link BlockCache} interface rely on this promotion
+     * to detect incorrect lifecycle use portably, regardless of concrete implementation.
+     *
+     * <p>
+     * Close itself is permitted (but not required) to be idempotent per {@link Closeable#close()}.
      */
     @Override
     void close();

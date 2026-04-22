@@ -16,12 +16,15 @@
 | architecture | [architecture/](architecture/CLAUDE.md) | 1 | 1 | 2026-04-20 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 10 | 2026-04-20 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 7 | 25 | 2026-04-19 |
-| patterns | [patterns/](patterns/CLAUDE.md) | 6 | 30 | 2026-04-20 |
+| patterns | [patterns/](patterns/CLAUDE.md) | 6 | 33 | 2026-04-21 |
 | systems | [systems/](systems/CLAUDE.md) | 5 | 49 | 2026-04-20 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-21 | patterns | validation | reflective-bypass-of-builder-validation |
+| 2026-04-21 | patterns | validation | interface-contract-missing-from-javadoc |
+| 2026-04-21 | patterns | resource-management | fan-out-dispatch-deferred-exception-pattern |
 | 2026-04-20 | systems | security | three-level-key-hierarchy |
 | 2026-04-20 | systems | database-engines | pool-aware-sstable-block-sizing |
 | 2026-04-20 | data-structures | caching | byte-budget-cache-variable-size-entries |
@@ -29,9 +32,6 @@
 | 2026-04-20 | patterns | concurrency | unsafe-this-escape-via-listener-registration |
 | 2026-04-20 | patterns | distributed-systems | local-failure-masquerading-as-remote-outage |
 | 2026-04-20 | patterns | concurrency | timeout-wrapper-does-not-cancel-source-future |
-| 2026-04-19 | distributed-systems | cluster-membership | rapid-consensus |
-| 2026-04-19 | distributed-systems | cluster-membership | incarnation-refutation |
-| 2026-04-13 | distributed-systems | cluster-membership | view-stall-recovery |
 
 ## Shared References
 `_refs/complexity-notation.md` — notation key used in algorithm files

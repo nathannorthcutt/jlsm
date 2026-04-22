@@ -1,7 +1,7 @@
 ---
 {
   "id": "sstable.striped-block-cache",
-  "version": 2,
+  "version": 4,
   "status": "ACTIVE",
   "state": "APPROVED",
   "domains": [
@@ -10,11 +10,14 @@
   "requires": [],
   "invalidates": [],
   "amends": null,
-  "amended_by": null,
+  "amended_by": [
+    "sstable.byte-budget-block-cache"
+  ],
   "decision_refs": [
     "stripe-hash-function",
     "cross-stripe-eviction",
-    "power-of-two-stripe-optimization"
+    "power-of-two-stripe-optimization",
+    "block-cache-block-size-interaction"
   ],
   "kb_refs": [],
   "open_obligations": [],
@@ -37,21 +40,21 @@ R3. StripedBlockCache.get must return Optional.empty() when no entry exists in t
 
 R4. StripedBlockCache.put must insert or replace the block in the stripe determined by (sstableId, blockOffset), such that a subsequent get with the same key returns the new block.
 
-R5. StripedBlockCache.evict must remove all cached blocks for the given sstableId from every stripe by iterating all stripes sequentially.
+R5. StripedBlockCache.evict must remove all cached blocks for the given sstableId from every stripe by iterating all stripes sequentially. Exceptions from individual stripe evictions must be handled via the deferred-exception pattern (R31): continue iterating all stripes, throwing the first exception with subsequent exceptions attached as suppressed once iteration completes.
 
 R6. StripedBlockCache.size must return the sum of entries across all stripes.
 
 R7. StripedBlockCache.size must never return a negative value.
 
-R8. StripedBlockCache.size must never exceed StripedBlockCache.capacity.
+R8. [INVALIDATED v3] ~~StripedBlockCache.size must never exceed StripedBlockCache.capacity.~~ *Superseded by sstable.byte-budget-block-cache.R12 — size() and capacity() now use different units; see Displacement Notes below.*
 
-R9. StripedBlockCache.capacity must return the effective total capacity, computed as (configuredCapacity / effectiveStripeCount) * effectiveStripeCount, where effectiveStripeCount is the configured stripeCount rounded up to the next power of 2 per ADR power-of-two-stripe-optimization.
+R9. [INVALIDATED v3] ~~StripedBlockCache.capacity must return the effective total capacity, computed as (configuredCapacity / effectiveStripeCount) \* effectiveStripeCount, where effectiveStripeCount is the configured stripeCount rounded up to the next power of 2 per ADR power-of-two-stripe-optimization.~~ *Superseded by sstable.byte-budget-block-cache.R23 — capacity now expresses byte budget, not entry count; the truncation formula moves with the unit change.*
 
 ### Stripe selection
 
 R10. The stripeIndex function must accept (sstableId, blockOffset, stripeCount) and return an integer in [0, stripeCount) when stripeCount is a positive power of 2.
 
-R11. The stripeIndex function must use the Splitmix64 finalizer (Stafford variant 13) with golden-ratio combining of sstableId and blockOffset as input.
+R11. The stripeIndex function must apply the Splitmix64 finalizer (Stafford variant 13: three multiply-XOR-shift stages with constants `0xBF58476D1CE4E5B9`, `0x94D049BB133111EB`, final XOR with right-shift 31) to a combined 64-bit input derived from sstableId and blockOffset. The combining rule must: (a) incorporate both inputs such that every bit of the output depends on every bit of both inputs after the finalizer runs, and (b) not admit low-cost algebraic pre-image collisions — i.e., for a non-trivial set of (s1, o1) != (s2, o2) pairs with different keyspace contribution, the combined 64-bit input must differ. Purely linear combines (e.g., `sstableId * C + blockOffset`) are acceptable only if the golden-ratio constant C is chosen such that no short algebraic relation produces the same combined input for materially different inputs; otherwise, an additional non-linear pre-avalanche step (e.g., a single multiply-XOR-shift round before the Stafford finalizer) must be applied.
 
 R12. The stripeIndex function must distribute sequential 4096-aligned block offsets for a single sstableId across at least half the available stripes when stripeCount is 8 and 64 sequential offsets are tested.
 
@@ -61,7 +64,7 @@ R14. The stripeIndex function must be package-private static.
 
 ### Per-stripe LRU eviction
 
-R15. Each stripe must independently enforce LRU eviction when its per-stripe capacity (configuredCapacity / stripeCount) is exceeded.
+R15. [INVALIDATED v3] ~~Each stripe must independently enforce LRU eviction when its per-stripe capacity (configuredCapacity / stripeCount) is exceeded.~~ *Superseded by sstable.byte-budget-block-cache.R10 and R22 — eviction now driven by per-stripe byte budget, not entry count; see Displacement Notes below.*
 
 R16. LRU eviction in one stripe must not affect entries in other stripes.
 
@@ -70,6 +73,8 @@ R16. LRU eviction in one stripe must not affect entries in other stripes.
 R17. StripedBlockCache.Builder.stripeCount must reject values less than or equal to zero with an IllegalArgumentException.
 
 R18. StripedBlockCache.Builder.stripeCount must reject values exceeding MAX_STRIPE_COUNT (1024) with an IllegalArgumentException.
+
+R18a. StripedBlockCache.<init>(Builder) must independently validate that stripeCount does not exceed MAX_STRIPE_COUNT (1024), rejecting reflective-bypass configurations that skip Builder.build()'s R18 check. This prevents NegativeArraySizeException and stripeMask corruption when reflective callers provide out-of-range values.
 
 R19. StripedBlockCache.Builder.stripeCount at exactly MAX_STRIPE_COUNT must be accepted.
 
@@ -133,9 +138,9 @@ R42. LruBlockCache.getSingleThreaded must return a LruBlockCache.Builder instanc
 
 ### LruBlockCache capacity guard
 
-R43. LruBlockCache.Builder.build must reject capacity values exceeding Integer.MAX_VALUE with an IllegalArgumentException, because the backing LinkedHashMap uses int-width size().
+R43. [INVALIDATED v3] ~~LruBlockCache.Builder.build must reject capacity values exceeding Integer.MAX_VALUE with an IllegalArgumentException, because the backing LinkedHashMap uses int-width size().~~ *Superseded by sstable.byte-budget-block-cache.R28 and R28a — the int-width cap now applies to `map.size()` (entry count), NOT to `byteBudget`; byteBudget values exceeding Integer.MAX_VALUE are valid.*
 
-R44. LruBlockCache.Builder.capacity must reject values less than or equal to zero eagerly (at the setter call) with an IllegalArgumentException.
+R44. [INVALIDATED v3] ~~LruBlockCache.Builder.capacity must reject values less than or equal to zero eagerly (at the setter call) with an IllegalArgumentException.~~ *Superseded by sstable.byte-budget-block-cache.R2 and R4 — `capacity(long)` is removed from the Builder; `byteBudget(long)` replaces it with eager positive-only rejection and transactional setter semantics.*
 
 ### Power-of-two stripe count enforcement
 
@@ -143,11 +148,15 @@ R45. The static stripeIndex function must reject stripeCount values that are not
 
 ### Size after close
 
-R46. StripedBlockCache.size must throw IllegalStateException when called after close, consistent with R28, R29, R30, R40.
+R46. StripedBlockCache.size must throw IllegalStateException when called after close, consistent with R28, R29, R30, R40. If individual stripe size() calls throw IllegalStateException due to concurrent close, StripedBlockCache.size must translate them to a StripedBlockCache-originated IllegalStateException with the original attached as the cause or a suppressed exception — callers observe a consistent contract regardless of which stripe detected the close.
 
 ### getOrLoad caller consistency
 
 R47. When multiple threads invoke StripedBlockCache.getOrLoad concurrently for the same (sstableId, blockOffset) key, all callers must return the same MemorySegment reference, equal to the value held in the cache after all callers complete.
+
+### Partial construction
+
+R48. StripedBlockCache.<init>(Builder) must close all already-constructed stripes when construction fails partway through stripe instantiation, using the deferred-exception pattern from R31. If a stripe constructor throws, the originating exception must propagate with suppressed entries from any stripe-close failures during rollback.
 
 ---
 
@@ -177,6 +186,22 @@ Eliminate single-lock contention in LruBlockCache under concurrent read workload
 - **ConcurrentHashMap + separate LRU tracking:** More complex, harder to reason about eviction correctness, and the LRU tracking structure itself becomes a contention point.
 - **Caffeine-style window-TinyLFU:** Out of scope for this feature; the simple LRU-per-stripe approach is sufficient for the current workload and avoids a heavyweight dependency.
 - **Byte-based / weighted capacity:** Would require per-block size tracking and more complex eviction logic. Block-count capacity is simpler and matches the current BlockCache interface contract.
+
+### Displacement Notes (v3, 2026-04-21)
+
+5 requirements were invalidated by `sstable.byte-budget-block-cache` when the
+cache's eviction semantics changed from entry-count to byte-budget. The
+displacement chain is declared via that spec's `invalidates` field. Invalidated
+requirements are struck through in-place above with an inline note pointing
+to the superseding requirement. The invalidated R-numbers are NOT reused —
+R8, R9, R15, R43, R44 remain gaps so that existing `@spec
+sstable.striped-block-cache.RN` annotations in the implementation remain
+unambiguous.
+
+The remaining 42 requirements continue to hold under the new byte-budget
+semantics. Specifically, R28–R30 / R40 / R46 (use-after-close guards) are
+explicitly preserved by `sstable.byte-budget-block-cache.R31` and its
+machine-readable `preserves` frontmatter field.
 
 ### Audit provenance
 
@@ -209,3 +234,29 @@ All requirements SATISFIED against current implementation after the v1→v2 amen
 - R45: stripeIndex must reject non-power-of-2 stripeCount with IAE.
 - R46: size must throw IllegalStateException after close.
 - R47: concurrent getOrLoad callers observe the same cached MemorySegment reference.
+
+## Adversarial Review Notes (v4, audit round-001 reconciliation — 2026-04-21)
+
+v4 incorporates five reconciliation updates from audit round-001 (adversarial
+audit of the shipped StripedBlockCache / LruBlockCache implementation):
+
+- **R48 (NEW)** — partial-construction rollback: the constructor must close
+  already-constructed stripes with the deferred-exception pattern if a later
+  stripe constructor throws. Mirrors R31 (close-time) for build-time.
+- **R11 (REVISED)** — loosened the phrase "golden-ratio combining" to permit
+  (and require, where the combine is purely linear) a non-linear pre-avalanche
+  step before the Stafford finalizer. Resolved the previously IMPOSSIBLE
+  finding F-R1.data_transformation.1.1 (algebraic pre-image collisions in the
+  `sstableId * G + blockOffset` combine). Implementation now prefixes the
+  combine with a multiply-XOR-shift round to defeat the (s1-s2)*G ≡ o2-o1
+  algebraic relation.
+- **R18a (NEW)** — constructor-side MAX_STRIPE_COUNT re-check. Defends
+  against reflective-bypass callers that write Builder.stripeCount directly
+  and would otherwise trigger integer overflow in roundUpToPowerOfTwo,
+  surfacing as NegativeArraySizeException or a corrupt stripeMask.
+- **R5 (EXTENDED)** — evict() must apply the same deferred-exception pattern
+  as close() (R31) so a single stripe failure cannot leave blocks cached in
+  later stripes.
+- **R46 (EXTENDED)** — size() must translate per-stripe IllegalStateException
+  from concurrent close into a StripedBlockCache-originated ISE so callers
+  observe a consistent contract.

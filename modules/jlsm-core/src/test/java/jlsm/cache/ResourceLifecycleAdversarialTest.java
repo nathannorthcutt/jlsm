@@ -7,9 +7,12 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,14 +30,17 @@ class ResourceLifecycleAdversarialTest {
     // correctly
     @Test
     void test_StripedBlockCache_close_errorInStripeSkipsRemainingStripes() throws Exception {
-        var cache = StripedBlockCache.builder().stripeCount(4).capacity(4).build();
+        var cache = StripedBlockCache.builder().stripeCount(4).expectedMinimumBlockSize(1L)
+                .byteBudget(4L).build();
 
         // Access the stripes array via reflection
         Field stripesField = StripedBlockCache.class.getDeclaredField("stripes");
         stripesField.setAccessible(true);
         LruBlockCache[] stripes = (LruBlockCache[]) stripesField.get(cache);
 
-        // Replace stripe 0's internal map with one that throws AssertionError on clear()
+        // Replace stripe 0's internal map with one that throws AssertionError during close()'s
+        // iteration. The byte-budget close() iterates entrySet() to drain entries through the R7
+        // removal chokepoint; hooking entrySet() is therefore the reliable injection point.
         Field mapField = LruBlockCache.class.getDeclaredField("map");
         mapField.setAccessible(true);
 
@@ -43,7 +49,7 @@ class ResourceLifecycleAdversarialTest {
 
         var throwingMap = new LinkedHashMap<Object, MemorySegment>(originalMap) {
             @Override
-            public void clear() {
+            public java.util.Set<Map.Entry<Object, MemorySegment>> entrySet() {
                 throw new AssertionError("simulated Error in stripe close");
             }
         };
@@ -73,7 +79,7 @@ class ResourceLifecycleAdversarialTest {
     @Test
     @Timeout(10)
     void test_LruBlockCache_getOrLoad_holdsLockDuringLoaderCallback() throws Exception {
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
 
         // Pre-populate a different key so we can test get() concurrency
         var preloadedBlock = Arena.ofAuto().allocate(8, 8);
@@ -118,5 +124,60 @@ class ResourceLifecycleAdversarialTest {
         // Clean up
         loaderCanFinish.countDown();
         loaderThread.join(5000);
+    }
+
+    // Finding: F-R1.resource_lifecycle.2.1
+    // Bug: StripedBlockCache.<init> constructs stripes in a loop with no rollback; if the N-th
+    // stripe construction throws, stripes [0..N-1] are already in the array but never closed —
+    // the partially-constructed object is unreachable (exception propagated out of <init>), but
+    // the stripe instances themselves are leaked without a close() call.
+    // Correct behavior: on any Throwable from stripe construction, close all previously
+    // constructed stripes (best-effort, suppressing inner failures onto the original throwable)
+    // before re-throwing.
+    // Fix location: StripedBlockCache.<init>(Builder), stripe construction loop at lines 88-90
+    // Regression watch: successful construction path must remain unchanged; exception type must
+    // be preserved (Error stays Error, RuntimeException stays RuntimeException).
+    @Test
+    void test_StripedBlockCache_init_partialConstructionFailureClosesPriorStripes()
+            throws Exception {
+        // Track which LruBlockCache instances the test factory produced so we can verify that the
+        // successfully constructed ones were closed after the partial-construction failure.
+        var producedStripes = new java.util.ArrayList<LruBlockCache>();
+        var callCount = new AtomicInteger(0);
+
+        LongFunction<LruBlockCache> failingFactory = perStripeBudget -> {
+            int n = callCount.incrementAndGet();
+            if (n == 3) {
+                // Simulate OutOfMemoryError / any failure during the 3rd stripe's construction
+                throw new RuntimeException("simulated failure constructing stripe " + (n - 1));
+            }
+            LruBlockCache stripe = LruBlockCache.builder().byteBudget(perStripeBudget).build();
+            producedStripes.add(stripe);
+            return stripe;
+        };
+
+        // Install the test seam — package-private so we can set it directly without reflection.
+        StripedBlockCache.testStripeFactory = failingFactory;
+        try {
+            // stripeCount=4 (already a power of 2), so 4 stripe builds will be attempted;
+            // the 3rd one (n=3) throws, leaving 2 successfully constructed stripes.
+            RuntimeException thrown = assertThrows(RuntimeException.class, () -> StripedBlockCache
+                    .builder().stripeCount(4).expectedMinimumBlockSize(1L).byteBudget(8L).build());
+            assertTrue(thrown.getMessage().contains("simulated failure"),
+                    "original throwable should propagate, got: " + thrown);
+
+            // The 2 stripes that were successfully constructed before the failure must have been
+            // closed as part of the rollback — otherwise they are leaked.
+            assertEquals(2, producedStripes.size(),
+                    "factory should have produced 2 stripes before the 3rd threw");
+            Field closedField = LruBlockCache.class.getDeclaredField("closed");
+            closedField.setAccessible(true);
+            for (int i = 0; i < producedStripes.size(); i++) {
+                assertTrue((boolean) closedField.get(producedStripes.get(i)), "stripe " + i
+                        + " should be closed by partial-construction rollback; leak!");
+            }
+        } finally {
+            StripedBlockCache.testStripeFactory = null;
+        }
     }
 }

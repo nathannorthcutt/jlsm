@@ -1169,8 +1169,8 @@
     {
       "id": "sstable.byte-budget-block-cache",
       "path": ".spec/domains/sstable/byte-budget-block-cache.md",
-      "state": "DRAFT",
-      "version": 2,
+      "state": "APPROVED",
+      "version": 4,
       "domains": [
         "sstable"
       ],
@@ -1189,7 +1189,20 @@
         "cross-stripe-eviction"
       ],
       "kb_refs": [
-        "data-structures/caching/concurrent-cache-eviction-strategies"
+        "data-structures/caching/concurrent-cache-eviction-strategies",
+        "data-structures/caching/byte-budget-cache-variable-size-entries",
+        "data-structures/caching/capacity-truncation-on-sharding",
+        "data-structures/caching/getorload-non-atomic",
+        "data-structures/caching/deferred-builder-validation",
+        "data-structures/caching/missing-close-guard",
+        "data-structures/caching/int-backed-long-api"
+      ],
+      "preserves": [
+        "sstable.striped-block-cache.R28",
+        "sstable.striped-block-cache.R29",
+        "sstable.striped-block-cache.R30",
+        "sstable.striped-block-cache.R40",
+        "sstable.striped-block-cache.R46"
       ]
     },
     {
@@ -1277,7 +1290,7 @@
       "id": "sstable.striped-block-cache",
       "path": ".spec/domains/sstable/striped-block-cache.md",
       "state": "APPROVED",
-      "version": 2,
+      "version": 4,
       "domains": [
         "sstable"
       ],
@@ -1286,9 +1299,13 @@
       "decision_refs": [
         "stripe-hash-function",
         "cross-stripe-eviction",
-        "power-of-two-stripe-optimization"
+        "power-of-two-stripe-optimization",
+        "block-cache-block-size-interaction"
       ],
-      "kb_refs": []
+      "kb_refs": [],
+      "amended_by": [
+        "sstable.byte-budget-block-cache"
+      ]
     },
     {
       "id": "sstable.v3-format-upgrade",

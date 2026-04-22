@@ -11,32 +11,32 @@ class LruBlockCacheTest {
 
     // --- Builder ---
 
-    // @spec sstable.striped-block-cache.R44
+    // @spec sstable.byte-budget-block-cache.R2
     @Test
-    void zeroCapacityRejected() {
+    void zeroByteBudgetRejected() {
         assertThrows(IllegalArgumentException.class,
-                () -> LruBlockCache.builder().capacity(0).build());
+                () -> LruBlockCache.builder().byteBudget(0).build());
     }
 
-    // @spec sstable.striped-block-cache.R44
+    // @spec sstable.byte-budget-block-cache.R2
     @Test
-    void negativeCapacityRejected() {
+    void negativeByteBudgetRejected() {
         assertThrows(IllegalArgumentException.class,
-                () -> LruBlockCache.builder().capacity(-1).build());
+                () -> LruBlockCache.builder().byteBudget(-1).build());
     }
 
     // --- get / put ---
 
     @Test
     void getMissOnEmptyCacheReturnsEmpty() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             assertTrue(cache.get(1L, 0L).isEmpty());
         }
     }
 
     @Test
     void putThenGetReturnsBlock() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             var block = MemorySegment.ofArray(new byte[]{ 1, 2, 3 });
             cache.put(1L, 0L, block);
             assertEquals(block, cache.get(1L, 0L).orElseThrow());
@@ -45,7 +45,7 @@ class LruBlockCacheTest {
 
     @Test
     void getWrongSstableIdMisses() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             assertTrue(cache.get(2L, 0L).isEmpty());
         }
@@ -53,7 +53,7 @@ class LruBlockCacheTest {
 
     @Test
     void getWrongOffsetMisses() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             assertTrue(cache.get(1L, 1L).isEmpty());
         }
@@ -61,7 +61,7 @@ class LruBlockCacheTest {
 
     @Test
     void putOverwritesExistingEntry() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             var first = MemorySegment.ofArray(new byte[]{ 1 });
             var second = MemorySegment.ofArray(new byte[]{ 2 });
             cache.put(1L, 0L, first);
@@ -74,14 +74,14 @@ class LruBlockCacheTest {
 
     @Test
     void initialSizeIsZero() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             assertEquals(0, cache.size());
         }
     }
 
     @Test
     void sizeIncreasesAfterPut() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             assertEquals(1, cache.size());
         }
@@ -89,7 +89,7 @@ class LruBlockCacheTest {
 
     @Test
     void sizeDecreasesAfterEvict() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{ 2 }));
             cache.evict(1L);
@@ -97,10 +97,12 @@ class LruBlockCacheTest {
         }
     }
 
+    // @spec sstable.byte-budget-block-cache.R14 — capacity() returns the byte budget (unit:
+    // bytes), not the entry count
     @Test
     void capacityReflectsConfiguration() {
-        try (var cache = LruBlockCache.builder().capacity(42).build()) {
-            assertEquals(42, cache.capacity());
+        try (var cache = LruBlockCache.builder().byteBudget(42L).build()) {
+            assertEquals(42L, cache.capacity());
         }
     }
 
@@ -108,14 +110,14 @@ class LruBlockCacheTest {
 
     @Test
     void negativeOffsetInGetRejected() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             assertThrows(IllegalArgumentException.class, () -> cache.get(1L, -1L));
         }
     }
 
     @Test
     void negativeOffsetInPutRejected() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             assertThrows(IllegalArgumentException.class,
                     () -> cache.put(1L, -1L, MemorySegment.ofArray(new byte[]{ 1 })));
         }
@@ -123,17 +125,18 @@ class LruBlockCacheTest {
 
     @Test
     void nullBlockInPutRejected() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             assertThrows(NullPointerException.class, () -> cache.put(1L, 0L, null));
         }
     }
 
     // --- LRU eviction ---
 
+    // @spec sstable.byte-budget-block-cache.R10 — budget=2 bytes with 1-byte entries behaves as
+    // the former entry-count=2 case: insert A, B, then C → A must be gone
     @Test
     void lruEntryEvictedWhenAtCapacity() {
-        // capacity=2; insert A, B, then C → A must be gone
-        try (var cache = LruBlockCache.builder().capacity(2).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(2L).build()) {
             var a = MemorySegment.ofArray(new byte[]{ 1 });
             var b = MemorySegment.ofArray(new byte[]{ 2 });
             var c = MemorySegment.ofArray(new byte[]{ 3 });
@@ -144,10 +147,11 @@ class LruBlockCacheTest {
         }
     }
 
+    // @spec sstable.byte-budget-block-cache.R10 — access-order promotion under byte-budget eviction
     @Test
     void recentlyAccessedEntryNotEvicted() {
-        // capacity=2; insert A, B, access A (makes B LRU), insert C → B evicted, A survives
-        try (var cache = LruBlockCache.builder().capacity(2).build()) {
+        // budget=2 bytes; insert A, B, access A (makes B LRU), insert C → B evicted, A survives
+        try (var cache = LruBlockCache.builder().byteBudget(2L).build()) {
             var a = MemorySegment.ofArray(new byte[]{ 1 });
             var b = MemorySegment.ofArray(new byte[]{ 2 });
             var c = MemorySegment.ofArray(new byte[]{ 3 });
@@ -160,9 +164,11 @@ class LruBlockCacheTest {
         }
     }
 
+    // @spec sstable.byte-budget-block-cache.R12 — size() never exceeds what the byte budget can
+    // hold when entries are uniformly sized
     @Test
     void sizeStaysAtCapacityAfterLruEviction() {
-        try (var cache = LruBlockCache.builder().capacity(3).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(3L).build()) {
             for (int i = 0; i < 5; i++) {
                 cache.put(1L, i, MemorySegment.ofArray(new byte[]{ (byte) i }));
             }
@@ -174,7 +180,7 @@ class LruBlockCacheTest {
 
     @Test
     void evictRemovesAllBlocksForSstable() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{ 2 }));
             cache.put(1L, 2L, MemorySegment.ofArray(new byte[]{ 3 }));
@@ -185,7 +191,7 @@ class LruBlockCacheTest {
 
     @Test
     void evictDoesNotAffectOtherSstables() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             cache.put(2L, 0L, MemorySegment.ofArray(new byte[]{ 2 }));
             cache.evict(1L);
@@ -195,7 +201,7 @@ class LruBlockCacheTest {
 
     @Test
     void evictNonexistentSstableIsNoOp() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
             assertDoesNotThrow(() -> cache.evict(99L));
             assertEquals(1, cache.size());
@@ -206,7 +212,7 @@ class LruBlockCacheTest {
 
     @Test
     void getOrLoadCallsLoaderOnMiss() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             var callCount = new AtomicInteger(0);
             var block = MemorySegment.ofArray(new byte[]{ 42 });
             cache.getOrLoad(1L, 0L, () -> {
@@ -219,7 +225,7 @@ class LruBlockCacheTest {
 
     @Test
     void getOrLoadDoesNotCallLoaderOnHit() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             var block = MemorySegment.ofArray(new byte[]{ 42 });
             cache.put(1L, 0L, block);
             var callCount = new AtomicInteger(0);
@@ -233,7 +239,7 @@ class LruBlockCacheTest {
 
     @Test
     void getOrLoadCachesLoadedBlock() {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(1_000L).build()) {
             var block = MemorySegment.ofArray(new byte[]{ 42 });
             cache.getOrLoad(1L, 0L, () -> block);
             assertTrue(cache.get(1L, 0L).isPresent());
@@ -242,20 +248,18 @@ class LruBlockCacheTest {
 
     // --- close ---
 
-    // @spec sstable.striped-block-cache.R32,R33 — close on empty or populated cache must not throw
+    // @spec sstable.byte-budget-block-cache.R16 — close on empty or populated cache must not throw
     @Test
     void closeDoesNotThrow() {
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(1_000L).build();
         assertDoesNotThrow(cache::close);
     }
 
-    // @spec sstable.striped-block-cache.R46
-    // Updated by audit block-cache-hardening: close() now rejects use-after-close on all methods
-    // including size(). The old test asserted size()==0 after close, but the correct behavior is
-    // that size() throws IllegalStateException on a closed cache.
+    // @spec sstable.byte-budget-block-cache.R31
+    // close() rejects use-after-close on all methods including size().
     @Test
     void closedCacheRejectsSize() {
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(1_000L).build();
         cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 }));
         cache.put(1L, 1L, MemorySegment.ofArray(new byte[]{ 2 }));
         cache.close();

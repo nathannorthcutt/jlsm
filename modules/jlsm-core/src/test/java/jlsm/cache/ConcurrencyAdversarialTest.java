@@ -28,7 +28,7 @@ class ConcurrencyAdversarialTest {
     // Regression watch: ensure size() still returns correct value on open caches
     @Test
     void test_StripedBlockCache_size_closedGuardAtStripedLevel() {
-        var cache = StripedBlockCache.builder().stripeCount(2).capacity(10).build();
+        var cache = StripedBlockCache.builder().stripeCount(2).byteBudget(1_000_000L).build();
         cache.close();
 
         var ex = assertThrows(IllegalStateException.class, cache::size,
@@ -72,7 +72,7 @@ class ConcurrencyAdversarialTest {
         var stripeLeakDetected = new AtomicReference<StackTraceElement>();
 
         for (int iter = 0; iter < iterations && stripeLeakDetected.get() == null; iter++) {
-            var cache = StripedBlockCache.builder().stripeCount(2).capacity(10).build();
+            var cache = StripedBlockCache.builder().stripeCount(2).byteBudget(1_000_000L).build();
             // Pre-populate so get() hits a valid stripe path
             try (var arena = Arena.ofConfined()) {
                 var block = arena.allocate(64);
@@ -146,7 +146,7 @@ class ConcurrencyAdversarialTest {
         // to map.get() on the (still populated but logically closed) cache.
         // With an inner closed check, it throws ISE.
         // 5. We observe whether Thread A threw ISE or returned normally.
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
 
         // Obtain internal lock and closed field via reflection
         var lockField = LruBlockCache.class.getDeclaredField("lock");
@@ -229,7 +229,7 @@ class ConcurrencyAdversarialTest {
         // but this test confirms the overall contract: the loader is never invoked
         // when the cache is closed.
 
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
 
         var closedField = LruBlockCache.class.getDeclaredField("closed");
         closedField.setAccessible(true);
@@ -302,7 +302,7 @@ class ConcurrencyAdversarialTest {
         // 3. Test thread sets closed=true (via reflection) and releases lock.
         // 4. Thread A acquires the lock. Without an inner closed check, it proceeds
         // to return map.size(). With an inner closed check, it throws ISE.
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
 
         var lockField = LruBlockCache.class.getDeclaredField("lock");
         lockField.setAccessible(true);
@@ -346,6 +346,64 @@ class ConcurrencyAdversarialTest {
                         + "re-verified inside the lock.");
     }
 
+    // Finding: F-R1.concurrency.1.2
+    // Bug: subtractBytes uses an assertion-only guard (assert currentBytes >= 0) on a
+    // safety-critical invariant. Under production settings (-da, no -ea), the assertion
+    // is disabled. If any path drives currentBytes negative (double-subtract bug, state
+    // drift, or corruption), the eviction loop's `if (currentBytes > byteBudget)` at
+    // line 274 silently becomes permanently false (negative < positive), so the cache
+    // grows unbounded until the R28a entry-count cap fires. This violates the project's
+    // coding-guidelines.md rule: "asserts must never be the sole mechanism satisfying
+    // a spec requirement".
+    // Correct behavior: subtractBytes must enforce the non-negative invariant at runtime
+    // (throw IllegalStateException) so the failure is visible regardless of -ea/-da.
+    // Fix location: LruBlockCache.subtractBytes — replace assert with runtime check
+    // Regression watch: ensure normal eviction paths (put with overflow, evict, close)
+    // still work when the invariant holds.
+    @Test
+    @Timeout(10)
+    void test_LruBlockCache_subtractBytes_runtimeEnforcesNonNegativeInvariant() throws Exception {
+        // Corrupt currentBytes via reflection to simulate an accounting drift bug, then
+        // invoke evict() (which routes through subtractBytes via the R7 chokepoint).
+        // With the assertion-only guard, under -ea the code produces AssertionError; under
+        // -da it silently produces a negative currentBytes. The correct behavior is a
+        // runtime IllegalStateException that fires regardless of -ea/-da.
+        var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
+
+        try (var arena = Arena.ofConfined()) {
+            var block = arena.allocate(1024);
+            cache.put(1L, 0L, block);
+
+            // Corrupt currentBytes: set it below the entry's byteSize so the subtraction
+            // during evict() will drive it negative.
+            var currentBytesField = LruBlockCache.class.getDeclaredField("currentBytes");
+            currentBytesField.setAccessible(true);
+            currentBytesField.setLong(cache, 100L); // entry is 1024 bytes, field is 100
+
+            // evict() routes removal through subtractBytes; the subtraction will drive
+            // currentBytes negative, which must be caught by a runtime check (not an
+            // assertion-only guard).
+            var ex = assertThrows(IllegalStateException.class, () -> cache.evict(1L),
+                    "subtractBytes must enforce currentBytes >= 0 with a runtime check "
+                            + "(IllegalStateException), not an assertion-only guard. "
+                            + "The assertion is disabled in production and permits silent "
+                            + "unbounded cache growth when accounting drifts.");
+
+            assertNotNull(ex.getMessage(),
+                    "IllegalStateException must carry a descriptive message identifying the "
+                            + "byte-accounting invariant violation");
+        } finally {
+            // Clean up: cache is in a corrupted state; close it to release resources.
+            try {
+                cache.close();
+            } catch (Throwable ignored) {
+                // close may itself route through subtractBytes and trip the same guard;
+                // the test's concern is the runtime enforcement, not clean shutdown of a
+                // deliberately corrupted cache.
+            }
+        }
+    }
+
     // Finding: F-R1.concurrency.2.4
     // Bug: TOCTOU race — evict() has no inner closed check inside the lock.
     // Thread A reads closed==false at the outer check, Thread B closes cache
@@ -366,7 +424,7 @@ class ConcurrencyAdversarialTest {
         // 3. Test thread sets closed=true (via reflection) and releases lock.
         // 4. Thread A acquires the lock. Without an inner closed check, it proceeds
         // to removeIf on the map. With an inner closed check, it throws ISE.
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
 
         var lockField = LruBlockCache.class.getDeclaredField("lock");
         lockField.setAccessible(true);

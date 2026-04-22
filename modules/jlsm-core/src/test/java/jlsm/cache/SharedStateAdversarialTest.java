@@ -1,9 +1,11 @@
 package jlsm.cache;
 
 import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.util.LinkedHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
@@ -51,10 +53,10 @@ class SharedStateAdversarialTest {
         stripeCountField.setAccessible(true);
         stripeCountField.set(builder, 0);
 
-        // Set capacity to something valid so only the stripeCount guard is tested
-        Field capacityField = StripedBlockCache.Builder.class.getDeclaredField("capacity");
-        capacityField.setAccessible(true);
-        capacityField.set(builder, 100L);
+        // Set byteBudget to something valid so only the stripeCount guard is tested
+        Field byteBudgetField = StripedBlockCache.Builder.class.getDeclaredField("byteBudget");
+        byteBudgetField.setAccessible(true);
+        byteBudgetField.set(builder, 100L);
 
         // Get the private constructor
         Constructor<StripedBlockCache> ctor = StripedBlockCache.class
@@ -90,16 +92,17 @@ class SharedStateAdversarialTest {
     }
 
     @Test
-    void test_Builder_build_capacityNotSet_errorMessageIndicatesCapacityNotSet() {
+    void test_Builder_build_byteBudgetNotSet_errorMessageIndicatesByteBudgetNotSet() {
         var ex = assertThrows(IllegalArgumentException.class,
                 () -> StripedBlockCache.builder().build());
         String msg = ex.getMessage();
         // The message must NOT say "got: -1" — that implies the caller set -1.
-        // It must indicate that capacity was not set.
+        // It must indicate that byteBudget was not set.
         assertFalse(msg.contains("got: -1"),
-                "Error message should not say 'got: -1' — capacity was never set, not set to -1");
-        assertTrue(msg.toLowerCase().contains("capacity") && msg.toLowerCase().contains("not set"),
-                "Error message should indicate capacity was not set; got: " + msg);
+                "Error message should not say 'got: -1' — byteBudget was never set, not set to -1");
+        assertTrue(
+                msg.toLowerCase().contains("bytebudget") && msg.toLowerCase().contains("not set"),
+                "Error message should indicate byteBudget was not set; got: " + msg);
     }
 
     // Finding: F-R1.shared_state.2.1
@@ -134,7 +137,7 @@ class SharedStateAdversarialTest {
         int leakCount = 0;
 
         for (int i = 0; i < iterations; i++) {
-            var cache = LruBlockCache.builder().capacity(100).build();
+            var cache = LruBlockCache.builder().byteBudget(100_000L).build();
             var block = Arena.ofAuto().allocate(8, 8);
             var barrier = new CyclicBarrier(9); // 8 putters + 1 closer
 
@@ -213,7 +216,7 @@ class SharedStateAdversarialTest {
         var loaderAfterCloseCount = new AtomicInteger(0);
 
         for (int i = 0; i < iterations; i++) {
-            var cache = LruBlockCache.builder().capacity(100).build();
+            var cache = LruBlockCache.builder().byteBudget(100_000L).build();
             var block = Arena.ofAuto().allocate(8, 8);
             var barrier = new CyclicBarrier(9); // 8 loaders + 1 closer
             var closeCalled = new AtomicBoolean(false);
@@ -285,13 +288,13 @@ class SharedStateAdversarialTest {
     void test_LruBlockCache_constructor_assertOnlyCapacityGuard_throwsIllegalArgument()
             throws Exception {
         // Bypass Builder validation via reflection to invoke the private constructor
-        // with a Builder that has capacity = 0.
+        // with a Builder that has byteBudget = 0.
         var builder = LruBlockCache.builder();
 
-        // Set capacity to 0 via reflection, bypassing the setter's validation
-        Field capacityField = LruBlockCache.Builder.class.getDeclaredField("capacity");
-        capacityField.setAccessible(true);
-        capacityField.set(builder, 0L);
+        // Set byteBudget to 0 via reflection, bypassing the setter's validation
+        Field byteBudgetField = LruBlockCache.Builder.class.getDeclaredField("byteBudget");
+        byteBudgetField.setAccessible(true);
+        byteBudgetField.set(builder, 0L);
 
         // Get the private constructor
         Constructor<LruBlockCache> ctor = LruBlockCache.class
@@ -303,7 +306,7 @@ class SharedStateAdversarialTest {
         var ex = assertThrows(InvocationTargetException.class, () -> ctor.newInstance(builder));
         Throwable cause = ex.getCause();
         assertInstanceOf(IllegalArgumentException.class, cause,
-                "LruBlockCache constructor should throw IllegalArgumentException for capacity <= 0, "
+                "LruBlockCache constructor should throw IllegalArgumentException for byteBudget <= 0, "
                         + "but threw " + cause.getClass().getName() + ": " + cause.getMessage());
     }
 
@@ -330,7 +333,7 @@ class SharedStateAdversarialTest {
         // After fix (closed=true inside the lock), close() does NOT set closed=true
         // until it acquires the lock, so get() in step 4 sees closed=false and succeeds.
 
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
         var block = Arena.ofAuto().allocate(8, 8);
         cache.put(1, 0, block);
 
@@ -365,6 +368,64 @@ class SharedStateAdversarialTest {
         }
     }
 
+    // Finding: F-R1.shared_state.1.3
+    // Bug: R28a cap bypassed for oversized-entry inserts. The check at
+    // insertEntry line 248 only fires when newBytes <= byteBudget, so an oversized
+    // entry (newBytes > byteBudget) inserted when map.size() == Integer.MAX_VALUE - 1
+    // causes map.put() to transiently grow map.size() to Integer.MAX_VALUE before the
+    // subsequent eviction loop drains it to 1.
+    // Correct behavior: The R28a entry-count cap must be enforced for ALL non-replacing
+    // inserts regardless of whether the new entry is oversized. When map.size() >=
+    // Integer.MAX_VALUE - 1, a non-replacing insert must throw IllegalStateException
+    // BEFORE map.put() is invoked.
+    // Fix location: LruBlockCache.insertEntry(), line 248 — remove the
+    // `&& newBytes <= byteBudget` clause so oversized inserts are also capped.
+    // Regression watch: Oversized inserts below the cap must continue to succeed; the
+    // R11 eviction loop must still drain to a single oversized entry.
+    @Test
+    void test_insertEntry_oversizedAtCap_r28aStillRejects() throws Exception {
+        // Construct a cache whose internal map is replaced via reflection with a
+        // LinkedHashMap subclass that reports size() == Integer.MAX_VALUE - 1 without
+        // actually holding that many entries. The subclass also tracks whether put()
+        // is called — if the R28a guard fires (correct behavior), put() is never invoked.
+        var cache = LruBlockCache.builder().byteBudget(100L).build();
+
+        final var putCalled = new AtomicBoolean(false);
+        final var fakeMap = new LinkedHashMap<Object, MemorySegment>(16, 0.75f, true) {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public int size() {
+                return Integer.MAX_VALUE - 1;
+            }
+
+            @Override
+            public MemorySegment put(Object key, MemorySegment value) {
+                putCalled.set(true);
+                return super.put(key, value);
+            }
+        };
+
+        Field mapField = LruBlockCache.class.getDeclaredField("map");
+        mapField.setAccessible(true);
+        mapField.set(cache, fakeMap);
+
+        // Oversized block — byteSize(200) > byteBudget(100). Without the fix, the
+        // R28a check at line 248 skips because newBytes > byteBudget, allowing
+        // map.put() to run while size is reported as Integer.MAX_VALUE - 1, pushing
+        // it to Integer.MAX_VALUE. With the fix, the cap fires and put() is never
+        // called.
+        var oversized = Arena.ofAuto().allocate(200L, 1);
+        var ex = assertThrows(IllegalStateException.class, () -> cache.put(1L, 0L, oversized),
+                "Non-replacing oversized insert at map.size() == Integer.MAX_VALUE - 1 must "
+                        + "throw IllegalStateException before map.put() is invoked");
+        assertTrue(ex.getMessage().toLowerCase().contains("cap"),
+                "Exception message should mention the entry-count cap; got: " + ex.getMessage());
+        assertFalse(putCalled.get(),
+                "map.put() must NOT be invoked when R28a cap is reached; the fix must guard "
+                        + "BEFORE mutating the map");
+    }
+
     // Finding: F-R1.shared_state.2.3
     // Bug: size() callable after close() — inconsistent closed-state API behavior.
     // LruBlockCache.size() had no closed guard, returning 0 silently after close()
@@ -378,13 +439,13 @@ class SharedStateAdversarialTest {
     @Test
     void test_size_throwsAfterClose_lruAndStriped() {
         // LruBlockCache: size() after close() must throw
-        var lru = LruBlockCache.builder().capacity(10).build();
+        var lru = LruBlockCache.builder().byteBudget(1_000_000L).build();
         lru.close();
         assertThrows(IllegalStateException.class, lru::size,
                 "LruBlockCache.size() must throw IllegalStateException after close()");
 
         // StripedBlockCache: size() after close() must throw at the StripedBlockCache level
-        var striped = StripedBlockCache.builder().stripeCount(2).capacity(10).build();
+        var striped = StripedBlockCache.builder().stripeCount(2).byteBudget(1_000_000L).build();
         striped.close();
         assertThrows(IllegalStateException.class, striped::size,
                 "StripedBlockCache.size() must throw IllegalStateException after close()");
