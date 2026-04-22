@@ -18,6 +18,7 @@
 
 | Date | Domain | Capability | Change |
 |------|--------|-----------|--------|
+| 2026-04-22 | data-management | compressed-blocks | Extends: pool-aware block size (Builder.pool(ArenaBufferPool)); audit-hardened ArenaBufferPool lifecycle |
 | 2026-04-21 | data-management | block-cache | Extends: byte-budget LRU displacing entry-count; non-linear splitmix64 pre-avalanche |
 | 2026-04-20 | distribution | engine-clustering | Core: remote dispatch payload format + parallel scatter (F04 R68+R77) |
 | 2026-04-12 | data-management | compressed-blocks | Extends: ZSTD dictionary compression, per-level codec policy, SSTable v4 format |

@@ -17,3 +17,5 @@
 | one-shot-api-missing-guard | [one-shot-api-missing-guard.md](one-shot-api-missing-guard.md) | Single-use APIs documented but not enforced at runtime | 2026-04-12 |
 | reflective-bypass-of-builder-validation | [reflective-bypass-of-builder-validation.md](reflective-bypass-of-builder-validation.md) | Builder centralizes validation in build() but constructor trusts Builder state; reflective callers bypass | 2026-04-21 |
 | interface-contract-missing-from-javadoc | [interface-contract-missing-from-javadoc.md](interface-contract-missing-from-javadoc.md) | Spec requirements documented only on impl Javadoc, not promoted to interface; third-party impls diverge | 2026-04-21 |
+| partial-init-no-rollback | [partial-init-no-rollback.md](partial-init-no-rollback.md) | Ctor allocation loop or Builder default-before-validate leaves partially-mutated state on failure | 2026-04-22 |
+| mutation-outside-rollback-scope | [mutation-outside-rollback-scope.md](mutation-outside-rollback-scope.md) | Builder build() mutates this.field before later validation gates; retry after throw inherits silent default | 2026-04-22 |

@@ -267,6 +267,44 @@ Do not proceed past this step with a failing spec.
 
 ---
 
+## Step 8a — Ambiguity score
+
+Run the quantitative ambiguity gate to confirm the spec is ready for
+downstream consumers:
+
+```bash
+bash .claude/scripts/spec-ambiguity-score.sh "<spec-file-path>"
+```
+
+The script computes `score = ([UNVERIFIED] + [UNRESOLVED] + [CONFLICT]) /
+total_requirements` and reports PASS if `score <= 0.20`.
+
+**Interpretation:**
+
+- **Score 0.00 (PASS):** clean — all requirements are resolvable from the
+  current context. Proceed with `state: "APPROVED"` unless Step 7 state
+  rules already assigned DRAFT for another reason.
+- **Score between 0.01 and 0.20 (PASS):** one or two lingering markers
+  against a well-sized spec. The spec can go APPROVED if the markers are
+  on non-load-bearing requirements; otherwise set DRAFT and use
+  `open_obligations` to track each unresolved claim.
+- **Score above 0.20 (FAIL):** too many unresolved claims for
+  downstream consumption. Set `state: "DRAFT"`, record each marker in
+  `open_obligations`, and surface the score in your completion report so
+  the caller sees it.
+
+The score is a signal, not a hard gate — Step 7 state rules remain
+authoritative for state assignment. The score adds transparency: authors
+see *why* a spec is DRAFT instead of inferring from the absence of
+explicit feedback.
+
+**Do not proceed to registration while the score indicates FAIL and
+the spec is being registered as APPROVED.** These two states are
+inconsistent — resolve them (lower score by resolving markers, or
+acknowledge DRAFT state) before continuing.
+
+---
+
 ## Step 9 — Update shard INDEX.md
 
 Add a row to the Feature Registry table in the domain shard's INDEX.md:

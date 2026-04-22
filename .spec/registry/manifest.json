@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-04-21",
+  "generated_at": "2026-04-22T21:24:44Z",
   "spec_count": 75,
   "specs": [
     {
@@ -1271,8 +1271,8 @@
     {
       "id": "sstable.pool-aware-block-size",
       "path": ".spec/domains/sstable/pool-aware-block-size.md",
-      "state": "DRAFT",
-      "version": 2,
+      "state": "APPROVED",
+      "version": 5,
       "domains": [
         "sstable"
       ],
@@ -1284,7 +1284,9 @@
         "automatic-backend-detection",
         "backend-optimal-block-size"
       ],
-      "kb_refs": []
+      "kb_refs": [
+        "systems/database-engines/pool-aware-sstable-block-sizing"
+      ]
     },
     {
       "id": "sstable.striped-block-cache",

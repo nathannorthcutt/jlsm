@@ -83,7 +83,8 @@ Stop.
 - Jump to the appropriate checklist item in this order:
   2a coding-standards → 2b duplication → 2c security → 2d performance →
   2e missing-tests → 2f integration-tests → 2g documentation →
-  2h security-review → Step 4 final-lint → Step 4b audit-pass
+  2h security-review → Step 4 final-lint → Step 4a spec-verify →
+  Step 4b audit-pass
 
 **If Refactor is `not-started`:**
 - Verify cycle-log.md has an `implemented` entry for this cycle.
@@ -489,6 +490,73 @@ Update status.md substage → `refactor: final-lint`.
 - Run type checker (if applicable)
 - Fix remaining issues
 - Run full test suite one final time — must be all passing
+
+---
+
+## Step 4a — Spec verification pass
+
+Confirm the refactor didn't introduce spec violations. Step 4b's
+`/audit` finds NEW bugs; `/spec-verify` confirms KNOWN spec
+requirements still hold. Run this before the broader audit so drift
+surfaces directly as violations rather than masquerading as
+adversarial findings.
+
+**Skip this step if any of:**
+- No `.spec/` directory exists (project doesn't use the spec system)
+- No specs were loaded for this feature (`status.md` shows no spec
+  bundle, or `.feature/<slug>/` has no spec references)
+- This is `/feature-quick` (status.md shows no spec analysis was performed)
+
+### 4a.1 — Collect APPROVED specs this feature touches
+
+Resolve the spec set from, in priority order:
+1. `.feature/<slug>/spec-bundle.md` — read the bundle header
+   `Resolved specs:` / `Hardened specs:` list.
+2. `@spec` annotations in the refactored implementation files:
+   ```bash
+   bash .claude/scripts/spec-trace.sh <changed-files> --format ids 2>/dev/null | sort -u
+   ```
+3. `.feature/<slug>/work-plan.md` frontmatter `specs:` field if present.
+
+For each resolved spec ID, check its `state` via the manifest.
+Only verify specs in state `APPROVED` — DRAFT and INVALIDATED specs
+are not authoritative contracts.
+
+If the resolved set is empty after state filtering, skip Step 4a and
+proceed to Step 4b.
+
+### 4a.2 — Run /spec-verify per spec
+
+For each APPROVED spec ID, invoke `/spec-verify <spec-id>` as a
+sub-agent. Wait for each to complete before the next. Each invocation
+runs spec-verify's full verify-and-repair loop (classify findings,
+amend stale spec text or fix code via TDD, confirm satisfaction).
+
+### 4a.3 — Handle verification results
+
+- **All specs verify clean** — record in cycle-log and proceed to Step 4b.
+- **Violations repaired inline by spec-verify** — re-run the full test
+  suite. If green, continue. If the repairs broke tests, escalate via
+  the missing-tests flow (Step 3).
+- **User deferred a violation to an obligation** — record the deferral
+  in cycle-log and surface in the Step 6 summary, but do NOT block
+  refactor close — the user has already accepted the deferral.
+
+Update status.md substage → `spec-verified`.
+
+Append to cycle-log.md:
+```markdown
+## <YYYY-MM-DD> — spec-verified
+**Agent:** Refactor Agent (spec-verify delegation)
+**Cycle:** <n>
+**Specs verified:** <list of spec IDs>
+**Violations found:** <n or "none">
+**Violations repaired inline:** <n>
+**Violations deferred to obligations:** <n>
+---
+```
+
+Proceed to Step 4b.
 
 ---
 

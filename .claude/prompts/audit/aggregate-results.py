@@ -86,6 +86,27 @@ def parse_prove_fix(path):
     if m:
         finding['test_class'] = m.group(1).strip()
 
+    # Impossibility proof block — only present for FIX_IMPOSSIBLE.
+    # Captures the structured request the user needs to act on.
+    m = re.search(
+        r'### Impossibility proof.*?\n- \*\*Approaches tried:\*\* (.+)',
+        content
+    )
+    if m:
+        finding['approaches_tried'] = m.group(1).strip()
+    m = re.search(
+        r'### Impossibility proof.*?\n(?:.*?\n)*?- \*\*Structural reason:\*\* (.+)',
+        content
+    )
+    if m:
+        finding['structural_reason'] = m.group(1).strip()
+    m = re.search(
+        r'### Impossibility proof.*?\n(?:.*?\n)*?- \*\*Relaxation request:\*\* (.+)',
+        content
+    )
+    if m:
+        finding['relaxation_request'] = m.group(1).strip()
+
     return finding
 
 
@@ -174,6 +195,21 @@ def format_finding(f):
             lines.append(f"- **Reason:** Already fixed by prior finding")
         elif f.get('phase0_detail'):
             lines.append(f"- **Detail:** {f['phase0_detail']}")
+    elif result == 'FIX_IMPOSSIBLE':
+        if f.get('test_method'):
+            lines.append(f"- **Test:** {f['test_method']}")
+        if f.get('test_class'):
+            lines.append(f"  - Class: {f['test_class']}")
+        if f.get('fix_change'):
+            lines.append(f"- **Attempted fix:** {f['fix_change']}")
+        if f.get('approaches_tried'):
+            lines.append(f"- **Approaches tried:** {f['approaches_tried']}")
+        if f.get('structural_reason'):
+            lines.append(f"- **Structural reason:** {f['structural_reason']}")
+        if f.get('relaxation_request'):
+            lines.append(f"- **Relaxation request:** {f['relaxation_request']}")
+        if f.get('fix_detail'):
+            lines.append(f"- **Detail:** {f['fix_detail']}")
 
     return '\n'.join(lines)
 
@@ -232,10 +268,15 @@ def main():
             out.write(f"\nPhase 0 short-circuits (ALREADY_FIXED): {phase0_fixed}\n")
             out.write("\n---\n\n")
 
-            # Group by result for easier report consumption
+            # Group by result for easier report consumption.
+            # FIX_IMPOSSIBLE is split out separately because it carries a
+            # relaxation request the orchestrator needs to escalate to the
+            # user — distinct from IMPOSSIBLE (Phase 1 found no bug).
             confirmed = [f for f in findings if f.get('result') == 'CONFIRMED_AND_FIXED']
             impossible = [f for f in findings if f.get('result') == 'IMPOSSIBLE']
-            other = [f for f in findings if f.get('result') not in ('CONFIRMED_AND_FIXED', 'IMPOSSIBLE')]
+            fix_impossible = [f for f in findings if f.get('result') == 'FIX_IMPOSSIBLE']
+            other = [f for f in findings if f.get('result') not in
+                     ('CONFIRMED_AND_FIXED', 'IMPOSSIBLE', 'FIX_IMPOSSIBLE')]
 
             if confirmed:
                 out.write(f"## Confirmed and Fixed ({len(confirmed)})\n\n")
@@ -245,6 +286,17 @@ def main():
             if impossible:
                 out.write(f"## Impossible ({len(impossible)})\n\n")
                 for f in impossible:
+                    out.write(format_finding(f) + "\n\n")
+
+            if fix_impossible:
+                out.write(f"## Fix Impossible ({len(fix_impossible)})\n\n")
+                out.write(
+                    "These findings have a confirmed bug but the fix conflicts with\n"
+                    "an existing test or contract. Each carries a relaxation request\n"
+                    "that needs explicit user resolution — see the audit report's\n"
+                    "*Fix Impossible — needs resolution* section.\n\n"
+                )
+                for f in fix_impossible:
                     out.write(format_finding(f) + "\n\n")
 
             if other:

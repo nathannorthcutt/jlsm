@@ -8,6 +8,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/work-lib.sh"
+# spec-lib.sh is required for spec_file_for_id + fm (used by artifact_dep resolution).
+# Ship together in the kit; if missing, validation below fails loud.
+[[ -f "$SCRIPT_DIR/spec-lib.sh" ]] && source "$SCRIPT_DIR/spec-lib.sh"
 
 work_require_deps
 
@@ -65,6 +68,8 @@ validate_wd_file() {
 
     # Check 5: artifact_deps entries are well-formed
     local dep_count=0
+    local project_root
+    project_root="$(cd "$(dirname "$file")/../.." && pwd)"
     while IFS='|' read -r dep_type dep_ref dep_req_state dep_kind; do
       [[ -z "$dep_type" ]] && continue
       ((dep_count++)) || true
@@ -82,6 +87,82 @@ validate_wd_file() {
       # spec, adr, and wd must have required_state/required_status
       if [[ "$dep_type" =~ ^(spec|adr|wd)$ && -z "$dep_req_state" ]]; then
         errors+=("artifact_deps: $dep_type:$dep_ref missing required_state/required_status")
+      fi
+
+      # Check 5b: Resolve the reference. Distinguish "can't verify because the
+      # target directory/manifest doesn't exist" (WARN — project may not use
+      # that layer yet) from "verified and wrong" (ERROR — dead reference or
+      # state mismatch). Catches dead wiring and stale state declarations
+      # before the WD is picked up by /work-plan or /work-start.
+      if [[ -n "$dep_type" && -n "$dep_ref" ]] && [[ "$dep_type" =~ ^(spec|adr|kb|wd)$ ]]; then
+        case "$dep_type" in
+          spec)
+            local manifest="$project_root/.spec/registry/manifest.json"
+            if [[ ! -f "$manifest" ]]; then
+              echo "  WARN: cannot verify spec '$dep_ref' — no .spec/registry/manifest.json" >&2
+            elif ! declare -f spec_file_for_id >/dev/null; then
+              echo "  WARN: cannot verify spec '$dep_ref' — spec-lib.sh not loaded" >&2
+            else
+              local target
+              target="$(spec_file_for_id "$manifest" "$dep_ref")"
+              if [[ -z "$target" || ! -f "$target" ]]; then
+                errors+=("artifact_deps: spec '$dep_ref' not found in registry (dead reference)")
+              elif [[ -n "$dep_req_state" ]]; then
+                local actual
+                actual="$(fm "$target" '.state // ""')"
+                if [[ -n "$actual" && "$actual" != "$dep_req_state" ]]; then
+                  errors+=("artifact_deps: spec '$dep_ref' has state '$actual', required_state is '$dep_req_state'")
+                fi
+              fi
+            fi
+            ;;
+          adr)
+            if [[ ! -d "$project_root/.decisions" ]]; then
+              echo "  WARN: cannot verify adr '$dep_ref' — no .decisions/ directory" >&2
+            elif [[ ! -f "$project_root/.decisions/$dep_ref/adr.md" ]]; then
+              errors+=("artifact_deps: adr '$dep_ref' not found (.decisions/$dep_ref/adr.md missing)")
+            fi
+            # ADR state lives in a markdown table, not front matter; state-value
+            # check deferred until ADR schema is revisited.
+            ;;
+          wd)
+            if [[ ! -d "$project_root/.work" ]]; then
+              echo "  WARN: cannot verify wd '$dep_ref' — no .work/ directory" >&2
+            else
+              local wd_found=0
+              local wd_f
+              while IFS= read -r wd_f; do
+                [[ -z "$wd_f" ]] && continue
+                local wd_id
+                wd_id="$(work_fm "$wd_f" "id")"
+                if [[ "$wd_id" == "$dep_ref" ]]; then
+                  wd_found=1
+                  if [[ -n "$dep_req_state" ]]; then
+                    local wd_status
+                    wd_status="$(work_fm "$wd_f" "status")"
+                    if [[ -n "$wd_status" && "$wd_status" != "$dep_req_state" ]]; then
+                      errors+=("artifact_deps: wd '$dep_ref' has status '$wd_status', required_status is '$dep_req_state'")
+                    fi
+                  fi
+                  break
+                fi
+              done < <(find "$project_root/.work" -name "WD-*.md" 2>/dev/null)
+              if [[ $wd_found -eq 0 ]]; then
+                errors+=("artifact_deps: wd '$dep_ref' not found in .work/")
+              fi
+            fi
+            ;;
+          kb)
+            if [[ ! -d "$project_root/.kb" ]]; then
+              echo "  WARN: cannot verify kb '$dep_ref' — no .kb/ directory" >&2
+            else
+              local kb_file="$project_root/.kb/${dep_ref%.md}.md"
+              if [[ ! -f "$kb_file" ]]; then
+                errors+=("artifact_deps: kb '$dep_ref' not found ($kb_file missing)")
+              fi
+            fi
+            ;;
+        esac
       fi
     done < <(work_fm_artifact_deps "$file")
 

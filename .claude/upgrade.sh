@@ -523,15 +523,23 @@ if [[ -f "$OLD_MANIFEST" && -f "$NEW_MANIFEST" ]]; then
         # Skip comment lines and blank lines
         [[ "$rel_path" =~ ^#.*$ || -z "$rel_path" ]] && continue
 
-        # Safety: only remove files under known kit-managed prefixes.
-        # This prevents a corrupted or malformed manifest from deleting
-        # user files, other plugins' commands, or project source code.
+        # Path is in both manifests — kept kit file. Silent skip so we don't
+        # emit misleading "refusing to remove" messages for files that were
+        # never remove candidates (#45).
+        if grep -qF "$rel_path" "$NEW_MANIFEST" 2>/dev/null; then
+            continue
+        fi
+
+        # Remove candidate: in old manifest, absent from new. Safety whitelist
+        # guards against a corrupted manifest deleting user files, other
+        # plugins' content, or project source code.
         case "$rel_path" in
             .claude/commands/*|\
             .claude/skills/*|\
             .claude/agents/*|\
             .claude/rules/*|\
             .claude/scripts/*|\
+            .claude/prompts/*|\
             .claude/watchers/*|\
             .claude/upgrade.sh)
                 ;; # known kit prefix — safe to remove
@@ -542,14 +550,11 @@ if [[ -f "$OLD_MANIFEST" && -f "$NEW_MANIFEST" ]]; then
                 ;;
         esac
 
-        # If the path is not in the new manifest, it was removed from the kit
-        if ! grep -qF "$rel_path" "$NEW_MANIFEST" 2>/dev/null; then
-            target_file="$PROJECT_ROOT/$rel_path"
-            if [[ -f "$target_file" ]]; then
-                rm "$target_file"
-                echo -e "  ${RED}remove${NC} $rel_path  (removed from kit)"
-                ((removed++)) || true
-            fi
+        target_file="$PROJECT_ROOT/$rel_path"
+        if [[ -f "$target_file" ]]; then
+            rm "$target_file"
+            echo -e "  ${RED}remove${NC} $rel_path  (removed from kit)"
+            ((removed++)) || true
         fi
     done < "$OLD_MANIFEST"
 fi

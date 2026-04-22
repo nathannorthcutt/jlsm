@@ -47,6 +47,7 @@
 .claude/prompts/audit/assembly.md
 .claude/prompts/audit/card-construction.md
 .claude/prompts/audit/classification.md
+.claude/prompts/audit/lens-security.md
 .claude/prompts/audit/domain-pruning.md
 .claude/prompts/audit/exploration.md
 .claude/prompts/audit/fix.md
@@ -113,7 +114,9 @@
 .claude/scripts/precompact-hook.sh
 .claude/scripts/uninstall.sh
 .claude/scripts/spec-lib.sh
+.claude/scripts/audit-state-gate.sh
 .claude/scripts/spec-validate.sh
+.claude/scripts/spec-ambiguity-score.sh
 .claude/scripts/spec-stats.sh
 .claude/scripts/spec-resolve.sh
 .claude/scripts/spec-obligations-gc.sh

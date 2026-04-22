@@ -13,3 +13,4 @@
 | non-idempotent-close | [non-idempotent-close.md](non-idempotent-close.md) | close() re-delegates without tracking prior invocation; causes double-free or redundant I/O | 2026-04-07 |
 | multi-resource-close-ordering | [multi-resource-close-ordering.md](multi-resource-close-ordering.md) | Wrapper components creating internal closeables without tracking for close | 2026-04-12 |
 | fan-out-dispatch-deferred-exception-pattern | [fan-out-dispatch-deferred-exception-pattern.md](fan-out-dispatch-deferred-exception-pattern.md) | Fan-out operations short-circuit on first failure; must iterate all siblings with deferred exceptions | 2026-04-21 |
+| pool-close-with-outstanding-acquires | [pool-close-with-outstanding-acquires.md](pool-close-with-outstanding-acquires.md) | Acquire/release pools that silently invalidate live handles on close(); fix with fail-fast liveness check | 2026-04-22 |

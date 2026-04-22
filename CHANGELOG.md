@@ -10,6 +10,33 @@ semver release cadence is established.
 
 ## [Unreleased]
 
+### Added — Pool-aware block size (implement-sstable-enhancements WD-02)
+- `sstable.pool-aware-block-size` spec v2 DRAFT → v5 APPROVED — 22 adversarial findings across spec-author Pass 2/3, all applied. Final v5 adds audit-surfaced ArenaBufferPool lifecycle requirements (R0b/c/d/e) and Builder-wide atomicity (R11b)
+- `ArenaBufferPool.isClosed()` (R0) — canonical closure observer; class-final mandate (R0a) prevents subclass spoofing
+- `ArenaBufferPool.bufferSize()` (R1) — backing field is mandated `final` (R1a) for safe publication without synchronization; returns configured value after close (R2)
+- `TrieSSTableWriter.Builder.pool(ArenaBufferPool)` — derives block size from `pool.bufferSize()` when no explicit `blockSize(int)` override; eager R8 overflow + R9 validator checks at `pool()` call time for fail-fast symmetry with the explicit setter
+- Build-time closed-pool re-check (R5a) catches pools closed between `pool()` and `build()`, scoped to the case where the pool is still the active block-size source
+- Repeat-`pool()` atomicity (R11a) — failed validation is a no-op on all builder state; `Builder.build()` atomicity (R11b) extends this across the full fluent-API surface
+- 43 new feature tests (10 in `ArenaBufferPoolTest`, 33 in new `TrieSSTableWriterPoolAwareBlockSizeTest`) covering every requirement + N1/N4 observable non-goals
+- One-sentence README update describing the pool-derived block-size flow
+
+### Fixed — Audit round-001 on ArenaBufferPool and TrieSSTableWriter.Builder
+- **`ArenaBufferPool.close()` is now thread-safe** — `AtomicBoolean.compareAndSet(false, true)` replaces check-then-act; `Arena.ofShared().close()` (non-idempotent in JDK 25) no longer throws `IllegalStateException` under concurrent invocation
+- **`isClosed()` publishes a happens-before edge** to Arena teardown — split into `closing` (atomic claim) + `closed` (post-teardown ack) so observers of `isClosed() == true` are guaranteed the Arena has been released
+- **ArenaBufferPool constructor is transactional** — allocation-loop failures (including `OutOfMemoryError`) now close the partially-initialized Arena before propagating; NMT measurement confirms ~27 MiB leak eliminated per failed ctor
+- **`close()` refuses to tear down while acquires are outstanding** — throws `IllegalStateException` with outstanding count instead of silently invalidating in-use segments
+- **`TrieSSTableWriter.Builder.build()` no longer mutates `bloomFactory` on failed validation** — default lambda resolved into a method-local `final` variable only after all validation gates pass; retry with corrected configuration is now clean
+- 5 regression adversarial tests added in two new `SharedStateAdversarialTest.java` + `ConcurrencyAdversarialTest.java` classes
+
+### Added — KB pattern entries
+- Updated `patterns/concurrency/non-atomic-lifecycle-flags.md` + `patterns/resource-management/non-idempotent-close.md` — ArenaBufferPool as confirmed instance, nuance on flag-after-teardown ordering when callee is non-idempotent
+- New `patterns/validation/partial-init-no-rollback.md` — ctor off-heap variant + Builder commit-before-validate variant (both confirmed by audit)
+- New `patterns/validation/mutation-outside-rollback-scope.md` — Builder-specific variant, guidance to resolve defaults into method-local `final` variables
+- New `patterns/resource-management/pool-close-with-outstanding-acquires.md` — fail-fast lifecycle protocol for explicit-acquire pools
+
+### Known Gaps
+- R0b/R0c/R0d/R0e (ArenaBufferPool lifecycle requirements) currently live in `sstable.pool-aware-block-size` v5 as prerequisite amendments. They should migrate to a dedicated `io.arena-buffer-pool` spec when that is authored (noted in the v5 spec's design narrative)
+
 ### Added — Byte-budget block cache (implement-sstable-enhancements WD-01)
 - `sstable.byte-budget-block-cache` spec v2 DRAFT → v4 APPROVED — byte-budget LRU displacing entry-count; 40+ requirements covering chokepoint structural enforcement (R6/R7), overflow protection (R29), oversized-entry admission (R11), zero-length rejection (R9/R9a), entry-count cap (R28a), reference lifetime contract (R15a), constructor-side sentinel detection (R3a), close-ordering assertions (R16), and use-after-close guards (R31)
 - `LruBlockCache.Builder.byteBudget(long)` replaces removed `capacity(long)`; new `byteBudget()` accessor; transactional setter semantics (R2)

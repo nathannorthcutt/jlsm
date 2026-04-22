@@ -21,10 +21,14 @@ couldn't see because they each had a narrower scope.
 9. Spec obligations — DRAFT specs with unresolved conflicts blocking approval
 10. Spec-code drift — specs whose domain code changed after the spec was written
 11. Cross-reference gaps — KB entries and ADRs with missing related/source links
+12. Missing `@spec` annotations — APPROVED specs with reqs that lack impl-side or test-side annotations
+13. Aging open obligations — obligations on specs that haven't been committed in 30+ days
 
 **Flags:**
 - `--init` — first-time scan (ignores last-scanned SHA, good for new installs)
 - `--deeper` — scan 6 months instead of default 3
+- `--obligation-age-days <n>` — override aging threshold for open obligations (default: 30)
+- `--max-specs-traced <n>` — cap @spec annotation traces per run (default: 50)
 
 This command feels like a colleague who noticed something and is offering to help,
 not a task manager assigning work.
@@ -69,12 +73,14 @@ If the script doesn't exist (older install), skip silently.
 Build the scan command:
 
 ```bash
-bash .claude/scripts/curate-scan.sh [--init] [--window <months>]
+bash .claude/scripts/curate-scan.sh [--init] [--window <months>] \
+  [--obligation-age-days <n>] [--max-specs-traced <n>]
 ```
 
 - Default: `--window 3` (3 months, capped at 500 commits)
 - If `--init` flag: pass `--init`
 - If `--deeper` flag: pass `--window 6`
+- If the user passes `--obligation-age-days` or `--max-specs-traced`, forward them
 
 Run the script. If it exits with "No new commits since last scan," report that
 and ask if the user wants to force a rescan with `--init`.
@@ -324,6 +330,62 @@ summary. If absent, skip entirely.
    - **"Review WD"** → read the WD and the changed artifact, assess impact
    - **"Skip"** — the change was minor and doesn't affect the WD
 
+### 2m — Spec annotation coverage gaps
+
+**Guard:** Only run this step if "Spec Annotation Coverage Gaps" section exists
+in the scan summary. If absent, skip entirely.
+
+From "Spec Annotation Coverage Gaps" in the scan summary:
+
+**Requirements missing impl- or test-side annotations:**
+1. Rows with gap "test-only → missing impl annotation" mean a test is tagged
+   with `@spec <sid>.Rn` but no implementation file carries the same tag. The
+   requirement may be unimplemented, or the impl exists but was never annotated.
+2. Rows with gap "impl-only → missing test annotation" mean implementation is
+   tagged but no test is. The requirement may be untested, or a test exists
+   but was never annotated.
+3. Higher req count per spec = bigger coverage hole.
+
+**APPROVED specs with no annotations at all:**
+1. The spec is APPROVED but `spec-trace` found zero `@spec` references in
+   source or test. Either the code was never annotated, or the spec no longer
+   describes any implemented behavior (overlap with orphaned-spec detection).
+2. These are higher-priority than single-requirement gaps because the whole
+   spec's traceability is missing.
+
+For each finding, use AskUserQuestion with options:
+- **"Verify via /spec-verify"** → runs `/spec-verify` on the spec to verify
+  requirements, classify gaps (code bug / stale spec / needs decision /
+  test gap), and repair them inline per the spec-verify protocol
+- **"Accept gap with justification"** → the gap is intentional (e.g. the
+  requirement is pure documentation; no runtime behavior to annotate). Record
+  in the curation state review log with a short justification.
+- **"Skip for now"** — defer to next /curate pass
+
+### 2n — Aging open obligations
+
+**Guard:** Only run this step if "Aging Open Obligations" section exists in
+the scan summary. If absent, skip entirely.
+
+From "Aging Open Obligations" in the scan summary:
+
+1. Each row shows a spec ID, age in days since the spec file was last committed,
+   and the obligation text.
+2. The age is a proxy — the obligation has survived that long without the spec
+   being touched, suggesting it's drifted out of active attention.
+3. Higher age = more drift. 60+ days is a strong signal; 30-60 is a reminder.
+
+For each aging obligation, use AskUserQuestion with options:
+- **"Resolve via /spec-author"** → run `/spec-author` on the spec to either
+  author the missing behavior as new requirements or close the obligation as
+  intentional
+- **"Resolve via /spec-resolve"** → use `/spec-resolve` to work through
+  `[UNRESOLVED]` / `[CONFLICT]` markers if the obligation is a conflict
+- **"Close as stale"** → the obligation is no longer relevant; remove it from
+  the spec's `open_obligations` frontmatter with a short note in the spec's
+  design narrative explaining the closure
+- **"Skip for now"** — defer to next /curate pass
+
 ---
 
 ## Step 3 — Present findings as a numbered pick list
@@ -413,6 +475,12 @@ I scanned <N> commits since last review and found <N> items:
 
  15. <adr-slug> — evaluation references <N> KB entries not in its Sources table
      → I'll add the missing references to the ADR
+
+ 16. Spec <ID> — <N> requirements missing impl- or test-side @spec annotations
+     → I'll run /spec-verify so we can add annotations, write missing tests, or accept gaps
+
+ 17. Spec <ID> — open obligation aging <N> days (spec file not committed in that time)
+     → I'll route to /spec-author or /spec-resolve to close or resolve it
 
 Items you don't address are saved automatically — run /curate anytime to pick them up.
 ```
@@ -683,6 +751,46 @@ references together:
   table for each missing entry. Role column: "Referenced in evaluation."
 - **select**: Present each missing reference individually for add/skip.
 - **skip**: Record and move on. Won't resurface (the evaluation hasn't changed).
+
+**Spec annotation coverage gap:** Read the spec file and the gap row. Present
+the gap type and affected requirements: "Spec `<ID>` has `<N>` requirements
+with `<gap-type>`: `<R1, R3, R7>`." If the spec is entirely unannotated, say:
+"Spec `<ID>` is APPROVED but has zero `@spec` annotations in source or test
+— the traceability is missing."
+
+Use AskUserQuestion:
+  - "Verify via /spec-verify" (description: "Run /spec-verify to classify each
+    gap as code bug, stale spec, missing test, or needs decision, and repair
+    inline")
+  - "Accept gap with justification" (description: "The gap is intentional;
+    record justification in the curation review log")
+  - "Skip" (description: "Defer to next /curate pass")
+
+If "Verify": invoke `/spec-verify` with the spec file path.
+If "Accept": prompt the user for the justification text (free-form), record it
+in `.curate/curation-state.md` as: `| <date> | annotation-gap:<sid> | accepted |
+<justification> |`. The scan will resurface it on future runs, but the review
+log shows the accepted rationale.
+
+**Aging open obligation:** Read the spec file and find the obligation in the
+`open_obligations` frontmatter array. Present age and full text: "Spec `<ID>`
+has an obligation aging `<N>` days: `<obligation-text>`. Last commit touching
+this spec: `<date>`."
+
+Use AskUserQuestion:
+  - "Resolve via /spec-author" (description: "Author new requirements or close
+    the obligation as intentional via /spec-author")
+  - "Resolve via /spec-resolve" (description: "Work through [UNRESOLVED] /
+    [CONFLICT] markers if the obligation is a conflict")
+  - "Close as stale" (description: "Remove from open_obligations with a short
+    closure note in the spec's design narrative")
+  - "Skip" (description: "Defer to next /curate pass")
+
+If "Close as stale": edit the spec file — remove the obligation entry from the
+`open_obligations` frontmatter array, append a one-line note to the spec's
+design narrative (e.g., "Closed aging obligation on `<date>`: `<text>` — no
+longer relevant because …"), and stage the change. Do not commit unless the
+user explicitly requests it.
 
 After completing the action, mark it `resolved` in the review log. Then
 **ALWAYS re-present the remaining items** (renumbered) so the user can

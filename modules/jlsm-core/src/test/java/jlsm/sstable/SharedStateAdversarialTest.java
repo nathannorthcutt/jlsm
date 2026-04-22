@@ -781,6 +781,54 @@ class SharedStateAdversarialTest {
                 + iterations + " iterations — lazyChannel.close() called more than once");
     }
 
+    // Finding: F-R1.shared_state.1.1
+    // Bug: Builder.build() mutates `bloomFactory` field with a default lambda BEFORE
+    // the remaining validation gates (R5a pool-closed check, R15 codec-pairing check)
+    // run. When a later gate throws, the Builder is left in a state the caller did
+    // not authorize: `bloomFactory` is no longer null even though the caller never
+    // called `bloomFactory(...)` and the build() did not succeed.
+    // Correct behavior: build() must NOT mutate the Builder's bloomFactory field
+    // when validation fails. After a failed build(), the bloomFactory field should
+    // retain whatever value the caller installed (or null, if none was installed).
+    // Fix location: TrieSSTableWriter.java:898-935 — move the bloomFactory default
+    // assignment past the validation gates, or use a local variable for the default
+    // and only mutate `this.bloomFactory` on the successful path (or not at all).
+    // Regression watch: Ensure a successful build() still installs the default
+    // bloomFactory into the constructed writer when none was provided.
+    @Test
+    void test_TrieSSTableWriterBuilder_failedBuild_doesNotMutateBloomFactory() throws Exception {
+        Path path = tempDir.resolve("failed-build.sst");
+
+        // Build a builder that will fail the R15 codec-pairing validation gate
+        // (non-default blockSize with null codec). Critically, do NOT set a
+        // bloomFactory — we rely on its null default so we can detect whether
+        // build() silently mutated it.
+        TrieSSTableWriter.Builder builder = TrieSSTableWriter.builder().id(1L).level(Level.L0)
+                .path(path).blockSize(16384);
+        // codec intentionally NOT set → build() must throw IAE at R15 gate.
+
+        // Read the bloomFactory field BEFORE build() — must be null.
+        Field bloomFactoryField = TrieSSTableWriter.Builder.class.getDeclaredField("bloomFactory");
+        bloomFactoryField.setAccessible(true);
+        assertNull(bloomFactoryField.get(builder),
+                "Precondition: bloomFactory must start null — test setup is wrong otherwise");
+
+        // Attempt build() — expected to fail at the R15 codec-pairing gate.
+        assertThrows(IllegalArgumentException.class, builder::build,
+                "build() must reject non-default blockSize without codec");
+
+        // Core assertion: bloomFactory must NOT have been mutated by the failed
+        // build() call. The caller never invoked bloomFactory(...), so the field
+        // must still be null. If the field is now non-null, build() has
+        // silently committed a default lambda before the validation gate fired —
+        // a commit-before-validate bug that leaks state across failed builds.
+        assertNull(bloomFactoryField.get(builder),
+                "bloomFactory was silently mutated by a failed build() — the builder "
+                        + "now carries a default lambda the caller never authorized, "
+                        + "violating the R11a atomicity pattern followed by every "
+                        + "other setter on this builder");
+    }
+
     // Finding: F-R1.shared_state.1.3
     // Bug: CompressedBlockIterator.hasNext() does not check closed flag — returns true
     // for a pre-fetched entry even after the reader is closed, unlike IndexRangeIterator

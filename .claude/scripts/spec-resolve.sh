@@ -2,6 +2,7 @@
 # spec-resolve.sh — deterministic context bundle builder
 # Usage: spec-resolve.sh "<feature description>" [token-budget]
 # Optional env: OVERRIDE_DOMAINS="storage,compaction"
+# Optional env: EXPLICIT_SPEC_IDS="id1,id2" — bypass fuzzy match; use these IDs directly
 # Optional env: NEW_SPEC_FILES="path1:path2" — draft specs to check for displacement
 # Optional env: INCLUDE_INVALIDATED=true — include INVALIDATED specs in separate section
 # Optional env: FILTER_KIND="interface-contract" — only include specs with this kind field
@@ -31,7 +32,36 @@ MANIFEST="$SPEC_DIR/registry/manifest.json"
 }
 
 # ── Step 1: Determine matched domains ────────────────────────────────────────
-if [[ -n "${OVERRIDE_DOMAINS:-}" ]]; then
+EXPLICIT_ID_MODE=false
+CANDIDATE_FILES=()
+CONFLICT_OMITTED=()
+
+if [[ -n "${EXPLICIT_SPEC_IDS:-}" ]]; then
+  # Caller passed spec IDs directly — bypass fuzzy match and domain inference.
+  # Used by skills (e.g. /feature-test --specs flag, brief.md explicit list)
+  # when the spec set is known and fuzzy matching would be unreliable.
+  EXPLICIT_ID_MODE=true
+  IFS=',' read -ra EXPLICIT_IDS <<< "$EXPLICIT_SPEC_IDS"
+  echo "[resolve] Explicit spec IDs: ${EXPLICIT_IDS[*]}" >&2
+
+  declare -A DOMAIN_SET
+  for fid in "${EXPLICIT_IDS[@]}"; do
+    fid="$(echo "$fid" | tr -d ' ')"
+    [[ -z "$fid" ]] && continue
+    spec_file=$(spec_file_for_id "$MANIFEST" "$fid")
+    if [[ -z "$spec_file" || ! -f "$spec_file" ]]; then
+      echo "[resolve] WARN: explicit spec '$fid' not in registry — skipping" >&2
+      continue
+    fi
+    spec_check_crlf "$spec_file" 2>/dev/null || continue
+    CANDIDATE_FILES+=("$spec_file")
+    while IFS= read -r dom; do
+      [[ -n "$dom" ]] && DOMAIN_SET["$dom"]=1
+    done < <(fm "$spec_file" '.domains // [] | .[]')
+  done
+  MATCHED_DOMAINS=("${!DOMAIN_SET[@]}")
+  [[ ${#MATCHED_DOMAINS[@]} -eq 0 ]] && MATCHED_DOMAINS=("unknown")
+elif [[ -n "${OVERRIDE_DOMAINS:-}" ]]; then
   IFS=',' read -ra MATCHED_DOMAINS <<< "$OVERRIDE_DOMAINS"
   echo "[resolve] Domain override: ${MATCHED_DOMAINS[*]}" >&2
 else
@@ -69,10 +99,12 @@ fi
 echo "[resolve] Domains matched: ${MATCHED_DOMAINS[*]}" >&2
 
 # ── Step 2: Collect candidate spec files via registry ────────────────────────
-CANDIDATE_FILES=()
-CONFLICT_OMITTED=()
+# Skipped when EXPLICIT_SPEC_IDS populated CANDIDATE_FILES above.
 mapfile -t ALL_FEATURE_IDS < <(jq -r '.features | keys[]' "$MANIFEST")
 
+if [[ "$EXPLICIT_ID_MODE" == "true" ]]; then
+  : # CANDIDATE_FILES already populated from explicit IDs; skip domain filter loop
+else
 for fid in "${ALL_FEATURE_IDS[@]}"; do
   # Check if this feature belongs to any matched domain
   feature_domains=$(jq -r --arg id "$fid" '.features[$id].domains // [] | .[]' "$MANIFEST")
@@ -124,6 +156,7 @@ for fid in "${ALL_FEATURE_IDS[@]}"; do
     fi
   fi
 done
+fi  # end: if EXPLICIT_ID_MODE else
 
 # Collect INVALIDATED specs separately when requested (for revival detection)
 INVALIDATED_FILES=()
