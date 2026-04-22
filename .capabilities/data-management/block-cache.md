@@ -9,10 +9,13 @@ features:
   - slug: striped-block-cache
     role: quality
     description: "Striped/sharded LruBlockCache eliminating single-lock contention for multi-threaded read performance"
+  - slug: implement-sstable-enhancements--wd-01
+    role: extends
+    description: "Byte-budget LRU displacing entry-count; MemorySegment.byteSize() drives eviction so memory usage is predictable across mixed block sizes (4 KiB local to 8 MiB remote); adds non-linear splitmix64 pre-avalanche to defeat algebraic pre-image collisions"
 composes: []
-spec_refs: ["F09"]
-decision_refs: ["cross-stripe-eviction", "stripe-hash-function"]
-kb_refs: ["data-structures/caching"]
+spec_refs: ["sstable.byte-budget-block-cache", "sstable.striped-block-cache"]
+decision_refs: ["cross-stripe-eviction", "stripe-hash-function", "block-cache-block-size-interaction"]
+kb_refs: ["data-structures/caching", "patterns/adversarial-review/hash-function-algebraic-probes"]
 depends_on: []
 enables: []
 ---

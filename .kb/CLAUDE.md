@@ -16,12 +16,13 @@
 | architecture | [architecture/](architecture/CLAUDE.md) | 1 | 1 | 2026-04-20 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 10 | 2026-04-20 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 7 | 25 | 2026-04-19 |
-| patterns | [patterns/](patterns/CLAUDE.md) | 6 | 33 | 2026-04-21 |
+| patterns | [patterns/](patterns/CLAUDE.md) | 7 | 34 | 2026-04-21 |
 | systems | [systems/](systems/CLAUDE.md) | 5 | 49 | 2026-04-20 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-21 | patterns | adversarial-review | hash-function-algebraic-probes |
 | 2026-04-21 | patterns | validation | reflective-bypass-of-builder-validation |
 | 2026-04-21 | patterns | validation | interface-contract-missing-from-javadoc |
 | 2026-04-21 | patterns | resource-management | fan-out-dispatch-deferred-exception-pattern |
