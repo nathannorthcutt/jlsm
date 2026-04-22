@@ -13,7 +13,7 @@
 | Topic | Path | Categories | Files | Last Updated |
 |-------|------|------------|-------|--------------|
 | algorithms | [algorithms/](algorithms/CLAUDE.md) | 7 | 54 | 2026-04-13 |
-| architecture | [architecture/](architecture/CLAUDE.md) | 1 | 1 | 2026-04-20 |
+| architecture | [architecture/](architecture/CLAUDE.md) | 1 | 3 | 2026-04-22 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 10 | 2026-04-20 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 7 | 25 | 2026-04-19 |
 | patterns | [patterns/](patterns/CLAUDE.md) | 7 | 37 | 2026-04-22 |

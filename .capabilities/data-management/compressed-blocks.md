@@ -21,9 +21,12 @@ features:
   - slug: zstd-dictionary-compression-per-level-codec-policy
     role: extends
     description: "ZSTD codec via Panama FFM with pure-Java fallback, adaptive per-SSTable dictionary training, per-level codec policy, SSTable v4 format"
+  - slug: implement-sstable-enhancements--wd-02
+    role: extends
+    description: "Pool-aware block size: TrieSSTableWriter.Builder.pool(ArenaBufferPool) derives block size from pool.bufferSize(); eliminates writer/pool misconfiguration; audit hardened ArenaBufferPool lifecycle (two-phase close, outstanding-acquire guard, ctor transactional cleanup)"
 composes: []
-spec_refs: ["F02", "F08", "F16", "F17", "F18"]
-decision_refs: ["sstable-block-compression-format", "compression-codec-api-design", "per-block-checksums", "backend-optimal-block-size", "wal-compression", "codec-thread-safety", "max-compressed-length", "codec-dictionary-support", "compaction-recompression"]
+spec_refs: ["F02", "F08", "F16", "F17", "F18", "sstable.pool-aware-block-size"]
+decision_refs: ["sstable-block-compression-format", "compression-codec-api-design", "per-block-checksums", "backend-optimal-block-size", "wal-compression", "codec-thread-safety", "max-compressed-length", "codec-dictionary-support", "compaction-recompression", "automatic-backend-detection"]
 kb_refs: ["algorithms/compression"]
 depends_on: ["data-management/schema-and-documents"]
 enables: []
