@@ -58,9 +58,12 @@ public class LruBlockCacheBenchmark {
 
         @Setup(Level.Trial)
         public void setup() {
-            cache = LruBlockCache.builder().capacity(cacheCapacity).build();
+            // Byte-budget sized to hold exactly cacheCapacity entries of 4096 bytes, preserving
+            // the entry-count semantics of the legacy benchmark.
+            final int blockSize = 4096;
+            cache = LruBlockCache.builder().byteBudget((long) cacheCapacity * blockSize).build();
 
-            byte[] blockBytes = new byte[4096];
+            byte[] blockBytes = new byte[blockSize];
             ThreadLocalRandom.current().nextBytes(blockBytes);
             block = MemorySegment.ofArray(blockBytes);
 

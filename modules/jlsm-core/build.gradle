@@ -17,6 +17,10 @@ test {
     jvmArgs '--add-opens', 'jlsm.core/jlsm.core.json=ALL-UNNAMED'
     jvmArgs '--enable-native-access=ALL-UNNAMED'
     jvmArgs '-ea'
+    // ByteBudgetBlockCacheTest's R29 overflow tests allocate pairs of ~2 GiB
+    // byte[] segments to exercise Long.MAX_VALUE overflow detection. 6 GiB heap
+    // leaves comfortable headroom.
+    maxHeapSize = '6g'
 }
 // No eclipse block: JDT compiles test source as jlsm.core, which can access
 // all its own internal packages directly — no add.exports needed for the IDE.

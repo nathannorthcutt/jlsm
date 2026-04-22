@@ -12,38 +12,41 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Adversarial tests for StripedBlockCache and LruBlockCache. Targets contract gaps and
  * implementation risks identified in spec-analysis.md.
+ *
+ * <p>
+ * Migrated to the byte-budget API (sstable.byte-budget-block-cache v3). Tests that exercise
+ * per-stripe eviction use 1-byte segments so the byte budget maps 1:1 to entry counts, preserving
+ * the semantics the original entry-count tests asserted.
  */
 class StripedBlockCacheAdversarialTest {
 
-    // --- Finding 1: CAPACITY-TRUNCATION ---
-    // When capacity is not evenly divisible by stripeCount, integer division
-    // truncates the remainder. capacity() reports the configured total, but
-    // the actual effective capacity is (capacity / stripeCount) * stripeCount.
+    private static final long NO_EVICTION_BUDGET = 1L << 20;
 
-    // @spec sstable.striped-block-cache.R9
+    // --- Finding 1: CAPACITY-TRUNCATION ---
+    // When byteBudget is not evenly divisible by effectiveStripeCount, integer division
+    // truncates the remainder. capacity() reports the effective (truncated) value.
+
+    // @spec sstable.byte-budget-block-cache.R23
     @Test
     void capacityReportsEffectiveNotConfiguredWhenTruncated() {
-        // capacity=7, stripeCount=4 → per-stripe=1, effective=4
-        // capacity() should report 4, not 7
-        try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(7).build()) {
-            long perStripe = 7 / 4; // 1
-            long effective = perStripe * 4; // 4
-            assertEquals(effective, cache.capacity(),
-                    "capacity() should report effective capacity (perStripeCapacity * stripeCount), "
-                            + "not the raw configured value when truncation occurs");
+        // byteBudget=16387, stripeCount=4 → per-stripe=4096 (R20a default minimum satisfied),
+        // effective=16384. capacity() should report 16384, not 16387.
+        try (var cache = StripedBlockCache.builder().stripeCount(4).byteBudget(16_387L).build()) {
+            assertEquals(16_384L, cache.capacity(),
+                    "capacity() should report effective byte budget "
+                            + "(perStripeByteBudget * stripeCount), not the configured value when "
+                            + "truncation occurs");
         }
     }
 
-    // @spec sstable.striped-block-cache.R8,R9
+    // @spec sstable.byte-budget-block-cache.R22,R23
     @Test
     void capacityTruncationDoesNotCausePrematureEviction() {
-        // capacity=10, stripeCount=4 → per-stripe=2, effective=8
-        // If we insert 8 entries distributed across 4 stripes (2 per stripe),
-        // none should be evicted. But if capacity tracking is wrong, eviction
-        // might trigger early.
-        try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(10).build()) {
+        // byteBudget=10, stripeCount=4 → per-stripe=2, effective=8. Use 1-byte segments and a
+        // custom expectedMinimumBlockSize so the build-time validation passes.
+        try (var cache = StripedBlockCache.builder().stripeCount(4).expectedMinimumBlockSize(1L)
+                .byteBudget(10L).build()) {
             int inserted = 0;
-            // Find 2 entries per stripe by probing keys
             int[] perStripeCount = new int[4];
             for (long offset = 0; inserted < 8; offset++) {
                 int stripe = StripedBlockCache.stripeIndex(1L, offset, 4);
@@ -54,19 +57,18 @@ class StripedBlockCacheAdversarialTest {
                 }
             }
             assertEquals(8, cache.size(),
-                    "8 entries (2 per stripe with per-stripe capacity 2) should all fit "
+                    "8 entries (2 per stripe with per-stripe budget 2 bytes) should all fit "
                             + "without eviction");
         }
     }
 
-    // @spec sstable.striped-block-cache.R8,R15
+    // @spec sstable.byte-budget-block-cache.R22,R10 — per-stripe byte-budget eviction
     @Test
     void effectiveCapacityMatchesActualMaxEntries() {
-        // capacity=5, stripeCount=2 → per-stripe=2, effective=4
-        // Insert 4 entries (2 per stripe) — all should fit.
-        // Insert a 5th into a stripe already holding 2 — it should evict.
-        try (var cache = StripedBlockCache.builder().stripeCount(2).capacity(5).build()) {
-            // Find 2 entries for stripe 0 and 2 entries for stripe 1
+        // byteBudget=5, stripeCount=2 → per-stripe=2 bytes, effective=4 bytes.
+        // 1-byte segments → 2 per stripe, total 4. 5th entry triggers per-stripe eviction.
+        try (var cache = StripedBlockCache.builder().stripeCount(2).expectedMinimumBlockSize(1L)
+                .byteBudget(5L).build()) {
             long[] stripe0Keys = new long[2];
             long[] stripe1Keys = new long[2];
             int s0 = 0, s1 = 0;
@@ -79,7 +81,6 @@ class StripedBlockCacheAdversarialTest {
                 }
             }
 
-            // Insert all 4 — should fit exactly
             for (long key : stripe0Keys) {
                 cache.put(1L, key, MemorySegment.ofArray(new byte[]{ 1 }));
             }
@@ -88,7 +89,6 @@ class StripedBlockCacheAdversarialTest {
             }
             assertEquals(4, cache.size(), "4 entries (2 per stripe) should fit");
 
-            // The 5th entry goes to stripe 0, evicting the LRU entry there
             long extraKey = -1;
             for (long offset = 0; offset < 10000; offset++) {
                 if (StripedBlockCache.stripeIndex(1L, offset, 2) == 0 && offset != stripe0Keys[0]
@@ -100,59 +100,51 @@ class StripedBlockCacheAdversarialTest {
             assert extraKey >= 0 : "should find a key hashing to stripe 0";
             cache.put(1L, extraKey, MemorySegment.ofArray(new byte[]{ 3 }));
 
-            // Size should still be 4 (one evicted from stripe 0), not 5
             assertEquals(4, cache.size(),
-                    "effective capacity is 4, not 5 — 5th entry should trigger per-stripe eviction");
+                    "effective byte budget is 4 with 1-byte entries — 5th entry triggers "
+                            + "per-stripe eviction");
         }
     }
 
-    // --- Finding 2: LONG-CAPACITY-UNBOUNDED ---
-    // LruBlockCache.Builder accepts any positive long for capacity, but
-    // LinkedHashMap.size() returns int. If capacity > Integer.MAX_VALUE,
-    // the removeEldestEntry check (size() > cap) can never trigger because
-    // size() is int and can never exceed Integer.MAX_VALUE.
+    // --- byteBudget may exceed Integer.MAX_VALUE (R28) ---
 
-    // @spec sstable.striped-block-cache.R43
+    // @spec sstable.byte-budget-block-cache.R28 — byte budget is long-valued; Integer.MAX_VALUE
+    // is NOT a ceiling for byteBudget (the former entry-count cap no longer applies)
     @Test
-    void lruBlockCacheRejectsCapacityExceedingIntRange() {
-        // capacity = Integer.MAX_VALUE + 1L should be rejected since
-        // LinkedHashMap cannot honor eviction at that size
-        assertThrows(IllegalArgumentException.class,
-                () -> LruBlockCache.builder().capacity((long) Integer.MAX_VALUE + 1L).build(),
-                "capacity exceeding Integer.MAX_VALUE should be rejected because "
-                        + "LinkedHashMap.size() returns int and eviction would never trigger");
-    }
-
-    // @spec sstable.striped-block-cache.R22
-    @Test
-    void stripedBlockCacheRejectsPerStripeCapacityExceedingIntRange() {
-        // If capacity / stripeCount > Integer.MAX_VALUE, per-stripe eviction breaks
-        assertThrows(IllegalArgumentException.class,
-                () -> StripedBlockCache.builder().stripeCount(1)
-                        .capacity((long) Integer.MAX_VALUE + 1L).build(),
-                "per-stripe capacity exceeding Integer.MAX_VALUE should be rejected");
-    }
-
-    // @spec sstable.striped-block-cache.R43
-    @Test
-    void lruBlockCacheAcceptsMaxIntCapacity() {
-        // Integer.MAX_VALUE should be accepted as a valid capacity
+    void lruBlockCacheAcceptsByteBudgetExceedingIntRange() {
         assertDoesNotThrow(
-                () -> LruBlockCache.builder().capacity(Integer.MAX_VALUE).build().close(),
-                "capacity of Integer.MAX_VALUE should be accepted");
+                () -> LruBlockCache.builder().byteBudget((long) Integer.MAX_VALUE + 1L).build()
+                        .close(),
+                "byteBudget beyond Integer.MAX_VALUE is valid under R28 — byte budgets are long-"
+                        + "valued and the Integer.MAX_VALUE guard from the F09 entry-count form is "
+                        + "no longer applicable");
     }
 
-    // --- F1: getOrLoad atomicity — concurrent callers should not duplicate loader ---
+    // @spec sstable.byte-budget-block-cache.R28
+    @Test
+    void stripedBlockCacheAcceptsByteBudgetExceedingIntRange() {
+        // Single stripe avoids the R20a expectedMinimumBlockSize floor clashing with the big
+        // budget; the cache accepts a byteBudget beyond Integer.MAX_VALUE without complaint.
+        assertDoesNotThrow(
+                () -> StripedBlockCache.builder().stripeCount(1)
+                        .byteBudget((long) Integer.MAX_VALUE + 1L).build().close(),
+                "striped per-stripe byteBudget beyond Integer.MAX_VALUE is valid under R28");
+    }
+
+    // @spec sstable.byte-budget-block-cache.R2,R18 — byteBudget of Integer.MAX_VALUE accepted
+    @Test
+    void lruBlockCacheAcceptsMaxIntByteBudget() {
+        assertDoesNotThrow(
+                () -> LruBlockCache.builder().byteBudget(Integer.MAX_VALUE).build().close(),
+                "byteBudget of Integer.MAX_VALUE should be accepted");
+    }
+
+    // --- getOrLoad atomicity — concurrent callers should not duplicate loader ---
 
     // @spec sstable.striped-block-cache.R37,R47
-    // Updated by audit block-cache-hardening: getOrLoad now releases the lock before calling
-    // the loader to avoid blocking all cache operations during I/O. This means concurrent callers
-    // for the same key may both invoke the loader, but only one result is kept (double-checked
-    // locking pattern). The loader may be called up to N times where N is the number of concurrent
-    // threads, but the cache entry is consistent.
     @Test
     void getOrLoadReturnsConsistentValueUnderConcurrency() throws InterruptedException {
-        try (var cache = LruBlockCache.builder().capacity(10).build()) {
+        try (var cache = LruBlockCache.builder().byteBudget(NO_EVICTION_BUDGET).build()) {
             var loaderCount = new AtomicInteger(0);
             var startLatch = new CountDownLatch(1);
             var doneLatch = new CountDownLatch(2);
@@ -182,8 +174,6 @@ class StripedBlockCacheAdversarialTest {
             startLatch.countDown();
             doneLatch.await();
 
-            // Loader may be called once or twice (lock released during load), but both
-            // callers must receive a valid result containing the expected data
             assertTrue(loaderCount.get() >= 1 && loaderCount.get() <= 2,
                     "loader may be invoked 1-2 times (lock released during load), got: "
                             + loaderCount.get());
@@ -191,7 +181,6 @@ class StripedBlockCacheAdversarialTest {
             assertNotNull(results[1], "second caller must receive a result");
             assertEquals((byte) 42, results[0].get(ValueLayout.JAVA_BYTE, 0));
             assertEquals((byte) 42, results[1].get(ValueLayout.JAVA_BYTE, 0));
-            // F09.R47: concurrent callers must return the same MemorySegment reference
             assertSame(results[0], results[1],
                     "concurrent getOrLoad callers must observe the same cached reference");
             assertSame(results[0], cache.get(1L, 0L).orElseThrow(),
@@ -200,11 +189,10 @@ class StripedBlockCacheAdversarialTest {
     }
 
     // @spec sstable.striped-block-cache.R37,R47
-    // Updated by audit block-cache-hardening: same rationale as lruBlockCache test above —
-    // getOrLoad releases the lock during loading, so concurrent callers may both invoke the loader.
     @Test
     void stripedGetOrLoadReturnsConsistentValueUnderConcurrency() throws InterruptedException {
-        try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
+        try (var cache = StripedBlockCache.builder().stripeCount(4).byteBudget(NO_EVICTION_BUDGET)
+                .build()) {
             var loaderCount = new AtomicInteger(0);
             var startLatch = new CountDownLatch(1);
             var doneLatch = new CountDownLatch(2);
@@ -241,7 +229,6 @@ class StripedBlockCacheAdversarialTest {
             assertNotNull(results[1], "second caller must receive a result");
             assertEquals((byte) 42, results[0].get(ValueLayout.JAVA_BYTE, 0));
             assertEquals((byte) 42, results[1].get(ValueLayout.JAVA_BYTE, 0));
-            // F09.R47: concurrent callers must return the same MemorySegment reference
             assertSame(results[0], results[1],
                     "concurrent getOrLoad callers must observe the same cached reference");
             assertSame(results[0], cache.get(1L, 0L).orElseThrow(),
@@ -249,52 +236,48 @@ class StripedBlockCacheAdversarialTest {
         }
     }
 
-    // --- F2: Builder capacity() should validate eagerly ---
+    // --- Builder byteBudget() should validate eagerly ---
 
-    // @spec sstable.striped-block-cache.R44
+    // @spec sstable.byte-budget-block-cache.R2
     @Test
-    void lruBuilderCapacityRejectsNegativeEagerly() {
-        // F2: capacity(-1) should throw immediately, not at build()
-        assertThrows(IllegalArgumentException.class, () -> LruBlockCache.builder().capacity(-1),
-                "capacity setter should validate eagerly — negative capacity must be rejected immediately");
+    void lruBuilderByteBudgetRejectsNegativeEagerly() {
+        assertThrows(IllegalArgumentException.class, () -> LruBlockCache.builder().byteBudget(-1),
+                "byteBudget setter should validate eagerly — negative value must be rejected "
+                        + "immediately");
     }
 
-    // @spec sstable.striped-block-cache.R44
+    // @spec sstable.byte-budget-block-cache.R2
     @Test
-    void lruBuilderCapacityRejectsZeroEagerly() {
-        // F2: capacity(0) should throw immediately, not at build()
-        assertThrows(IllegalArgumentException.class, () -> LruBlockCache.builder().capacity(0),
-                "capacity setter should validate eagerly — zero capacity must be rejected immediately");
+    void lruBuilderByteBudgetRejectsZeroEagerly() {
+        assertThrows(IllegalArgumentException.class, () -> LruBlockCache.builder().byteBudget(0),
+                "byteBudget setter should validate eagerly — zero value must be rejected "
+                        + "immediately");
     }
 
-    // @spec sstable.striped-block-cache.R20
+    // @spec sstable.byte-budget-block-cache.R18
     @Test
-    void stripedBuilderCapacityRejectsNegativeEagerly() {
-        // F2: StripedBlockCache.Builder.capacity(-1) should throw immediately
-        assertThrows(IllegalArgumentException.class, () -> StripedBlockCache.builder().capacity(-1),
-                "capacity setter should validate eagerly — negative capacity must be rejected immediately");
+    void stripedBuilderByteBudgetRejectsNegativeEagerly() {
+        assertThrows(IllegalArgumentException.class,
+                () -> StripedBlockCache.builder().byteBudget(-1),
+                "byteBudget setter should validate eagerly — negative value must be rejected "
+                        + "immediately");
     }
 
-    // @spec sstable.striped-block-cache.R20
+    // @spec sstable.byte-budget-block-cache.R18
     @Test
-    void stripedBuilderCapacityRejectsZeroEagerly() {
-        // F2: StripedBlockCache.Builder.capacity(0) should throw immediately
-        assertThrows(IllegalArgumentException.class, () -> StripedBlockCache.builder().capacity(0),
-                "capacity setter should validate eagerly — zero capacity must be rejected immediately");
+    void stripedBuilderByteBudgetRejectsZeroEagerly() {
+        assertThrows(IllegalArgumentException.class,
+                () -> StripedBlockCache.builder().byteBudget(0),
+                "byteBudget setter should validate eagerly — zero value must be rejected "
+                        + "immediately");
     }
 
-    // --- F4: LruBlockCache capacity == Integer.MAX_VALUE overflow ---
-    // F4 classified as UNTRIGGERABLE: reaching Integer.MAX_VALUE entries requires
-    // ~160 GB heap. The existing test lruBlockCacheAcceptsMaxIntCapacity confirms
-    // acceptance is the intended contract. Documenting the theoretical risk only.
-
-    // --- F5: Use-after-close detection ---
+    // --- Use-after-close detection ---
 
     // @spec sstable.striped-block-cache.R29
     @Test
     void lruPutAfterCloseThrows() {
-        // F5: Operations on a closed cache should fail, not silently succeed
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(NO_EVICTION_BUDGET).build();
         cache.close();
         assertThrows(IllegalStateException.class,
                 () -> cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 })),
@@ -304,8 +287,7 @@ class StripedBlockCacheAdversarialTest {
     // @spec sstable.striped-block-cache.R28
     @Test
     void lruGetAfterCloseThrows() {
-        // F5: get on a closed cache should fail
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(NO_EVICTION_BUDGET).build();
         cache.close();
         assertThrows(IllegalStateException.class, () -> cache.get(1L, 0L),
                 "get on a closed LruBlockCache should throw IllegalStateException");
@@ -314,8 +296,8 @@ class StripedBlockCacheAdversarialTest {
     // @spec sstable.striped-block-cache.R29
     @Test
     void stripedPutAfterCloseThrows() {
-        // F5: Operations on a closed StripedBlockCache should fail
-        var cache = StripedBlockCache.builder().stripeCount(2).capacity(10).build();
+        var cache = StripedBlockCache.builder().stripeCount(2).byteBudget(NO_EVICTION_BUDGET)
+                .build();
         cache.close();
         assertThrows(IllegalStateException.class,
                 () -> cache.put(1L, 0L, MemorySegment.ofArray(new byte[]{ 1 })),
@@ -325,8 +307,8 @@ class StripedBlockCacheAdversarialTest {
     // @spec sstable.striped-block-cache.R28
     @Test
     void stripedGetAfterCloseThrows() {
-        // F5: get on a closed StripedBlockCache should fail
-        var cache = StripedBlockCache.builder().stripeCount(2).capacity(10).build();
+        var cache = StripedBlockCache.builder().stripeCount(2).byteBudget(NO_EVICTION_BUDGET)
+                .build();
         cache.close();
         assertThrows(IllegalStateException.class, () -> cache.get(1L, 0L),
                 "get on a closed StripedBlockCache should throw IllegalStateException");
@@ -335,8 +317,7 @@ class StripedBlockCacheAdversarialTest {
     // @spec sstable.striped-block-cache.R30
     @Test
     void lruEvictAfterCloseThrows() {
-        // F5: evict on a closed cache should fail
-        var cache = LruBlockCache.builder().capacity(10).build();
+        var cache = LruBlockCache.builder().byteBudget(NO_EVICTION_BUDGET).build();
         cache.close();
         assertThrows(IllegalStateException.class, () -> cache.evict(1L),
                 "evict on a closed LruBlockCache should throw IllegalStateException");
@@ -345,32 +326,34 @@ class StripedBlockCacheAdversarialTest {
     // @spec sstable.striped-block-cache.R30
     @Test
     void stripedEvictAfterCloseThrows() {
-        // F5: evict on a closed StripedBlockCache should fail
-        var cache = StripedBlockCache.builder().stripeCount(2).capacity(10).build();
+        var cache = StripedBlockCache.builder().stripeCount(2).byteBudget(NO_EVICTION_BUDGET)
+                .build();
         cache.close();
         assertThrows(IllegalStateException.class, () -> cache.evict(1L),
                 "evict on a closed StripedBlockCache should throw IllegalStateException");
     }
 
-    // --- F7: size() never negative, never exceeds capacity ---
+    // --- size() never negative, never exceeds capacity when uniformly sized ---
 
     // @spec sstable.striped-block-cache.R7
     @Test
     void sizeNeverNegativeAfterEvict() {
-        // F7: size() should never return negative even after evicting non-existent entries
-        try (var cache = StripedBlockCache.builder().stripeCount(4).capacity(100).build()) {
-            cache.evict(999L); // evict from empty cache
+        try (var cache = StripedBlockCache.builder().stripeCount(4).byteBudget(NO_EVICTION_BUDGET)
+                .build()) {
+            cache.evict(999L);
             assertTrue(cache.size() >= 0,
                     "size() must never return negative, even after evicting from empty cache");
         }
     }
 
-    // @spec sstable.striped-block-cache.R8
+    // @spec sstable.byte-budget-block-cache.R12 — byte-budget invariant with uniformly-sized
+    // entries
     @Test
     void sizeNeverExceedsCapacity() {
-        // F7: size() should never exceed capacity(), even transiently
-        try (var cache = StripedBlockCache.builder().stripeCount(2).capacity(4).build()) {
-            // Insert more entries than capacity — size should cap at capacity
+        // With 1-byte entries, byte budget == max entries in aggregate; size() must never exceed
+        // capacity() under uniform insertion.
+        try (var cache = StripedBlockCache.builder().stripeCount(2).expectedMinimumBlockSize(1L)
+                .byteBudget(4L).build()) {
             for (int i = 0; i < 20; i++) {
                 cache.put(1L, i, MemorySegment.ofArray(new byte[]{ (byte) i }));
                 assertTrue(cache.size() <= cache.capacity(),
@@ -380,13 +363,11 @@ class StripedBlockCacheAdversarialTest {
         }
     }
 
-    // --- F9: stripeCount upper bound ---
+    // --- stripeCount upper bound ---
 
     // @spec sstable.striped-block-cache.R18
     @Test
     void excessiveStripeCountRejected() {
-        // F9: stripeCount of Integer.MAX_VALUE would allocate billions of objects.
-        // Should be rejected eagerly by the stripeCount setter.
         assertThrows(IllegalArgumentException.class,
                 () -> StripedBlockCache.builder().stripeCount(Integer.MAX_VALUE),
                 "stripeCount of Integer.MAX_VALUE should be rejected — "
@@ -396,7 +377,6 @@ class StripedBlockCacheAdversarialTest {
     // @spec sstable.striped-block-cache.R18
     @Test
     void stripeCountAboveMaxLimitRejected() {
-        // F9: stripeCount above MAX_STRIPE_COUNT should be rejected.
         assertThrows(IllegalArgumentException.class,
                 () -> StripedBlockCache.builder()
                         .stripeCount(StripedBlockCache.MAX_STRIPE_COUNT + 1),
@@ -406,10 +386,11 @@ class StripedBlockCacheAdversarialTest {
     // @spec sstable.striped-block-cache.R19
     @Test
     void stripeCountAtMaxLimitAccepted() {
-        // F9: stripeCount at exactly MAX_STRIPE_COUNT should be accepted.
+        // MAX_STRIPE_COUNT stripes × 4096 bytes per stripe meets the R20a default floor.
         assertDoesNotThrow(
                 () -> StripedBlockCache.builder().stripeCount(StripedBlockCache.MAX_STRIPE_COUNT)
-                        .capacity(StripedBlockCache.MAX_STRIPE_COUNT).build().close(),
-                "stripeCount of MAX_STRIPE_COUNT should be accepted");
+                        .byteBudget((long) StripedBlockCache.MAX_STRIPE_COUNT * 4_096L).build()
+                        .close(),
+                "stripeCount of MAX_STRIPE_COUNT should be accepted with a sufficient budget");
     }
 }

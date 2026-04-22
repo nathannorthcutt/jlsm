@@ -10,6 +10,32 @@ semver release cadence is established.
 
 ## [Unreleased]
 
+### Added — Byte-budget block cache (implement-sstable-enhancements WD-01)
+- `sstable.byte-budget-block-cache` spec v2 DRAFT → v4 APPROVED — byte-budget LRU displacing entry-count; 40+ requirements covering chokepoint structural enforcement (R6/R7), overflow protection (R29), oversized-entry admission (R11), zero-length rejection (R9/R9a), entry-count cap (R28a), reference lifetime contract (R15a), constructor-side sentinel detection (R3a), close-ordering assertions (R16), and use-after-close guards (R31)
+- `LruBlockCache.Builder.byteBudget(long)` replaces removed `capacity(long)`; new `byteBudget()` accessor; transactional setter semantics (R2)
+- `StripedBlockCache.Builder.byteBudget(long)` / `expectedMinimumBlockSize(long)` (R20a/R20b); constructor-side MAX_STRIPE_COUNT revalidation (R18a); partial-construction rollback closes already-constructed stripes (R48)
+- `BlockCache` interface Javadoc: `capacity()` unit is bytes, `close()` mandates use-after-close ISE, default `getOrLoad` documents monitor-collision risk
+- 45 new tests in `ByteBudgetBlockCacheTest.java` across 7 @Nested classes covering byte-budget eviction, overflow protection, R11 oversized-entry admission, R8 put-replace atomicity, R9/R9a zero-length rejection, R32 loader-exception guarantees, MemorySegment slice-size accounting, and reference-lifetime contracts
+- 3 KB pattern entries: `reflective-bypass-of-builder-validation`, `interface-contract-missing-from-javadoc`, `fan-out-dispatch-deferred-exception-pattern`
+
+### Changed — `sstable.striped-block-cache` spec v2 → v4
+- v3 in-place amendment: R8, R9, R15, R43, R44 invalidated with strike-through notes pointing at superseding byte-budget requirements; R-number gaps preserved so 28 existing `@spec` annotations remain valid
+- v4 audit reconciliation: R5 extended for deferred-exception eviction, R11 relaxed to permit non-linear splitmix64 pre-avalanche (defeats algebraic pre-image collisions), R46 extended for ISE translation across stripes
+- `splitmix64Hash` gets pre-avalanche multiply-XOR-shift round before combining sstableId with blockOffset — cache key distribution changes on deploy (one-time cache rewarm, no on-disk format change)
+
+### Performance
+- Fixed-byte-budget eviction replaces fixed-entry-count eviction — cache memory usage is now predictable and proportional to configured byte budget, regardless of block size variation across SSTables (4 KiB local to 8 MiB remote)
+- Added one multiply-XOR-shift per stripe dispatch (~1–2ns on x86) as the cost of eliminating algebraic hash pre-image collisions
+
+### Fixed — Audit round-001 reconciliation
+- `subtractBytes` invariant now enforced by runtime check (was `assert`-only, disappeared with `-da`)
+- `StripedBlockCache.evict` uses deferred-exception pattern — exceptions from one stripe no longer abort fan-out to others
+- `StripedBlockCache.size` translates concurrent-close ISE to a striped-level ISE (consistent with get/put/evict/getOrLoad)
+- Reflective-bypass callers of `<init>(Builder)` now get `IllegalArgumentException` with the same diagnostic as `build()` (previously leaked sentinel values or threw `NegativeArraySizeException`)
+
+### Known Gaps
+- R28a entry-count cap test (`entryCountCap_R28a_rejectsNearIntegerMaxValue`) is `@Disabled` — requires ~Integer.MAX_VALUE entries which is impractical in a unit test; R28a is enforced in the implementation regardless
+
 ### Added — Spec coverage gap closure (close-coverage-gaps WD-01 + WD-02)
 - `engine.clustering` v6 → v7 promoted DRAFT → APPROVED — 114/114 requirements reach direct `@spec` annotation coverage (impl + test)
 - `engine.in-process-database-engine` v3 → v4 promoted DRAFT → APPROVED — 89/91 traced (R61 and R79 documented UNTESTABLE, retained as impl-only)

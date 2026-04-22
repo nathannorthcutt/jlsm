@@ -5,6 +5,7 @@ import jlsm.core.cache.BlockCache;
 import java.lang.foreign.MemorySegment;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.LongFunction;
 import java.util.function.Supplier;
 
 /**
@@ -29,45 +30,101 @@ public final class StripedBlockCache implements BlockCache {
 
     static final int MAX_STRIPE_COUNT = 1024;
 
+    /**
+     * Default minimum expected block size hint — one local SSTable block (4 KiB). Deployments with
+     * larger block sizes (for example 8 MiB for remote backends) should configure this explicitly
+     * via {@link Builder#expectedMinimumBlockSize(long)}.
+     */
+    static final long DEFAULT_EXPECTED_MINIMUM_BLOCK_SIZE = 4096L;
+
     // @spec sstable.striped-block-cache.R34,R35,R36 — one LruBlockCache per stripe, each with its
-    // own ReentrantLock, so
-    // concurrent operations on different stripes never contend
+    // own ReentrantLock, so concurrent operations on different stripes never contend
     private final LruBlockCache[] stripes;
     private final int stripeCount;
     private final int stripeMask;
-    private final long capacity;
+    private final long effectiveCapacity;
     private volatile boolean closed;
 
+    // Package-private test seam (F-R1.resource_lifecycle.2.1): when non-null, the constructor's
+    // stripe-construction loop delegates per-stripe creation to this factory so adversarial tests
+    // can deterministically force a mid-loop failure and verify that previously constructed
+    // stripes are closed (not leaked). MUST remain null in production; set only from test code in
+    // the same package, and always reset in a finally block.
+    static volatile LongFunction<LruBlockCache> testStripeFactory;
+
     private StripedBlockCache(Builder builder) {
+        // Runtime checks (not asserts): reflective callers that bypass Builder.build() still get
+        // IllegalArgumentException under -da. Documented by SharedStateAdversarialTest findings
+        // F-R1.shared_state.1.2 (stripeCount) and regression watch for byteBudget.
         if (builder.stripeCount <= 0) {
             throw new IllegalArgumentException(
                     "stripeCount must be positive, got: " + builder.stripeCount);
         }
-
-        // Round up to the nearest power of 2 for bitmask optimization
-        final int effectiveStripeCount = Integer
-                .highestOneBit(builder.stripeCount) == builder.stripeCount ? builder.stripeCount
-                        : Integer.highestOneBit(builder.stripeCount) << 1;
-
-        if (builder.capacity < effectiveStripeCount) {
-            throw new IllegalArgumentException("capacity must be >= effective stripeCount ("
-                    + effectiveStripeCount + "), got capacity=" + builder.capacity);
+        // Finding F-R1.dispatch_routing.1.2: re-validate the MAX_STRIPE_COUNT upper bound here so
+        // that a reflective caller that writes Builder.stripeCount directly (bypassing the setter
+        // and build()) cannot drive roundUpToPowerOfTwo into integer overflow, which would
+        // otherwise surface as a NegativeArraySizeException or a corrupt negative stripeMask.
+        if (builder.stripeCount > MAX_STRIPE_COUNT) {
+            throw new IllegalArgumentException("stripeCount must not exceed " + MAX_STRIPE_COUNT
+                    + ", got: " + builder.stripeCount);
+        }
+        // Finding F-R1.contract_boundaries.4.2: when byteBudget is still at the -1L sentinel
+        // (setter never called), emit the same "not set" diagnostic that build() emits rather
+        // than echoing the sentinel value via the "byteBudget must be >= effective stripeCount"
+        // path below.
+        if (builder.byteBudget == -1L) {
+            throw new IllegalArgumentException(
+                    "byteBudget not set — call .byteBudget(n) before .build()");
+        }
+        final int effectiveStripeCount = roundUpToPowerOfTwo(builder.stripeCount);
+        if (builder.byteBudget < effectiveStripeCount) {
+            throw new IllegalArgumentException("byteBudget must be >= effective stripeCount ("
+                    + effectiveStripeCount + "), got byteBudget=" + builder.byteBudget);
         }
 
         this.stripeCount = effectiveStripeCount;
         this.stripeMask = effectiveStripeCount - 1;
         this.stripes = new LruBlockCache[stripeCount];
 
-        // @spec sstable.striped-block-cache.R9 — capacity = (configuredCapacity /
-        // effectiveStripeCount) *
-        // effectiveStripeCount
-        final long perStripeCapacity = builder.capacity / stripeCount;
-        this.capacity = perStripeCapacity * stripeCount;
-        // @spec sstable.striped-block-cache.R15,R16 — each stripe is an independent LruBlockCache
-        // with its own LRU
-        for (int i = 0; i < stripeCount; i++) {
-            stripes[i] = LruBlockCache.builder().capacity(perStripeCapacity).build();
+        // @spec sstable.byte-budget-block-cache.R22,R23 — per-stripe budget is the integer
+        // quotient; capacity() reports the re-multiplied (truncated) total byte budget
+        final long perStripeByteBudget = builder.byteBudget / stripeCount;
+        this.effectiveCapacity = perStripeByteBudget * stripeCount;
+        // @spec sstable.byte-budget-block-cache.R22,R24 — each stripe is an independent
+        // LruBlockCache sized by the per-stripe byte budget; a single entry exceeding the
+        // per-stripe budget triggers R11 oversized-entry behavior within its stripe
+        // Finding F-R1.resource_lifecycle.2.1: if stripe construction throws mid-loop (e.g.,
+        // OutOfMemoryError while allocating the N-th stripe), close any already-constructed
+        // stripes before propagating the failure. Without this cleanup the partially-populated
+        // stripes array becomes unreachable but the individual stripe instances are orphaned
+        // without a close() call, leaking any internal state (maps, locks, cached segments).
+        final LongFunction<LruBlockCache> factory = testStripeFactory;
+        int constructed = 0;
+        try {
+            for (int i = 0; i < stripeCount; i++) {
+                stripes[i] = (factory != null) ? factory.apply(perStripeByteBudget)
+                        : LruBlockCache.builder().byteBudget(perStripeByteBudget).build();
+                constructed = i + 1;
+            }
+        } catch (Throwable primary) {
+            for (int j = 0; j < constructed; j++) {
+                try {
+                    stripes[j].close();
+                } catch (Throwable inner) {
+                    primary.addSuppressed(inner);
+                }
+            }
+            throw primary;
         }
+    }
+
+    /**
+     * Rounds {@code value} up to the next power of 2. Assumes {@code value > 0}; if {@code value}
+     * is already a power of 2 it is returned unchanged.
+     */
+    private static int roundUpToPowerOfTwo(int value) {
+        assert value > 0 : "value must be positive, got: " + value;
+        return Integer.highestOneBit(value) == value ? value : Integer.highestOneBit(value) << 1;
     }
 
     /**
@@ -88,8 +145,7 @@ public final class StripedBlockCache implements BlockCache {
      * @throws IllegalArgumentException if {@code stripeCount} is not a positive power of 2
      */
     // @spec sstable.striped-block-cache.R10,R11,R12,R13,R14,R45 — splitmix64 stripe index
-    // (distribution emerges from the
-    // finalizer's avalanche); package-private static;
+    // (distribution emerges from the finalizer's avalanche); package-private static;
     // rejects non-power-of-2 stripeCount with IAE
     static int stripeIndex(long sstableId, long blockOffset, int stripeCount) {
         // @spec sstable.striped-block-cache.R45 — non-power-of-2 stripeCount rejected (R10
@@ -98,14 +154,7 @@ public final class StripedBlockCache implements BlockCache {
             throw new IllegalArgumentException(
                     "stripeCount must be a positive power of 2, got: " + stripeCount);
         }
-
-        // @spec sstable.striped-block-cache.R11 — Splitmix64 (Stafford variant 13) with
-        // golden-ratio combining
-        long h = sstableId * 0x9E3779B97F4A7C15L + blockOffset;
-        h = (h ^ (h >>> 30)) * 0xBF58476D1CE4E5B9L;
-        h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
-        h = h ^ (h >>> 31);
-        return (int) (h & (stripeCount - 1));
+        return (int) (splitmix64Hash(sstableId, blockOffset) & (stripeCount - 1));
     }
 
     /**
@@ -113,11 +162,31 @@ public final class StripedBlockCache implements BlockCache {
      * power-of-2 validation since it was enforced at construction time.
      */
     private int stripeFor(long sstableId, long blockOffset) {
-        long h = sstableId * 0x9E3779B97F4A7C15L + blockOffset;
+        return (int) (splitmix64Hash(sstableId, blockOffset) & stripeMask);
+    }
+
+    /**
+     * Splitmix64 finalizer (Stafford variant 13) combining two {@code long} inputs via the
+     * golden-ratio multiplier plus a non-linear pre-avalanche round. Produces full 64-bit
+     * avalanche; caller masks to the stripe range.
+     *
+     * <p>
+     * The pre-avalanche multiply-XOR-shift on {@code sstableId * G} (before adding
+     * {@code blockOffset}) defeats the linear algebraic pre-image collisions that a pure
+     * {@code sstableId * G + blockOffset} combine would otherwise admit — namely, pairs satisfying
+     * {@code (s1-s2)*G ≡ o2-o1 (mod 2^64)} no longer collapse to the same combined input.
+     */
+    // @spec sstable.striped-block-cache.R11 (v4) — Splitmix64 (Stafford variant 13) applied to
+    // a combined input that uses a non-linear pre-avalanche round to defeat algebraic
+    // pre-image collisions. See audit finding F-R1.data_transformation.1.1.
+    private static long splitmix64Hash(long sstableId, long blockOffset) {
+        // R11 (v4): pre-avalanche non-linear combine to defeat algebraic pre-image collisions
+        long a = sstableId * 0x9E3779B97F4A7C15L;
+        a = (a ^ (a >>> 30)) * 0xBF58476D1CE4E5B9L;
+        long h = a + blockOffset;
         h = (h ^ (h >>> 30)) * 0xBF58476D1CE4E5B9L;
         h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
-        h = h ^ (h >>> 31);
-        return (int) (h & stripeMask);
+        return h ^ (h >>> 31);
     }
 
     /**
@@ -164,8 +233,7 @@ public final class StripedBlockCache implements BlockCache {
      * @throws NullPointerException if {@code block} is null
      */
     // @spec sstable.striped-block-cache.R4,R26,R27,R29 — put delegates to stripe; IAE on negative
-    // offset; NPE on null;
-    // ISE after close
+    // offset; NPE on null; ISE after close
     @Override
     public void put(long sstableId, long blockOffset, MemorySegment block) {
         if (closed) {
@@ -190,11 +258,9 @@ public final class StripedBlockCache implements BlockCache {
     }
 
     // @spec sstable.striped-block-cache.R37,R38,R39,R40,R47 — getOrLoad releases stripe lock during
-    // loader (R37);
-    // IAE on negative offset (R38); NPE on null loader (R39);
-    // ISE after close (R40); concurrent callers observe the same
-    // reference (R47, enforced by LruBlockCache double-checked
-    // locking in the delegate)
+    // loader (R37); IAE on negative offset (R38); NPE on null loader (R39); ISE after close (R40);
+    // concurrent callers observe the same reference (R47, enforced by LruBlockCache
+    // double-checked locking in the delegate)
     @Override
     public MemorySegment getOrLoad(long sstableId, long blockOffset,
             Supplier<MemorySegment> loader) {
@@ -229,17 +295,52 @@ public final class StripedBlockCache implements BlockCache {
      *
      * @param sstableId the unique identifier of the SSTable whose blocks should be evicted
      */
-    // @spec sstable.striped-block-cache.R5,R30 — evict iterates all stripes sequentially; ISE after
-    // close
+    // @spec sstable.striped-block-cache.R5,R30,R42 — evict iterates all stripes sequentially
+    // (fan-out); ISE after close; deferred-exception pattern mirrors close() so a single stripe
+    // failure cannot leave blocks cached on later stripes (F-R1.dispatch_routing.1.1)
     @Override
     public void evict(long sstableId) {
         if (closed) {
             throw new IllegalStateException("cache is closed");
         }
-        try {
-            for (LruBlockCache stripe : stripes) {
+        RuntimeException deferred = null;
+        for (LruBlockCache stripe : stripes) {
+            try {
                 stripe.evict(sstableId);
+            } catch (RuntimeException e) {
+                if (deferred == null) {
+                    deferred = e;
+                } else {
+                    deferred.addSuppressed(e);
+                }
             }
+        }
+        if (deferred != null) {
+            if (closed) {
+                throw new IllegalStateException("cache is closed");
+            }
+            throw deferred;
+        }
+    }
+
+    /**
+     * Returns the total number of blocks currently held across all stripes.
+     *
+     * @return current block count; always non-negative
+     */
+    // @spec sstable.striped-block-cache.R6,R7,R46 — sum of stripe sizes; non-negative by
+    // construction; ISE after close
+    @Override
+    public long size() {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
+        try {
+            long total = 0;
+            for (LruBlockCache stripe : stripes) {
+                total += stripe.size();
+            }
+            return total;
         } catch (IllegalStateException e) {
             if (closed) {
                 throw new IllegalStateException("cache is closed");
@@ -249,36 +350,40 @@ public final class StripedBlockCache implements BlockCache {
     }
 
     /**
-     * Returns the total number of blocks currently held across all stripes.
+     * Returns the effective total byte budget across all stripes.
      *
-     * @return current block count; always non-negative
-     */
-    // @spec sstable.striped-block-cache.R6,R7,R8,R46 — sum of stripe sizes; non-negative and ≤
-    // capacity by construction;
-    // ISE after close
-    @Override
-    public long size() {
-        if (closed) {
-            throw new IllegalStateException("cache is closed");
-        }
-        long total = 0;
-        for (LruBlockCache stripe : stripes) {
-            total += stripe.size();
-        }
-        return total;
-    }
-
-    /**
-     * Returns the total capacity across all stripes.
+     * <p>
+     * <b>Truncation (sstable.byte-budget-block-cache v3 R23):</b> computed as
+     * {@code (totalByteBudget / effectiveStripeCount) * effectiveStripeCount}. When
+     * {@code totalByteBudget} is not evenly divisible by the effective (power-of-2-rounded) stripe
+     * count, integer division truncates and the reported capacity may be less than the configured
+     * {@link Builder#byteBudget(long)} value.
      *
-     * @return cache capacity; always positive
+     * @return effective byte budget; always positive
      */
+    // @spec sstable.byte-budget-block-cache.R23 — effective byte budget after truncation
     @Override
     public long capacity() {
         if (closed) {
             throw new IllegalStateException("cache is closed");
         }
-        return capacity;
+        return effectiveCapacity;
+    }
+
+    /**
+     * Returns the configured byte budget (per sstable.byte-budget-block-cache v3 R14, parallel to
+     * LruBlockCache). Same as {@link #capacity()} modulo the R23 truncation — this accessor returns
+     * the effective truncated byte budget, consistent with the per-stripe configuration.
+     *
+     * @return configured byte budget, always positive
+     * @throws IllegalStateException if the cache is closed (R31)
+     */
+    // @spec sstable.byte-budget-block-cache.R14,R31 — byteBudget accessor; ISE after close
+    public long byteBudget() {
+        if (closed) {
+            throw new IllegalStateException("cache is closed");
+        }
+        return effectiveCapacity;
     }
 
     /**
@@ -286,8 +391,8 @@ public final class StripedBlockCache implements BlockCache {
      * call, behavior of all other methods is undefined.
      */
     // @spec sstable.striped-block-cache.R31,R32,R33 — close invokes close on every stripe (R32),
-    // accumulating exceptions
-    // via the deferred pattern (R31); safe on newly-constructed cache (R33)
+    // accumulating exceptions via the deferred pattern (R31); safe on newly-constructed cache
+    // (R33); double-close is idempotent via per-stripe idempotent close (byte-budget R16)
     @Override
     public void close() {
         closed = true;
@@ -325,16 +430,17 @@ public final class StripedBlockCache implements BlockCache {
      * Builder for {@link StripedBlockCache}.
      *
      * <p>
-     * Default stripe count is {@code min(Runtime.getRuntime().availableProcessors(), 16)}. Capacity
-     * must be set explicitly and must be at least {@code stripeCount} (each stripe needs at least 1
-     * entry of capacity).
+     * Default stripe count is {@code min(Runtime.getRuntime().availableProcessors(), 16)}. The byte
+     * budget must be set explicitly and must be at least {@code stripeCount} (each stripe needs a
+     * positive byte budget).
      */
     public static final class Builder {
 
         // @spec sstable.striped-block-cache.R23 — default stripeCount = min(availableProcessors,
         // 16)
         private int stripeCount = Math.min(Runtime.getRuntime().availableProcessors(), 16);
-        private long capacity = -1;
+        private long byteBudget = -1L;
+        private long expectedMinimumBlockSize = DEFAULT_EXPECTED_MINIMUM_BLOCK_SIZE;
 
         private Builder() {
         }
@@ -367,19 +473,56 @@ public final class StripedBlockCache implements BlockCache {
         }
 
         /**
-         * Sets the total capacity across all stripes. Each stripe receives
-         * {@code capacity / stripeCount} entries of capacity.
+         * Configures the total byte budget for this striped cache.
          *
-         * @param capacity the total capacity; must be at least {@code stripeCount}
-         * @return this builder
+         * <p>
+         * <b>Transactional setter (R18):</b> this setter validates {@code bytes} before mutating
+         * any builder state. If validation fails the builder is left unchanged and a subsequent
+         * call with a valid value succeeds as if the rejected call had not occurred.
+         *
+         * @param bytes must be positive; {@code >=} effective stripe count at {@link #build} (R20);
+         *            per-stripe budget ({@code bytes / effectiveStripeCount}) must be
+         *            {@code >= expectedMinimumBlockSize} at build (R20a)
+         * @return this builder for fluent chaining
+         * @throws IllegalArgumentException if {@code bytes <= 0}; on rejection the builder state is
+         *             unchanged
          */
-        // @spec sstable.striped-block-cache.R20 — eager rejection of capacity <= 0 at the setter
-        // call
-        public Builder capacity(long capacity) {
-            if (capacity <= 0) {
-                throw new IllegalArgumentException("capacity must be positive, got: " + capacity);
+        // @spec sstable.byte-budget-block-cache.R17,R18 — transactional byteBudget setter
+        public Builder byteBudget(long bytes) {
+            if (bytes <= 0) {
+                throw new IllegalArgumentException("byteBudget must be positive, got: " + bytes);
             }
-            this.capacity = capacity;
+            this.byteBudget = bytes;
+            return this;
+        }
+
+        /**
+         * Sets the minimum block size hint for per-stripe budget validation.
+         *
+         * <p>
+         * Defaults to {@value StripedBlockCache#DEFAULT_EXPECTED_MINIMUM_BLOCK_SIZE} bytes (one
+         * local SSTable block). Deployments with larger block sizes (for example 8 MiB remote)
+         * should configure this explicitly so that the build-time validation rejects configurations
+         * whose per-stripe byte budget cannot hold at least one block.
+         *
+         * <p>
+         * <b>Transactional setter (R20b):</b> this setter validates {@code bytes} before mutating
+         * any builder state. If validation fails the builder is left unchanged and a subsequent
+         * call with a valid value succeeds as if the rejected call had not occurred.
+         *
+         * @param bytes minimum expected block size; must be positive
+         * @return this builder for fluent chaining
+         * @throws IllegalArgumentException if {@code bytes <= 0}; on rejection the builder state is
+         *             unchanged
+         */
+        // @spec sstable.byte-budget-block-cache.R20a,R20b — expectedMinimumBlockSize setter with
+        // transactional semantics
+        public Builder expectedMinimumBlockSize(long bytes) {
+            if (bytes <= 0) {
+                throw new IllegalArgumentException(
+                        "expectedMinimumBlockSize must be positive, got: " + bytes);
+            }
+            this.expectedMinimumBlockSize = bytes;
             return this;
         }
 
@@ -387,36 +530,50 @@ public final class StripedBlockCache implements BlockCache {
          * Builds a new {@link StripedBlockCache} with the configured parameters.
          *
          * @return a new {@code StripedBlockCache} instance
-         * @throws IllegalArgumentException if capacity is not set, {@code stripeCount <= 0}, or
-         *             {@code capacity < stripeCount}
+         * @throws IllegalArgumentException if byteBudget is not set, {@code stripeCount <= 0},
+         *             {@code byteBudget < effectiveStripeCount}, or per-stripe byte budget is below
+         *             {@code expectedMinimumBlockSize}
          */
-        // @spec sstable.striped-block-cache.R21,R22,R24 — reject capacity < stripeCount; reject
-        // per-stripe capacity
-        // > Integer.MAX_VALUE; reject missing capacity
+        // @spec sstable.byte-budget-block-cache.R19,R20,R20a — require byteBudget to be set;
+        // reject byteBudget < effectiveStripeCount; reject per-stripe below
+        // expectedMinimumBlockSize
+        // @spec sstable.striped-block-cache.R18 — build() re-enforces MAX_STRIPE_COUNT so that
+        // a reflective-bypass caller that writes the stripeCount field directly (without going
+        // through the setter) still gets the documented IllegalArgumentException rather than a
+        // downstream NegativeArraySizeException from roundUpToPowerOfTwo overflow.
         public StripedBlockCache build() {
             if (stripeCount <= 0) {
                 throw new IllegalArgumentException(
                         "stripeCount must be positive, got: " + stripeCount);
             }
-            // @spec sstable.striped-block-cache.R24 — capacity must be set explicitly before build
-            if (capacity < 0) {
-                throw new IllegalArgumentException(
-                        "capacity not set — call .capacity(n) before .build()");
+            if (stripeCount > MAX_STRIPE_COUNT) {
+                throw new IllegalArgumentException("stripeCount must not exceed " + MAX_STRIPE_COUNT
+                        + ", got: " + stripeCount);
             }
-            // @spec sstable.striped-block-cache.R21 — capacity < stripeCount rejected
-            if (capacity < stripeCount) {
-                throw new IllegalArgumentException("capacity must be at least stripeCount ("
-                        + stripeCount + "), got: " + capacity);
-            }
-            long perStripeCapacity = capacity / stripeCount;
-            // @spec sstable.striped-block-cache.R22 — per-stripe capacity must fit LinkedHashMap's
-            // int size()
-            if (perStripeCapacity > Integer.MAX_VALUE) {
+            // @spec sstable.byte-budget-block-cache.R19 — byteBudget must be set explicitly before
+            // build. The error message must indicate that byteBudget was never set rather than
+            // echoing the sentinel value.
+            if (byteBudget <= 0) {
                 throw new IllegalArgumentException(
-                        "per-stripe capacity must not exceed Integer.MAX_VALUE ("
-                                + Integer.MAX_VALUE
-                                + ") because the backing LinkedHashMap uses int size(); got: "
-                                + perStripeCapacity);
+                        "byteBudget not set — call .byteBudget(n) before .build()");
+            }
+            final int effectiveStripeCount = roundUpToPowerOfTwo(stripeCount);
+            // @spec sstable.byte-budget-block-cache.R20 — byteBudget < effectiveStripeCount
+            // rejected so every stripe receives at least 1 byte
+            if (byteBudget < effectiveStripeCount) {
+                throw new IllegalArgumentException("byteBudget must be at least effective "
+                        + "stripeCount (" + effectiveStripeCount + "), got: " + byteBudget);
+            }
+            final long perStripeByteBudget = byteBudget / effectiveStripeCount;
+            // @spec sstable.byte-budget-block-cache.R20a — per-stripe byte budget must be at least
+            // expectedMinimumBlockSize so each stripe can hold at least one block without
+            // triggering R11 oversized-entry behavior on every insertion
+            if (perStripeByteBudget < expectedMinimumBlockSize) {
+                throw new IllegalArgumentException("per-stripe byte budget (" + perStripeByteBudget
+                        + " = " + byteBudget + " / " + effectiveStripeCount + ") is below "
+                        + "expectedMinimumBlockSize (" + expectedMinimumBlockSize + "); "
+                        + "either raise byteBudget, lower stripeCount, or lower "
+                        + "expectedMinimumBlockSize");
             }
             return new StripedBlockCache(this);
         }

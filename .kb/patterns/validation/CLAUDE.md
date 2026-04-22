@@ -15,3 +15,5 @@
 | simd-cross-boundary-carry-state | [simd-cross-boundary-carry-state.md](simd-cross-boundary-carry-state.md) | SIMD block-boundary escape state not carried across chunks | 2026-04-12 |
 | integer-overflow-silent-truncation | [integer-overflow-silent-truncation.md](integer-overflow-silent-truncation.md) | Multiplication overflow in user-controlled arithmetic silently wraps | 2026-04-12 |
 | one-shot-api-missing-guard | [one-shot-api-missing-guard.md](one-shot-api-missing-guard.md) | Single-use APIs documented but not enforced at runtime | 2026-04-12 |
+| reflective-bypass-of-builder-validation | [reflective-bypass-of-builder-validation.md](reflective-bypass-of-builder-validation.md) | Builder centralizes validation in build() but constructor trusts Builder state; reflective callers bypass | 2026-04-21 |
+| interface-contract-missing-from-javadoc | [interface-contract-missing-from-javadoc.md](interface-contract-missing-from-javadoc.md) | Spec requirements documented only on impl Javadoc, not promoted to interface; third-party impls diverge | 2026-04-21 |
