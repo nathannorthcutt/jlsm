@@ -1,15 +1,17 @@
 ---
 description: "Write failing tests from work-plan contracts and acceptance criteria"
-argument-hint: "<feature-slug> [--unit <WU-N>] [--add-missing] [--escalation]"
+argument-hint: "<feature-slug> [--unit <WU-N>] [--add-missing] [--escalation] [--specs <id1,id2>]"
 ---
 
-# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing] [--escalation]
+# /feature-test "<feature-slug>" [--unit <WU-N>] [--add-missing] [--escalation] [--specs <ids>]
 
 Writes failing tests from work-plan contracts and brief acceptance criteria.
 Idempotent — if testing is complete for the current cycle, reports and stops.
 With --unit, scopes to a single work unit. With --add-missing, adds tests for
 cases found by the Refactor Agent. With --escalation, reviews a specific test
-flagged by the Code Writer as having a contract conflict.
+flagged by the Code Writer as having a contract conflict. With --specs,
+explicit comma-separated spec IDs bypass the fuzzy-match resolver — use when
+the fuzzy match misses your target specs.
 
 ---
 
@@ -227,22 +229,75 @@ If --add-missing: load only the missing test cases from cycle-log.md.
 
 ### Step 1a — Resolve hardened specs (if available)
 
-Check whether the project has a `.spec/` directory with a manifest:
+The goal is to load every relevant APPROVED spec so generated tests
+carry `covers: R<N>` annotations tying each test to its requirement.
+Three resolution paths, tried in priority order — the first one that
+produces IDs wins.
+
+**1. `--specs <id1,id2,…>` flag (highest priority).** If the caller
+passed `--specs` on the command line (e.g.
+`/feature-test "float16-vectors" --specs query.vector-index,schema.float16-encoding`),
+split on commas and use those IDs directly. This bypasses fuzzy match
+when the author knows exactly which specs apply.
+
+**2. `.feature/<slug>/brief.md` explicit list.** If the brief's front
+matter or narrative contains a `specs:` line listing IDs (e.g.
+`specs: [query.vector-index, schema.float16-encoding]` or
+`specs: query.vector-index, schema.float16-encoding`), extract those
+IDs.
+
+**3. Fuzzy match (fallback).** If neither path supplied explicit IDs,
+fall through to spec-resolve.sh's domain-inference matching on the
+feature brief text.
 
 ```bash
-bash .claude/scripts/spec-resolve.sh "<feature brief title or description>" 8000 2>/dev/null
+if [[ -n "$EXPLICIT_IDS" ]]; then
+  EXPLICIT_SPEC_IDS="$EXPLICIT_IDS" \
+    bash .claude/scripts/spec-resolve.sh "<feature brief>" 8000 2>/dev/null
+else
+  bash .claude/scripts/spec-resolve.sh "<feature brief title or description>" 8000 2>/dev/null
+fi
 ```
 
-If the script succeeds and produces a non-empty bundle, store the output as
-SPEC_BUNDLE. This bundle contains behavioral requirements (R1, R2, ...) that
-the spec system has already hardened.
+Store the output as `SPEC_BUNDLE`. When non-empty, the bundle
+contains behavioral requirements (R1, R2, …) from hardened specs.
 
-If the script fails, `.spec/` does not exist, or the bundle is empty: set
-SPEC_BUNDLE to empty. All subsequent spec-aware steps fall back to their
-original behavior.
+**No silent fallback.** If `.spec/` exists and its manifest has at
+least one APPROVED spec but the resolver returns an empty bundle,
+**stop immediately**. Generating tests without spec annotations when
+specs are available corrupts the downstream traceability — implementers
+lose the `covers:` links they rely on. Display:
 
-**Do not read `.spec/` files directly.** The resolver handles file discovery,
-domain matching, transitive dependency expansion, and token budgeting.
+```
+🛑  SPEC RESOLUTION EMPTY
+────────────────────────────────────────────────
+This project uses hardened specs (.spec/ exists with APPROVED specs),
+but no specs matched the feature brief "<title>".
+
+Tests generated without spec annotations lose covers: R<N> links and
+break downstream verification. Resolve this before proceeding:
+
+  1. Re-invoke with explicit IDs:
+     /feature-test "<slug>" --specs <id1>,<id2>
+
+  2. Or list spec IDs in .feature/<slug>/brief.md:
+     specs: [<id1>, <id2>]
+
+  3. Or rewrite the brief title to match the domain's vocabulary.
+```
+
+Use AskUserQuestion to offer:
+- "I'll re-invoke with --specs" — stop; user re-invokes
+- "Proceed without specs" — override: set SPEC_BUNDLE empty and continue
+  (only safe if the user is certain no specs apply)
+
+If the project has no `.spec/` directory, or the manifest has no
+APPROVED specs at all: set SPEC_BUNDLE empty and proceed silently —
+this is a project not using the spec system, not a resolution failure.
+
+**Do not read `.spec/` files directly.** The resolver handles file
+discovery, domain matching, transitive dependency expansion, and
+token budgeting.
 
 ---
 

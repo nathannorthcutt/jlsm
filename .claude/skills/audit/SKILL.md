@@ -102,6 +102,30 @@ Store the entry point type and value for the Classification subagent.
 
 ---
 
+## Spec-state gate (spec: entry points only)
+
+Before proceeding, verify the target spec is APPROVED. `/audit` on a
+DRAFT or INVALIDATED spec cannot do conformance checking — there is no
+authoritative contract to prove code against. Adversarial exploration
+alone would produce misleading findings that the user will interpret as
+conformance bugs.
+
+```bash
+# Only for "spec:" entry points. Skip for feature / file / prior-report.
+bash .claude/scripts/audit-state-gate.sh "<spec-id>"
+```
+
+If the script exits non-zero, stop immediately. It prints a clear error
+message and the recommended next step (usually `/spec-verify` to promote
+DRAFT → APPROVED). Do not ask the user to override — a non-APPROVED spec
+makes /audit structurally unsound for this entry point.
+
+For **feature-slug** or **file** entry points, do not run this check —
+those entry points don't target a specific spec, and if specs are
+resolved during classification, that phase handles state awareness.
+
+---
+
 ## Budget
 
 After determining the entry point, ask the user for a budget using
@@ -832,6 +856,7 @@ Display the Report subagent's summary as the final output:
   Cross-domain compositions: <n>
   Deferred (budget): <n>
   Spec conflicts: <n> (or "none")
+  Fix-impossible needing resolution: <n> (or "none")
   Pipeline health: fix=<n>% impossible=<n>%
   Report: .feature/<slug>/audit-report.md
 ───────────────────────────────────────────────
@@ -873,6 +898,69 @@ architectural constraint.
 
 For option 3: add `[UNRESOLVED]` marker to the spec requirement and add
 an `open_obligations` entry. The spec becomes DRAFT if it was APPROVED.
+
+If the report summary mentions `Fix-impossible needing resolution: N` with
+N > 0, walk each RELAX-<N> entry from the report's *Fix Impossible —
+needs resolution* section. Each entry represents a confirmed bug whose
+fix conflicts with an existing test that pins the old behavior; without
+explicit resolution the bug stays in the codebase invisibly.
+
+```
+── Fix-impossible findings need resolution ────
+A fix was blocked by an existing test that pins the old behavior.
+The bug is real (Phase 1 confirmed it). The decision is whether the
+test, the spec, or the bug is authoritative.
+
+  RELAX-1: <finding ID> — <one-line summary>
+    Confirmed bug: <what the test proved>
+    Blocking test: <test method> in <test class>
+    Relaxation request: <what the fix would change + which test pins old behavior>
+    Suggested route: <relax-test | wontfix | spec-author | defer>
+```
+
+Ask the user using AskUserQuestion for each RELAX-<N>:
+
+- Question: "RELAX-<N>: <finding ID> — <summary>\n
+  Confirmed bug: <bug description>\n
+  Blocking test: <test method> in <test class>\n
+  Relaxation request: <what the fix needs + which test pins>\n\n
+  How should this be resolved?"
+- Options:
+  1. "Relax the blocking test" — the test pinned an implementation
+     detail. Update it to match the new (correct) behavior, re-run
+     prove-fix to confirm the fix now lands.
+  2. "Accept as wontfix" — the old behavior is authoritative (backward
+     compat, external contract). Record the finding in the report as a
+     known-accepted-risk with rationale.
+  3. "Escalate to /spec-author" — the pin test encodes an implicit spec
+     requirement that was never written down. Author the spec, then the
+     decision becomes a normal spec-conflict.
+  4. "Defer to obligation" — log on the relevant spec as an open
+     obligation; the spec becomes DRAFT if APPROVED.
+
+For option 1: read the blocking test, update it to assert the new
+behavior, re-invoke the prove-fix subagent for this finding (now
+unblocked). Update the report with the new outcome (CONFIRMED_AND_FIXED).
+Append a `pre-existing-test-modified` entry to the report's *Pre-existing
+Test Modifications* section with the diff and proof of safety.
+
+For option 2: append to the report's *Removed Tests (Not Fixed)* section
+classified `DESIGN-CHANGE` with the rationale (e.g. "external API
+contract pins this behavior; cannot change without versioned migration").
+Update the prove-fix output's `fix_detail` to record the user's
+rationale. The finding stays FIX_IMPOSSIBLE in the audit report but is
+now explicitly accepted, not silent drag.
+
+For option 3: invoke `/spec-author` with a brief describing the pinned
+behavior the test encodes. After spec-author returns, re-evaluate the
+finding under the new spec — it usually becomes a spec-conflict
+(handled above) or wontfix.
+
+For option 4: add an `open_obligations` entry on the most-relevant spec
+(the one whose domain matches the construct under test). The
+obligation text references the finding ID and the relaxation request so
+a future `/curate` analysis 19 (aging obligations) can resurface it.
+The spec becomes DRAFT if it was APPROVED.
 
 If cross-cluster unresolved findings exist, ask the user using
 AskUserQuestion:

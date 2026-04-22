@@ -128,8 +128,12 @@ domain-conditional concern areas:
 | HTTP handler | Route annotations, handler methods, request/response types | information flow, injection, auth |
 | Thread pool / async | Synchronized blocks, thread pool creation, async/await, futures | concurrency concerns |
 | External service | HTTP client calls, message queue producers/consumers, RPC stubs | distributed consistency |
-| Crypto | Cipher, MessageDigest, hash, key, encrypt/decrypt imports | cryptographic misuse |
+| Crypto | Cipher, MessageDigest, hash, key, encrypt/decrypt, IV, nonce imports | cryptographic misuse |
 | Environment | System.getenv, os.environ, config file reads, property loading | configuration sensitivity |
+| Credential store | Password hashing/verification, token issuance, JWT signing/verification, session management | auth, cryptographic misuse, information flow |
+| PII handling | Field names matching `ssn`, `email`, `phone`, `address`, `dob`; PII-storing tables/collections | information flow, configuration sensitivity |
+| Auth middleware | Authentication check, authorization comparison, role/permission lookup, RBAC enforcement | auth, information flow |
+| Deserialization / parser | `ObjectInputStream`, `pickle.loads`, `vm.runInNew*`, untrusted XML/JSON/YAML parsing | injection, information flow |
 
 Log each signal with the file and line where detected.
 

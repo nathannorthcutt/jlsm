@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
 import java.lang.foreign.MemorySegment;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -139,5 +141,121 @@ class ArenaBufferPoolTest {
         pool.close();
         // Should not throw
         assertDoesNotThrow(pool::close);
+    }
+
+    // -------------------------------------------------------------------------
+    // bufferSize() accessor — sstable.pool-aware-block-size R1, R2
+    // isClosed() accessor — sstable.pool-aware-block-size R0
+    // Structural: class-final R0a, backing-field-final R1a
+    // -------------------------------------------------------------------------
+
+    // @spec sstable.pool-aware-block-size.R1
+    @Test
+    void bufferSize_returnsConfiguredValue() {
+        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(8192)
+                .acquireTimeoutMillis(1000).build()) {
+            assertEquals(8192L, pool.bufferSize());
+        }
+    }
+
+    // @spec sstable.pool-aware-block-size.R1
+    @Test
+    void bufferSize_matchesBuilderInput_forVariousSizes() {
+        long[] sizes = { 1024L, 4096L, 8192L, 1L << 20 }; // 1 KiB, 4 KiB, 8 KiB, 1 MiB
+        for (long size : sizes) {
+            try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(size)
+                    .acquireTimeoutMillis(1000).build()) {
+                assertEquals(size, pool.bufferSize(),
+                        "bufferSize() must return the configured value for size=" + size);
+            }
+        }
+    }
+
+    // @spec sstable.pool-aware-block-size.R0
+    @Test
+    void isClosed_false_onNewPool() {
+        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64)
+                .acquireTimeoutMillis(1000).build()) {
+            assertFalse(pool.isClosed(), "fresh pool must report isClosed() == false");
+        }
+    }
+
+    // @spec sstable.pool-aware-block-size.R0
+    @Test
+    void isClosed_true_afterClose() {
+        var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64).acquireTimeoutMillis(1000)
+                .build();
+        pool.close();
+        assertTrue(pool.isClosed(), "after close(), isClosed() must return true");
+    }
+
+    // @spec sstable.pool-aware-block-size.R0
+    @Test
+    void isClosed_true_afterRepeatClose() {
+        var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(64).acquireTimeoutMillis(1000)
+                .build();
+        pool.close();
+        pool.close();
+        assertTrue(pool.isClosed(), "isClosed() must remain true after idempotent repeat close()");
+    }
+
+    // @spec sstable.pool-aware-block-size.R2
+    @Test
+    void bufferSize_returnsConfiguredValue_afterClose() {
+        var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(16384)
+                .acquireTimeoutMillis(1000).build();
+        pool.close();
+        assertEquals(16384L, pool.bufferSize(),
+                "R2: bufferSize() must return configured value after close()");
+    }
+
+    // @spec sstable.pool-aware-block-size.R2
+    @Test
+    void bufferSize_doesNotThrow_afterClose() {
+        var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(4096).acquireTimeoutMillis(1000)
+                .build();
+        pool.close();
+        assertDoesNotThrow(pool::bufferSize,
+                "R2: bufferSize() must never throw regardless of close() state");
+    }
+
+    // @spec sstable.pool-aware-block-size.R0a — class stays public final
+    @Test
+    void arenaBufferPool_classIsFinal() {
+        assertTrue(Modifier.isFinal(ArenaBufferPool.class.getModifiers()),
+                "R0a: ArenaBufferPool class must remain public final to prevent isClosed() spoofing");
+    }
+
+    // @spec sstable.pool-aware-block-size.R1a — backing field for bufferSize() must be final
+    @Test
+    void bufferSize_backingField_isFinal() throws ReflectiveOperationException {
+        Field[] fields = ArenaBufferPool.class.getDeclaredFields();
+        Field match = null;
+        for (Field f : fields) {
+            if (f.getType() == long.class && "bufferSize".equals(f.getName())) {
+                match = f;
+                break;
+            }
+        }
+        assertNotNull(match,
+                "R1a: ArenaBufferPool must have a long field named 'bufferSize' backing bufferSize()");
+        assertTrue(Modifier.isFinal(match.getModifiers()),
+                "R1a: the long bufferSize field must be declared final (no volatile/synchronized)");
+        assertFalse(Modifier.isVolatile(match.getModifiers()),
+                "R1a: volatile is explicitly forbidden as a safe-publication mechanism");
+    }
+
+    // Defensive (Lens B: int-backed-long-api) — verifies bufferSize() preserves long semantics
+    // by constructing a pool at MAX_BLOCK_SIZE (32 MiB) — a value that a naive int-backed
+    // implementation could truncate on the accessor. 32 MiB < Integer.MAX_VALUE so the ctor
+    // succeeds.
+    @Test
+    void bufferSize_preservesLongSemantics_atLargeValues() {
+        long largeButAllocatable = 1L << 25; // 32 MiB = SSTableFormat.MAX_BLOCK_SIZE
+        try (var pool = ArenaBufferPool.builder().poolSize(1).bufferSize(largeButAllocatable)
+                .acquireTimeoutMillis(1000).build()) {
+            assertEquals(largeButAllocatable, pool.bufferSize(),
+                    "bufferSize() must return the long value without narrowing/truncation");
+        }
     }
 }

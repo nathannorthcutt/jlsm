@@ -3,6 +3,7 @@ package jlsm.sstable;
 import jlsm.bloom.blocked.BlockedBloomFilter;
 import jlsm.core.bloom.BloomFilter;
 import jlsm.core.compression.CompressionCodec;
+import jlsm.core.io.ArenaBufferPool;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
@@ -699,6 +700,9 @@ public final class TrieSSTableWriter implements SSTableWriter {
         private BloomFilter.Factory bloomFactory;
         private CompressionCodec codec;
         private int blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
+        private boolean blockSizeExplicit = false;
+        private ArenaBufferPool pool = null;
+        private long derivedBlockSizeCandidate = 0L;
         private boolean dictTraining;
         private int dictBlockThreshold = 64;
         private long dictMaxBufferBytes = 256L * 1024 * 1024;
@@ -734,11 +738,84 @@ public final class TrieSSTableWriter implements SSTableWriter {
         }
 
         // @spec sstable.v3-format-upgrade.R10,R11 — Builder.blockSize(int) validates and stores;
-        // default
-        // DEFAULT_BLOCK_SIZE
+        // default DEFAULT_BLOCK_SIZE
+        // @spec sstable.pool-aware-block-size.R6 — tracks explicit invocation independently of
+        // value
+        // @spec sstable.pool-aware-block-size.R11a — last-wins on repeated calls
         public Builder blockSize(int blockSize) {
             SSTableFormat.validateBlockSize(blockSize);
             this.blockSize = blockSize;
+            this.blockSizeExplicit = true;
+            return this;
+        }
+
+        /**
+         * Configures the SSTable writer with the given buffer pool. The writer derives its block
+         * size from {@link ArenaBufferPool#bufferSize()} unless {@link #blockSize(int)} is also
+         * invoked (in which case the explicit value wins per R11).
+         *
+         * <p>
+         * Eager validation: if {@code blockSize(int)} has not been invoked prior to this call, the
+         * pool's {@code bufferSize()} is evaluated against R8 and R9 at the time of this call.
+         * Validation failures throw immediately, not at {@link #build()}.
+         *
+         * <p>
+         * Atomicity on repeated calls: if this is not the first {@code pool()} call, the candidate
+         * pool is validated <em>before</em> replacing the retained reference. A failed repeat
+         * {@code pool()} is a no-op with respect to all builder state.
+         *
+         * @param pool a non-null, open pool
+         * @return this builder
+         * @throws NullPointerException if {@code pool} is null
+         * @throws IllegalStateException if {@code pool.isClosed()} at call time
+         * @throws IllegalArgumentException if the pool's bufferSize() exceeds Integer.MAX_VALUE
+         *             (R8) or fails {@code SSTableFormat.validateBlockSize} (R9/R10), when eager
+         *             validation applies
+         * @spec sstable.pool-aware-block-size.R3
+         * @spec sstable.pool-aware-block-size.R4
+         * @spec sstable.pool-aware-block-size.R4a
+         * @spec sstable.pool-aware-block-size.R5
+         * @spec sstable.pool-aware-block-size.R7
+         * @spec sstable.pool-aware-block-size.R7a
+         * @spec sstable.pool-aware-block-size.R8
+         * @spec sstable.pool-aware-block-size.R9
+         * @spec sstable.pool-aware-block-size.R10
+         * @spec sstable.pool-aware-block-size.R11a
+         */
+        public Builder pool(ArenaBufferPool pool) {
+            // @spec sstable.pool-aware-block-size.R4,R4a — runtime null check, not assert-only
+            Objects.requireNonNull(pool, "pool must not be null");
+            // @spec sstable.pool-aware-block-size.R5,R4a — runtime closed-pool check, not
+            // assert-only
+            if (pool.isClosed()) {
+                throw new IllegalStateException(
+                        "pool(ArenaBufferPool) rejected at call time: the supplied pool is closed");
+            }
+            // @spec sstable.pool-aware-block-size.R7a — eagerly query and validate iff explicit
+            // blockSize(int) has not been called. When blockSizeExplicit is true, R11 says the
+            // explicit value wins regardless of call order, so derivation and eager validation
+            // are skipped for this pool reference.
+            if (!this.blockSizeExplicit) {
+                long candidate = pool.bufferSize();
+                // @spec sstable.pool-aware-block-size.R8 — long comparison BEFORE any narrowing to
+                // int.
+                // Strict inequality: Integer.MAX_VALUE itself is NOT rejected here; it falls
+                // through
+                // to R9 via validateBlockSize which will reject it (exceeds max and/or not
+                // power-of-two).
+                if (candidate > Integer.MAX_VALUE) {
+                    throw new IllegalArgumentException("pool.bufferSize() (" + candidate
+                            + ") exceeds Integer.MAX_VALUE and cannot be used as a block size");
+                }
+                int derivedInt = (int) candidate;
+                // @spec sstable.pool-aware-block-size.R9,R10 — same validator as the explicit path;
+                // failure surfaces the validator's diagnostic (min/max/power-of-two) message.
+                SSTableFormat.validateBlockSize(derivedInt);
+                // @spec sstable.pool-aware-block-size.R11a — atomicity: only after R8 and R9 pass
+                // may the candidate replace the retained reference and derived candidate.
+                this.derivedBlockSizeCandidate = candidate;
+            }
+            this.pool = pool;
             return this;
         }
 
@@ -821,17 +898,44 @@ public final class TrieSSTableWriter implements SSTableWriter {
         public TrieSSTableWriter build() throws IOException {
             Objects.requireNonNull(level, "level must be set");
             Objects.requireNonNull(path, "path must be set");
-            if (bloomFactory == null) {
-                bloomFactory = n -> new BlockedBloomFilter(n, 0.01);
+            // @spec sstable.pool-aware-block-size.R5a — re-check pool closed state ONLY when the
+            // pool is still the active block-size source (i.e. no explicit blockSize(int) call).
+            // If blockSizeExplicit, the pool is no longer the block-size source per R11 and its
+            // lifecycle is not the writer's concern.
+            if (pool != null && !blockSizeExplicit && pool.isClosed()) {
+                throw new IllegalStateException(
+                        "pool was closed between pool() and build(): the retained pool is no longer usable");
+            }
+            // @spec sstable.pool-aware-block-size.R7 — when the pool is the active block-size
+            // source,
+            // assign the candidate validated by R7a at pool() call time.
+            // @spec sstable.pool-aware-block-size.R11 — explicit blockSize(int) wins; the
+            // pool-derived
+            // value is discarded.
+            // @spec sstable.pool-aware-block-size.R13 — default path: neither pool nor explicit →
+            // blockSize retains its DEFAULT_BLOCK_SIZE initializer value.
+            int effectiveBlockSize = this.blockSize;
+            if (pool != null && !blockSizeExplicit) {
+                effectiveBlockSize = (int) derivedBlockSizeCandidate;
             }
             // @spec sstable.v3-format-upgrade.R16 — non-default blockSize without codec rejected at
-            // construction
-            if (blockSize != SSTableFormat.DEFAULT_BLOCK_SIZE && codec == null) {
+            // construction. @spec sstable.pool-aware-block-size.R15 — pool-derived non-default
+            // block sizes inherit this check identically.
+            if (effectiveBlockSize != SSTableFormat.DEFAULT_BLOCK_SIZE && codec == null) {
                 throw new IllegalArgumentException(
                         "non-default blockSize requires a compression codec");
             }
-            return new TrieSSTableWriter(id, level, path, bloomFactory, codec, blockSize,
-                    dictTraining, dictBlockThreshold, dictMaxBufferBytes, dictMaxSize);
+            // Default bloomFactory is resolved into a local only — never written back to
+            // this.bloomFactory — so a failed build() (at any gate above or below) cannot leak
+            // a silent default into the Builder. This preserves the R11a atomicity pattern
+            // followed by every other setter on this builder.
+            final BloomFilter.Factory effectiveBloomFactory = (bloomFactory != null) ? bloomFactory
+                    : n -> new BlockedBloomFilter(n, 0.01);
+            // @spec sstable.pool-aware-block-size.R16 — the effective block size (after any pool
+            // derivation and validation) is written to the footer via F16.R15 by the constructor.
+            return new TrieSSTableWriter(id, level, path, effectiveBloomFactory, codec,
+                    effectiveBlockSize, dictTraining, dictBlockThreshold, dictMaxBufferBytes,
+                    dictMaxSize);
         }
     }
 

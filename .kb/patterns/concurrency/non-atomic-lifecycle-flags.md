@@ -95,3 +95,34 @@ Identified in engine-clustering audit run-001:
 - `RapidMembership.close` — concurrent close ran shutdown twice
 - `ClusteredEngine.close` — concurrent close leaked resources
 - `InJvmTransport.close` — concurrent close corrupted registry state
+
+## Updates 2026-04-22
+
+Confirmed again in `implement-sstable-enhancements--wd-02` audit run-001 on
+`ArenaBufferPool.close()`. The original code used a `volatile boolean closed`
+check-then-act identical to the canonical anti-pattern above; under 50,000
+independent two-thread-pair races the losing thread observed the guard as
+`false` and re-entered `arena.close()`, which in the JDK shared-Arena case
+is **non-idempotent** (`Arena.ofShared().close()` throws
+`IllegalStateException: Already closed` on its second invocation). So in
+this codebase the bug is not merely "cleanup runs twice" — it escapes as a
+crash to the caller.
+
+Nuance added to the pattern: when the underlying resource is itself
+non-idempotent (cross-reference `patterns/resource-management/non-idempotent-close.md`),
+the flag must be set **after** teardown completes, not before. A single
+`AtomicBoolean` claim is not sufficient — observers of `isClosed() == true`
+can otherwise see the flag flipped while the underlying resource is mid-close.
+The full fix requires two flags:
+
+- `AtomicBoolean closing` — the CAS claim that elects exactly one closer.
+- `volatile boolean closed` — the visibility flag, written only **after**
+  the teardown call returns, so `isClosed() == true` carries a
+  happens-before edge to teardown completion.
+
+Losing CAS threads spin on `closed` so every `close()` caller still returns
+with `isClosed()` observable as `true`.
+
+Applies-to extended: `modules/jlsm-core/src/main/java/jlsm/core/io/ArenaBufferPool.java`
+(close path). Findings: F-R001.shared_state.2.1 (atomicity),
+F-R001.shared_state.2.2 (visibility ordering).

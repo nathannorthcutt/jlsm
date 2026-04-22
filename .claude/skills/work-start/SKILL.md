@@ -1,9 +1,9 @@
 ---
 description: "Start implementing a specified work definition — implementation pipeline only"
-argument-hint: "<group-slug> [WD-nn | next]"
+argument-hint: "<group-slug> [WD-nn | next | --parallel [N]]"
 ---
 
-# /work-start "<group-slug>" [WD-nn | next]
+# /work-start "<group-slug>" [WD-nn | next | --parallel [N]]
 
 Bridges a work definition from a work group into the implementation pipeline.
 Creates a `.feature/` directory and hands off to planning, testing, and
@@ -14,6 +14,8 @@ interface contracts), use `/work-plan` instead.
 - `<group-slug>` — the work group to draw from
 - `WD-nn` — start a specific work definition (e.g., WD-01)
 - `next` — auto-select the highest-value READY work definition
+- `--parallel [N]` — start every SPECIFIED WD concurrently (optionally
+  cap at N concurrent sub-agents). See "Parallel mode" section below.
 
 If no WD argument is provided, defaults to `next`.
 
@@ -50,6 +52,12 @@ Display opening header:
 ---
 
 ## Step 3 — Select work definition
+
+### If `--parallel` flag is present:
+
+Skip the single-WD selection logic and go to the **Parallel mode**
+section below. The rest of Step 3's single-WD paths (WD-nn / next) do
+not apply.
 
 ### If specific WD (e.g., WD-01):
 
@@ -239,6 +247,128 @@ Invoke `/feature-plan "<slug>"`.
 
 ---
 
+## Parallel mode
+
+When invoked with `--parallel [N]`, `/work-start` dispatches every
+SPECIFIED work definition in the group as a concurrent sub-agent. Each
+sub-agent runs the full feature pipeline
+(`/feature-plan` → `/feature-test` → `/feature-implement` →
+`/feature-refactor`) in an isolated context.
+
+### When to use parallel mode
+
+Parallel mode is a velocity multiplier when the group has multiple
+WDs that are READY to implement and have no runtime cross-dependencies
+(e.g., they land in separate modules or produce non-overlapping
+artifacts). A wave of five SPECIFIED WDs in a group can complete in
+roughly the time of one WD instead of five sequential runs.
+
+### When NOT to use parallel mode
+
+- **WDs share runtime state** (test DB, ports, cache). Parallel test
+  execution will fight for resources. Sequential is safer.
+- **WDs produce overlapping specs or KB entries.** Concurrent writes
+  to the same spec file or KB entry corrupt the registry.
+- **The user wants to review each step.** Parallel mode is
+  fire-and-wait; individual WD progress is visible in each sub-agent's
+  `.feature/<slug>/status.md` but there is no global pause point
+  between stages.
+
+### Parallel-mode flow
+
+Replace Steps 3–5 with this block when `--parallel` is set.
+
+1. **Enumerate startable WDs.** Parse the `work-resolve.sh` output
+   table and collect every WD whose Status is `SPECIFIED`. If zero,
+   report and stop:
+   ```
+   No SPECIFIED work definitions in '<group-slug>' — run /work-plan
+   first to specify READY WDs, or check work-status for blockers.
+   ```
+
+2. **Cap concurrency.** If the user supplied `--parallel N`, take the
+   first N SPECIFIED WDs (prefer those with more downstream dependents
+   — same "unblocking value" heuristic as `next` mode). If `N` is
+   omitted, dispatch all of them.
+
+3. **Show the plan.** Display:
+   ```
+   ── Parallel start plan ─────────────────────────
+   Group: <group-slug>
+   SPECIFIED WDs: <N>
+   Will dispatch concurrently: <dispatched count>
+
+     WD-<nn> — <title>  (domains: <domains>, unblocks: <list>)
+     WD-<nn> — ...
+   ───────────────────────────────────────────────
+   ```
+   Use AskUserQuestion to confirm — parallel mode spawns multiple
+   long-running pipelines at once and the user should be explicit:
+   - "Dispatch all <N> in parallel"
+   - "Cap at 2" (or a lower number)
+   - "Stop — I'll start them manually"
+
+4. **Create feature directories (all WDs, sequential).** For each
+   dispatched WD, run Step 4 from the single-WD path in full: generate
+   `brief.md`, verify readiness, write `status.md`, update the WD's
+   status to `IMPLEMENTING`. Do this sequentially — these operations
+   touch the `.work/` tree and are fast. Fanning out here adds no
+   measurable benefit and risks racing on `manifest.md` regeneration.
+
+5. **Dispatch sub-agents concurrently.** Spawn one sub-agent per WD in
+   a **single message with multiple Agent tool calls**. Each sub-agent
+   receives this prompt:
+   ```
+   You are the parallel pipeline runner for <feature-slug>.
+   The feature directory exists at .feature/<feature-slug>/.
+   Status.md is initialized at planning/loading-context and the WD is
+   marked IMPLEMENTING.
+
+   Invoke /feature-plan "<feature-slug>" and run the full pipeline
+   through to /feature-refactor. Do not pause for user confirmation;
+   treat automation_mode as autonomous. If any stage escalates (spec
+   conflict, missing tests, test writer escalation), record it in
+   cycle-log.md and continue with the remaining stages where possible;
+   report the escalation in your final one-line summary.
+
+   Return a single summary line of the form:
+     "<feature-slug>: <COMPLETE | STOPPED_AT_<stage> | ERROR> — <detail>"
+   ```
+
+6. **Aggregate results.** When all sub-agents return, summarize:
+   ```
+   ── Parallel run complete · <group-slug> ───────
+   Dispatched: <N>
+   Complete: <n>/<N>
+   Stopped mid-pipeline: <list with stage>
+   Errored: <list with detail>
+   ───────────────────────────────────────────────
+   ```
+   For stopped or errored WDs, the user's next action is usually
+   `/feature-resume "<feature-slug>"` to pick up where each sub-agent
+   left off.
+
+### Concurrency caveats (documented, user-accepted)
+
+- **Shared KB / ADR writes.** If two WDs' `/feature-retro` phases both
+  want to write a new `adversarial-finding` KB entry about the same
+  pattern, both writes succeed but one silently clobbers. Mitigation:
+  run `/curate` after a parallel batch; it detects duplicate KB
+  entries in the cross-reference analysis.
+- **Shared spec writes.** If two WDs produce specs in overlapping
+  domains, both `/spec-write` calls may serialize through the same
+  manifest file. The manifest update uses atomic `jq` + tmp + mv, so
+  the *last writer wins* on the manifest — but individual spec files
+  are per-WD and don't conflict.
+- **Test runner contention.** Parallel test suites can race on shared
+  resources (test DB, network ports, temp files). This is a
+  project-level concern. If the project's tests are isolated per WD,
+  parallel is safe; if not, either cap at 1 or don't use parallel.
+- **Token / cost budget.** N parallel pipelines burn roughly N× the
+  tokens and dollars of a single run. Budget accordingly.
+
+---
+
 ## Notes
 
 - The double-dash convention (`<group>--<wd>`) in the feature slug allows
@@ -248,3 +378,5 @@ Invoke `/feature-plan "<slug>"`.
   have visibility into the broader initiative.
 - Status.md starts at planning/loading-context because specifications
   should already exist from a prior `/work-plan` run or manual authoring.
+- Parallel mode (`--parallel`) is an advanced flow — see the "Parallel
+  mode" section above for when it applies and the concurrency caveats.

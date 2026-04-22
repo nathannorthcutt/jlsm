@@ -41,7 +41,7 @@ The central module. All interfaces and their implementations live here.
 | **Encryption** | Field-level encryption — AES-GCM, AES-SIV, Order-Preserving (OPE), and DCPE-SAP |
 | **LSM Tree** | `StandardLsmTree` and typed wrappers (String, Long, MemorySegment keys) |
 
-File I/O is built on `java.nio` with a `SeekableByteChannel` abstraction that supports both local filesystems and remote object stores (e.g., S3 via Java NIO FileSystem SPI). Off-heap memory is managed through `ArenaBufferPool` backed by `Arena.ofShared()`.
+File I/O is built on `java.nio` with a `SeekableByteChannel` abstraction that supports both local filesystems and remote object stores (e.g., S3 via Java NIO FileSystem SPI). Off-heap memory is managed through `ArenaBufferPool` backed by `Arena.ofShared()`; the SSTable writer's block size can be derived from the pool's buffer size via `TrieSSTableWriter.Builder.pool(ArenaBufferPool)` so deployment profiles are configured once on the pool and inherited by writers.
 
 ### jlsm-table
 

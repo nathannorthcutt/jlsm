@@ -175,6 +175,16 @@ failures, check-then-act races."
 fall-through errors, discriminant mismatches between dispatcher and
 handlers, handlers assuming dispatch guarantees that don't hold."
 
+**Security:** "Apply adversary-model analysis, not just defect
+detection. Read `.claude/prompts/audit/lens-security.md` for deep
+attack patterns. Scope is cluster constructs that handle credentials,
+PII, crypto keys/IVs/nonces, authentication/authorization, or
+deserialization of untrusted input. Split findings by verification
+category — TESTABLE (provable via a failing test) vs ADVISORY
+(design issue like timing channels that prove-fix cannot deterministically
+reproduce). Record `security_concern`, `verification`,
+`attack_surface`, and `adversary_model` on each finding."
+
 ## Boundary contracts
 | Construct | File | Guarantees | Assumes |
 |-----------|------|-----------|---------|

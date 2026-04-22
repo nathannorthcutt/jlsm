@@ -71,6 +71,16 @@ domain.
 12. **Configuration / environment sensitivity** — implicit environmental
     dependencies.
 
+**Security lens deep dive:** When any of concerns 7, 8, 10, 11 are in
+your packet, OR when the packet's `Domain-specific analysis guidance`
+names the "Security" lens, read
+`.claude/prompts/audit/lens-security.md` before sweeping. It lists
+concrete adversary-model attack patterns (IV/nonce reuse, credential
+timing channels, deserialization class whitelist gaps, etc.) that
+generic concerns don't surface. Record security findings with the
+extra fields the lens specifies: `security_concern`, `verification`
+(TESTABLE | ADVISORY), `attack_surface`, `adversary_model`.
+
 ## Using construct cards
 
 Your packet includes full reconciled construct cards. Use them as

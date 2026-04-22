@@ -110,3 +110,43 @@ Identified in table-partitioning audit run-001:
   call without tracking prior invocation (resource_lifecycle.1.2)
 - `InProcessPartitionClient.close()` — re-delegated to underlying table on
   every call (resource_lifecycle.1.3)
+
+## Updates 2026-04-22
+
+Confirmed again in `implement-sstable-enhancements--wd-02` audit run-001 on
+`ArenaBufferPool.close()`. New concrete instance added to the
+"callee that itself throws on second close" list: `Arena.close()` on a
+JDK shared `Arena` (`Arena.ofShared()`). Direct verification on Java 25
+(Corretto 25.0.1) confirmed `Arena.ofShared().close()` throws
+`IllegalStateException: Already closed` on its second invocation. This
+makes the ArenaBufferPool case a hard crash rather than a silent double-free.
+
+Interaction with lifecycle-flag publication: fixing this case requires
+more than "add an idempotency flag." Because `Arena.close()` is
+non-idempotent, the flag must be written **after** `arena.close()`
+returns — setting the flag first (and then invoking the non-idempotent
+callee) leaves a window where `isClosed() == true` is observable while the
+underlying resource is still mid-close. The full fix uses two flags (see
+`patterns/concurrency/non-atomic-lifecycle-flags.md` Updates 2026-04-22):
+an atomic `closing` claim that gates the teardown call, and a visibility
+`closed` flag written in a `finally` after teardown returns.
+
+```java
+private final AtomicBoolean closing = new AtomicBoolean(false);
+private volatile boolean closed = false;
+
+@Override
+public void close() {
+    if (closed) return;                         // idempotent fast path
+    if (closing.compareAndSet(false, true)) {
+        try { arena.close(); }                  // non-idempotent callee
+        finally { closed = true; }              // flag after teardown
+    } else {
+        while (!closed) { Thread.onSpinWait(); } // every caller returns with isClosed()==true
+    }
+}
+```
+
+Applies-to extended: `modules/jlsm-core/src/main/java/jlsm/core/io/ArenaBufferPool.java`.
+Finding: F-R001.shared_state.2.1 (atomicity) + F-R001.shared_state.2.2
+(publication ordering).

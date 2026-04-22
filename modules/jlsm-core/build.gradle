@@ -17,6 +17,11 @@ test {
     jvmArgs '--add-opens', 'jlsm.core/jlsm.core.json=ALL-UNNAMED'
     jvmArgs '--enable-native-access=ALL-UNNAMED'
     jvmArgs '-ea'
+    // Enables com.sun.management DiagnosticCommand / NMT queries used by
+    // SharedStateAdversarialTest to observe Arena native-memory leaks independent
+    // of heap growth. 'summary' is lightweight and is the minimum level that tags
+    // Arena-allocated memory under category "Other".
+    jvmArgs '-XX:NativeMemoryTracking=summary'
     // ByteBudgetBlockCacheTest's R29 overflow tests allocate pairs of ~2 GiB
     // byte[] segments to exercise Long.MAX_VALUE overflow detection. 6 GiB heap
     // leaves comfortable headroom.

@@ -146,6 +146,24 @@ For each conflict found, create a structured entry:
 
 If no fix-spec conflicts: omit this section entirely.
 
+### 5b. Fix-impossible relaxation requests
+
+Read all FIX_IMPOSSIBLE findings from `prove-fix-summary.md` (the
+"Fix Impossible" section). Each carries:
+
+- **Approaches tried:** what the prove-fix subagent attempted
+- **Structural reason:** why no fix-without-test-change is possible
+- **Relaxation request:** the specific behavior change the fix requires
+  and the test that pins the old behavior
+
+These are not statistics — they are open decisions the orchestrator must
+present to the user. Surface them in the report's *Fix Impossible — needs
+resolution* section so the orchestrator can route each one through an
+explicit AskUserQuestion (relax test / accept wontfix / escalate to
+spec-author / defer to obligation).
+
+If no FIX_IMPOSSIBLE findings exist, omit this section.
+
 ### 6. Spec coverage (if specs were in scope)
 
 If `.spec/` exists and specs were loaded by Classification, assess how the
@@ -242,6 +260,21 @@ If no specs were in scope, skip this section entirely.
 - **Impact:** <what breaks if fix stays vs spec stays>
 - **Tradeoff:** <why this is a genuine design tension>
 
+## Fix Impossible — needs resolution
+[If no FIX_IMPOSSIBLE findings: omit this section]
+[One entry per FIX_IMPOSSIBLE finding from prove-fix-summary.md.
+The orchestrator routes each through an AskUserQuestion to choose:
+relax test / accept wontfix / escalate to spec-author / defer.]
+### RELAX-<N>: <finding ID> — <one-line summary>
+- **Confirmed bug:** <what the test proved>
+- **Blocking test:** <test method> in <test class>
+- **Approaches tried:** <list from prove-fix>
+- **Structural reason:** <why no fix without test change is possible>
+- **Relaxation request:** <specific behavior change required + which
+  test pins the old behavior>
+- **Suggested route:** <relax-test | wontfix | spec-author | defer> —
+  <one-sentence justification>
+
 ## Spec Coverage
 [If no specs in scope: "No specs in scope for this audit."]
 [If specs in scope:]
@@ -322,5 +355,13 @@ Cross-domain compositions: <n>
 Removed: <n> (INVALID=<n>, DESIGN-CHANGE=<n>, NEEDS-REVISIT=<n>)
 Pre-existing tests modified: <n>
 Cross-cluster unresolved: <n>
+Fix-spec conflicts: <n>
+Fix-impossible needing resolution: <n>
 Health: confirmation=<n>% fix=<n>% impossible=<n>%
 ```
+
+The `Fix-impossible needing resolution` count tells the orchestrator
+how many AskUserQuestion rounds to drive after presenting the report.
+Zero means clean exit; non-zero means the orchestrator opens the
+report's *Fix Impossible — needs resolution* section and walks each
+RELAX-<N> entry through the user.

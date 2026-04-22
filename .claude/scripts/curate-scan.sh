@@ -5,11 +5,14 @@
 #
 # Usage:
 #   bash .claude/scripts/curate-scan.sh [--init] [--window <months>] [--max-commits <n>]
+#                                        [--obligation-age-days <n>] [--max-specs-traced <n>]
 #
 # Options:
-#   --init           First-time scan (ignores last-scanned SHA)
-#   --window <n>     Months of history to scan (default: 3)
-#   --max-commits <n> Maximum commits to process (default: 500)
+#   --init                        First-time scan (ignores last-scanned SHA)
+#   --window <n>                  Months of history to scan (default: 3)
+#   --max-commits <n>             Maximum commits to process (default: 500)
+#   --obligation-age-days <n>     Flag open_obligations older than N days (default: 30)
+#   --max-specs-traced <n>        Cap @spec annotation traces per run (default: 50)
 #
 # Output: .curate/scan-summary.md (gitignored, read by Claude)
 # Zero token cost — runs as shell outside Claude's context window.
@@ -21,6 +24,8 @@ set -euo pipefail
 INIT_MODE=0
 WINDOW_MONTHS=3
 MAX_COMMITS=500
+OBLIGATION_AGE_DAYS=30
+MAX_SPECS_TRACED=50
 CURATE_DIR=".curate"
 STATE_FILE="$CURATE_DIR/curation-state.md"
 SUMMARY_FILE="$CURATE_DIR/scan-summary.md"
@@ -29,10 +34,12 @@ SUMMARY_FILE="$CURATE_DIR/scan-summary.md"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --init)       INIT_MODE=1; shift ;;
-        --window)     WINDOW_MONTHS="$2"; shift 2 ;;
-        --max-commits) MAX_COMMITS="$2"; shift 2 ;;
-        *)            shift ;;
+        --init)                 INIT_MODE=1; shift ;;
+        --window)               WINDOW_MONTHS="$2"; shift 2 ;;
+        --max-commits)          MAX_COMMITS="$2"; shift 2 ;;
+        --obligation-age-days)  OBLIGATION_AGE_DAYS="$2"; shift 2 ;;
+        --max-specs-traced)     MAX_SPECS_TRACED="$2"; shift 2 ;;
+        *)                      shift ;;
     esac
 done
 
@@ -1154,6 +1161,166 @@ if [[ -d ".work" && -d ".spec" ]]; then
     done < <(find .work -mindepth 1 -maxdepth 1 -type d ! -name '_archive' ! -name '_refs' 2>/dev/null)
 fi
 
+# ── Analysis 18: Missing @spec annotation coverage ──────────────────────────
+# For each APPROVED spec, call spec-trace.sh and parse the summary output for
+# requirements missing implementation or test annotations. The spec-trace
+# summary ends with one of:
+#   - "**All traced requirements have both implementation and test annotations.**"
+#   - "**No implementation annotations:** R1 R3"
+#   - "**No test annotations:** R2 R4"
+#   - (no trace output at all if no annotations exist — spec is entirely unannotated)
+#
+# Requires .spec/registry/manifest.json AND spec-trace.sh accessible at either
+# .claude/scripts/spec-trace.sh or scripts/spec-trace.sh (dev repo layout).
+
+> "$TMPDIR_SCAN/spec-annotation-gaps.txt"
+> "$TMPDIR_SCAN/spec-unannotated.txt"
+
+if [[ -f ".spec/registry/manifest.json" ]] && command -v jq >/dev/null 2>&1; then
+    # Locate the spec-trace script — support installed layout and dev-repo layout.
+    SPEC_TRACE=""
+    if [[ -x ".claude/scripts/spec-trace.sh" ]]; then
+        SPEC_TRACE=".claude/scripts/spec-trace.sh"
+    elif [[ -x "scripts/spec-trace.sh" ]]; then
+        SPEC_TRACE="scripts/spec-trace.sh"
+    fi
+
+    if [[ -n "$SPEC_TRACE" ]]; then
+        MANIFEST=".spec/registry/manifest.json"
+
+        # Enumerate APPROVED spec IDs. Supports both v1 (features object) and
+        # v2 (specs array) manifest schemas. Cap the iteration at
+        # MAX_SPECS_TRACED to keep run time bounded on large codebases.
+        approved_ids="$(jq -r '
+            if .specs then
+              .specs[] | select(.state == "APPROVED") | .id
+            else
+              .features | to_entries[] | select(.value.state == "APPROVED") | .key
+            end
+        ' "$MANIFEST" 2>/dev/null | head -n "$MAX_SPECS_TRACED" || true)"
+
+        specs_traced=0
+        while IFS= read -r sid; do
+            [[ -z "$sid" ]] && continue
+            specs_traced=$((specs_traced + 1))
+
+            # Capture stdout (summary table) and stderr (diagnostics) separately.
+            trace_out="$(SPEC_TRACE_FORMAT=summary "$SPEC_TRACE" "$sid" "$PWD" 2>/dev/null || true)"
+            [[ -z "$trace_out" ]] && continue
+
+            # Case: no annotations at all — spec is entirely unannotated.
+            # spec-trace emits "**No annotations found.**" in the markdown body.
+            if echo "$trace_out" | grep -q '\*\*No annotations found\.\*\*'; then
+                echo "UNANNOTATED|$sid" >> "$TMPDIR_SCAN/spec-unannotated.txt"
+                continue
+            fi
+
+            # Extract "No implementation annotations:" and "No test annotations:" lines.
+            no_impl="$(echo "$trace_out" | grep -m1 '^\*\*No implementation annotations:\*\*' \
+                | sed 's/^\*\*No implementation annotations:\*\*[[:space:]]*//' || true)"
+            no_test="$(echo "$trace_out" | grep -m1 '^\*\*No test annotations:\*\*' \
+                | sed 's/^\*\*No test annotations:\*\*[[:space:]]*//' || true)"
+
+            if [[ -n "$no_impl" ]]; then
+                # Squeeze whitespace for compact output. spec-trace formats the
+                # req list as "<spec-id>.Rn[a] <spec-id>.Rm ..." — count by
+                # matching the .Rn[a] suffixes.
+                no_impl_clean="$(echo "$no_impl" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')"
+                req_count="$(echo "$no_impl_clean" | grep -oE '\.R[0-9]+[a-z]?' | wc -l || true)"
+                [[ -z "$req_count" ]] && req_count=0
+                echo "IMPL_GAP|$sid|$req_count|$no_impl_clean" >> "$TMPDIR_SCAN/spec-annotation-gaps.txt"
+            fi
+
+            if [[ -n "$no_test" ]]; then
+                no_test_clean="$(echo "$no_test" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')"
+                req_count="$(echo "$no_test_clean" | grep -oE '\.R[0-9]+[a-z]?' | wc -l || true)"
+                [[ -z "$req_count" ]] && req_count=0
+                echo "TEST_GAP|$sid|$req_count|$no_test_clean" >> "$TMPDIR_SCAN/spec-annotation-gaps.txt"
+            fi
+        done <<< "$approved_ids"
+
+        # Sort: IMPL_GAPs first (bigger deal — code missing), then TEST_GAPs, by count desc.
+        sort -t'|' -k1,1 -k3 -rn "$TMPDIR_SCAN/spec-annotation-gaps.txt" \
+            -o "$TMPDIR_SCAN/spec-annotation-gaps.txt" 2>/dev/null || true
+
+        # Cap both files at 20 rows each for summary sanity
+        head -20 "$TMPDIR_SCAN/spec-annotation-gaps.txt" > "$TMPDIR_SCAN/spec-annotation-gaps.capped.txt" 2>/dev/null || true
+        mv "$TMPDIR_SCAN/spec-annotation-gaps.capped.txt" "$TMPDIR_SCAN/spec-annotation-gaps.txt"
+        head -20 "$TMPDIR_SCAN/spec-unannotated.txt" > "$TMPDIR_SCAN/spec-unannotated.capped.txt" 2>/dev/null || true
+        mv "$TMPDIR_SCAN/spec-unannotated.capped.txt" "$TMPDIR_SCAN/spec-unannotated.txt"
+    fi
+fi
+
+# ── Analysis 19: Aging open_obligations ──────────────────────────────────────
+# Enumerate specs with non-empty open_obligations; compute age by the last
+# commit touching the spec file; flag entries whose spec file hasn't changed
+# in more than OBLIGATION_AGE_DAYS (default 30). Report spec-id + obligation
+# text + age.
+
+> "$TMPDIR_SCAN/aging-obligations.txt"
+
+if [[ -d ".spec/domains" ]] && command -v jq >/dev/null 2>&1; then
+    NOW_EPOCH="$(date +%s)"
+
+    # Iterate spec files. For each, extract JSON frontmatter and query
+    # open_obligations. If non-empty, compute age in days from last commit.
+    while IFS= read -r spec_file; do
+        [[ -z "$spec_file" ]] && continue
+
+        # Extract JSON frontmatter: everything between the first and second '---'
+        # lines. Empty if spec uses YAML frontmatter (no leading '{').
+        fm_json="$(awk '/^---$/{n++; next} n==1 && /^[[:space:]]*\{/{inj=1} n==1 && inj{print} n>=2{exit}' "$spec_file" 2>/dev/null || true)"
+        [[ -z "$fm_json" ]] && continue
+
+        # Parse open_obligations — an array in the JSON frontmatter. Supports
+        # either string entries ("some text") or object entries with a "text"
+        # or "description" field. Falls back to the raw stringified object.
+        ob_count="$(echo "$fm_json" | jq 'if .open_obligations then (.open_obligations | length) else 0 end' 2>/dev/null || echo 0)"
+        [[ "$ob_count" -eq 0 ]] && continue
+
+        # Spec ID for display. Prefer the frontmatter id field; fall back to
+        # the file basename.
+        sid="$(echo "$fm_json" | jq -r '.id // ""' 2>/dev/null || true)"
+        if [[ -z "$sid" ]]; then
+            sid="$(basename "$spec_file" .md)"
+        fi
+
+        # Compute age from the last commit touching this file. Untracked or
+        # never-committed files report empty — treat those as age 0 (not aged).
+        last_commit_ts="$(git log -1 --format=%ct -- "$spec_file" 2>/dev/null || true)"
+        if [[ -z "$last_commit_ts" ]]; then
+            continue
+        fi
+
+        age_days=$(( (NOW_EPOCH - last_commit_ts) / 86400 ))
+        if (( age_days < OBLIGATION_AGE_DAYS )); then
+            continue
+        fi
+
+        # Emit one row per obligation. Each row is:
+        #   AGING_OBLIGATION|<spec-id>|<age_days>|<obligation-text>
+        echo "$fm_json" | jq -r '
+            .open_obligations // []
+            | .[]
+            | (if type == "string" then .
+               elif type == "object" then (.text // .description // .summary // (.|tostring))
+               else tostring
+               end)
+        ' 2>/dev/null | while IFS= read -r ob_text; do
+            [[ -z "$ob_text" ]] && continue
+            # Collapse pipes and newlines so the pipe-delimited record stays valid.
+            ob_text_clean="$(echo "$ob_text" | tr '\n|' '  ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+            echo "AGING_OBLIGATION|$sid|$age_days|$ob_text_clean" >> "$TMPDIR_SCAN/aging-obligations.txt"
+        done
+    done < <(find .spec/domains -name '*.md' 2>/dev/null)
+
+    # Sort by age descending (oldest first) and cap at top 20.
+    sort -t'|' -k3 -rn "$TMPDIR_SCAN/aging-obligations.txt" \
+        -o "$TMPDIR_SCAN/aging-obligations.txt" 2>/dev/null || true
+    head -20 "$TMPDIR_SCAN/aging-obligations.txt" > "$TMPDIR_SCAN/aging-obligations.capped.txt" 2>/dev/null || true
+    mv "$TMPDIR_SCAN/aging-obligations.capped.txt" "$TMPDIR_SCAN/aging-obligations.txt"
+fi
+
 # ── Write summary file ──────────────────────────────────────────────────────
 
 SCAN_DATE="$(date +%Y-%m-%d)"
@@ -1527,6 +1694,53 @@ if [[ -s "$TMPDIR_SCAN/work-drift.txt" ]]; then
     echo "" >> "$SUMMARY_FILE"
 fi
 
+# Spec annotation gaps (Analysis 18)
+has_ann_signals=0
+if [[ -s "$TMPDIR_SCAN/spec-annotation-gaps.txt" ]] || [[ -s "$TMPDIR_SCAN/spec-unannotated.txt" ]]; then
+    echo "## Spec Annotation Coverage Gaps" >> "$SUMMARY_FILE"
+    echo "APPROVED specs where @spec annotations are missing on implementation or test side." >> "$SUMMARY_FILE"
+    echo "Route to \`/spec-verify\` to add missing annotations, write missing tests, or accept gaps with justification." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    has_ann_signals=1
+fi
+
+if [[ -s "$TMPDIR_SCAN/spec-annotation-gaps.txt" ]]; then
+    echo "### Requirements missing impl- or test-side annotations" >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Spec | Gap | Count | Requirements |" >> "$SUMMARY_FILE"
+    echo "|------|-----|-------|--------------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r gap_type sid req_count reqs; do
+        gap_label="impl-only → missing test annotation"
+        [[ "$gap_type" == "IMPL_GAP" ]] && gap_label="test-only → missing impl annotation"
+        echo "| $sid | $gap_label | $req_count | $reqs |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/spec-annotation-gaps.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+if [[ -s "$TMPDIR_SCAN/spec-unannotated.txt" ]]; then
+    echo "### APPROVED specs with no annotations at all" >> "$SUMMARY_FILE"
+    echo "Specs where \`spec-trace\` found zero \`@spec\` references in source or test files." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ sid; do
+        echo "- $sid — no \`@spec\` annotations found anywhere" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/spec-unannotated.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
+# Aging obligations (Analysis 19)
+if [[ -s "$TMPDIR_SCAN/aging-obligations.txt" ]]; then
+    echo "## Aging Open Obligations" >> "$SUMMARY_FILE"
+    echo "Open obligations on specs whose files have not been committed in ${OBLIGATION_AGE_DAYS}+ days." >> "$SUMMARY_FILE"
+    echo "Route to \`/spec-author\` or \`/spec-resolve\` to address the obligation or close it." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Spec | Age (days) | Obligation |" >> "$SUMMARY_FILE"
+    echo "|------|------------|------------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ sid age_days ob_text; do
+        echo "| $sid | $age_days | $ob_text |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/aging-obligations.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
 # ── Report ───────────────────────────────────────────────────────────────────
 
 echo "Scan complete: $COMMIT_COUNT commits analyzed"
@@ -1556,6 +1770,9 @@ echo "  Roadmap needed: $(wc -l < "$TMPDIR_SCAN/roadmap-needed.txt" 2>/dev/null 
 echo "  Work displacement: $(wc -l < "$TMPDIR_SCAN/work-displacement.txt" 2>/dev/null || echo 0)"
 echo "  Stalled work groups: $(wc -l < "$TMPDIR_SCAN/work-stalled.txt" 2>/dev/null || echo 0)"
 echo "  Work artifact drift: $(wc -l < "$TMPDIR_SCAN/work-drift.txt" 2>/dev/null || echo 0)"
+echo "  Spec annotation gaps: $(wc -l < "$TMPDIR_SCAN/spec-annotation-gaps.txt" 2>/dev/null || echo 0)"
+echo "  Unannotated APPROVED specs: $(wc -l < "$TMPDIR_SCAN/spec-unannotated.txt" 2>/dev/null || echo 0)"
+echo "  Aging obligations: $(wc -l < "$TMPDIR_SCAN/aging-obligations.txt" 2>/dev/null || echo 0)"
 
 # ── Update curation state ─────────────────────────────────────────────────
 
