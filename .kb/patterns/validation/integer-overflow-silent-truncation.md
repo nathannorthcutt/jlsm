@@ -77,3 +77,60 @@ arithmetic, parsed numeric literals.
 
 Affected constructs in json-only-simd-jsonl: JsonWriter.appendIndent
 (F-R1.cb.4.6), JsonValueAdapter INT32 path (F-R1.cb.1.5).
+
+## Updates 2026-04-22
+
+Extended by the `implement-sstable-enhancements--wd-03` audit to cover a
+distinct attack surface: **attacker-controlled length fields in file
+formats**. The audit-pinned pattern is structurally identical
+(narrowing-cast on an unchecked wide value) but the source of the value
+and the fix idioms differ enough to warrant extension notes here.
+
+### Variant 3 — File-format length fields
+
+A reader parses a binary footer whose length fields are 8-byte `long`s
+(`mapLength`, `idxLength`, `fltLength`, `dictLength`, `mapOffset`). The
+reader validates some invariants on the `long` values but downstream code
+casts to `(int)` before passing to `ByteBuffer.allocate` or array
+allocation. A crafted file with `length = 2^31` narrows to
+`Integer.MIN_VALUE`, and the subsequent `ByteBuffer.allocate(-n)` throws
+`IllegalArgumentException` — leaking past the factory's declared
+`IOException`/`CorruptSectionException` vocabulary.
+
+Equivalently, a negative `long` length from an upstream calculation has
+the same characteristic.
+
+### Fix (file-format variant)
+
+Enforce the int-narrowing bounds at the read boundary, before any
+downstream cast, as a typed exception in the factory's declared
+vocabulary:
+
+```java
+if (mapLength < 0 || mapLength > Integer.MAX_VALUE)
+    throw new CorruptSectionException(SECTION_FOOTER,
+        "mapLength out of int range: " + mapLength);
+int mapLenI = (int) mapLength;
+```
+
+The check must apply to every attacker-controllable length field: pre-v5
+paths obtained this guard implicitly via `Footer.validate(fileSize)`; the
+v5 path did not call that helper and needed an inline equivalent on every
+length.
+
+### Seen in wd-03 audit
+
+- `TrieSSTableReader.readFooter` v5 branch (F-R1.data_transformation.C2.01)
+  — mapOffset/mapLength/idxLength/fltLength/dictLength unchecked; Cross-
+  domain composition XD-R1.8 observed the same gap from dispatch_routing.
+- `TrieSSTableReader.readBytes` (F-R1.data_transformation.C2.04) — a
+  negative `long` length from an upstream calculation propagated as
+  `IllegalArgumentException` from `ByteBuffer.allocate`.
+
+### Applies-to extended
+
+- `modules/jlsm-core/src/main/java/jlsm/sstable/internal/TrieSSTableReader.java`
+
+### Source audit
+
+- `implement-sstable-enhancements--wd-03`

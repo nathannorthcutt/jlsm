@@ -11,7 +11,7 @@
 |----|-------|--------|---------|------|----------|
 | WD-01 | Implement sstable.byte-budget-block-cache | COMPLETE | sstable | 0 | — |
 | WD-02 | Implement sstable.pool-aware-block-size | COMPLETE | sstable | 0 | — |
-| WD-03 | Implement sstable.end-to-end-integrity | READY | sstable | 0 | — |
+| WD-03 | Implement sstable.end-to-end-integrity | COMPLETE | sstable | 0 | — |
 
 ## Dependency Graph
 

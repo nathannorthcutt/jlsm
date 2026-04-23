@@ -136,6 +136,23 @@ public final class SSTableFormat {
      */
     public static final int FOOTER_SIZE_V4 = 88;
 
+    /**
+     * Magic number for SSTable v5 files (data + metadata + footer each CRC-protected; footer is
+     * self-checksummed and includes magic in its checksum scope; VarInt-prefixed data blocks).
+     *
+     * @spec sstable.end-to-end-integrity.R12
+     * @spec sstable.end-to-end-integrity.R34
+     */
+    public static final long MAGIC_V5 = 0x4A4C534D53535405L;
+
+    /**
+     * Byte size of the SSTable v5 footer. See {@code sstable.end-to-end-integrity.R11} for the
+     * 17-field layout.
+     *
+     * @spec sstable.end-to-end-integrity.R11
+     */
+    public static final int FOOTER_SIZE_V5 = 112;
+
     /** Block size optimised for huge-page TLB alignment (2 MiB). */
     public static final int HUGE_PAGE_BLOCK_SIZE = 2_097_152;
 

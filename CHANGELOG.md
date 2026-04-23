@@ -10,6 +10,57 @@ semver release cadence is established.
 
 ## [Unreleased]
 
+### Added — End-to-end SSTable integrity (implement-sstable-enhancements WD-03)
+- `sstable.end-to-end-integrity` spec v2 DRAFT → v4 APPROVED → v5 DRAFT — v4 adopted 43 findings across spec-author Pass 2 (32 findings) + Pass 3 (11 findings); v5 adds 13 new requirements (R44-R56) + 4 refinements (R37/R38/R39/R43) + 2 open obligations (OB-01 writer FAILED-state, OB-02 writer-internal counter invariant) from post-implementation audit
+- **5 new constructs in `jlsm-core`:**
+  - `jlsm.sstable.CorruptSectionException` (exported) — IOException for metadata-section CRC32C mismatches; carries sectionName + expected/actual `int` checksums rendered `0x%08X`; 6 public `SECTION_*` constants (R42)
+  - `jlsm.sstable.IncompleteSSTableException` (exported) — distinguishes partial-writes (missing magic OR file < footer size) from mid-file corruption (R40)
+  - `jlsm.sstable.FsyncSkipListener` (exported) — `@FunctionalInterface` invoked when writer skips `force()` on non-FileChannel output (R23)
+  - `jlsm.sstable.internal.VarInt` — canonical LEB128 unsigned [1, MAX_BLOCK_SIZE]; rejects 5-byte continuation, overflow, zero, and non-canonical trailing-zero payloads (R1-R6)
+  - `jlsm.sstable.internal.V5Footer` — 112-byte big-endian footer record with encode/decode, footer-self-checksum scope `[0..100) ∪ [104..112)` (R16 includes magic), tight-pack validator (R37), dict sentinel helper (R15)
+- **TrieSSTableWriter extensions (v5 path):** VarInt block prefix (R1/R3), per-section CRC32C (R13/R14), 3-fsync discipline (R19/R20/R21), FAILED + interrupt-flag preservation (R22), atomic commit via `<final>.partial.<writerId>` + `Files.move ATOMIC_MOVE` (R39), `Builder.fsyncSkipListener(FsyncSkipListener)` + `Builder.formatVersion(int)` opt-in, producer-side invariants on blockCount/mapLength/blockSize (R55), oversized-entry descriptive IOException at `append` boundary (R46), uniform `FileAlreadyExistsException` pre-check across ATOMIC_MOVE + fallback
+- **TrieSSTableReader extensions (v5 path):** magic-first dispatch with `IncompleteSSTableException` on missing/unknown magic or sub-footer file (R25/R34/R40), footer-self-checksum verify (R26), speculative v5-hypothesis guard (R52) catches V5→legacy single-bit magic flips, eager-mode all-section verify (R27), lazy-mode atomic first-load (R28), reader FAILED state (R43) transitions on post-open verification failure and rejects subsequent calls with `IllegalStateException` (cause-chain preserved), recoveryScan (R7-R10) with VarInt walk + `blockCount` bound + `currentPos == mapOffset` post-condition, R38 recovery/read mutex via `ReentrantLock` + `AtomicInteger`, `RecoveryScanIterator` implements `AutoCloseable` (audit-driven), tight-packing validation (R37), R18 blockCount/mapLength ≥ 1, int-narrowing guards for `mapLength > 2^31` (R48), `open`/`openLazy` expectedVersion overload for external-authority cross-check (R54)
+- **137+ feature tests + ~25 audit adversarial tests** across new classes (`{VarInt, V5Footer, SSTableFormatV5Constants, CorruptSectionException, IncompleteSSTableException, FsyncSkipListener, TrieSSTableWriterV5, TrieSSTableReaderV5, TrieSSTableReaderCorruption, TrieSSTableV5Concurrency}Test.java`) plus per-lens extensions to `{Concurrency, ContractBoundaries, DataTransformation, DispatchRouting}AdversarialTest.java`
+
+### Fixed — Audit round-001 on TrieSSTableWriter + TrieSSTableReader
+- **Reader FAILED-state transition was unimplemented** (R43) — no write site for `failureCause`/`failureSection`. Added `transitionToFailed` with ordered publish of failureSection before failureCause; wired into `get()` first-load CorruptSectionException catch
+- **v5 per-block CRC32C was gated on a legacy `v3` flag alone** — v5 writes could ship without per-block CRCs. Broadened gate to `if (v3 || formatVersion == 5)`
+- **`recoveryScan` / `acquireReaderSlot` check-then-act race** on `recoveryInProgress`/`activeReaderOps` pair — serialized check-and-modify under shared `recoveryLock`
+- **`RecoveryScanIterator` abandonment held `recoveryLock` forever** — iterator now implements `AutoCloseable` with idempotent `close()` via `releaseOnceExhausted()`
+- **Single-bit V5→legacy magic flip bypassed footer self-checksum** — speculative v5-hypothesis substitution in `readFooter` rejects as `CorruptSectionException(SECTION_FOOTER)` before legacy-branch dispatch
+- **`ATOMIC_MOVE` silently overwrote existing output while non-atomic fallback threw `FileAlreadyExistsException`** — added pre-existence check so commit behavior is uniform across filesystems
+- **`readBytes` could spin indefinitely** on stalled remote SeekableByteChannel providers — bounded to 1024 consecutive zero-progress reads with descriptive IOException
+- **Int-narrowing guards** on v5 footer for mapOffset/mapLength/idxLength/fltLength/dictLength — prevents `IllegalArgumentException` from `ByteBuffer.allocate(-n)` when a crafted footer declares `length > Integer.MAX_VALUE`
+- **`readBytes` negative-length guard** — rejects at boundary with IOException before `ByteBuffer.allocate`
+- **`dictBufferedBytes` counter was not reset on buffer abandon** — counter-buffer pair now updates as a unit
+- **`writeFooterV5` had no producer-side invariant guard** — now validates `blockCount ≥ 1`, `mapLength ≥ 1`, `blockSize` power-of-two in [MIN, MAX], `entryCount ≥ 1` before encoding
+- **Torn volatile publish in `checkNotFailed`** — diagnostic could render `reader failed: null`; added `<pending>` sentinel when `failureSection` not yet set, while preserving cause chain
+- **Ctor-failure unwind IMSE masking originating CorruptSectionException** — guarded outer-finally unlock with `recoveryLock.isHeldByCurrentThread()`
+- **Silent CRC-bypass fallback in recovery scan's else branch** — replaced with `IllegalStateException` defensive guard
+- **Tight-packing lower bound (`mapOffset == 0`) not validated** — added first-section-offset-must-be-positive guard (R37)
+- **Legacy-branch (v1/v2/v3/v4) footer-structural failures leaked opaque IOException** — rewrapped via `validateFooterOrCorruptSection` into `CorruptSectionException`
+- **Empty bloom-filter section (`fltLength = 0`) bypassed CRC check** (CRC32C of empty input = 0) — now rejected as `CorruptSectionException(SECTION_BLOOM_FILTER)` before CRC gate
+
+### Changed — 9 pre-existing v3/v4 regression test sites
+Updated to call `.formatVersion(3)` since codec-configured writer now defaults to v5. Test files: `SSTableV3IntegrationTest`, `DictionaryCompressionWriterTest`, `DictionaryCompressionReaderTest`.
+
+### Added — 9 KB adversarial-finding entries (from audit)
+- `patterns/concurrency/torn-volatile-publish-multi-field.md`
+- `patterns/concurrency/check-then-act-across-paired-acquire-release.md`
+- `patterns/resource-management/iterator-without-close-holds-coordination.md`
+- `patterns/resource-management/unbounded-zero-progress-channel-read-loop.md`
+- `patterns/resource-management/atomic-move-vs-fallback-commit-divergence.md`
+- `patterns/validation/silent-fallthrough-integrity-defense-coupled-to-flag.md`
+- `patterns/validation/dispatch-discriminant-corruption-bypass.md`
+- `patterns/validation/version-discovery-self-only-no-external-cross-check.md`
+- `patterns/validation/integer-overflow-silent-truncation.md` — "Updates 2026-04-22" section appended covering file-format length-field attack surface
+
+### Known Gaps
+- Spec v5 remains DRAFT; `/spec-verify` needed to promote to APPROVED
+- 4 `@Disabled` WU-2 tests require infrastructure (Jimfs in-memory NIO FS for remote-provider tests, channel-factory injection for fsync-count assertions, interrupt-timing stability for ClosedByInterruptException path)
+- OB-01: writer FAILED-state ratification at every IOException write-site (impl fixed; spec ratification deferred to avoid R3/R22 spec-code conflict)
+- OB-02: writer-internal counter-buffer pair invariant (dictBufferedBytes ↔ dictBufferedBlocks)
+
 ### Added — Pool-aware block size (implement-sstable-enhancements WD-02)
 - `sstable.pool-aware-block-size` spec v2 DRAFT → v5 APPROVED — 22 adversarial findings across spec-author Pass 2/3, all applied. Final v5 adds audit-surfaced ArenaBufferPool lifecycle requirements (R0b/c/d/e) and Builder-wide atomicity (R11b)
 - `ArenaBufferPool.isClosed()` (R0) — canonical closure observer; class-final mandate (R0a) prevents subclass spoofing

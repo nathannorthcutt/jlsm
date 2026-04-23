@@ -12,6 +12,8 @@ import jlsm.sstable.internal.CompressionMap;
 import jlsm.sstable.internal.EntryCodec;
 import jlsm.sstable.internal.KeyIndex;
 import jlsm.sstable.internal.SSTableFormat;
+import jlsm.sstable.internal.V5Footer;
+import jlsm.sstable.internal.VarInt;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -21,6 +23,7 @@ import java.lang.invoke.VarHandle;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,6 +37,8 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.CRC32C;
 
 /**
@@ -94,6 +99,36 @@ public final class TrieSSTableReader implements SSTableReader {
     // (v1/v2)
     private final long blockSize;
 
+    /**
+     * On-disk format version detected at open time. One of {@code 1..5}. Used by downstream code
+     * that must behave differently for v5 (e.g. varint-prefixed data section, recovery scan).
+     */
+    private final int formatVersion;
+
+    /**
+     * Footer block count (v5 only) — used for recovery scans. {@code 0} for pre-v5 files.
+     */
+    private final int footerBlockCount;
+
+    /** End of the data region (i.e. mapOffset) — used by v5 recovery scans. */
+    private final long dataRegionEnd;
+
+    /** Reader-level failure surfaced by a lazy first-load failure (R43); null otherwise. */
+    // @spec sstable.end-to-end-integrity.R43 — FAILED-state storage: a non-null failureCause
+    // represents the originating CorruptSectionException from a post-open lazy first-load;
+    // checkNotFailed() wraps it in IllegalStateException for subsequent read rejections while
+    // close() remains permitted.
+    private volatile IOException failureCause = null;
+    private volatile String failureSection = null;
+
+    /**
+     * Active reader-operation counter for R38: recovery scans block when any normal read is in
+     * progress, and normal reads block when a recovery scan is in progress.
+     */
+    private final ReentrantLock recoveryLock = new ReentrantLock();
+    private final AtomicInteger activeReaderOps = new AtomicInteger();
+    private volatile boolean recoveryInProgress = false;
+
     private volatile boolean closed = false;
 
     private static final VarHandle CLOSED;
@@ -130,6 +165,16 @@ public final class TrieSSTableReader implements SSTableReader {
             long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
             CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap,
             boolean hasChecksums, long blockSize) {
+        this(metadata, keyIndex, bloomFilter, dataEnd, eagerData, lazyChannel, blockCache,
+                compressionMap, codecMap, hasChecksums, blockSize, /* formatVersion */ 1,
+                /* footerBlockCount */ 0, /* dataRegionEnd */ dataEnd);
+    }
+
+    private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
+            long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
+            CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap,
+            boolean hasChecksums, long blockSize, int formatVersion, int footerBlockCount,
+            long dataRegionEnd) {
         this.metadata = metadata;
         this.keyIndex = keyIndex;
         this.bloomFilter = bloomFilter;
@@ -141,6 +186,9 @@ public final class TrieSSTableReader implements SSTableReader {
         this.codecMap = codecMap;
         this.hasChecksums = hasChecksums;
         this.blockSize = blockSize;
+        this.formatVersion = formatVersion;
+        this.footerBlockCount = footerBlockCount;
+        this.dataRegionEnd = dataRegionEnd;
     }
 
     /**
@@ -235,6 +283,82 @@ public final class TrieSSTableReader implements SSTableReader {
      * @return a new reader
      * @throws IOException if the file cannot be read or contains an unknown codec ID
      */
+    /**
+     * Opens an SSTable eagerly and rejects any file whose discovered on-disk format version does
+     * not match the caller-supplied {@code expectedVersion}. This overload is the defence-in-depth
+     * companion to the magic-dispatch routing in {@link #readFooter}: a caller with external
+     * authority (manifest, catalog, level metadata) that binds the file to a known format version
+     * can assert that expectation so the reader rejects a mis-versioned file (whether caused by
+     * discriminant-byte corruption, a swapped file, or a legacy file delivered in place of the
+     * intended target).
+     *
+     * @param expectedVersion the required format version (1..5); a file whose trailing magic
+     *            resolves to any other version is rejected with
+     *            {@link CorruptSectionException#SECTION_FOOTER}
+     * @throws CorruptSectionException if the on-disk version does not equal {@code expectedVersion}
+     */
+    // @spec sstable.end-to-end-integrity.R34 — magic vocabulary uniqueness. External-authority
+    // cross-check: callers that know the expected format version can require the reader to reject
+    // any file whose discovered version disagrees, strengthening the dispatch boundary against
+    // silent cross-version reinterpretation.
+    // @spec sstable.end-to-end-integrity.R54 — expectedVersion opt-in: callers holding external
+    // authority (manifest, catalog, level metadata) may assert the file's expected format version;
+    // disagreement surfaces as CorruptSectionException(SECTION_FOOTER).
+    public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
+            BlockCache blockCache, int expectedVersion, CompressionCodec... codecs)
+            throws IOException {
+        Objects.requireNonNull(path, "path must not be null");
+        Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
+        Objects.requireNonNull(codecs, "codecs must not be null");
+        if (expectedVersion < 1 || expectedVersion > 5) {
+            throw new IllegalArgumentException(
+                    "expectedVersion must be in [1,5], got: " + expectedVersion);
+        }
+        verifyExpectedVersion(path, expectedVersion);
+        return open(path, bloomDeserializer, blockCache, codecs);
+    }
+
+    /**
+     * Lazy companion of
+     * {@link #open(Path, BloomFilter.Deserializer, BlockCache, int, CompressionCodec...)} —
+     * enforces an external-authority version expectation before delegating to the auto-detect
+     * {@code openLazy} overload.
+     */
+    // @spec sstable.end-to-end-integrity.R34 — magic vocabulary uniqueness. Lazy-mode companion to
+    // the eager expected-version overload.
+    // @spec sstable.end-to-end-integrity.R54 — expectedVersion opt-in (lazy-mode factory).
+    public static TrieSSTableReader openLazy(Path path, BloomFilter.Deserializer bloomDeserializer,
+            BlockCache blockCache, int expectedVersion, CompressionCodec... codecs)
+            throws IOException {
+        Objects.requireNonNull(path, "path must not be null");
+        Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
+        Objects.requireNonNull(codecs, "codecs must not be null");
+        if (expectedVersion < 1 || expectedVersion > 5) {
+            throw new IllegalArgumentException(
+                    "expectedVersion must be in [1,5], got: " + expectedVersion);
+        }
+        verifyExpectedVersion(path, expectedVersion);
+        return openLazy(path, bloomDeserializer, blockCache, codecs);
+    }
+
+    // Opens a short-lived read-only channel, reads the footer via the shared dispatch path, and
+    // throws CorruptSectionException(SECTION_FOOTER) when the discovered version disagrees with
+    // expectedVersion. Callers that pass this check proceed to the normal factory, which will
+    // re-open the file; the cost of the extra read is paid only by callers that explicitly opted
+    // in to the expected-version contract.
+    private static void verifyExpectedVersion(Path path, int expectedVersion) throws IOException {
+        try (SeekableByteChannel probe = Files.newByteChannel(path, StandardOpenOption.READ)) {
+            long fileSize = probe.size();
+            Footer footer = readFooter(probe, fileSize);
+            if (footer.version != expectedVersion) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "SSTable format version mismatch: expected v" + expectedVersion
+                                + " (per caller-supplied expectation), got v" + footer.version
+                                + " from trailing magic");
+            }
+        }
+    }
+
     // @spec sstable.format-v2.R5 — detects v1 by magic, falls back to v1 reading
     // @spec sstable.format-v2.R6 — v1 reader on v2 file throws descriptive IOException
     // @spec sstable.format-v2.R7 — self-describing, no external config needed
@@ -256,17 +380,30 @@ public final class TrieSSTableReader implements SSTableReader {
             boolean checksums = false;
 
             if (footer.version >= 2) {
-                // v4 uses v3-style compression map (21-byte entries with CRC32C)
+                // v4/v5 use v3-style compression map (21-byte entries with CRC32C).
                 int mapVersion = footer.version >= 4 ? 3 : footer.version;
                 byte[] mapBytes = readBytes(ch, footer.mapOffset, (int) footer.mapLength);
+                if (footer.version == 5) {
+                    verifySectionCrc32c(mapBytes, footer.mapChecksum,
+                            CorruptSectionException.SECTION_COMPRESSION_MAP);
+                }
                 compressionMap = CompressionMap.deserialize(mapBytes, mapVersion);
+                // @spec sstable.end-to-end-integrity.R18 — only after footer blockCount/mapLength
+                // have been validated do we cross-check compression-map entry count vs blockCount
+                if (footer.version == 5 && compressionMap.blockCount() != footer.blockCount) {
+                    throw new CorruptSectionException(
+                            CorruptSectionException.SECTION_COMPRESSION_MAP,
+                            "v5 footer.blockCount=" + footer.blockCount
+                                    + " disagrees with compression-map entry count="
+                                    + compressionMap.blockCount());
+                }
                 codecMap = buildCodecMap(codecs);
 
                 // @spec compression.zstd-dictionary.R20a,R21 — file on-disk metadata determines
-                // ZSTD decompression
-                // configuration for codec ID 0x03, not the caller-provided codec list.
-                // v4 with dictionary: replace with dictionary-bound codec from meta-block.
-                // v3 or earlier (no dictionary): inject plain ZSTD codec.
+                // ZSTD decompression configuration for codec ID 0x03.
+                // @spec sstable.end-to-end-integrity.R30 — dictionary section is loaded (and its
+                // bytes fetched) only when dictLength > 0; when dictLength == 0 no dictionary CRC
+                // computation occurs. R15 sentinel consistency still applied in readFooter.
                 if (footer.version >= 4 && footer.dictLength > 0) {
                     codecMap = overrideWithDictionaryCodec(ch, footer, codecMap);
                 } else {
@@ -274,7 +411,8 @@ public final class TrieSSTableReader implements SSTableReader {
                 }
 
                 validateCodecMap(compressionMap, codecMap);
-                keyIndex = readKeyIndexV2(ch, footer, compressionMap.blockCount());
+                keyIndex = readKeyIndexV2Bytes(ch, footer, compressionMap.blockCount(),
+                        footer.version == 5);
                 dataEnd = footer.mapOffset;
                 checksums = footer.version >= 3;
             } else {
@@ -282,7 +420,8 @@ public final class TrieSSTableReader implements SSTableReader {
                 dataEnd = footer.idxOffset;
             }
 
-            BloomFilter bloom = readBloomFilter(ch, footer, bloomDeserializer);
+            BloomFilter bloom = readBloomFilterWithCrc(ch, footer, bloomDeserializer,
+                    footer.version == 5);
             SSTableMetadata meta = buildMetadata(path, fileSize, footer, keyIndex);
 
             int dataLen = (int) dataEnd;
@@ -290,15 +429,39 @@ public final class TrieSSTableReader implements SSTableReader {
             ch.close();
 
             return new TrieSSTableReader(meta, keyIndex, bloom, dataEnd, data, null, blockCache,
-                    compressionMap, codecMap, checksums, footer.blockSize);
+                    compressionMap, codecMap, checksums, footer.blockSize, footer.version,
+                    footer.blockCount, footer.mapOffset);
+            // @spec sstable.end-to-end-integrity.R41 — if any verification step (CRC mismatch,
+            // footer validation, dict/key-index/bloom check) throws, close the channel acquired
+            // at the entry of this factory before rethrowing so no file descriptor leaks.
+        } catch (ClosedByInterruptException e) {
+            Thread.currentThread().interrupt();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
+            throw e;
         } catch (IOException e) {
-            ch.close();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
             throw e;
         } catch (RuntimeException e) {
-            ch.close();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
             throw e;
         } catch (Error e) {
-            ch.close();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
             throw e;
         }
     }
@@ -333,12 +496,31 @@ public final class TrieSSTableReader implements SSTableReader {
             if (footer.version >= 2) {
                 int mapVersion = footer.version >= 4 ? 3 : footer.version;
                 byte[] mapBytes = readBytes(ch, footer.mapOffset, (int) footer.mapLength);
+                if (footer.version == 5) {
+                    // @spec sstable.end-to-end-integrity.R28 — v5 lazy mode verifies the
+                    // compression-map CRC32C before any byte of the section is returned to the
+                    // caller (implemented as eager first-load verification at open time, which
+                    // is the permitted atomic verified-or-failed strategy for this section).
+                    // Key-index and bloom sections follow the same pattern below.
+                    verifySectionCrc32c(mapBytes, footer.mapChecksum,
+                            CorruptSectionException.SECTION_COMPRESSION_MAP);
+                }
                 compressionMap = CompressionMap.deserialize(mapBytes, mapVersion);
+                // @spec sstable.end-to-end-integrity.R18 — compression-map entry-count check only
+                // runs after footer blockCount/mapLength have been validated in readFooter
+                if (footer.version == 5 && compressionMap.blockCount() != footer.blockCount) {
+                    throw new CorruptSectionException(
+                            CorruptSectionException.SECTION_COMPRESSION_MAP,
+                            "v5 footer.blockCount=" + footer.blockCount
+                                    + " disagrees with compression-map entry count="
+                                    + compressionMap.blockCount());
+                }
                 codecMap = buildCodecMap(codecs);
 
-                // @spec compression.zstd-dictionary.R20a,R21 — file metadata wins for codec ID
-                // 0x03: dict-bound
-                // for v4+dict, plain ZSTD for v3 or earlier. Caller's codec for 0x03 is ignored.
+                // @spec sstable.end-to-end-integrity.R30 — dictionary bytes are only read (and its
+                // CRC-bearing codec override created) when dictLength > 0; a zero-length
+                // dictionary performs no CRC32C computation. R15 sentinel consistency is enforced
+                // in readFooter regardless of dictLength.
                 if (footer.version >= 4 && footer.dictLength > 0) {
                     codecMap = overrideWithDictionaryCodec(ch, footer, codecMap);
                 } else {
@@ -346,7 +528,11 @@ public final class TrieSSTableReader implements SSTableReader {
                 }
 
                 validateCodecMap(compressionMap, codecMap);
-                keyIndex = readKeyIndexV2(ch, footer, compressionMap.blockCount());
+                // v5 lazy: defer key-index CRC verification to first-load so failure can be
+                // modelled as a reader transition to FAILED state (R43). Normal-path key
+                // lookup still requires key index to be loaded at open (interface expects it).
+                keyIndex = readKeyIndexV2Bytes(ch, footer, compressionMap.blockCount(),
+                        /* verifyCrc */ footer.version == 5);
                 dataEnd = footer.mapOffset;
                 checksums = footer.version >= 3;
             } else {
@@ -354,19 +540,44 @@ public final class TrieSSTableReader implements SSTableReader {
                 dataEnd = footer.idxOffset;
             }
 
-            BloomFilter bloom = readBloomFilter(ch, footer, bloomDeserializer);
+            BloomFilter bloom = readBloomFilterWithCrc(ch, footer, bloomDeserializer,
+                    footer.version == 5);
             SSTableMetadata meta = buildMetadata(path, fileSize, footer, keyIndex);
 
             return new TrieSSTableReader(meta, keyIndex, bloom, dataEnd, null, ch, blockCache,
-                    compressionMap, codecMap, checksums, footer.blockSize);
+                    compressionMap, codecMap, checksums, footer.blockSize, footer.version,
+                    footer.blockCount, footer.mapOffset);
+            // @spec sstable.end-to-end-integrity.R41 — failure inside the openLazy() factory
+            // (verification or otherwise) closes the channel acquired at entry before rethrowing
+            // so the descriptor is released rather than leaked to the caller.
+        } catch (ClosedByInterruptException e) {
+            Thread.currentThread().interrupt();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
+            throw e;
         } catch (IOException e) {
-            ch.close();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
             throw e;
         } catch (RuntimeException e) {
-            ch.close();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
             throw e;
         } catch (Error e) {
-            ch.close();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
             throw e;
         }
     }
@@ -384,38 +595,50 @@ public final class TrieSSTableReader implements SSTableReader {
     public Optional<Entry> get(MemorySegment key) throws IOException {
         Objects.requireNonNull(key, "key must not be null");
         checkNotClosed();
+        checkNotFailed();
+        acquireReaderSlot();
+        try {
+            if (!bloomFilter.mightContain(key)) {
+                return Optional.empty();
+            }
 
-        if (!bloomFilter.mightContain(key)) {
-            return Optional.empty();
+            Optional<Long> offsetOpt = keyIndex.lookup(key);
+            if (offsetOpt.isEmpty()) {
+                return Optional.empty();
+            }
+
+            long offset = offsetOpt.get();
+
+            final Entry decoded;
+            if (compressionMap != null) {
+                // v2: offset is packed (blockIndex << 32 | intraBlockOffset)
+                int blockIndex = (int) (offset >>> 32);
+                int intraBlockOffset = (int) offset;
+                byte[] decompressedBlock = readAndDecompressBlock(blockIndex);
+                decoded = EntryCodec.decode(decompressedBlock, intraBlockOffset);
+            } else {
+                // v1: offset is absolute file position
+                byte[] entryBytes = readDataAtV1(offset, SSTableFormat.DEFAULT_BLOCK_SIZE);
+                decoded = EntryCodec.decode(entryBytes, 0);
+            }
+
+            // Re-check closed after I/O to narrow the TOCTOU window between the
+            // pre-read checkNotClosed() and the return. Without this, a concurrent
+            // close() between the initial check and here would let get() return
+            // data from a logically-closed reader.
+            checkNotClosed();
+
+            return Optional.of(decoded);
+        } catch (CorruptSectionException e) {
+            // R43: post-open lazy first-load detected section-level corruption.
+            // Transition reader to FAILED so subsequent calls reject with ISE
+            // wrapping this originating cause rather than re-attempting the
+            // failing I/O path.
+            transitionToFailed(e);
+            throw e;
+        } finally {
+            releaseReaderSlot();
         }
-
-        Optional<Long> offsetOpt = keyIndex.lookup(key);
-        if (offsetOpt.isEmpty()) {
-            return Optional.empty();
-        }
-
-        long offset = offsetOpt.get();
-
-        final Entry decoded;
-        if (compressionMap != null) {
-            // v2: offset is packed (blockIndex << 32 | intraBlockOffset)
-            int blockIndex = (int) (offset >>> 32);
-            int intraBlockOffset = (int) offset;
-            byte[] decompressedBlock = readAndDecompressBlock(blockIndex);
-            decoded = EntryCodec.decode(decompressedBlock, intraBlockOffset);
-        } else {
-            // v1: offset is absolute file position
-            byte[] entryBytes = readDataAtV1(offset, SSTableFormat.DEFAULT_BLOCK_SIZE);
-            decoded = EntryCodec.decode(entryBytes, 0);
-        }
-
-        // Re-check closed after I/O to narrow the TOCTOU window between the
-        // pre-read checkNotClosed() and the return. Without this, a concurrent
-        // close() between the initial check and here would let get() return
-        // data from a logically-closed reader.
-        checkNotClosed();
-
-        return Optional.of(decoded);
     }
 
     /**
@@ -439,6 +662,7 @@ public final class TrieSSTableReader implements SSTableReader {
     @Override
     public Iterator<Entry> scan() throws IOException {
         checkNotClosed();
+        checkNotFailed();
         if (compressionMap != null) {
             // v2: lazy block-by-block decompression — O(single block) memory
             return new CompressedBlockIterator();
@@ -470,7 +694,293 @@ public final class TrieSSTableReader implements SSTableReader {
         Objects.requireNonNull(fromKey, "fromKey must not be null");
         Objects.requireNonNull(toKey, "toKey must not be null");
         checkNotClosed();
+        checkNotFailed();
         return new IndexRangeIterator(keyIndex.rangeIterator(fromKey, toKey));
+    }
+
+    /**
+     * Walk the data section sequentially using VarInt block-length prefixes, without requiring the
+     * compression map. Terminates after exactly {@code blockCount} blocks have been read,
+     * validating {@code currentPos == mapOffset} at the end.
+     *
+     * <p>
+     * Recovery scan is mutually exclusive with normal reads ({@code get}/{@code scan}) on the same
+     * reader instance. Concurrent invocation throws {@code IllegalStateException}.
+     * </p>
+     *
+     * @throws java.io.IOException if iteration fails (e.g. CorruptBlockException on a per-block CRC
+     *             failure, CorruptSectionException on data-section corruption)
+     * @throws IllegalStateException if called concurrently with get/scan
+     * @spec sstable.end-to-end-integrity.R7
+     * @spec sstable.end-to-end-integrity.R8
+     * @spec sstable.end-to-end-integrity.R9
+     * @spec sstable.end-to-end-integrity.R10
+     * @spec sstable.end-to-end-integrity.R38
+     * @spec sstable.end-to-end-integrity.R45
+     */
+    public java.util.Iterator<Entry> recoveryScan() throws java.io.IOException {
+        checkNotClosed();
+        checkNotFailed();
+        if (formatVersion != 5) {
+            throw new UnsupportedOperationException(
+                    "recoveryScan() requires v5 format; this reader is v" + formatVersion);
+        }
+        // R38: mutex — throw ISE if any reader is active OR if another recovery is in progress.
+        // Lock first, then check activeReaderOps under the lock: without this, the
+        // check-then-act sequence (read activeReaderOps; acquire lock; set flag) races
+        // with acquireReaderSlot's (read flag; increment counter) because the two sides
+        // read/modify independent variables. Now that acquireReaderSlot also takes the
+        // lock around its check-and-increment, the activeReaderOps check here is
+        // synchronized against any concurrent reader arrival.
+        if (!recoveryLock.tryLock()) {
+            throw new IllegalStateException("recovery-scan in progress");
+        }
+        boolean lockHandedOff = false;
+        try {
+            if (activeReaderOps.get() > 0) {
+                throw new IllegalStateException("reads in progress");
+            }
+            recoveryInProgress = true;
+            // Note: we hold the lock for the lifetime of the returned iterator. The iterator's
+            // close/hasNext=false path releases the lock via a finalizer-free wrapper.
+            try {
+                RecoveryScanIterator it = new RecoveryScanIterator();
+                lockHandedOff = true; // ownership transfers to iterator's releaseOnceExhausted
+                return it;
+            } catch (RuntimeException | Error e) {
+                recoveryInProgress = false;
+                throw e;
+            }
+        } finally {
+            // F-R1.concurrency.1.7 — unlock only if we still own the lock. When the ctor
+            // fails via advance()'s IOException path, releaseOnceExhausted() has already
+            // unlocked; a second unlock here would raise IllegalMonitorStateException
+            // and mask the originating corruption exception.
+            if (!lockHandedOff && recoveryLock.isHeldByCurrentThread()) {
+                recoveryLock.unlock();
+            }
+        }
+    }
+
+    /**
+     * Sequential VarInt-prefixed walker over the data section. Consumes exactly {@code blockCount}
+     * blocks and validates the post-condition currentPos == mapOffset.
+     *
+     * @spec sstable.end-to-end-integrity.R7
+     * @spec sstable.end-to-end-integrity.R8
+     * @spec sstable.end-to-end-integrity.R9
+     * @spec sstable.end-to-end-integrity.R10
+     * @spec sstable.end-to-end-integrity.R44
+     * @spec sstable.end-to-end-integrity.R56
+     */
+    private final class RecoveryScanIterator implements Iterator<Entry>, AutoCloseable {
+        private long cursor = 0L;
+        private int blocksWalked = 0;
+        private List<Entry> bufferedEntries = new ArrayList<>();
+        private int bufferedIndex = 0;
+        private Entry next;
+        private boolean exhausted = false;
+        private boolean released = false;
+
+        RecoveryScanIterator() {
+            advance();
+        }
+
+        private void releaseOnceExhausted() {
+            if (released) {
+                return;
+            }
+            released = true;
+            recoveryInProgress = false;
+            recoveryLock.unlock();
+        }
+
+        private void advance() {
+            next = null;
+            if (exhausted) {
+                return;
+            }
+            while (true) {
+                if (bufferedIndex < bufferedEntries.size()) {
+                    next = bufferedEntries.get(bufferedIndex++);
+                    return;
+                }
+                if (blocksWalked >= footerBlockCount) {
+                    // R8: must end exactly at mapOffset
+                    if (cursor != dataRegionEnd) {
+                        exhausted = true;
+                        releaseOnceExhausted();
+                        throw sneakyThrow(
+                                new CorruptSectionException(CorruptSectionException.SECTION_DATA,
+                                        "recovery scan post-condition failed: expectedEndOffset="
+                                                + dataRegionEnd + " actualEndOffset=" + cursor));
+                    }
+                    exhausted = true;
+                    releaseOnceExhausted();
+                    return;
+                }
+                // R9: current cursor must be within the data region to start a new block
+                if (cursor >= dataRegionEnd) {
+                    exhausted = true;
+                    releaseOnceExhausted();
+                    throw sneakyThrow(
+                            new CorruptSectionException(CorruptSectionException.SECTION_DATA,
+                                    "recovery scan underflow: expected " + footerBlockCount
+                                            + " blocks, found " + blocksWalked + ", cursor="
+                                            + cursor + " reached mapOffset=" + dataRegionEnd));
+                }
+                try {
+                    readBlockAtCursor();
+                } catch (IOException ioe) {
+                    exhausted = true;
+                    releaseOnceExhausted();
+                    throw sneakyThrow(ioe);
+                } catch (RuntimeException | Error rex) {
+                    // F-R1.contract_boundaries.03.01 — the R10 defensive guard throws
+                    // IllegalStateException; release the recovery lock before propagating so
+                    // callers see the violation without leaking the lock / the iterator state.
+                    exhausted = true;
+                    releaseOnceExhausted();
+                    throw rex;
+                }
+            }
+        }
+
+        private void readBlockAtCursor() throws IOException {
+            final long blockStart = cursor;
+            final int remaining = (int) Math.min(Integer.MAX_VALUE, dataRegionEnd - cursor);
+            if (remaining <= 0) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_DATA,
+                        "no bytes left at cursor=" + cursor + " before expected block "
+                                + blocksWalked);
+            }
+            // Read up to 4 bytes for VarInt decoding
+            int varIntBytesAvailable = Math.min(4, remaining);
+            byte[] varIntBuf = readAbs(blockStart, varIntBytesAvailable);
+            VarInt.DecodedVarInt decoded = VarInt.decode(ByteBuffer.wrap(varIntBuf), blockStart);
+            int payloadLen = decoded.value();
+            int varIntLen = decoded.bytesConsumed();
+            long payloadStart = blockStart + varIntLen;
+            long payloadEnd = payloadStart + payloadLen;
+            if (payloadEnd > dataRegionEnd) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_DATA,
+                        "block " + blocksWalked + " declared length " + payloadLen
+                                + " extends past mapOffset=" + dataRegionEnd + "; remaining bytes="
+                                + (dataRegionEnd - payloadStart));
+            }
+            byte[] payload = readAbs(payloadStart, payloadLen);
+            // R10: per-block CRC32C verification via compressionMap entry for this blockIndex.
+            if (compressionMap != null && blocksWalked < compressionMap.blockCount()) {
+                CompressionMap.Entry mapEntry = compressionMap.entry(blocksWalked);
+                if (hasChecksums) {
+                    CRC32C crc = new CRC32C();
+                    crc.update(payload, 0, payload.length);
+                    int actual = (int) crc.getValue();
+                    if (actual != mapEntry.checksum()) {
+                        throw new CorruptBlockException(blocksWalked, mapEntry.checksum(), actual);
+                    }
+                }
+                byte[] decompressed;
+                CompressionCodec entryCodec = codecMap.get(mapEntry.codecId());
+                if (entryCodec == null) {
+                    throw new IOException("codec not found for block " + blocksWalked);
+                }
+                if (mapEntry.codecId() == CompressionCodec.none().codecId()) {
+                    decompressed = payload;
+                } else {
+                    try (Arena arena = Arena.ofConfined()) {
+                        MemorySegment src = arena.allocate(payload.length);
+                        MemorySegment.copy(payload, 0, src, ValueLayout.JAVA_BYTE, 0,
+                                payload.length);
+                        MemorySegment dst = arena.allocate(mapEntry.uncompressedSize());
+                        MemorySegment slice = entryCodec.decompress(src, dst,
+                                mapEntry.uncompressedSize());
+                        decompressed = slice.toArray(ValueLayout.JAVA_BYTE);
+                    }
+                }
+                parseDecompressedBlockEntries(decompressed);
+            } else {
+                // F-R1.contract_boundaries.03.01 — defensive runtime guard on the R10 invariant.
+                // Under current v5-only invariants (recoveryScan rejects non-v5; v5 open enforces
+                // compressionMap.blockCount() == footerBlockCount; the iterator halts at
+                // blocksWalked >= footerBlockCount), this branch is unreachable. It is retained
+                // as a fail-closed sentinel: if a future regression ever lands the iterator here,
+                // parsing the raw payload without CRC verification would silently violate R10.
+                // Surface the broken invariant instead of accepting un-verified bytes.
+                throw new IllegalStateException(
+                        "recovery-scan R10 invariant broken: per-block CRC verification path "
+                                + "unreachable (compressionMap="
+                                + (compressionMap == null ? "null"
+                                        : "blockCount=" + compressionMap.blockCount())
+                                + ", blocksWalked=" + blocksWalked + ", footerBlockCount="
+                                + footerBlockCount
+                                + "); refusing to parse un-verified block payload");
+            }
+            cursor = payloadEnd;
+            blocksWalked++;
+        }
+
+        private void parseDecompressedBlockEntries(byte[] decompressed) throws IOException {
+            bufferedEntries = new ArrayList<>();
+            bufferedIndex = 0;
+            if (decompressed.length < 4) {
+                throw new IOException("decoded block too small: " + decompressed.length);
+            }
+            int count = readInt(decompressed, 0);
+            int off = 4;
+            for (int i = 0; i < count; i++) {
+                Entry entry = EntryCodec.decode(decompressed, off);
+                bufferedEntries.add(entry);
+                off += EntryCodec.encodedSize(entry);
+            }
+        }
+
+        private byte[] readAbs(long fileOffset, int length) throws IOException {
+            if (eagerData != null) {
+                if (fileOffset < 0 || fileOffset + length > eagerData.length) {
+                    throw new IOException("recovery scan read out of bounds at " + fileOffset
+                            + " length=" + length + " (eager size=" + eagerData.length + ")");
+                }
+                byte[] out = new byte[length];
+                System.arraycopy(eagerData, (int) fileOffset, out, 0, length);
+                return out;
+            }
+            // F-R1.concurrency.1.5 — route through readLazyChannel so a concurrent close()
+            // surfaces as IllegalStateException("reader is closed") rather than a raw
+            // ClosedChannelException leaking out of the recovery scan.
+            return readLazyChannel(fileOffset, length);
+        }
+
+        @Override
+        public boolean hasNext() {
+            return next != null;
+        }
+
+        @Override
+        public Entry next() {
+            if (next == null) {
+                throw new NoSuchElementException();
+            }
+            Entry result = next;
+            advance();
+            return result;
+        }
+
+        /**
+         * Releases the recovery mutex early — callers that abandon iteration mid-stream (e.g. an
+         * early break from a for-each loop) must invoke this to avoid permanently wedging the
+         * reader. Idempotent via the {@code released} flag. Marks the iterator exhausted so
+         * subsequent {@link #hasNext()}/{@link #next()} calls do not attempt further channel I/O.
+         *
+         * @spec sstable.end-to-end-integrity.R38
+         * @spec sstable.end-to-end-integrity.R44
+         */
+        @Override
+        public void close() {
+            exhausted = true;
+            next = null;
+            releaseOnceExhausted();
+        }
     }
 
     /**
@@ -491,8 +1001,12 @@ public final class TrieSSTableReader implements SSTableReader {
     public void close() throws IOException {
         if (!CLOSED.compareAndSet(this, false, true))
             return;
-        if (lazyChannel != null) {
-            lazyChannel.close();
+        if (lazyChannel != null && lazyChannel.isOpen()) {
+            try {
+                lazyChannel.close();
+            } catch (IOException ignored) {
+                // R43(c): close() must not throw on repeated invocation; swallow on lazy close.
+            }
         }
     }
 
@@ -766,6 +1280,97 @@ public final class TrieSSTableReader implements SSTableReader {
             throw new IllegalStateException("reader is closed");
     }
 
+    /**
+     * R43: if this reader has been transitioned to FAILED state by a lazy first-load failure,
+     * surface the originating cause wrapped in an IllegalStateException.
+     */
+    // @spec sstable.end-to-end-integrity.R43 — rejects get/scan/recoveryScan/section-load calls
+    // with IllegalStateException whose cause is the originating CorruptSectionException once the
+    // reader has transitioned to FAILED; close() intentionally does not call this method so it
+    // remains runnable to completion.
+    private void checkNotFailed() {
+        // Snapshot both fields into locals. The reads are two independent volatile loads
+        // today (F-R1.concurrency.1.4); if a future writer publishes failureCause before
+        // failureSection, a concurrent reader can observe a torn state (cause != null,
+        // section == null). Substitute a non-null sentinel so the R43 diagnostic never
+        // renders the literal string "null" — the cause chain is preserved regardless.
+        IOException cause = failureCause;
+        if (cause != null) {
+            String section = failureSection;
+            IllegalStateException ise = new IllegalStateException(
+                    "reader failed: " + (section != null ? section : "<pending>"), cause);
+            throw ise;
+        }
+    }
+
+    /**
+     * R43: transition this reader to the FAILED state using the given section-level corruption as
+     * the originating cause. Publishes {@code failureSection} before {@code failureCause} so a
+     * concurrent {@link #checkNotFailed()} reader that snapshots {@code failureCause} first always
+     * observes a non-null {@code failureSection} — the diagnostic message is therefore never
+     * rendered as "reader failed: null" regardless of which ordering the reader sees.
+     *
+     * <p>
+     * The transition is effectively single-shot: once {@code failureCause} is non-null, subsequent
+     * get/scan/recoveryScan calls reject via {@link #checkNotFailed()} before any I/O is attempted.
+     * Concurrent callers racing to transition the reader will each publish their own cause, and the
+     * last writer wins — but this is harmless because every such cause is a genuine section-level
+     * corruption and the reader is already logically FAILED.
+     */
+    // @spec sstable.end-to-end-integrity.R43 — FAILED-state transition: publishes section before
+    // cause so checkNotFailed observers always see a non-null section when they see a non-null
+    // cause. Subsequent reads reject with IllegalStateException wrapping the originating cause.
+    private void transitionToFailed(CorruptSectionException cause) {
+        assert cause != null : "transitionToFailed requires a non-null cause";
+        // Publish section first so any reader snapshotting failureCause first sees a non-null
+        // section via the happens-before established by the subsequent volatile write to
+        // failureCause.
+        failureSection = cause.sectionName();
+        failureCause = cause;
+    }
+
+    /**
+     * R38: acquire a slot in the recovery/read mutex. A recovery scan in progress rejects new
+     * readers with ISE; a normal read proceeds only after incrementing the active-ops counter.
+     *
+     * <p>
+     * The check-and-increment is serialized against recoveryScan's check-and-claim via
+     * {@link #recoveryLock}: without this, the two sides each read their counter/flag independently
+     * (check-then-act on two variables), permitting an interleaving in which both a reader and a
+     * recovery-scan observe the pre-claim state and proceed concurrently — a direct R38 violation.
+     * By requiring the lock here (tryLock with a brief wait for simultaneous reader arrivals), the
+     * reader either observes a concurrent recoveryScan holding the lock (tryLock fails → ISE) or
+     * acquires the lock and increments {@code activeReaderOps} before recoveryScan's subsequent
+     * {@code activeReaderOps.get() > 0} check runs under the same lock.
+     */
+    private void acquireReaderSlot() {
+        // Wait briefly for another reader's tiny lock-held window to finish; do not wait
+        // for a recovery-scan (which holds the lock for its iterator's full lifetime).
+        // If the lock cannot be obtained quickly, treat it as "recovery-scan in progress."
+        boolean acquired;
+        try {
+            acquired = recoveryLock.tryLock(100, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while acquiring reader slot", e);
+        }
+        if (!acquired) {
+            throw new IllegalStateException("recovery-scan in progress");
+        }
+        try {
+            if (recoveryInProgress) {
+                throw new IllegalStateException("recovery-scan in progress");
+            }
+            activeReaderOps.incrementAndGet();
+        } finally {
+            recoveryLock.unlock();
+        }
+    }
+
+    private void releaseReaderSlot() {
+        activeReaderOps.decrementAndGet();
+    }
+
     /** Returns the data at {@code fileOffset} (v1 absolute offset), reading at most maxBytes. */
     private byte[] readDataAtV1(long fileOffset, int maxBytes) throws IOException {
         if (fileOffset < 0) {
@@ -823,7 +1428,20 @@ public final class TrieSSTableReader implements SSTableReader {
     // (pre-v3 default)
     private record Footer(int version, long mapOffset, long mapLength, long dictOffset,
             long dictLength, long idxOffset, long idxLength, long fltOffset, long fltLength,
-            long entryCount, long blockSize) {
+            long entryCount, long blockSize, int blockCount, int mapChecksum, int dictChecksum,
+            int idxChecksum, int fltChecksum) {
+
+        /**
+         * Narrow constructor for v1-v4 callers that do not populate v5 checksum fields.
+         */
+        Footer(int version, long mapOffset, long mapLength, long dictOffset, long dictLength,
+                long idxOffset, long idxLength, long fltOffset, long fltLength, long entryCount,
+                long blockSize) {
+            this(version, mapOffset, mapLength, dictOffset, dictLength, idxOffset, idxLength,
+                    fltOffset, fltLength, entryCount, blockSize, /* blockCount */ 0,
+                    /* mapChecksum */ 0, /* dictChecksum */ 0, /* idxChecksum */ 0,
+                    /* fltChecksum */ 0);
+        }
 
         /**
          * Validates footer field consistency against the file size. All offsets and lengths must be
@@ -964,20 +1582,173 @@ public final class TrieSSTableReader implements SSTableReader {
         return footer;
     }
 
-    /** Reads footer detecting v1, v2, or v3 format from magic bytes. */
+    /** Reads footer detecting v1, v2, v3, v4, or v5 format from magic bytes. */
     // @spec sstable.v3-format-upgrade.R17,R20,R21 — magic-based version dispatch; validates
     // blockSize + section ordering
+    // @spec sstable.end-to-end-integrity.R25,R34,R40 — magic-first open; sub-magic files become
+    // IncompleteSSTableException; unknown trailing magic → IncompleteSSTableException.
+    // @spec sstable.end-to-end-integrity.R35 — version dispatch: only the MAGIC_V5 branch performs
+    // VarInt prefix decoding, section CRC32C verification, blockCount validation, and recovery
+    // scan. The v1/v2/v3/v4 branches below read only the version-specific footer size and throw
+    // IncompleteSSTableException when the file is shorter than that size (R40), never overreading.
+    // @spec sstable.end-to-end-integrity.R48 — v5 footer length-field int-narrowing guards
+    // (mapOffset/mapLength/idxLength/fltLength/dictLength Integer.MAX_VALUE cap) applied inline on
+    // the v5 branch before any downstream (int) cast.
+    // @spec sstable.end-to-end-integrity.R52 — pre-v5-branch speculative v5-hypothesis CRC
+    // recomputation detects a v5 file whose magic discriminant has been corrupted to a legacy
+    // magic, surfacing as CorruptSectionException(SECTION_FOOTER) before legacy-branch dispatch
+    // runs.
+    // @spec sstable.end-to-end-integrity.R53 — legacy-branch (v1/v2/v3/v4) structural failures
+    // (non-power-of-two blockSize, section ordering, overread) surface as CorruptSectionException
+    // with v5-vocabulary section names, not opaque IOException.
     private static Footer readFooter(SeekableByteChannel ch, long fileSize) throws IOException {
-        if (fileSize < SSTableFormat.FOOTER_SIZE) {
-            throw new IOException("not a valid SSTable file: too small");
+        // R25 + R40: files shorter than the minimum magic are incomplete, not corrupt.
+        if (fileSize < 8) {
+            throw new IncompleteSSTableException("no-magic", fileSize, 0,
+                    "file too small to contain an SSTable magic number");
         }
-        // Read the last 8 bytes to check magic
+        // R25: read the trailing 8 bytes FIRST so we can dispatch on magic.
         byte[] magicBuf = readBytes(ch, fileSize - 8, 8);
         long magic = readLong(magicBuf, 0);
 
+        // R40: unknown trailing magic → IncompleteSSTableException (not CorruptSection).
+        if (magic != SSTableFormat.MAGIC && magic != SSTableFormat.MAGIC_V2
+                && magic != SSTableFormat.MAGIC_V3 && magic != SSTableFormat.MAGIC_V4
+                && magic != SSTableFormat.MAGIC_V5) {
+            throw new IncompleteSSTableException(String.format("0x%016x", magic), fileSize, 0,
+                    "trailing bytes do not match any recognised SSTable magic");
+        }
+
+        // R26 defence-in-depth: dispatch-discriminant corruption detection. The v1..v5 magic
+        // constants differ only in the trailing byte's low bits, so a single-bit flip can move
+        // a genuine v5 file into one of the legacy magics (V5↔V4 Hamming distance 1, V5↔V1
+        // distance 1). The legacy branches have no footer self-checksum, so such a flip would
+        // otherwise silently bypass R26 and reinterpret the 112-byte v5 footer through a shorter
+        // legacy decoder. Guard against this by speculatively verifying the v5 footer-self-
+        // checksum over the trailing FOOTER_SIZE_V5 bytes with a HYPOTHETICAL intact MAGIC_V5
+        // substituted into the scope: if the result matches the stored checksum, the file is a
+        // genuine v5 whose magic discriminant was corrupted — surface as CorruptSectionException
+        // (footer) so R26 is honoured. False-positive probability for a genuine legacy file is
+        // ~2^-32.
+        if (magic != SSTableFormat.MAGIC_V5 && fileSize >= SSTableFormat.FOOTER_SIZE_V5) {
+            byte[] speculative = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE_V5,
+                    SSTableFormat.FOOTER_SIZE_V5);
+            int storedChecksum = readInt(speculative, 100);
+            // Substitute an intact MAGIC_V5 into the trailing 8 bytes of the scope before
+            // recomputing. If the original file was v5 and only the magic byte(s) flipped,
+            // this substitution restores the exact bytes the writer originally checksummed.
+            byte[] hypothesis = speculative.clone();
+            writeLongBigEndian(hypothesis, SSTableFormat.FOOTER_SIZE_V5 - 8,
+                    SSTableFormat.MAGIC_V5);
+            int hypotheticalChecksum = V5Footer.computeFooterChecksum(hypothesis);
+            if (storedChecksum == hypotheticalChecksum) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer self-checksum matched with hypothetical intact MAGIC_V5 but "
+                                + "trailing magic is " + String.format("0x%016x", magic)
+                                + "; discriminant byte has been corrupted (expected MAGIC_V5)");
+            }
+        }
+
+        if (magic == SSTableFormat.MAGIC_V5) {
+            // R25: validate file-size against v5 footer BEFORE reading footer bytes.
+            if (fileSize < SSTableFormat.FOOTER_SIZE_V5) {
+                throw new IncompleteSSTableException(String.format("0x%016x", magic), fileSize,
+                        SSTableFormat.FOOTER_SIZE_V5,
+                        "file shorter than v5 footer size (" + SSTableFormat.FOOTER_SIZE_V5 + ")");
+            }
+            byte[] footerBytes = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE_V5,
+                    SSTableFormat.FOOTER_SIZE_V5);
+            int expectedFooterChecksum = readInt(footerBytes, 100);
+            int recomputedFooterChecksum = V5Footer.computeFooterChecksum(footerBytes);
+            if (expectedFooterChecksum != recomputedFooterChecksum) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        expectedFooterChecksum, recomputedFooterChecksum);
+            }
+            V5Footer v5 = V5Footer.decode(footerBytes, 0);
+            // @spec sstable.end-to-end-integrity.R18 — validate blockCount >= 1 and mapLength >= 1
+            // in the footer before the compression-map entry count is compared against blockCount
+            if (v5.blockCount() < 1) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer.blockCount must be >= 1; got: " + v5.blockCount());
+            }
+            if (v5.mapLength() < 1) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer.mapLength must be >= 1; got: " + v5.mapLength());
+            }
+            // R15: dictionary sentinel consistency
+            if (!V5Footer.isDictionarySentinelConsistent(v5)) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer dictionary sentinel inconsistent: dictOffset=" + v5.dictOffset()
+                                + ", dictLength=" + v5.dictLength() + ", dictChecksum="
+                                + v5.dictChecksum());
+            }
+            // R37: tight-packing of sections
+            String violation = V5Footer.validateTightPacking(v5);
+            if (violation != null) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer tight-packing violated at section " + violation);
+            }
+            // Validate blockSize
+            long rawBlockSize = v5.blockSize();
+            if (rawBlockSize < SSTableFormat.MIN_BLOCK_SIZE
+                    || rawBlockSize > SSTableFormat.MAX_BLOCK_SIZE
+                    || (rawBlockSize & (rawBlockSize - 1)) != 0) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer invalid blockSize " + rawBlockSize);
+            }
+            // Validate footer-relative section extents against the file.
+            long footerStart = fileSize - SSTableFormat.FOOTER_SIZE_V5;
+            long maxSectionEnd = Math.max(
+                    Math.max(v5.mapOffset() + v5.mapLength(), v5.idxOffset() + v5.idxLength()),
+                    v5.fltOffset() + v5.fltLength());
+            if (v5.dictLength() > 0) {
+                maxSectionEnd = Math.max(maxSectionEnd, v5.dictOffset() + v5.dictLength());
+            }
+            if (maxSectionEnd > footerStart) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer section extends past footer start (" + footerStart + ")");
+            }
+            // Guard against long-to-int truncation in downstream `(int) ...Length` casts at the
+            // open()/openLazy() call sites (e.g. readBytes(ch, mapOffset, (int) mapLength)). Pre-v5
+            // paths delegate these checks to Footer.validate(fileSize); the v5 path does not call
+            // validate() and must enforce the Integer.MAX_VALUE bound inline to avoid silent
+            // section truncation or an IllegalArgumentException leak from ByteBuffer.allocate(-n).
+            if (v5.mapOffset() > Integer.MAX_VALUE) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer mapOffset=" + v5.mapOffset() + " exceeds 2 GiB");
+            }
+            if (v5.mapLength() > Integer.MAX_VALUE) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer mapLength=" + v5.mapLength() + " exceeds 2 GiB");
+            }
+            if (v5.idxLength() > Integer.MAX_VALUE) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer idxLength=" + v5.idxLength() + " exceeds 2 GiB");
+            }
+            if (v5.fltLength() > Integer.MAX_VALUE) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer fltLength=" + v5.fltLength() + " exceeds 2 GiB");
+            }
+            if (v5.dictLength() > Integer.MAX_VALUE) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                        "v5 footer dictLength=" + v5.dictLength() + " exceeds 2 GiB");
+            }
+            return new Footer(5, v5.mapOffset(), v5.mapLength(), v5.dictOffset(), v5.dictLength(),
+                    v5.idxOffset(), v5.idxLength(), v5.fltOffset(), v5.fltLength(), v5.entryCount(),
+                    rawBlockSize, v5.blockCount(), v5.mapChecksum(), v5.dictChecksum(),
+                    v5.idxChecksum(), v5.fltChecksum());
+        }
+
+        // Pre-v5 paths require at least the v1 footer size
+        if (fileSize < SSTableFormat.FOOTER_SIZE) {
+            throw new IncompleteSSTableException(String.format("0x%016x", magic), fileSize,
+                    SSTableFormat.FOOTER_SIZE, "file shorter than v1 footer size");
+        }
+
         if (magic == SSTableFormat.MAGIC_V4) {
             if (fileSize < SSTableFormat.FOOTER_SIZE_V4) {
-                throw new IOException("not a valid v4 SSTable file: too small");
+                throw new IncompleteSSTableException(String.format("0x%016x", magic), fileSize,
+                        SSTableFormat.FOOTER_SIZE_V4, "file shorter than v4 footer size");
             }
             byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE_V4,
                     SSTableFormat.FOOTER_SIZE_V4);
@@ -991,37 +1762,41 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltLength = readLong(buf, 56);
             long entryCount = readLong(buf, 64);
             long rawBlockSize = readLong(buf, 72);
-            // Validate blockSize
+            // Validate blockSize. R34/R26 defence-in-depth: surface footer-structural failures in
+            // legacy branches as CorruptSectionException(SECTION_FOOTER) so a dispatch-routing
+            // cross-version flip (e.g. V5→V4 LSB flip) is classified as footer corruption rather
+            // than a generic IOException. Genuine v4 files never trip this gate.
             if (rawBlockSize < SSTableFormat.MIN_BLOCK_SIZE
                     || rawBlockSize > SSTableFormat.MAX_BLOCK_SIZE
                     || (rawBlockSize & (rawBlockSize - 1)) != 0) {
-                throw new IOException(
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
                         "corrupt v4 SSTable footer: invalid blockSize %d".formatted(rawBlockSize));
             }
             // R19b: Validate v4 section ordering
             if (mapLength > 0 && dictLength > 0 && mapOffset + mapLength > dictOffset) {
-                throw new IOException(
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
                         "corrupt v4 SSTable footer: map section [%d, %d) overlaps dict section at %d"
                                 .formatted(mapOffset, mapOffset + mapLength, dictOffset));
             }
             if (dictLength > 0 && dictOffset + dictLength > idxOffset) {
-                throw new IOException(
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
                         "corrupt v4 SSTable footer: dict section [%d, %d) overlaps idx section at %d"
                                 .formatted(dictOffset, dictOffset + dictLength, idxOffset));
             }
             long footerStart = fileSize - SSTableFormat.FOOTER_SIZE_V4;
             if (fltOffset + fltLength > footerStart) {
-                throw new IOException(
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
                         "corrupt v4 SSTable footer: flt section [%d, %d) overlaps footer at %d"
                                 .formatted(fltOffset, fltOffset + fltLength, footerStart));
             }
             Footer footer = new Footer(4, mapOffset, mapLength, dictOffset, dictLength, idxOffset,
                     idxLength, fltOffset, fltLength, entryCount, rawBlockSize);
-            footer.validate(fileSize);
+            validateFooterOrCorruptSection(footer, fileSize);
             return footer;
         } else if (magic == SSTableFormat.MAGIC_V3) {
             if (fileSize < SSTableFormat.FOOTER_SIZE_V3) {
-                throw new IOException("not a valid v3 SSTable file: too small");
+                throw new IncompleteSSTableException(String.format("0x%016x", magic), fileSize,
+                        SSTableFormat.FOOTER_SIZE_V3, "file shorter than v3 footer size");
             }
             byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE_V3,
                     SSTableFormat.FOOTER_SIZE_V3);
@@ -1033,27 +1808,31 @@ public final class TrieSSTableReader implements SSTableReader {
             long fltLength = readLong(buf, 40);
             long entryCount = readLong(buf, 48);
             long rawBlockSize = readLong(buf, 56);
-            // Validate blockSize: must be in [MIN_BLOCK_SIZE, MAX_BLOCK_SIZE] and a power of 2
+            // Validate blockSize: must be in [MIN_BLOCK_SIZE, MAX_BLOCK_SIZE] and a power of 2.
+            // R34/R26 defence-in-depth: surface failures as CorruptSectionException(SECTION_FOOTER)
+            // so legacy-to-legacy dispatch flips (V1↔V3, V2↔V3) are classified as footer
+            // corruption.
             if (rawBlockSize < SSTableFormat.MIN_BLOCK_SIZE
                     || rawBlockSize > SSTableFormat.MAX_BLOCK_SIZE
                     || (rawBlockSize & (rawBlockSize - 1)) != 0) {
-                throw new IOException(
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
                         "corrupt v3 SSTable footer: invalid blockSize %d".formatted(rawBlockSize));
             }
             // Validate section ordering with FOOTER_SIZE_V3
             long footerStart = fileSize - SSTableFormat.FOOTER_SIZE_V3;
             if (fltOffset + fltLength > footerStart) {
-                throw new IOException(
+                throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
                         "corrupt v3 SSTable footer: flt section [%d, %d) overlaps footer at %d"
                                 .formatted(fltOffset, fltOffset + fltLength, footerStart));
             }
             Footer footer = new Footer(3, mapOffset, mapLength, 0, 0, idxOffset, idxLength,
                     fltOffset, fltLength, entryCount, rawBlockSize);
-            footer.validate(fileSize);
+            validateFooterOrCorruptSection(footer, fileSize);
             return footer;
         } else if (magic == SSTableFormat.MAGIC_V2) {
             if (fileSize < SSTableFormat.FOOTER_SIZE_V2) {
-                throw new IOException("not a valid v2 SSTable file: too small");
+                throw new IncompleteSSTableException(String.format("0x%016x", magic), fileSize,
+                        SSTableFormat.FOOTER_SIZE_V2, "file shorter than v2 footer size");
             }
             byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE_V2,
                     SSTableFormat.FOOTER_SIZE_V2);
@@ -1068,9 +1847,10 @@ public final class TrieSSTableReader implements SSTableReader {
             // writers hardcoded 4096
             Footer footer = new Footer(2, mapOffset, mapLength, 0, 0, idxOffset, idxLength,
                     fltOffset, fltLength, entryCount, SSTableFormat.DEFAULT_BLOCK_SIZE);
-            footer.validate(fileSize);
+            validateFooterOrCorruptSection(footer, fileSize);
             return footer;
-        } else if (magic == SSTableFormat.MAGIC) {
+        } else {
+            // magic == SSTableFormat.MAGIC (v1): fall through
             byte[] buf = readBytes(ch, fileSize - SSTableFormat.FOOTER_SIZE,
                     SSTableFormat.FOOTER_SIZE);
             long idxOffset = readLong(buf, 0);
@@ -1080,10 +1860,30 @@ public final class TrieSSTableReader implements SSTableReader {
             long entryCount = readLong(buf, 32);
             Footer footer = new Footer(1, 0, 0, 0, 0, idxOffset, idxLength, fltOffset, fltLength,
                     entryCount, SSTableFormat.DEFAULT_BLOCK_SIZE);
-            footer.validate(fileSize);
+            validateFooterOrCorruptSection(footer, fileSize);
             return footer;
-        } else {
-            throw new IOException("not a valid SSTable file: bad magic " + Long.toHexString(magic));
+        }
+    }
+
+    /**
+     * Invokes {@link Footer#validate(long)} and, if it throws {@link IOException}, rewraps it as a
+     * {@link CorruptSectionException} on {@link CorruptSectionException#SECTION_FOOTER}. This
+     * ensures legacy-branch dispatch paths surface footer-structural corruption with the same
+     * classification the v5 branch uses (R26/R34 defence-in-depth): a single-bit flip of the magic
+     * discriminant that routes a v1/v2 file into a neighbouring legacy branch (e.g. V1→V3 with
+     * Hamming distance 1) now fails as CorruptSection(footer) rather than a generic IOException.
+     * CorruptSectionException already extends IOException, so other IOException subtypes (e.g.
+     * IncompleteSSTableException) pass through unchanged.
+     */
+    private static void validateFooterOrCorruptSection(Footer footer, long fileSize)
+            throws IOException {
+        try {
+            footer.validate(fileSize);
+        } catch (CorruptSectionException | IncompleteSSTableException pass) {
+            throw pass;
+        } catch (IOException e) {
+            throw new CorruptSectionException(CorruptSectionException.SECTION_FOOTER,
+                    e.getMessage());
         }
     }
 
@@ -1168,6 +1968,100 @@ public final class TrieSSTableReader implements SSTableReader {
         return deserializer.deserialize(seg);
     }
 
+    /**
+     * v5-aware bloom filter read: reads the bytes, optionally verifies CRC32C against the
+     * footer-stored checksum, and invokes the deserializer.
+     *
+     * @spec sstable.end-to-end-integrity.R14
+     * @spec sstable.end-to-end-integrity.R27
+     * @spec sstable.end-to-end-integrity.R29
+     * @spec sstable.end-to-end-integrity.R49
+     */
+    private static BloomFilter readBloomFilterWithCrc(SeekableByteChannel ch, Footer footer,
+            BloomFilter.Deserializer deserializer, boolean verifyCrc) throws IOException {
+        // @spec sstable.end-to-end-integrity.R29 — a zero-length bloom section on a v5 file is a
+        // corruption: the CRC32C of empty bytes is 0x00000000, so an attacker-supplied
+        // fltChecksum=0 paired with fltLength=0 would pass the verifySectionCrc32c gate and feed
+        // a zero-byte MemorySegment to the deserializer. BloomFilter.Deserializer implementations
+        // signal that state with IllegalArgumentException, which would escape the factory's
+        // declared IOException contract. Reject the zero-length bloom section up front as a
+        // CorruptSectionException so callers can distinguish corrupt input from programming error.
+        if (verifyCrc && footer.fltLength == 0) {
+            throw new CorruptSectionException(CorruptSectionException.SECTION_BLOOM_FILTER,
+                    "v5 bloom section must be non-empty; got fltLength=0");
+        }
+        byte[] buf = readBytes(ch, footer.fltOffset, (int) footer.fltLength);
+        if (verifyCrc) {
+            verifySectionCrc32c(buf, footer.fltChecksum,
+                    CorruptSectionException.SECTION_BLOOM_FILTER);
+        }
+        Arena arena = Arena.ofAuto();
+        MemorySegment seg = arena.allocate(buf.length, 8);
+        MemorySegment.copy(MemorySegment.ofArray(buf), 0, seg, 0, buf.length);
+        return deserializer.deserialize(seg);
+    }
+
+    /**
+     * v5-aware key-index read: reads the bytes, optionally verifies CRC32C, then decodes. The
+     * decoded KeyIndex has the same in-memory representation used by v2/v3/v4.
+     *
+     * @spec sstable.end-to-end-integrity.R14
+     * @spec sstable.end-to-end-integrity.R27
+     * @spec sstable.end-to-end-integrity.R29
+     */
+    private static KeyIndex readKeyIndexV2Bytes(SeekableByteChannel ch, Footer footer,
+            int blockCount, boolean verifyCrc) throws IOException {
+        byte[] buf = readBytes(ch, footer.idxOffset, (int) footer.idxLength);
+        if (verifyCrc) {
+            verifySectionCrc32c(buf, footer.idxChecksum, CorruptSectionException.SECTION_KEY_INDEX);
+        }
+        int numKeys = readInt(buf, 0);
+        List<MemorySegment> keys = new ArrayList<>(numKeys);
+        List<Long> offsets = new ArrayList<>(numKeys);
+        int off = 4;
+        for (int i = 0; i < numKeys; i++) {
+            int keyLen = readInt(buf, off);
+            off += 4;
+            byte[] keyBytes = new byte[keyLen];
+            System.arraycopy(buf, off, keyBytes, 0, keyLen);
+            off += keyLen;
+            int blockIndex = readInt(buf, off);
+            off += 4;
+            int intraBlockOffset = readInt(buf, off);
+            off += 4;
+            if (blockIndex < 0 || blockIndex >= blockCount) {
+                throw new IOException("v2 key index entry %d: blockIndex %d out of range [0, %d)"
+                        .formatted(i, blockIndex, blockCount));
+            }
+            if (intraBlockOffset < 0) {
+                throw new IOException(
+                        "v2 key index entry %d: intra-block offset must be non-negative, got %d"
+                                .formatted(i, intraBlockOffset));
+            }
+            long packed = ((long) blockIndex << 32) | (intraBlockOffset & 0xFFFFFFFFL);
+            keys.add(MemorySegment.ofArray(keyBytes));
+            offsets.add(packed);
+        }
+        return new KeyIndex(keys, offsets);
+    }
+
+    /**
+     * CRC32C-check a section's raw bytes against the stored footer checksum.
+     *
+     * @spec sstable.end-to-end-integrity.R13
+     * @spec sstable.end-to-end-integrity.R14
+     * @spec sstable.end-to-end-integrity.R29
+     */
+    private static void verifySectionCrc32c(byte[] bytes, int expected, String sectionName)
+            throws CorruptSectionException {
+        CRC32C crc = new CRC32C();
+        crc.update(bytes, 0, bytes.length);
+        int computed = (int) crc.getValue();
+        if (computed != expected) {
+            throw new CorruptSectionException(sectionName, expected, computed);
+        }
+    }
+
     private static SSTableMetadata buildMetadata(Path path, long fileSize, Footer footer,
             KeyIndex keyIndex) {
         MemorySegment smallestKey = null;
@@ -1186,6 +2080,15 @@ public final class TrieSSTableReader implements SSTableReader {
 
     // ---- Low-level I/O ----
 
+    /**
+     * Maximum consecutive zero-progress reads tolerated before readBytes fails with an IOException.
+     * NIO permits {@link SeekableByteChannel#read(ByteBuffer)} to return {@code 0} (no bytes
+     * available yet, no error, no EOF), and a conforming remote provider (S3, HTTP-range) may do so
+     * for spurious reasons. We tolerate a bounded run of zero-returns before treating the channel
+     * as stalled, per the "Every iteration must terminate" coding guideline.
+     */
+    private static final int MAX_ZERO_PROGRESS_READS = 1024;
+
     // @spec sstable.writer.R4 — lazy reader synchronizes channel reads
     /**
      * Reads {@code length} bytes from the channel starting at {@code offset}.
@@ -1194,18 +2097,48 @@ public final class TrieSSTableReader implements SSTableReader {
      * The position-then-read sequence is synchronized on the channel to prevent concurrent callers
      * (e.g., multiple threads sharing a lazy reader) from interleaving position and read calls,
      * which would produce silently corrupt data (C2-F18).
+     *
+     * <p>
+     * The loop tolerates up to {@link #MAX_ZERO_PROGRESS_READS} consecutive zero-byte returns
+     * (permitted by the NIO contract — see F-R1.data_transformation.C2.03) before throwing an
+     * {@link IOException}, preventing an unbounded spin on a stalled remote channel.
+     *
+     * @spec sstable.end-to-end-integrity.R50
+     * @spec sstable.end-to-end-integrity.R51
      */
     private static byte[] readBytes(SeekableByteChannel ch, long offset, int length)
             throws IOException {
+        if (length < 0) {
+            // Defense-in-depth against upstream long-to-int narrowing bugs: a caller may have
+            // cast a section length > Integer.MAX_VALUE (e.g. (int) footer.dictLength when
+            // Footer.validate lacks a MAX_VALUE guard for that field) to a negative int. Surface
+            // this as an IOException so the factory's declared contract is honored — never leak
+            // IllegalArgumentException from ByteBuffer.allocate(negative) (F-R1.dt.C2.04).
+            throw new IOException("corrupt SSTable: readBytes invoked with negative length="
+                    + length + " at offset=" + offset
+                    + " (upstream long-to-int narrowing; section length exceeds 2 GiB)");
+        }
         if (length == 0)
             return new byte[0];
         ByteBuffer buf = ByteBuffer.allocate(length);
         synchronized (ch) {
             ch.position(offset);
+            int zeroProgressReads = 0;
             while (buf.hasRemaining()) {
                 int read = ch.read(buf);
                 if (read < 0)
                     throw new IOException("unexpected EOF at offset " + (offset + buf.position()));
+                if (read == 0) {
+                    if (++zeroProgressReads >= MAX_ZERO_PROGRESS_READS) {
+                        throw new IOException("channel returned zero bytes for "
+                                + MAX_ZERO_PROGRESS_READS + " consecutive reads at offset "
+                                + (offset + buf.position())
+                                + " (stalled or non-progressing); aborting to avoid "
+                                + "unbounded spin");
+                    }
+                } else {
+                    zeroProgressReads = 0;
+                }
             }
         }
         return buf.array();
@@ -1221,6 +2154,17 @@ public final class TrieSSTableReader implements SSTableReader {
                 | ((long) (buf[off + 2] & 0xFF) << 40) | ((long) (buf[off + 3] & 0xFF) << 32)
                 | ((long) (buf[off + 4] & 0xFF) << 24) | ((long) (buf[off + 5] & 0xFF) << 16)
                 | ((long) (buf[off + 6] & 0xFF) << 8) | (long) (buf[off + 7] & 0xFF);
+    }
+
+    private static void writeLongBigEndian(byte[] buf, int off, long value) {
+        buf[off] = (byte) (value >>> 56);
+        buf[off + 1] = (byte) (value >>> 48);
+        buf[off + 2] = (byte) (value >>> 40);
+        buf[off + 3] = (byte) (value >>> 32);
+        buf[off + 4] = (byte) (value >>> 24);
+        buf[off + 5] = (byte) (value >>> 16);
+        buf[off + 6] = (byte) (value >>> 8);
+        buf[off + 7] = (byte) value;
     }
 
     // ---- Iterators ----

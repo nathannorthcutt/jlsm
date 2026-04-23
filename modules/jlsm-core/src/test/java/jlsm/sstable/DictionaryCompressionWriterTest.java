@@ -79,8 +79,10 @@ class DictionaryCompressionWriterTest {
         Path path = dir.resolve("no-dict.sst");
         CompressionCodec codec = CompressionCodec.zstd();
 
+        // formatVersion(3) opts back into v3 (the v5 default applies when no formatVersion is set).
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(codec).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(codec).formatVersion(3)
+                .build()) {
             for (Entry e : generateEntries(10)) {
                 w.append(e);
             }
@@ -226,9 +228,10 @@ class DictionaryCompressionWriterTest {
         Path path = dir.resolve("defaults.sst");
         CompressionCodec codec = CompressionCodec.zstd();
 
-        // dictionaryTraining defaults to false; these methods should exist but not affect output
+        // Opt into v3 explicitly — new default for codec-only writers is v5.
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(codec).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(codec).formatVersion(3)
+                .build()) {
             for (Entry e : generateEntries(5)) {
                 w.append(e);
             }
