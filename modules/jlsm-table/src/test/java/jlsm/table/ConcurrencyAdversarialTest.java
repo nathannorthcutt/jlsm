@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.table.internal.FieldIndex;
 import jlsm.table.internal.IndexRegistry;
 import jlsm.table.internal.SseEncryptedIndex;
@@ -386,7 +386,7 @@ class ConcurrencyAdversarialTest {
                 + "documentStore (LinkedHashMap is not thread-safe): " + failure.get());
     }
 
-    // ── F-R1.concurrency.2.1: TOCTOU race in EncryptionKeyHolder.getKeyBytes ──
+    // ── F-R1.concurrency.2.1: TOCTOU race in OffHeapKeyMaterial.getKeyBytes ──
 
     // Finding: F-R1.concurrency.2.1
     // Bug: TOCTOU race between getKeyBytes() ensureOpen() check and keySegment
@@ -394,13 +394,13 @@ class ConcurrencyAdversarialTest {
     // and closes arena, Thread A reads all-zero bytes (silent data corruption)
     // or gets an uncontrolled IllegalStateException from arena scope
     // Correct behavior: getKeyBytes() must either return valid key bytes or throw
-    // IllegalStateException("EncryptionKeyHolder has been closed") — never
+    // IllegalStateException("OffHeapKeyMaterial has been closed") — never
     // return zeroed bytes and never throw an arena scope exception
-    // Fix location: EncryptionKeyHolder.java lines 74-79 (getKeyBytes) and 103-111 (close)
+    // Fix location: OffHeapKeyMaterial.java lines 74-79 (getKeyBytes) and 103-111 (close)
     // Regression watch: fix must not deadlock under concurrent getKeyBytes() calls
     @Test
     @Timeout(30)
-    void test_EncryptionKeyHolder_getKeyBytes_TOCTOU_returns_zeroed_key() throws Exception {
+    void test_OffHeapKeyMaterial_getKeyBytes_TOCTOU_returns_zeroed_key() throws Exception {
         // Strategy: race getKeyBytes() against close() in a tight loop.
         // If the TOCTOU window exists, eventually a reader will pass ensureOpen()
         // then read zeroed memory (all-zero byte array) — silent data corruption.
@@ -413,7 +413,7 @@ class ConcurrencyAdversarialTest {
             for (int k = 0; k < 32; k++)
                 keyMaterial[k] = (byte) (k + 0xA0);
             final byte[] expectedKey = keyMaterial.clone();
-            final EncryptionKeyHolder holder = EncryptionKeyHolder.of(keyMaterial);
+            final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(keyMaterial);
 
             CyclicBarrier barrier = new CyclicBarrier(3);
 
@@ -444,7 +444,7 @@ class ConcurrencyAdversarialTest {
                                 // Expected: holder was closed. But verify it's the holder's
                                 // message.
                                 if (!e.getMessage()
-                                        .contains("EncryptionKeyHolder has been closed")) {
+                                        .contains("OffHeapKeyMaterial has been closed")) {
                                     failure.compareAndSet(null, new AssertionError(
                                             "getKeyBytes() threw unexpected IllegalStateException: "
                                                     + e.getMessage(),
@@ -634,7 +634,7 @@ class ConcurrencyAdversarialTest {
         final byte[] keyMaterial = new byte[32];
         for (int k = 0; k < 32; k++)
             keyMaterial[k] = (byte) (k + 0xA0);
-        final EncryptionKeyHolder kh = EncryptionKeyHolder.of(keyMaterial);
+        final OffHeapKeyMaterial kh = OffHeapKeyMaterial.of(keyMaterial);
         final SseEncryptedIndex idx = new SseEncryptedIndex(kh);
 
         // Add one entry to create the per-term counter
@@ -929,7 +929,7 @@ class ConcurrencyAdversarialTest {
             final byte[] keyMaterial = new byte[32];
             for (int k = 0; k < 32; k++)
                 keyMaterial[k] = (byte) (k + 0xA0);
-            final EncryptionKeyHolder kh = EncryptionKeyHolder.of(keyMaterial);
+            final OffHeapKeyMaterial kh = OffHeapKeyMaterial.of(keyMaterial);
             final SseEncryptedIndex idx = new SseEncryptedIndex(kh);
             final byte[] token = idx.deriveToken("testTerm");
 

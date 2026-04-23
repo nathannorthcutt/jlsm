@@ -2,7 +2,7 @@ package jlsm.table;
 
 import jlsm.core.io.MemorySerializer;
 import jlsm.encryption.DcpeSapEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.internal.CiphertextValidator;
 import jdk.incubator.vector.ByteVector;
@@ -80,7 +80,7 @@ public final class DocumentSerializer {
      * @return a MemorySerializer for JlsmDocument
      */
     public static MemorySerializer<JlsmDocument> forSchema(JlsmSchema schema,
-            EncryptionKeyHolder keyHolder) {
+            OffHeapKeyMaterial keyHolder) {
         Objects.requireNonNull(schema, "schema must not be null");
         return new SchemaSerializer(schema, keyHolder);
     }
@@ -148,7 +148,7 @@ public final class DocumentSerializer {
         // constants, build dispatch table
         // @spec schema.schema-construction.R25 — rejects schemas with >65535 fields at
         // serialization time
-        SchemaSerializer(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
+        SchemaSerializer(JlsmSchema schema, OffHeapKeyMaterial keyHolder) {
             this.schema = schema;
 
             if (schema.version() > 0xFFFF) {

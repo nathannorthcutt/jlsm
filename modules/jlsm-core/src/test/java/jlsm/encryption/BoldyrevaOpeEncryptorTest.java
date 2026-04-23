@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.AfterEach;
@@ -14,7 +16,7 @@ class BoldyrevaOpeEncryptorTest {
     private static final long DOMAIN = 100;
     private static final long RANGE = 10_000;
 
-    private EncryptionKeyHolder keyHolder;
+    private OffHeapKeyMaterial keyHolder;
 
     private static byte[] key256() {
         final byte[] key = new byte[32];
@@ -34,7 +36,7 @@ class BoldyrevaOpeEncryptorTest {
 
     @BeforeEach
     void setUp() {
-        keyHolder = EncryptionKeyHolder.of(key256());
+        keyHolder = OffHeapKeyMaterial.of(key256());
     }
 
     @AfterEach
@@ -100,7 +102,7 @@ class BoldyrevaOpeEncryptorTest {
         final BoldyrevaOpeEncryptor enc1 = new BoldyrevaOpeEncryptor(keyHolder, DOMAIN, RANGE);
         final long ct1 = enc1.encrypt(50);
 
-        try (final EncryptionKeyHolder otherKey = EncryptionKeyHolder.of(key256Alt())) {
+        try (final OffHeapKeyMaterial otherKey = OffHeapKeyMaterial.of(key256Alt())) {
             final BoldyrevaOpeEncryptor enc2 = new BoldyrevaOpeEncryptor(otherKey, DOMAIN, RANGE);
             final long ct2 = enc2.encrypt(50);
 

@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -42,7 +44,7 @@ public final class AesGcmEncryptor implements AutoCloseable {
      * @param keyHolder the key holder providing a 256-bit (32-byte) key
      * @throws IllegalArgumentException if key length is not 32 bytes
      */
-    public AesGcmEncryptor(EncryptionKeyHolder keyHolder) {
+    public AesGcmEncryptor(OffHeapKeyMaterial keyHolder) {
         Objects.requireNonNull(keyHolder, "keyHolder must not be null");
         if (keyHolder.keyLength() != 32) {
             throw new IllegalArgumentException(

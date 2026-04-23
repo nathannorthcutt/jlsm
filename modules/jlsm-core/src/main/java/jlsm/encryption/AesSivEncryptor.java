@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Objects;
@@ -43,7 +45,7 @@ public final class AesSivEncryptor implements AutoCloseable {
      * @param keyHolder the key holder providing a 512-bit (64-byte) key
      * @throws IllegalArgumentException if key length is not 64 bytes
      */
-    public AesSivEncryptor(EncryptionKeyHolder keyHolder) {
+    public AesSivEncryptor(OffHeapKeyMaterial keyHolder) {
         Objects.requireNonNull(keyHolder, "keyHolder must not be null");
         if (keyHolder.keyLength() != KEY_512_BYTES) {
             throw new IllegalArgumentException(

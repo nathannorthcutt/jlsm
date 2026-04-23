@@ -1,0 +1,133 @@
+package jlsm.encryption.internal;
+
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Objects;
+
+import jlsm.encryption.DekHandle;
+import jlsm.encryption.DomainId;
+import jlsm.encryption.KekRef;
+import jlsm.encryption.TenantId;
+import jlsm.encryption.WrappedDek;
+import jlsm.encryption.WrappedDomainKek;
+
+/**
+ * Immutable per-tenant key registry shard. Holds all wrapped key material for a
+ * tenant (DEKs + domain KEKs) along with the tenant's active KEK reference and the
+ * HKDF salt (R10b, which must persist to avoid silent derivation mismatches on
+ * reload).
+ *
+ * <p>The shard is value-immutable: mutations produce new {@code KeyRegistryShard}
+ * instances via {@link #withDek}, {@link #withDomainKek}, and
+ * {@link #withTenantKekRef}.
+ *
+ * <p>Governed by: spec {@code encryption.primitives-lifecycle} R19, R10b.
+ *
+ * @param tenantId owning tenant
+ * @param deks wrapped DEKs keyed by handle (defensively copied)
+ * @param domainKeks wrapped tier-2 KEKs keyed by domain (defensively copied)
+ * @param activeTenantKekRef currently active tier-1 KEK reference; nullable on
+ *                           first-write (no KEK activated yet)
+ * @param hkdfSalt HKDF salt bytes (defensively copied; see accessor note)
+ */
+public record KeyRegistryShard(
+        TenantId tenantId,
+        Map<DekHandle, WrappedDek> deks,
+        Map<DomainId, WrappedDomainKek> domainKeks,
+        KekRef activeTenantKekRef,
+        byte[] hkdfSalt) {
+
+    /**
+     * @throws NullPointerException if any non-nullable reference is null
+     */
+    public KeyRegistryShard {
+        Objects.requireNonNull(tenantId, "tenantId must not be null");
+        Objects.requireNonNull(deks, "deks must not be null");
+        Objects.requireNonNull(domainKeks, "domainKeks must not be null");
+        Objects.requireNonNull(hkdfSalt, "hkdfSalt must not be null");
+        // activeTenantKekRef may be null (first-write case)
+        deks = Map.copyOf(deks);
+        domainKeks = Map.copyOf(domainKeks);
+        hkdfSalt = hkdfSalt.clone();
+    }
+
+    /**
+     * Returns a fresh clone of the HKDF salt. The component accessor defensively
+     * copies because the salt is a persisted secret and unexpected mutation would
+     * silently corrupt derivations across the entire tenant.
+     */
+    @Override
+    public byte[] hkdfSalt() {
+        return hkdfSalt.clone();
+    }
+
+    /**
+     * Produce a new shard with {@code newDek} added (or replacing any prior entry
+     * with the same handle).
+     *
+     * @throws NullPointerException if {@code newDek} is null
+     */
+    public KeyRegistryShard withDek(WrappedDek newDek) {
+        throw new UnsupportedOperationException("KeyRegistryShard.withDek stub — WU-3 scope");
+    }
+
+    /**
+     * Produce a new shard with {@code newDomainKek} added (or replacing the prior
+     * entry for the same domain).
+     *
+     * @throws NullPointerException if {@code newDomainKek} is null
+     */
+    public KeyRegistryShard withDomainKek(WrappedDomainKek newDomainKek) {
+        throw new UnsupportedOperationException("KeyRegistryShard.withDomainKek stub — WU-3 scope");
+    }
+
+    /**
+     * Produce a new shard with the tenant's active KEK reference replaced.
+     *
+     * @throws NullPointerException if {@code newRef} is null
+     */
+    public KeyRegistryShard withTenantKekRef(KekRef newRef) {
+        throw new UnsupportedOperationException(
+                "KeyRegistryShard.withTenantKekRef stub — WU-3 scope");
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof KeyRegistryShard other)) {
+            return false;
+        }
+        return tenantId.equals(other.tenantId)
+                && deks.equals(other.deks)
+                && domainKeks.equals(other.domainKeks)
+                && Objects.equals(activeTenantKekRef, other.activeTenantKekRef)
+                && Arrays.equals(hkdfSalt, other.hkdfSalt);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = tenantId.hashCode();
+        result = 31 * result + deks.hashCode();
+        result = 31 * result + domainKeks.hashCode();
+        result = 31 * result + Objects.hashCode(activeTenantKekRef);
+        result = 31 * result + Arrays.hashCode(hkdfSalt);
+        return result;
+    }
+
+    @Override
+    public String toString() {
+        return "KeyRegistryShard[tenantId="
+                + tenantId
+                + ", deks=<"
+                + deks.size()
+                + " entries>, domainKeks=<"
+                + domainKeks.size()
+                + " entries>, activeTenantKekRef="
+                + activeTenantKekRef
+                + ", hkdfSalt=<"
+                + hkdfSalt.length
+                + " bytes>]";
+    }
+}

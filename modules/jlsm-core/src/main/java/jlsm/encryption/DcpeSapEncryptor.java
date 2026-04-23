@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -63,7 +65,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      */
     // @spec encryption.primitives-variants.R55, F41.R22 — derive MAC sub-key with domain-separated
     // label
-    public DcpeSapEncryptor(EncryptionKeyHolder keyHolder, int dimensions) {
+    public DcpeSapEncryptor(OffHeapKeyMaterial keyHolder, int dimensions) {
         Objects.requireNonNull(keyHolder, "keyHolder must not be null");
         if (dimensions <= 0) {
             throw new IllegalArgumentException("dimensions must be positive, got " + dimensions);

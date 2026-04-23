@@ -21,7 +21,7 @@ import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.DcpeSapEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import java.util.ArrayList;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -197,18 +197,18 @@ class ResourceLifecycleAdversarialTest {
     // or silently reads zeros (between zero and arena.close)
     // Correct behavior: keySegment() should return a defensive copy that survives close(),
     // same as getKeyBytes() returns a copy
-    // Fix location: EncryptionKeyHolder.keySegment() (lines 94-101)
+    // Fix location: OffHeapKeyMaterial.keySegment() (lines 94-101)
     // Regression watch: callers that previously relied on the returned segment being a live
     // view must now understand it is a snapshot copy
     @Test
     @Timeout(10)
-    void test_EncryptionKeyHolder_keySegment_returnedSegmentSurvivesClose() {
+    void test_OffHeapKeyMaterial_keySegment_returnedSegmentSurvivesClose() {
         byte[] key = new byte[32];
         for (int i = 0; i < key.length; i++) {
             key[i] = (byte) (i + 1); // non-zero key material
         }
 
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(key);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key);
 
         // Obtain segment while holder is open
         MemorySegment segment = holder.keySegment();
@@ -241,7 +241,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         AesGcmEncryptor encryptor = new AesGcmEncryptor(holder);
 
@@ -290,7 +290,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         AesSivEncryptor encryptor = new AesSivEncryptor(holder);
 
@@ -342,7 +342,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         // Use the largest possible domain/range to maximize recursion depth.
         // The recursion depth is O(log2(domainSize)), so with domainSize approaching
@@ -406,7 +406,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         try (BoldyrevaOpeEncryptor encryptor = new BoldyrevaOpeEncryptor(holder, 100, 1000)) {
             // Normal decrypt should work fine
@@ -465,7 +465,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         BoldyrevaOpeEncryptor encryptor = new BoldyrevaOpeEncryptor(holder, 100, 1000);
 
@@ -513,7 +513,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         DcpeSapEncryptor encryptor = new DcpeSapEncryptor(holder, 4);
 
@@ -563,7 +563,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         SseEncryptedIndex index = new SseEncryptedIndex(holder);
 
@@ -617,7 +617,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         SseEncryptedIndex index = new SseEncryptedIndex(holder);
 
@@ -678,7 +678,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
 
         SseEncryptedIndex index = new SseEncryptedIndex(holder);
 
@@ -831,7 +831,7 @@ class ResourceLifecycleAdversarialTest {
         for (int i = 0; i < rawKey.length; i++) {
             rawKey[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder holder = EncryptionKeyHolder.of(rawKey);
+        OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(rawKey);
         SseEncryptedIndex index = new SseEncryptedIndex(holder);
 
         // Normal round-trip should still work

@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import java.security.GeneralSecurityException;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -47,7 +49,7 @@ public final class BoldyrevaOpeEncryptor implements AutoCloseable {
      * @throws IllegalArgumentException if rangeSize is not greater than domainSize, or domainSize <
      *             1
      */
-    public BoldyrevaOpeEncryptor(EncryptionKeyHolder keyHolder, long domainSize, long rangeSize) {
+    public BoldyrevaOpeEncryptor(OffHeapKeyMaterial keyHolder, long domainSize, long rangeSize) {
         Objects.requireNonNull(keyHolder, "keyHolder must not be null");
         if (domainSize < 1) {
             throw new IllegalArgumentException("domainSize must be >= 1, got " + domainSize);

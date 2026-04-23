@@ -6,7 +6,7 @@ import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
 
 import jlsm.core.io.MemorySerializer;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import org.junit.jupiter.api.Test;
 
@@ -149,7 +149,7 @@ class DocumentSerializerNullKeyHolderTest {
 
         byte[] key = new byte[64];
         Arrays.fill(key, (byte) 0xAA);
-        try (var keyHolder = EncryptionKeyHolder.of(key)) {
+        try (var keyHolder = OffHeapKeyMaterial.of(key)) {
             MemorySerializer<JlsmDocument> ser = DocumentSerializer.forSchema(schema, keyHolder);
             JlsmDocument doc = JlsmDocument.of(schema, "email", "alice@example.com");
             MemorySegment bytes = ser.serialize(doc);

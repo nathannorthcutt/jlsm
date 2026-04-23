@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.AfterEach;
@@ -18,7 +20,7 @@ class DcpeSapEncryptorTest {
     private static final int DIMS = 8;
     private static final byte[] FIELD_AD = "embedding".getBytes(StandardCharsets.UTF_8);
 
-    private EncryptionKeyHolder keyHolder;
+    private OffHeapKeyMaterial keyHolder;
 
     private static byte[] key256() {
         final byte[] key = new byte[32];
@@ -30,7 +32,7 @@ class DcpeSapEncryptorTest {
 
     @BeforeEach
     void setUp() {
-        keyHolder = EncryptionKeyHolder.of(key256());
+        keyHolder = OffHeapKeyMaterial.of(key256());
     }
 
     @AfterEach
@@ -181,7 +183,7 @@ class DcpeSapEncryptorTest {
 
         final byte[] otherKey = new byte[32];
         Arrays.fill(otherKey, (byte) 0xCC);
-        try (var otherHolder = EncryptionKeyHolder.of(otherKey)) {
+        try (var otherHolder = OffHeapKeyMaterial.of(otherKey)) {
             final DcpeSapEncryptor encryptorB = new DcpeSapEncryptor(otherHolder, DIMS);
             assertThrows(SecurityException.class, () -> encryptorB.decrypt(ev, FIELD_AD),
                     "Decryption with wrong key must throw SecurityException");

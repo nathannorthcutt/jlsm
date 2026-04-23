@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.Arrays;
 
 import jlsm.encryption.BoldyrevaOpeEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.internal.PositionalPostingCodec;
 import jlsm.table.internal.SseEncryptedIndex;
@@ -34,7 +34,7 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void opeDispatch_int64Field_throwsOnConstruction() {
         // Vector: C3-1 — OrderPreserving on INT64 must be rejected, not silently truncate
-        final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("ts", FieldType.Primitive.INT64, EncryptionSpec.orderPreserving()).build();
 
@@ -46,7 +46,7 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void opeDispatch_int32Field_throwsOnConstruction() {
         // Vector: C3-1 — OrderPreserving on INT32 must be rejected
-        final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("count", FieldType.Primitive.INT32, EncryptionSpec.orderPreserving())
                 .build();
@@ -59,7 +59,7 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void opeDispatch_timestampField_throwsOnConstruction() {
         // Vector: C3-1 — OrderPreserving on TIMESTAMP must be rejected
-        final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("created", FieldType.Primitive.TIMESTAMP, EncryptionSpec.orderPreserving())
                 .build();
@@ -72,7 +72,7 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void opeDispatch_int8Field_allowedAndRoundTrips() {
         // Positive case: INT8 fits in MAX_OPE_BYTES, should work
-        final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("b", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
 
@@ -90,7 +90,7 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void opeDispatch_int16Field_allowedAndRoundTrips() {
         // Positive case: INT16 fits in MAX_OPE_BYTES, should work
-        final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("s", FieldType.Primitive.INT16, EncryptionSpec.orderPreserving()).build();
 
@@ -105,7 +105,7 @@ class EncryptMemoryDataAdversarialTest {
         assertArrayEquals(value, decrypted, "INT16 OPE round-trip must be lossless");
     }
 
-    // ── C3-2: Derived EncryptionKeyHolder not closed ─────────────────────────────
+    // ── C3-2: Derived OffHeapKeyMaterial not closed ─────────────────────────────
 
     @Test
     void fieldEncryptionDispatch_derivedKeyHolders_areClosed() {
@@ -113,7 +113,7 @@ class EncryptMemoryDataAdversarialTest {
         // We verify that constructing many dispatches doesn't leak memory.
         // If derived holders are not closed, each creates an Arena.ofShared() that leaks.
         // This test creates 1000 dispatches to amplify any leak.
-        final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("ssn", FieldType.Primitive.STRING, EncryptionSpec.deterministic()).build();
 
@@ -150,7 +150,7 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void decodedPosting_mutatingDocIdAccessor_doesNotCorruptInternal() {
         // Vector: C4-1 — mutating returned docId should not corrupt the record
-        final EncryptionKeyHolder opeHolder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial opeHolder = OffHeapKeyMaterial.of(key256());
         final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(opeHolder, 100, 1000);
         final PositionalPostingCodec codec = new PositionalPostingCodec(ope);
 
@@ -171,7 +171,7 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void decodedPosting_mutatingPositionsAccessor_doesNotCorruptInternal() {
         // Vector: C4-1 — mutating returned positions should not corrupt the record
-        final EncryptionKeyHolder opeHolder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial opeHolder = OffHeapKeyMaterial.of(key256());
         final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(opeHolder, 100, 1000);
         final PositionalPostingCodec codec = new PositionalPostingCodec(ope);
 
@@ -196,7 +196,7 @@ class EncryptMemoryDataAdversarialTest {
     @Test
     void sseEncryptedIndex_worksAfterKeyHolderClosed() {
         // Vector: C4-2 — index should still function after key holder is closed
-        final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
         final SseEncryptedIndex index = new SseEncryptedIndex(holder);
         holder.close();
 

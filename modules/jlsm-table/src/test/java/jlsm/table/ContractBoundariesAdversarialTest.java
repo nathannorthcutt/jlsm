@@ -19,7 +19,7 @@ import java.util.Optional;
 import jlsm.core.indexing.SimilarityFunction;
 import jlsm.core.io.MemorySerializer;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.internal.FieldIndex;
 import jlsm.table.internal.FieldValueCodec;
@@ -465,7 +465,7 @@ class ContractBoundariesAdversarialTest {
 
         final byte[] rawKey = new byte[64];
         java.util.Arrays.fill(rawKey, (byte) 0xBE);
-        try (var keyHolder = jlsm.encryption.EncryptionKeyHolder.of(rawKey);
+        try (var keyHolder = jlsm.encryption.internal.OffHeapKeyMaterial.of(rawKey);
                 var dcpe = new jlsm.encryption.DcpeSapEncryptor(keyHolder, 3)) {
             final MemorySerializer<JlsmDocument> serializer = DocumentSerializer.forSchema(schema,
                     keyHolder);
@@ -869,7 +869,7 @@ class ContractBoundariesAdversarialTest {
         for (int i = 0; i < 64; i++) {
             keyMaterial[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder keyHolder = EncryptionKeyHolder.of(keyMaterial);
+        OffHeapKeyMaterial keyHolder = OffHeapKeyMaterial.of(keyMaterial);
         try {
             BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder, 10_000L, 1_000_000L);
             PositionalPostingCodec codec = new PositionalPostingCodec(ope);
@@ -897,7 +897,7 @@ class ContractBoundariesAdversarialTest {
         for (int i = 0; i < 64; i++) {
             keyMaterial[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder keyHolder = EncryptionKeyHolder.of(keyMaterial);
+        OffHeapKeyMaterial keyHolder = OffHeapKeyMaterial.of(keyMaterial);
         try {
             BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder, 10_000L, 1_000_000L);
             PositionalPostingCodec codec = new PositionalPostingCodec(ope);
@@ -947,7 +947,7 @@ class ContractBoundariesAdversarialTest {
         for (int i = 0; i < 64; i++) {
             keyMaterial[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder keyHolder = EncryptionKeyHolder.of(keyMaterial);
+        OffHeapKeyMaterial keyHolder = OffHeapKeyMaterial.of(keyMaterial);
         try {
             BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder, 10_000L, 1_000_000L);
             PositionalPostingCodec codec = new PositionalPostingCodec(ope);
@@ -985,7 +985,7 @@ class ContractBoundariesAdversarialTest {
         for (int i = 0; i < 64; i++) {
             keyMaterial[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder keyHolder = EncryptionKeyHolder.of(keyMaterial);
+        OffHeapKeyMaterial keyHolder = OffHeapKeyMaterial.of(keyMaterial);
         try {
             BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder, 10_000L, 1_000_000L);
             PositionalPostingCodec codec = new PositionalPostingCodec(ope);
@@ -1023,7 +1023,7 @@ class ContractBoundariesAdversarialTest {
         for (int i = 0; i < 64; i++) {
             keyMaterial[i] = (byte) (i + 1);
         }
-        EncryptionKeyHolder keyHolder = EncryptionKeyHolder.of(keyMaterial);
+        OffHeapKeyMaterial keyHolder = OffHeapKeyMaterial.of(keyMaterial);
         try {
             BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder, 10_000L, 1_000_000L);
             PositionalPostingCodec codec = new PositionalPostingCodec(ope);

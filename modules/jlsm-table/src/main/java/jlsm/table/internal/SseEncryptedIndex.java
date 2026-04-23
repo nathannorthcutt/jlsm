@@ -15,7 +15,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 
 /**
  * Contract: Tier 3 SSE (Searchable Symmetric Encryption) encrypted inverted index based on Curtmola
@@ -72,7 +72,7 @@ public final class SseEncryptedIndex implements AutoCloseable {
      * @param keyHolder the key holder for PRF and posting list encryption
      * @throws NullPointerException if keyHolder is null
      */
-    public SseEncryptedIndex(EncryptionKeyHolder keyHolder) {
+    public SseEncryptedIndex(OffHeapKeyMaterial keyHolder) {
         Objects.requireNonNull(keyHolder, "keyHolder must not be null");
         final byte[] keyBytes = keyHolder.getKeyBytes();
 

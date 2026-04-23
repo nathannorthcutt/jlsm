@@ -15,7 +15,7 @@ import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.DcpeSapEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldDefinition;
 import jlsm.table.JlsmSchema;
@@ -70,7 +70,7 @@ public final class FieldEncryptionDispatch {
      * @param schema the schema describing the document structure; must not be null
      * @param keyHolder the key holder providing encryption keys; may be null (no encryption)
      */
-    public FieldEncryptionDispatch(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
+    public FieldEncryptionDispatch(JlsmSchema schema, OffHeapKeyMaterial keyHolder) {
         Objects.requireNonNull(schema, "schema must not be null");
 
         final List<FieldDefinition> fields = schema.fields();
@@ -135,7 +135,7 @@ public final class FieldEncryptionDispatch {
                         byte[] cmacHalf = null;
                         byte[] ctrHalf = null;
                         byte[] sivKey = null;
-                        EncryptionKeyHolder sivKeyHolder = null;
+                        OffHeapKeyMaterial sivKeyHolder = null;
                         try {
                             masterKey = keyHolder.getKeyBytes();
                             cmacHalf = hmacSha256(masterKey, "siv-cmac-key");
@@ -143,7 +143,7 @@ public final class FieldEncryptionDispatch {
                             sivKey = new byte[64];
                             System.arraycopy(cmacHalf, 0, sivKey, 0, 32);
                             System.arraycopy(ctrHalf, 0, sivKey, 32, 32);
-                            sivKeyHolder = EncryptionKeyHolder.of(sivKey);
+                            sivKeyHolder = OffHeapKeyMaterial.of(sivKey);
                             siv = new AesSivEncryptor(sivKeyHolder);
                         } finally {
                             if (masterKey != null) {
@@ -208,11 +208,11 @@ public final class FieldEncryptionDispatch {
                     if (keyHolder.keyLength() == 64) {
                         byte[] fullKey = null;
                         byte[] gcmKey = null;
-                        EncryptionKeyHolder gcmKeyHolder = null;
+                        OffHeapKeyMaterial gcmKeyHolder = null;
                         try {
                             fullKey = keyHolder.getKeyBytes();
                             gcmKey = hmacSha256(fullKey, "gcm-opaque-key");
-                            gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
+                            gcmKeyHolder = OffHeapKeyMaterial.of(gcmKey);
                             gcm = new AesGcmEncryptor(gcmKeyHolder);
                         } finally {
                             if (fullKey != null) {

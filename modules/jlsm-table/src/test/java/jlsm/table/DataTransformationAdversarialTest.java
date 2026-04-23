@@ -7,7 +7,7 @@ import java.util.Arrays;
 
 import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -28,7 +28,7 @@ class DataTransformationAdversarialTest {
         // Create a 32-byte key
         final byte[] rawKey = new byte[32];
         Arrays.fill(rawKey, (byte) 0xCA);
-        final EncryptionKeyHolder keyHolder32 = EncryptionKeyHolder.of(rawKey);
+        final OffHeapKeyMaterial keyHolder32 = OffHeapKeyMaterial.of(rawKey);
 
         // Build a schema with a single deterministic-encrypted field
         final String fieldName = "secret";
@@ -52,7 +52,7 @@ class DataTransformationAdversarialTest {
         Arrays.fill(rawKey2, (byte) 0xCA);
         System.arraycopy(rawKey2, 0, repeatedKey, 0, 32);
         System.arraycopy(rawKey2, 0, repeatedKey, 32, 32);
-        final EncryptionKeyHolder badKeyHolder = EncryptionKeyHolder.of(repeatedKey);
+        final OffHeapKeyMaterial badKeyHolder = OffHeapKeyMaterial.of(repeatedKey);
         final AesSivEncryptor badSiv = new AesSivEncryptor(badKeyHolder);
         final byte[] associatedData = fieldName.getBytes(StandardCharsets.UTF_8);
         final byte[] badCiphertext = badSiv.encrypt(plaintext, associatedData);
@@ -89,7 +89,7 @@ class DataTransformationAdversarialTest {
         // Create a 64-byte key
         final byte[] rawKey = new byte[64];
         Arrays.fill(rawKey, (byte) 0xBE);
-        final EncryptionKeyHolder keyHolder64 = EncryptionKeyHolder.of(rawKey);
+        final OffHeapKeyMaterial keyHolder64 = OffHeapKeyMaterial.of(rawKey);
 
         // Build a schema with a single opaque-encrypted field
         final String fieldName = "opaque_field";
@@ -112,7 +112,7 @@ class DataTransformationAdversarialTest {
         final byte[] rawKey2 = new byte[64];
         Arrays.fill(rawKey2, (byte) 0xBE);
         System.arraycopy(rawKey2, 0, truncatedKey, 0, 32);
-        final EncryptionKeyHolder badKeyHolder = EncryptionKeyHolder.of(truncatedKey);
+        final OffHeapKeyMaterial badKeyHolder = OffHeapKeyMaterial.of(truncatedKey);
         final AesGcmEncryptor badGcm = new AesGcmEncryptor(badKeyHolder);
 
         // If the dispatch used the plain truncated key (the bug), the bad encryptor
@@ -150,7 +150,7 @@ class DataTransformationAdversarialTest {
         // Create a 32-byte key for OPE
         final byte[] rawKey = new byte[32];
         Arrays.fill(rawKey, (byte) 0xAB);
-        final EncryptionKeyHolder keyHolder = EncryptionKeyHolder.of(rawKey);
+        final OffHeapKeyMaterial keyHolder = OffHeapKeyMaterial.of(rawKey);
 
         // Build a schema with an INT8 OPE field (valid — fits in 1 byte)
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -188,7 +188,7 @@ class DataTransformationAdversarialTest {
         // Create a 32-byte key for OPE
         final byte[] rawKey = new byte[32];
         Arrays.fill(rawKey, (byte) 0xAB);
-        final EncryptionKeyHolder keyHolder = EncryptionKeyHolder.of(rawKey);
+        final OffHeapKeyMaterial keyHolder = OffHeapKeyMaterial.of(rawKey);
 
         // Build a schema with an INT8 OPE field (valid — fits in 1 byte)
         final JlsmSchema schema = JlsmSchema.builder("test", 1)
