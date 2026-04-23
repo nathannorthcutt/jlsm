@@ -340,7 +340,8 @@ class DictionaryCompressionReaderTest {
         Path path = dir.resolve("v3-plain-zstd.sst");
         CompressionCodec plainZstd = CompressionCodec.zstd();
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(plainZstd).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(plainZstd)
+                .formatVersion(3).build()) {
             for (Entry e : generateEntries(500)) {
                 w.append(e);
             }
@@ -375,7 +376,8 @@ class DictionaryCompressionReaderTest {
         Path path = dir.resolve("v3-plain-zstd-lazy.sst");
         CompressionCodec plainZstd = CompressionCodec.zstd();
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(plainZstd).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(plainZstd)
+                .formatVersion(3).build()) {
             for (Entry e : generateEntries(500)) {
                 w.append(e);
             }

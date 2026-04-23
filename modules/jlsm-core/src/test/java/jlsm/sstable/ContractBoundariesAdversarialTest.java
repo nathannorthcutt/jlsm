@@ -5,6 +5,8 @@ import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
 import jlsm.sstable.internal.CompressionMap;
+import jlsm.sstable.internal.SSTableFormat;
+import jlsm.sstable.internal.V5Footer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -563,6 +565,207 @@ class ContractBoundariesAdversarialTest {
                 ex.getMessage().contains("finish") || ex.getMessage().contains("failed")
                         || ex.getMessage().contains("closed"),
                 "exception should indicate finish is no longer possible, got: " + ex.getMessage());
+    }
+
+    // Finding: F-R1.contract_boundaries.01.01
+    // Bug: writeFooterV5 has no producer-side invariant guard on blockCount / mapLength /
+    // entryCount / blockSize — a writer in a bad state (e.g. blockCount=0 or mapLength=0) will
+    // ship a footer that violates R17/R18. Detection is delegated to the reader, so a malformed
+    // SSTable can be produced, uploaded, or transferred before the consumer-side integrity check
+    // runs.
+    // Correct behavior: writeFooterV5 must validate producer state before writing any bytes to
+    // the channel. Invalid blockCount (<1), mapLength (<1), entryCount (<1), or blockSize (not
+    // power-of-two in [MIN..MAX]) must throw IllegalStateException WITHOUT writing bytes.
+    // Fix location: TrieSSTableWriter.writeFooterV5 (~line 665-681) — add runtime checks on
+    // self.blockCount, self.entryCount, self.blockSize and the mapLength parameter before
+    // constructing the V5Footer / writing to the channel.
+    // Regression watch: legitimate v5 writes (blockCount>=1, mapLength>=1, entryCount>=1) must
+    // still produce a valid footer; the existing V5 writer test suite must still pass.
+    @Test
+    void test_writeFooterV5_contract_boundaries_rejects_zero_blockCount_before_write()
+            throws Exception {
+        // Construct a v5 writer and append one entry so entryCount/blockSize are legitimate.
+        Path file = tempDir.resolve("bad-blockcount.sst");
+        TrieSSTableWriter writer = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(file)
+                .bloomFactory(n -> new jlsm.bloom.blocked.BlockedBloomFilter(n, 0.01))
+                .codec(CompressionCodec.deflate()).build();
+
+        MemorySegment key = Arena.ofAuto().allocate(1);
+        key.set(ValueLayout.JAVA_BYTE, 0, (byte) 0x01);
+        MemorySegment value = Arena.ofAuto().allocate(1);
+        value.set(ValueLayout.JAVA_BYTE, 0, (byte) 0x02);
+        writer.append(new Entry.Put(key, value, new SequenceNumber(1L)));
+
+        // Bloom filter is created inside finish() before writeFooterV5, but writeFooterV5 itself
+        // only reads writer state fields. Stamp blockCount to an invariant-violating 0 before
+        // invoking writeFooterV5 directly.
+        Field blockCountField = TrieSSTableWriter.class.getDeclaredField("blockCount");
+        blockCountField.setAccessible(true);
+        blockCountField.setInt(writer, 0);
+
+        // Record channel write position BEFORE the invocation so we can detect any stray bytes
+        // that escaped to disk.
+        Field channelField = TrieSSTableWriter.class.getDeclaredField("channel");
+        channelField.setAccessible(true);
+        SeekableByteChannel channel = (SeekableByteChannel) channelField.get(writer);
+        long positionBefore = channel.position();
+
+        // Invoke writeFooterV5 with otherwise-legal parameters; the only invariant violation is
+        // blockCount=0 (violates R17). A correct producer-side guard must reject this state and
+        // NOT emit the footer bytes.
+        java.lang.reflect.Method writeFooterV5 = TrieSSTableWriter.class.getDeclaredMethod(
+                "writeFooterV5", long.class, long.class, long.class, long.class, int.class,
+                long.class, long.class, int.class, long.class, long.class, int.class, int.class);
+        writeFooterV5.setAccessible(true);
+
+        Throwable cause = assertThrows(java.lang.reflect.InvocationTargetException.class,
+                () -> writeFooterV5.invoke(writer, 0L, 16L, 0L, 0L, 0, 16L, 16L, 0, 32L, 16L, 0, 0),
+                "writeFooterV5 must reject state with blockCount=0 (R17 violation) before writing")
+                .getCause();
+        assertTrue(cause instanceof IllegalStateException,
+                "expected IllegalStateException from producer-side invariant guard, got: "
+                        + (cause == null ? "null"
+                                : cause.getClass().getName() + ": " + cause.getMessage()));
+        assertTrue(
+                cause.getMessage() != null && (cause.getMessage().contains("blockCount")
+                        || cause.getMessage().contains("R17")),
+                "exception should identify the violated invariant (blockCount / R17), got: "
+                        + cause.getMessage());
+
+        // Critical: no bytes should have been written to the channel. The producer contract is
+        // that a malformed footer must not reach the on-disk surface where a consumer or a
+        // remote backend could observe it.
+        long positionAfter = channel.position();
+        assertEquals(positionBefore, positionAfter,
+                "writeFooterV5 must not write any bytes when producer-state invariants fail; "
+                        + "bytes leaked: " + (positionAfter - positionBefore));
+
+        // Cleanup — close the channel so @TempDir can clean up (we bypassed the writer's close
+        // lifecycle via reflection).
+        channel.close();
+    }
+
+    // Finding: F-R1.contract_boundaries.01.02
+    // Bug: validateTightPacking does not verify the data-region lower bound — a footer with
+    // mapOffset=0 claims the compression map starts at file offset 0, overlapping the data
+    // region (which per R37 section ordering must occupy [0, mapOffset)). The current validator
+    // only walks adjacent sorted sections, so a single-byte attack that sets mapOffset=0
+    // escapes detection and surfaces later as an opaque downstream decoder error.
+    // Correct behavior: validateTightPacking must reject a footer whose first sorted section
+    // starts at offset 0 (i.e. mapOffset == 0 when map is the first section) by returning the
+    // offending section name — per R37 the data region [0, mapOffset) must be non-empty and
+    // sections must be contiguous with it.
+    // Fix location: V5Footer.validateTightPacking (~line 158-185) — after sorting sections,
+    // check that sections.get(0).offset > 0 and return the offending name if not.
+    // Regression watch: typicalFooter (mapOffset=4096) and all other existing valid packings
+    // must still return null; gap/overlap diagnostics must still surface their original names.
+    @Test
+    void test_validateTightPacking_contract_boundaries_rejects_mapOffset_zero() {
+        // Craft a footer with mapOffset = 0. The compression map claims to start at the very
+        // first byte of the file, overlapping the data region. All other fields are internally
+        // consistent: the map ends at offset 1024, idx at 1536, flt at 1792 — adjacent-section
+        // walk alone would report no violation.
+        V5Footer footer = new V5Footer(/* mapOffset */ 0L, /* mapLength */ 1024L,
+                /* dictOffset */ 0L, /* dictLength */ 0L, /* idxOffset */ 1024L,
+                /* idxLength */ 512L, /* fltOffset */ 1536L, /* fltLength */ 256L,
+                /* entryCount */ 42L, /* blockSize */ 1024L, /* blockCount */ 3,
+                /* mapChecksum */ 0xCAFEBABE, /* dictChecksum */ 0, /* idxChecksum */ 0xDEADBEEF,
+                /* fltChecksum */ 0x11223344, /* footerChecksum */ 0,
+                /* magic */ SSTableFormat.MAGIC_V5);
+
+        String violating = V5Footer.validateTightPacking(footer);
+        assertNotNull(violating,
+                "validateTightPacking must reject mapOffset=0 — the first section cannot start "
+                        + "at file offset 0 because the data region must precede it per R37");
+        assertEquals(CorruptSectionException.SECTION_COMPRESSION_MAP, violating,
+                "violating section should be identified as the compression map (first section "
+                        + "claiming offset 0), got: " + violating);
+    }
+
+    // Finding: F-R1.contract_boundaries.03.01
+    // Bug: RecoveryScanIterator.readBlockAtCursor has an else branch that silently parses the
+    // raw payload as an EntryCodec stream WITHOUT per-block CRC32C verification when
+    // compressionMap is null or blocksWalked >= compressionMap.blockCount(). This is
+    // unreachable under current v5-only invariants, but the path is not self-enforcing —
+    // if a future regression (removed v5-only guard, divergent blockCount, null
+    // compressionMap) reaches it, corrupt blocks would be accepted without the
+    // CorruptBlockException that R10 mandates.
+    // Correct behavior: readBlockAtCursor must refuse to parse a block without CRC verification.
+    // A defensive runtime guard (IllegalStateException or equivalent) at the else branch
+    // must reject the state and propagate so recovery-scan callers see the violation
+    // instead of silently consuming un-verified payload.
+    // Fix location: TrieSSTableReader.RecoveryScanIterator.readBlockAtCursor (else branch near
+    // line 816-818) — replace the silent parseDecompressedBlockEntries(payload) with a
+    // runtime check that throws IllegalStateException (wrapped via the iterator's IOException
+    // path) identifying the broken invariant.
+    // Regression watch: normal v5 recovery-scan (where the invariant holds) must still succeed;
+    // the guard must only fire when the invariant is actually violated.
+    @Test
+    void test_readBlockAtCursor_contract_boundaries_rejects_missing_compressionMap_without_crc()
+            throws Exception {
+        // Step 1: write a valid v5 SSTable with enough data for at least one block.
+        Path file = tempDir.resolve("recovery-missing-compmap.sst");
+        try (var writer = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(file)
+                .bloomFactory(n -> new jlsm.bloom.blocked.BlockedBloomFilter(n, 0.01))
+                .codec(CompressionCodec.deflate()).build()) {
+            MemorySegment key = Arena.ofAuto().allocate(4);
+            key.set(ValueLayout.JAVA_BYTE, 0, (byte) 0x01);
+            key.set(ValueLayout.JAVA_BYTE, 1, (byte) 0x02);
+            key.set(ValueLayout.JAVA_BYTE, 2, (byte) 0x03);
+            key.set(ValueLayout.JAVA_BYTE, 3, (byte) 0x04);
+            MemorySegment value = Arena.ofAuto().allocate(4);
+            value.set(ValueLayout.JAVA_BYTE, 0, (byte) 0x10);
+            value.set(ValueLayout.JAVA_BYTE, 1, (byte) 0x20);
+            value.set(ValueLayout.JAVA_BYTE, 2, (byte) 0x30);
+            value.set(ValueLayout.JAVA_BYTE, 3, (byte) 0x40);
+            writer.append(new Entry.Put(key, value, new SequenceNumber(1L)));
+            writer.finish();
+        }
+
+        // Step 2: open it as a v5 reader.
+        TrieSSTableReader reader = TrieSSTableReader.open(file,
+                jlsm.bloom.blocked.BlockedBloomFilter.deserializer(), null,
+                CompressionCodec.deflate());
+        try {
+            // Step 3: simulate the forbidden invariant violation by clearing the compressionMap
+            // field via reflection. In a legitimate v5 reader this must never happen — but the
+            // readBlockAtCursor else branch *today* would silently parse the raw on-disk payload
+            // without a CRC check if it did. The defensive guard must reject this state.
+            Field compressionMapField = TrieSSTableReader.class.getDeclaredField("compressionMap");
+            compressionMapField.setAccessible(true);
+            compressionMapField.set(reader, null);
+
+            // Step 4: run recovery-scan. The iterator's ctor (advance() -> readBlockAtCursor)
+            // is where the defensive guard fires. Without the fix, readBlockAtCursor's else
+            // branch silently parses the raw payload and returns a parsed Entry. With the fix,
+            // the guard surfaces an exception — either directly out of recoveryScan() (when the
+            // ctor's first advance() trips the guard) or out of hasNext() on a later iteration.
+            Throwable thrown = assertThrows(Throwable.class, () -> {
+                @SuppressWarnings("resource")
+                java.util.Iterator<Entry> it = reader.recoveryScan();
+                // Drain until the guard fires (or exhaustion — which would be the un-fixed bug).
+                while (it.hasNext()) {
+                    it.next();
+                }
+            }, "recovery-scan must refuse to parse blocks when the CRC-verification path "
+                    + "cannot run — silent fallback to un-verified parsing violates R10");
+            // Accept either IllegalStateException or an IOException that wraps one — the fix
+            // may route through the iterator's sneakyThrow / advance() IOException path.
+            boolean acceptable = (thrown instanceof IllegalStateException)
+                    || (thrown instanceof IOException);
+            assertTrue(acceptable,
+                    "expected IllegalStateException or IOException identifying the broken "
+                            + "invariant, got: " + thrown.getClass().getName() + ": "
+                            + thrown.getMessage());
+            // The message should mention the violated invariant so operators can diagnose.
+            String msg = thrown.getMessage() == null ? "" : thrown.getMessage().toLowerCase();
+            assertTrue(msg.contains("compressionmap") || msg.contains("compression map")
+                    || msg.contains("crc") || msg.contains("invariant") || msg.contains("recovery"),
+                    "exception message should identify the broken CRC/compressionMap invariant, "
+                            + "got: " + thrown.getMessage());
+        } finally {
+            reader.close();
+        }
     }
 
 }

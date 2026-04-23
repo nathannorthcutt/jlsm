@@ -16,22 +16,22 @@
 | architecture | [architecture/](architecture/CLAUDE.md) | 1 | 3 | 2026-04-22 |
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 10 | 2026-04-20 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 7 | 25 | 2026-04-19 |
-| patterns | [patterns/](patterns/CLAUDE.md) | 7 | 37 | 2026-04-22 |
+| patterns | [patterns/](patterns/CLAUDE.md) | 7 | 45 | 2026-04-22 |
 | systems | [systems/](systems/CLAUDE.md) | 5 | 49 | 2026-04-20 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-22 | patterns | validation | version-discovery-self-only-no-external-cross-check |
+| 2026-04-22 | patterns | validation | dispatch-discriminant-corruption-bypass |
+| 2026-04-22 | patterns | validation | silent-fallthrough-integrity-defense-coupled-to-flag |
+| 2026-04-22 | patterns | resource-management | atomic-move-vs-fallback-commit-divergence |
+| 2026-04-22 | patterns | resource-management | unbounded-zero-progress-channel-read-loop |
+| 2026-04-22 | patterns | resource-management | iterator-without-close-holds-coordination |
+| 2026-04-22 | patterns | concurrency | check-then-act-across-paired-acquire-release |
+| 2026-04-22 | patterns | concurrency | torn-volatile-publish-multi-field |
 | 2026-04-22 | patterns | resource-management | pool-close-with-outstanding-acquires |
 | 2026-04-22 | patterns | validation | partial-init-no-rollback |
-| 2026-04-22 | patterns | validation | mutation-outside-rollback-scope |
-| 2026-04-21 | patterns | adversarial-review | hash-function-algebraic-probes |
-| 2026-04-21 | patterns | validation | reflective-bypass-of-builder-validation |
-| 2026-04-21 | patterns | validation | interface-contract-missing-from-javadoc |
-| 2026-04-21 | patterns | resource-management | fan-out-dispatch-deferred-exception-pattern |
-| 2026-04-20 | systems | security | three-level-key-hierarchy |
-| 2026-04-20 | systems | database-engines | pool-aware-sstable-block-sizing |
-| 2026-04-20 | data-structures | caching | byte-budget-cache-variable-size-entries |
 
 ## Shared References
 `_refs/complexity-notation.md` — notation key used in algorithm files

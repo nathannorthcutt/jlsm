@@ -89,7 +89,8 @@ class SSTableV3IntegrationTest {
 
         // Builder API — does not exist yet; will fail with compilation error
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).formatVersion(3)
+                .build()) {
             List<Entry> entries = generateEntries(10);
             for (Entry e : entries) {
                 w.append(e);
@@ -198,7 +199,8 @@ class SSTableV3IntegrationTest {
         CompressionCodec deflate = CompressionCodec.deflate(6);
 
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).formatVersion(3)
+                .build()) {
             w.append(put("a", "alpha", 1));
             w.finish();
         }
@@ -305,7 +307,8 @@ class SSTableV3IntegrationTest {
 
         // Write a valid v3 file
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).formatVersion(3)
+                .build()) {
             // Write enough entries to ensure at least one data block
             for (int i = 0; i < 100; i++) {
                 w.append(put("key-%05d".formatted(i), "value-" + i, i + 1));
@@ -353,7 +356,8 @@ class SSTableV3IntegrationTest {
 
         // Write a valid v3 file
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).formatVersion(3)
+                .build()) {
             w.append(put("a", "alpha", 1));
             w.finish();
         }
@@ -393,7 +397,8 @@ class SSTableV3IntegrationTest {
 
         // Write entries with random (incompressible) values
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).build()) {
+                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(deflate).formatVersion(3)
+                .build()) {
             for (int i = 0; i < 200; i++) {
                 String key = "key-%05d".formatted(i);
                 byte[] randomValue = new byte[256];
@@ -430,7 +435,7 @@ class SSTableV3IntegrationTest {
         Path path = dir.resolve("v3-overlap.sst");
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
                 .bloomFactory(n -> new BlockedBloomFilter(n, 0.01))
-                .codec(CompressionCodec.deflate(6)).build()) {
+                .codec(CompressionCodec.deflate(6)).formatVersion(3).build()) {
             w.append(put("k", "v", 1));
             w.finish();
         }

@@ -21,14 +21,20 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channel;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.zip.CRC32C;
 
 /**
@@ -64,6 +70,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
     private final long id;
     private final Level level;
     private final Path outputPath;
+    /** Where bytes are actually written. For v5, this is outputPath + ".partial." + writerId. */
+    private final Path workingPath;
+    /** True when {@link #workingPath} differs from {@link #outputPath} (v5 atomic-commit). */
+    private final boolean usingPartialPath;
     private final SeekableByteChannel channel;
 
     // Data block accumulation
@@ -89,6 +99,15 @@ public final class TrieSSTableWriter implements SSTableWriter {
 
     // v3 format flag — true only when constructed via Builder
     private final boolean v3;
+
+    /**
+     * Selected output format version. One of 1, 2, 3, 4, 5. v1=no codec; v2=legacy codec path
+     * (unused at builder level); v3/v4=legacy; v5=default when codec is configured per R36.
+     */
+    private final int formatVersion;
+
+    /** Listener invoked when fsync/force() is skipped for non-FileChannel outputs (R23). */
+    private final FsyncSkipListener fsyncSkipListener;
 
     // Dictionary training (v4)
     private final boolean dictionaryTrainingEnabled;
@@ -168,32 +187,41 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.bloomFactory = bloomFactory;
         this.codec = codec;
         this.blockSize = SSTableFormat.DEFAULT_BLOCK_SIZE;
-        // @spec sstable.v3-format-upgrade.R16 — codec-configured writers produce v3 format;
-        // no-codec writers stay v1
+        // Legacy path: codec → v3; no codec → v1. v5 is only produced via Builder.
         this.v3 = codec != null;
+        this.formatVersion = codec != null ? 3 : 1;
+        this.fsyncSkipListener = null;
         this.dictionaryTrainingEnabled = false;
         this.dictionaryBlockThreshold = 64;
         this.dictionaryMaxBufferBytes = 256L * 1024 * 1024;
         this.dictionaryMaxSize = 32768;
         this.dictEligible = false;
+        // Legacy 2-arg paths write directly to outputPath (no partial commit).
+        this.workingPath = outputPath;
+        this.usingPartialPath = false;
         this.channel = Files.newByteChannel(outputPath, StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE);
     }
 
     /**
-     * Internal constructor used by the Builder for v3/v4 format with configurable block size and
+     * Internal constructor used by the Builder for v3/v4/v5 format with configurable block size and
      * optional dictionary training.
      */
     private TrieSSTableWriter(long id, Level level, Path outputPath,
             BloomFilter.Factory bloomFactory, CompressionCodec codec, int blockSize,
             boolean dictionaryTraining, int dictBlockThreshold, long dictMaxBufferBytes,
-            int dictMaxSize) throws IOException {
+            int dictMaxSize, int formatVersion, FsyncSkipListener fsyncSkipListener)
+            throws IOException {
         Objects.requireNonNull(level, "level must not be null");
         Objects.requireNonNull(outputPath, "outputPath must not be null");
         Objects.requireNonNull(bloomFactory, "bloomFactory must not be null");
         if (codec != null && codec.codecId() == 0x00 && codec != CompressionCodec.none()) {
             throw new IllegalArgumentException(
                     "custom codec must not use codecId 0x00 (reserved for NoneCodec)");
+        }
+        if (formatVersion < 1 || formatVersion > 5) {
+            throw new IllegalArgumentException(
+                    "formatVersion must be in [1, 5]; got: " + formatVersion);
         }
         this.id = id;
         this.level = level;
@@ -202,27 +230,48 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.codec = codec;
         this.blockSize = blockSize;
         this.v3 = true;
+        this.formatVersion = formatVersion;
+        this.fsyncSkipListener = fsyncSkipListener;
         this.dictionaryTrainingEnabled = dictionaryTraining;
         this.dictionaryBlockThreshold = dictBlockThreshold;
         this.dictionaryMaxBufferBytes = dictMaxBufferBytes;
         this.dictionaryMaxSize = dictMaxSize;
 
         // Dictionary training is eligible only when: enabled + ZSTD codec (ID 0x03) + native
-        // available
+        // available + not v5 (v5 has no current dictionary-embedding lifecycle).
         boolean eligible = dictionaryTraining && codec != null && codec.codecId() == 0x03
-                && ZstdDictionaryTrainer.isAvailable();
+                && ZstdDictionaryTrainer.isAvailable() && formatVersion != 5;
         this.dictEligible = eligible;
         if (eligible) {
             this.dictBufferedBlocks = new ArrayList<>();
         }
 
-        this.channel = Files.newByteChannel(outputPath, StandardOpenOption.CREATE_NEW,
-                StandardOpenOption.WRITE);
+        // v5: write to a per-writer-unique partial path, then atomically rename to outputPath
+        // at finish(). Pre-v5 formats write directly to outputPath.
+        if (formatVersion == 5) {
+            String writerId = UUID.randomUUID().toString();
+            Path parent = outputPath.getParent();
+            String basename = outputPath.getFileName().toString();
+            Path partial = parent == null ? Path.of(basename + ".partial." + writerId)
+                    : parent.resolve(basename + ".partial." + writerId);
+            this.workingPath = partial;
+            this.usingPartialPath = true;
+            this.channel = Files.newByteChannel(partial, StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE);
+        } else {
+            this.workingPath = outputPath;
+            this.usingPartialPath = false;
+            this.channel = Files.newByteChannel(outputPath, StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE);
+        }
     }
 
     @Override
     public void append(Entry entry) throws IOException {
         Objects.requireNonNull(entry, "entry must not be null");
+        if (state == State.CLOSED) {
+            throw new IllegalStateException("writer is closed");
+        }
         if (state != State.OPEN) {
             throw new IllegalStateException("writer is not open (state=" + state + ")");
         }
@@ -240,6 +289,21 @@ public final class TrieSSTableWriter implements SSTableWriter {
 
         // Encode using the already-extracted key bytes to avoid a redundant toArray
         byte[] encoded = EntryCodec.encode(entry, keyBytes);
+
+        // Upstream entry-size guard: reject entries that would produce a data block larger
+        // than SSTableFormat.MAX_BLOCK_SIZE before the bytes are ever added to the current
+        // block. Without this guard, an oversized entry propagates through flushCurrentBlock
+        // into compressAndWriteBlock where VarInt.encode(dataToWrite.length) throws the
+        // cryptic "VarInt value out of range" IOException from deep inside the pipeline.
+        // The block header occupies 4 bytes; adding the encoded entry must keep the block
+        // size within MAX_BLOCK_SIZE so that any downstream VarInt-prefixed write is valid.
+        long projectedBlockSize = (long) currentBlock.byteSize() + (long) encoded.length;
+        if (projectedBlockSize > SSTableFormat.MAX_BLOCK_SIZE) {
+            throw new IOException("entry too large: encoded entry size " + encoded.length
+                    + " would produce a data block of " + projectedBlockSize
+                    + " bytes, which exceeds MAX_BLOCK_SIZE (" + SSTableFormat.MAX_BLOCK_SIZE
+                    + ")");
+        }
 
         if (codec != null) {
             // v2: store (blockIndex, intraBlockOffset) packed into a long
@@ -295,6 +359,12 @@ public final class TrieSSTableWriter implements SSTableWriter {
                     compressAndWriteBlock(buffered);
                 }
                 dictBufferedBlocks = null;
+                // Reset the byte counter alongside releasing the buffered-blocks list so the
+                // writer's reported buffered-bytes state stays truthful after abandon. The
+                // counter is otherwise unreachable (guarded by dictBufferedBlocks != null), but
+                // keeping it accurate removes a latent trap for future refactors that might
+                // read the field outside the current guarded block.
+                dictBufferedBytes = 0L;
                 // Also compress and write this block
                 compressAndWriteBlock(blockBytes);
             } else {
@@ -328,6 +398,10 @@ public final class TrieSSTableWriter implements SSTableWriter {
      */
     // @spec sstable.v3-format-upgrade.R4,R5 — CRC32C over exact on-disk bytes (compressed or raw
     // post-fallback)
+    // @spec sstable.end-to-end-integrity.R1,R3 — v5: write VarInt length prefix before payload;
+    // record blockOffset at the first byte AFTER the VarInt (payload start). R3 atomicity:
+    // VarInt write + blockOffset record + payload write + map entry append form a unit; any
+    // partial failure transitions writer to FAILED.
     private void compressAndWriteBlock(byte[] blockBytes, CompressionCodec useCodec)
             throws IOException {
         try (Arena arena = Arena.ofConfined()) {
@@ -352,21 +426,41 @@ public final class TrieSSTableWriter implements SSTableWriter {
             }
 
             int checksum = 0;
-            if (v3) {
+            // Per-block CRC32C is required for v3/v4 (per-block-checksums ADR) and v5 writes
+            // (end-to-end-integrity R14). The v5 footer-level guarantee depends on every map
+            // entry carrying a real checksum, so the CRC must not be gated on the legacy `v3`
+            // flag alone — a v5 writer with v3=false would otherwise silently record
+            // checksum=0 for every block.
+            if (v3 || formatVersion == 5) {
                 CRC32C crc = new CRC32C();
                 crc.update(dataToWrite, 0, dataToWrite.length);
                 checksum = (int) crc.getValue();
             }
-            compressionMapEntries.add(new CompressionMap.Entry(writePosition, dataToWrite.length,
-                    blockBytes.length, actualCodecId, checksum));
-            writeBytes(dataToWrite);
+            if (formatVersion == 5) {
+                // R1/R3: write VarInt of on-disk payload length, then payload. blockOffset
+                // points at payload start (post-VarInt).
+                byte[] prefix = new byte[4];
+                int prefixLen = jlsm.sstable.internal.VarInt.encode(dataToWrite.length, prefix, 0);
+                writeBytes(prefix, prefixLen);
+                compressionMapEntries.add(new CompressionMap.Entry(writePosition,
+                        dataToWrite.length, blockBytes.length, actualCodecId, checksum));
+                writeBytes(dataToWrite);
+            } else {
+                compressionMapEntries.add(new CompressionMap.Entry(writePosition,
+                        dataToWrite.length, blockBytes.length, actualCodecId, checksum));
+                writeBytes(dataToWrite);
+            }
         }
     }
 
     private static final int MAX_ZERO_PROGRESS_WRITES = 1024;
 
     private void writeBytes(byte[] bytes) throws IOException {
-        ByteBuffer buf = ByteBuffer.wrap(bytes);
+        writeBytes(bytes, bytes.length);
+    }
+
+    private void writeBytes(byte[] bytes, int length) throws IOException {
+        ByteBuffer buf = ByteBuffer.wrap(bytes, 0, length);
         int zeroProgressCount = 0;
         while (buf.hasRemaining()) {
             int written = channel.write(buf);
@@ -379,15 +473,20 @@ public final class TrieSSTableWriter implements SSTableWriter {
                 zeroProgressCount = 0;
             }
         }
-        writePosition += bytes.length;
+        writePosition += length;
     }
 
     @Override
     public SSTableMetadata finish() throws IOException {
+        if (state == State.CLOSED) {
+            throw new IllegalStateException("writer is closed");
+        }
         if (state != State.OPEN) {
             throw new IllegalStateException("finish() already called or writer failed/closed");
         }
         if (entryCount == 0) {
+            // @spec sstable.end-to-end-integrity.R17 — v5 forbids empty SSTables. The legacy
+            // paths retain this guard as well to keep invariants uniform.
             throw new IllegalStateException("cannot finish an empty SSTable");
         }
 
@@ -402,16 +501,17 @@ public final class TrieSSTableWriter implements SSTableWriter {
                 bloomFilter.add(MemorySegment.ofArray(key));
             }
 
-            if (dictEligible && !dictBufferAbandoned && dictBufferedBlocks != null) {
+            if (formatVersion == 5) {
+                // v5 finish path: emit v5 sections with per-section CRC32C and the 3-fsync
+                // discipline (R19-R21) before writing the footer.
+                finishV5Layout();
+            } else if (dictEligible && !dictBufferAbandoned && dictBufferedBlocks != null) {
                 // Dictionary training lifecycle
                 finishWithDictionaryTraining();
             } else if (codec != null) {
-                // @spec sstable.v3-format-upgrade.R16 — codec-configured writers always produce v3
-                // (never v2)
-                // v3 layout: [data blocks][compression map v3][key index][bloom filter][footer 72]
+                // Legacy v3 path (codec but pre-v5).
                 assert v3 : "codec-configured writers must always set v3=true";
                 if (dictionaryTrainingEnabled && !dictEligible) {
-                    // Training was requested but not eligible (non-ZSTD or native unavailable)
                     trainingResult = new DictionaryTrainingResult(false, false, null, 0);
                 } else if (dictBufferAbandoned) {
                     trainingResult = new DictionaryTrainingResult(true, false,
@@ -433,20 +533,254 @@ public final class TrieSSTableWriter implements SSTableWriter {
                 writeFooterV1(indexOffset, indexLength, filterOffset, filterLength);
             }
 
-            // fsync if supported (e.g., local FileChannel; skipped for object-storage channels)
-            if (channel instanceof FileChannel fc)
-                fc.force(true);
+            if (formatVersion != 5) {
+                // Legacy path: single fsync (if possible).
+                if (channel instanceof FileChannel fc) {
+                    fc.force(true);
+                } else {
+                    invokeFsyncSkipListener("non-file-channel");
+                }
+            }
 
             long sizeBytes = writePosition;
+
+            // Atomic commit: partial path → final path (v5 only).
+            if (usingPartialPath) {
+                closeChannelQuietly();
+                commitFromPartial();
+            }
 
             state = State.FINISHED;
 
             return new SSTableMetadata(id, outputPath, level, smallestKey, largestKey, minSequence,
                     maxSequence, sizeBytes, entryCount);
+        } catch (ClosedByInterruptException e) {
+            // @spec sstable.end-to-end-integrity.R22 — preserve interrupt flag before propagating
+            Thread.currentThread().interrupt();
+            state = State.FAILED;
+            throw e;
         } catch (IOException e) {
             state = State.FAILED;
             throw e;
         }
+    }
+
+    /**
+     * Close the channel silently, accumulating any IOException into the current control flow. Used
+     * in {@code finish()} before the atomic rename so the OS observes a closed file.
+     */
+    private void closeChannelQuietly() throws IOException {
+        if (channel.isOpen()) {
+            channel.close();
+        }
+    }
+
+    /**
+     * Atomically commit the partial file at {@link #workingPath} to {@link #outputPath}. Uses
+     * {@code StandardCopyOption.ATOMIC_MOVE} when supported; on
+     * {@link AtomicMoveNotSupportedException} falls back to a non-atomic move and notifies the
+     * FsyncSkipListener per R39(b).
+     *
+     * <p>
+     * If {@link #outputPath} already exists on the underlying filesystem, this method fails fast
+     * with {@link FileAlreadyExistsException} <em>before</em> attempting any move. This keeps
+     * semantics consistent across filesystems: on POSIX {@code rename(2)} would silently replace
+     * the existing file under {@code ATOMIC_MOVE}, potentially destroying a live committed SSTable;
+     * on filesystems where {@code ATOMIC_MOVE} is unsupported the non-options {@code Files.move}
+     * fallback already throws {@link FileAlreadyExistsException}. The explicit pre-check unifies
+     * the two paths and protects pre-existing committed data from silent destruction.
+     * </p>
+     *
+     * @spec sstable.end-to-end-integrity.R39
+     */
+    private void commitFromPartial() throws IOException {
+        // Fail fast if outputPath already exists — the ATOMIC_MOVE path would otherwise silently
+        // overwrite a pre-existing committed SSTable on POSIX, while the non-atomic fallback
+        // would throw FileAlreadyExistsException. Consistency wins over platform-dependent
+        // surprises; callers must pick a fresh outputPath for each commit.
+        if (Files.exists(outputPath)) {
+            throw new FileAlreadyExistsException(outputPath.toString(), null,
+                    "refusing to overwrite pre-existing outputPath during commit");
+        }
+        try {
+            Files.move(workingPath, outputPath, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            if (fsyncSkipListener != null) {
+                try {
+                    fsyncSkipListener.onFsyncSkip(outputPath, channel.getClass(),
+                            "atomic-rename-unsupported");
+                } catch (RuntimeException ignored) {
+                    // Listener errors must not obscure the commit itself.
+                }
+            }
+            Files.move(workingPath, outputPath);
+        }
+    }
+
+    /**
+     * v5 finish-path: writes data + compression map + (optional dictionary) + key index + bloom
+     * filter + footer, with per-section CRC32C and 3 fsync calls (R19-R21).
+     *
+     * @spec sstable.end-to-end-integrity.R11
+     * @spec sstable.end-to-end-integrity.R13
+     * @spec sstable.end-to-end-integrity.R14
+     * @spec sstable.end-to-end-integrity.R15
+     * @spec sstable.end-to-end-integrity.R19
+     * @spec sstable.end-to-end-integrity.R20
+     * @spec sstable.end-to-end-integrity.R21
+     * @spec sstable.end-to-end-integrity.R37
+     */
+    private void finishV5Layout() throws IOException {
+        // R19: force(true) after all data blocks, before the first metadata section.
+        forceOrSkip("post-data");
+
+        // Section 1: compression map
+        final long mapOffset = writePosition;
+        final byte[] mapBytes = new CompressionMap(compressionMapEntries).serializeV3();
+        writeBytes(mapBytes);
+        final long mapLength = writePosition - mapOffset;
+        final int mapChecksum = crc32cOf(mapBytes);
+
+        // Section 2 (optional): dictionary. The v5 writer currently does not train dictionaries;
+        // keep sentinel per R15.
+        final long dictOffset = 0L;
+        final long dictLength = 0L;
+        final int dictChecksum = 0;
+
+        // Section 3: key index
+        final long idxOffset = writePosition;
+        final byte[] idxBytes = buildKeyIndexV2();
+        writeBytes(idxBytes);
+        final long idxLength = writePosition - idxOffset;
+        final int idxChecksum = crc32cOf(idxBytes);
+
+        // Section 4: bloom filter
+        final long fltOffset = writePosition;
+        final MemorySegment filterBytes = bloomFilter.serialize();
+        final byte[] filterArray = filterBytes.toArray(ValueLayout.JAVA_BYTE);
+        writeBytes(filterArray);
+        final long fltLength = writePosition - fltOffset;
+        final int fltChecksum = crc32cOf(filterArray);
+
+        // R20: force(true) after last metadata, before footer.
+        forceOrSkip("post-metadata");
+
+        // Footer
+        writeFooterV5(mapOffset, mapLength, dictOffset, dictLength, dictChecksum, idxOffset,
+                idxLength, idxChecksum, fltOffset, fltLength, fltChecksum, mapChecksum);
+
+        // R21: force(true) after footer.
+        forceOrSkip("post-footer");
+    }
+
+    private static int crc32cOf(byte[] bytes) {
+        CRC32C crc = new CRC32C();
+        crc.update(bytes, 0, bytes.length);
+        return (int) crc.getValue();
+    }
+
+    /** Issue a force(true) on the channel if it is a FileChannel; otherwise notify listener. */
+    private void forceOrSkip(String site) throws IOException {
+        if (channel instanceof FileChannel fc) {
+            try {
+                fc.force(true);
+            } catch (ClosedByInterruptException e) {
+                Thread.currentThread().interrupt();
+                throw e;
+            }
+        } else {
+            invokeFsyncSkipListener("non-file-channel");
+        }
+    }
+
+    private void invokeFsyncSkipListener(String reason) {
+        if (fsyncSkipListener == null) {
+            return;
+        }
+        try {
+            Class<? extends Channel> cls = channel.getClass();
+            fsyncSkipListener.onFsyncSkip(outputPath, cls, reason);
+        } catch (RuntimeException ignored) {
+            // Listener failures must not abort the writer; the caller is responsible for
+            // ensuring listeners do not throw.
+        }
+    }
+
+    /** Writes the v5 footer (112 bytes) with CRC32C self-checksum and the v5 magic trailer. */
+    private void writeFooterV5(long mapOffset, long mapLength, long dictOffset, long dictLength,
+            int dictChecksum, long idxOffset, long idxLength, int idxChecksum, long fltOffset,
+            long fltLength, int fltChecksum, int mapChecksum) throws IOException {
+        // Producer-side invariant guards (R17/R18 and related). The reader enforces these on
+        // ingress, but the producer must never let a malformed footer reach the on-disk surface
+        // — a corrupt file could otherwise be uploaded or transferred before the consumer-side
+        // integrity check runs. These guards mirror the reader's validation at
+        // TrieSSTableReader.readFooter (blockCount >= 1, mapLength >= 1, blockSize power-of-two
+        // within [MIN_BLOCK_SIZE, MAX_BLOCK_SIZE]) plus an entryCount >= 1 check for symmetry
+        // with the empty-SSTable guard in finish().
+        if (blockCount < 1) {
+            throw new IllegalStateException(
+                    "writeFooterV5 invariant violation: blockCount must be >= 1 (R17); got "
+                            + blockCount);
+        }
+        if (mapLength < 1L) {
+            throw new IllegalStateException(
+                    "writeFooterV5 invariant violation: mapLength must be >= 1 (R18); got "
+                            + mapLength);
+        }
+        if (entryCount < 1L) {
+            throw new IllegalStateException(
+                    "writeFooterV5 invariant violation: entryCount must be >= 1; got "
+                            + entryCount);
+        }
+        if (blockSize < SSTableFormat.MIN_BLOCK_SIZE || blockSize > SSTableFormat.MAX_BLOCK_SIZE
+                || (blockSize & (blockSize - 1)) != 0) {
+            throw new IllegalStateException(
+                    "writeFooterV5 invariant violation: blockSize must be a power of two in ["
+                            + SSTableFormat.MIN_BLOCK_SIZE + ", " + SSTableFormat.MAX_BLOCK_SIZE
+                            + "]; got " + blockSize);
+        }
+
+        final jlsm.sstable.internal.V5Footer withZeroChecksum = new jlsm.sstable.internal.V5Footer(
+                mapOffset, mapLength, dictOffset, dictLength, idxOffset, idxLength, fltOffset,
+                fltLength, entryCount, (long) blockSize, blockCount, mapChecksum, dictChecksum,
+                idxChecksum, fltChecksum, 0, SSTableFormat.MAGIC_V5);
+        final byte[] buf = new byte[SSTableFormat.FOOTER_SIZE_V5];
+        jlsm.sstable.internal.V5Footer.encode(withZeroChecksum, buf, 0);
+        final int footerChecksum = jlsm.sstable.internal.V5Footer.computeFooterChecksum(buf);
+        final jlsm.sstable.internal.V5Footer finalFooter = new jlsm.sstable.internal.V5Footer(
+                mapOffset, mapLength, dictOffset, dictLength, idxOffset, idxLength, fltOffset,
+                fltLength, entryCount, (long) blockSize, blockCount, mapChecksum, dictChecksum,
+                idxChecksum, fltChecksum, footerChecksum, SSTableFormat.MAGIC_V5);
+        jlsm.sstable.internal.V5Footer.encode(finalFooter, buf, 0);
+        writeBytes(buf);
+    }
+
+    /** Build the v2-format key index (same layout used by v3/v4/v5) into a single byte array. */
+    private byte[] buildKeyIndexV2() throws IOException {
+        int numKeys = indexKeys.size();
+        long indexSize = 4L;
+        for (byte[] k : indexKeys) {
+            indexSize += 4 + k.length + 4 + 4;
+        }
+        if (indexSize > Integer.MAX_VALUE) {
+            throw new IOException(
+                    "key index too large: %d bytes exceeds Integer.MAX_VALUE".formatted(indexSize));
+        }
+        byte[] buf = new byte[(int) indexSize];
+        int off = 0;
+        off = writeInt(buf, off, numKeys);
+        for (int i = 0; i < numKeys; i++) {
+            byte[] keyBytes = indexKeys.get(i);
+            off = writeInt(buf, off, keyBytes.length);
+            System.arraycopy(keyBytes, 0, buf, off, keyBytes.length);
+            off += keyBytes.length;
+            long packed = indexOffsets.get(i);
+            int blockIndex = (int) (packed >>> 32);
+            int intraBlockOffset = (int) packed;
+            off = writeInt(buf, off, blockIndex);
+            off = writeInt(buf, off, intraBlockOffset);
+        }
+        return buf;
     }
 
     /** Writes v1 key index: [numKeys(4)][per key: keyLen(4) + key + fileOffset(8)]. */
@@ -707,6 +1041,12 @@ public final class TrieSSTableWriter implements SSTableWriter {
         private int dictBlockThreshold = 64;
         private long dictMaxBufferBytes = 256L * 1024 * 1024;
         private int dictMaxSize = 32768;
+        private FsyncSkipListener fsyncSkipListener = null;
+        /**
+         * Explicit on-disk format version when set, else {@code 0} meaning "auto-select": codec →
+         * v5 (per R36), no codec → v1.
+         */
+        private int formatVersion = 0;
 
         private Builder() {
         }
@@ -873,6 +1213,45 @@ public final class TrieSSTableWriter implements SSTableWriter {
         }
 
         /**
+         * Register a listener that is invoked when the writer skips an fsync on a non-FileChannel
+         * output (remote/NIO provider). The listener may be invoked multiple times (once per
+         * skipped fsync site).
+         *
+         * @spec sstable.end-to-end-integrity.R23
+         */
+        public Builder fsyncSkipListener(FsyncSkipListener listener) {
+            this.fsyncSkipListener = Objects.requireNonNull(listener, "listener must not be null");
+            return this;
+        }
+
+        /**
+         * Explicitly select the on-disk SSTable format version. Supported values: 3, 4, 5.
+         *
+         * <p>
+         * When not called, the writer auto-selects: codec-configured writers produce v5 per
+         * {@code sstable.end-to-end-integrity.R36}; no-codec writers produce v1.
+         * </p>
+         *
+         * <p>
+         * This accessor exists to let legacy tests opt back into v3 or v4 format for regression
+         * coverage of those on-disk layouts; production code should leave it unset so writers
+         * follow the current default (v5).
+         * </p>
+         *
+         * @param version one of {@code 3}, {@code 4}, or {@code 5}
+         * @return this builder
+         * @throws IllegalArgumentException if version is outside the supported set
+         */
+        public Builder formatVersion(int version) {
+            if (version != 3 && version != 4 && version != 5) {
+                throw new IllegalArgumentException(
+                        "formatVersion must be one of 3, 4, 5; got: " + version);
+            }
+            this.formatVersion = version;
+            return this;
+        }
+
+        /**
          * Sets the maximum size of the trained dictionary in bytes.
          *
          * @param maxDictBytes maximum dictionary size; default is 32768 (32 KB)
@@ -933,9 +1312,23 @@ public final class TrieSSTableWriter implements SSTableWriter {
                     : n -> new BlockedBloomFilter(n, 0.01);
             // @spec sstable.pool-aware-block-size.R16 — the effective block size (after any pool
             // derivation and validation) is written to the footer via F16.R15 by the constructor.
+            //
+            // @spec sstable.end-to-end-integrity.R36 — codec-configured writers default to v5
+            // unless dictionary training is enabled, in which case the writer stays on v3/v4 so
+            // the existing dictionary-embedding lifecycle (which is v4-specific) applies.
+            final int resolvedVersion;
+            if (formatVersion != 0) {
+                resolvedVersion = formatVersion;
+            } else if (codec != null && !dictTraining) {
+                resolvedVersion = 5;
+            } else if (codec != null) {
+                resolvedVersion = 3;
+            } else {
+                resolvedVersion = 1;
+            }
             return new TrieSSTableWriter(id, level, path, effectiveBloomFactory, codec,
                     effectiveBlockSize, dictTraining, dictBlockThreshold, dictMaxBufferBytes,
-                    dictMaxSize);
+                    dictMaxSize, resolvedVersion, fsyncSkipListener);
         }
     }
 
@@ -957,13 +1350,16 @@ public final class TrieSSTableWriter implements SSTableWriter {
         state = State.CLOSED;
         IOException channelEx = null;
         try {
-            channel.close();
+            if (channel.isOpen()) {
+                channel.close();
+            }
         } catch (IOException e) {
             channelEx = e;
         } finally {
             if (shouldDelete) {
+                // Delete our own working file (partial path for v5, outputPath otherwise).
                 try {
-                    Files.deleteIfExists(outputPath);
+                    Files.deleteIfExists(workingPath);
                 } catch (IOException deleteEx) {
                     if (channelEx != null) {
                         channelEx.addSuppressed(deleteEx);

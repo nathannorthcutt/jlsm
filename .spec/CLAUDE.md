@@ -28,6 +28,7 @@
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-22 | sstable.end-to-end-integrity | sstable | SSTable End-to-End Integrity (v4 APPROVED) |
 | 2026-04-22 | sstable.pool-aware-block-size | sstable | Pool-Aware Block Size Configuration (v4 APPROVED) |
 | 2026-04-15 | F48 | partitioning, storage | Corruption Repair and Recovery |
 | 2026-04-15 | F47 | encryption | Encrypted Fuzzy Matcher |

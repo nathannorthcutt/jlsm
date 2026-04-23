@@ -1228,8 +1228,8 @@
     {
       "id": "sstable.end-to-end-integrity",
       "path": ".spec/domains/sstable/end-to-end-integrity.md",
-      "state": "DRAFT",
-      "version": 2,
+      "state": "APPROVED",
+      "version": 5,
       "domains": [
         "sstable"
       ],
@@ -1242,7 +1242,8 @@
       ],
       "decision_refs": [
         "sstable-end-to-end-integrity",
-        "per-block-checksums"
+        "per-block-checksums",
+        "corruption-repair-recovery"
       ],
       "kb_refs": [
         "systems/database-engines/corruption-detection-repair"
