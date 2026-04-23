@@ -3,7 +3,7 @@
   "id": "sstable.end-to-end-integrity",
   "version": 5,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "sstable"
   ],
@@ -518,3 +518,26 @@ Overall: **PASS**
 **Undocumented behavior:** none
 
 **Annotation coverage:** all 43 requirements have at least one test-side `@spec` annotation; all except R3 have at least one implementation-side `@spec` annotation. R3 is documented as UNTESTABLE above.
+
+### Verified: v5 — 2026-04-23
+
+Overall: **PASS**
+
+- SATISFIED: 55 (R1, R2, R5–R23, R25–R56)
+- UNTESTABLE: 1 (R3 — internal VarInt-write/offset-record/block-write/map-append atomicity; reliable testing requires failure-injection framework)
+- VIOLATED: 0
+- PARTIAL: 0
+
+**Evidence:**
+- v4 baseline: 43 requirements SATISFIED (all original Rs annotated + verified)
+- v5 increment: 13 new requirements (R44–R56) satisfied by 20 audit-fix commits with regression tests
+- 4 refined requirements (R37, R38, R39, R43) continue to be satisfied by the same implementation, annotations confirmed
+- spec-trace coverage: all 55 traceable Rs (R3 exempt) have ≥1 impl and ≥1 test annotation
+- `./gradlew :modules:jlsm-core:check` PASS (spotless + checkstyle + test)
+
+**Amendments applied:** spec v4 → v5 captured 13 audit-discovered contract gaps as new Rs (not amendments to existing Rs)
+**Code fixes applied:** 20 real bugs (during audit, documented in `.feature/implement-sstable-enhancements--wd-03/audit/run-001/`)
+**Regression tests added:** 20 regression tests covering each confirmed bug
+**Obligations deferred:** OB-01 (writer FAILED-state ratification), OB-02 (writer-internal counter invariant) — tracked in frontmatter
+
+**Annotation coverage:** R44–R56 annotations added during this verification pass; all Rs except R3 have impl+test coverage.

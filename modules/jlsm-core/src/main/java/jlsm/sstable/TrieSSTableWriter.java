@@ -266,6 +266,12 @@ public final class TrieSSTableWriter implements SSTableWriter {
         }
     }
 
+    /**
+     * Appends an entry to the current block. Enforces strictly-ascending keys and the producer-side
+     * oversize guard for v5 VarInt-prefixed blocks.
+     *
+     * @spec sstable.end-to-end-integrity.R46
+     */
     @Override
     public void append(Entry entry) throws IOException {
         Objects.requireNonNull(entry, "entry must not be null");
@@ -402,6 +408,9 @@ public final class TrieSSTableWriter implements SSTableWriter {
     // record blockOffset at the first byte AFTER the VarInt (payload start). R3 atomicity:
     // VarInt write + blockOffset record + payload write + map entry append form a unit; any
     // partial failure transitions writer to FAILED.
+    // @spec sstable.end-to-end-integrity.R47 — v5 per-block CRC32C is unconditional: the CRC
+    // branch triggers on `v3 || formatVersion == 5` so a v5 writer is never observed with
+    // v3=false recording checksum=0 into the map entry.
     private void compressAndWriteBlock(byte[] blockBytes, CompressionCodec useCodec)
             throws IOException {
         try (Arena arena = Arena.ofConfined()) {
@@ -706,7 +715,11 @@ public final class TrieSSTableWriter implements SSTableWriter {
         }
     }
 
-    /** Writes the v5 footer (112 bytes) with CRC32C self-checksum and the v5 magic trailer. */
+    /**
+     * Writes the v5 footer (112 bytes) with CRC32C self-checksum and the v5 magic trailer.
+     *
+     * @spec sstable.end-to-end-integrity.R55
+     */
     private void writeFooterV5(long mapOffset, long mapLength, long dictOffset, long dictLength,
             int dictChecksum, long idxOffset, long idxLength, int idxChecksum, long fltOffset,
             long fltLength, int fltChecksum, int mapChecksum) throws IOException {

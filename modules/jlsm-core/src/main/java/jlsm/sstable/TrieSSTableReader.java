@@ -301,6 +301,9 @@ public final class TrieSSTableReader implements SSTableReader {
     // cross-check: callers that know the expected format version can require the reader to reject
     // any file whose discovered version disagrees, strengthening the dispatch boundary against
     // silent cross-version reinterpretation.
+    // @spec sstable.end-to-end-integrity.R54 — expectedVersion opt-in: callers holding external
+    // authority (manifest, catalog, level metadata) may assert the file's expected format version;
+    // disagreement surfaces as CorruptSectionException(SECTION_FOOTER).
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
             BlockCache blockCache, int expectedVersion, CompressionCodec... codecs)
             throws IOException {
@@ -323,6 +326,7 @@ public final class TrieSSTableReader implements SSTableReader {
      */
     // @spec sstable.end-to-end-integrity.R34 — magic vocabulary uniqueness. Lazy-mode companion to
     // the eager expected-version overload.
+    // @spec sstable.end-to-end-integrity.R54 — expectedVersion opt-in (lazy-mode factory).
     public static TrieSSTableReader openLazy(Path path, BloomFilter.Deserializer bloomDeserializer,
             BlockCache blockCache, int expectedVersion, CompressionCodec... codecs)
             throws IOException {
@@ -712,6 +716,7 @@ public final class TrieSSTableReader implements SSTableReader {
      * @spec sstable.end-to-end-integrity.R9
      * @spec sstable.end-to-end-integrity.R10
      * @spec sstable.end-to-end-integrity.R38
+     * @spec sstable.end-to-end-integrity.R45
      */
     public java.util.Iterator<Entry> recoveryScan() throws java.io.IOException {
         checkNotClosed();
@@ -765,6 +770,8 @@ public final class TrieSSTableReader implements SSTableReader {
      * @spec sstable.end-to-end-integrity.R8
      * @spec sstable.end-to-end-integrity.R9
      * @spec sstable.end-to-end-integrity.R10
+     * @spec sstable.end-to-end-integrity.R44
+     * @spec sstable.end-to-end-integrity.R56
      */
     private final class RecoveryScanIterator implements Iterator<Entry>, AutoCloseable {
         private long cursor = 0L;
@@ -966,6 +973,7 @@ public final class TrieSSTableReader implements SSTableReader {
          * subsequent {@link #hasNext()}/{@link #next()} calls do not attempt further channel I/O.
          *
          * @spec sstable.end-to-end-integrity.R38
+         * @spec sstable.end-to-end-integrity.R44
          */
         @Override
         public void close() {
@@ -1583,6 +1591,16 @@ public final class TrieSSTableReader implements SSTableReader {
     // VarInt prefix decoding, section CRC32C verification, blockCount validation, and recovery
     // scan. The v1/v2/v3/v4 branches below read only the version-specific footer size and throw
     // IncompleteSSTableException when the file is shorter than that size (R40), never overreading.
+    // @spec sstable.end-to-end-integrity.R48 — v5 footer length-field int-narrowing guards
+    // (mapOffset/mapLength/idxLength/fltLength/dictLength Integer.MAX_VALUE cap) applied inline on
+    // the v5 branch before any downstream (int) cast.
+    // @spec sstable.end-to-end-integrity.R52 — pre-v5-branch speculative v5-hypothesis CRC
+    // recomputation detects a v5 file whose magic discriminant has been corrupted to a legacy
+    // magic, surfacing as CorruptSectionException(SECTION_FOOTER) before legacy-branch dispatch
+    // runs.
+    // @spec sstable.end-to-end-integrity.R53 — legacy-branch (v1/v2/v3/v4) structural failures
+    // (non-power-of-two blockSize, section ordering, overread) surface as CorruptSectionException
+    // with v5-vocabulary section names, not opaque IOException.
     private static Footer readFooter(SeekableByteChannel ch, long fileSize) throws IOException {
         // R25 + R40: files shorter than the minimum magic are incomplete, not corrupt.
         if (fileSize < 8) {
@@ -1957,6 +1975,7 @@ public final class TrieSSTableReader implements SSTableReader {
      * @spec sstable.end-to-end-integrity.R14
      * @spec sstable.end-to-end-integrity.R27
      * @spec sstable.end-to-end-integrity.R29
+     * @spec sstable.end-to-end-integrity.R49
      */
     private static BloomFilter readBloomFilterWithCrc(SeekableByteChannel ch, Footer footer,
             BloomFilter.Deserializer deserializer, boolean verifyCrc) throws IOException {
@@ -2083,6 +2102,9 @@ public final class TrieSSTableReader implements SSTableReader {
      * The loop tolerates up to {@link #MAX_ZERO_PROGRESS_READS} consecutive zero-byte returns
      * (permitted by the NIO contract — see F-R1.data_transformation.C2.03) before throwing an
      * {@link IOException}, preventing an unbounded spin on a stalled remote channel.
+     *
+     * @spec sstable.end-to-end-integrity.R50
+     * @spec sstable.end-to-end-integrity.R51
      */
     private static byte[] readBytes(SeekableByteChannel ch, long offset, int length)
             throws IOException {

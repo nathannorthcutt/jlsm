@@ -343,6 +343,7 @@ class DataTransformationAdversarialTest {
     // gate for v5 writes, or fold the v5 gate into the CRC branch).
     // Regression watch: v3 writers must continue to compute checksums; v1/v2 writers must
     // continue to record checksum=0 (legacy 17-byte entry layout).
+    // @spec sstable.end-to-end-integrity.R47
     @Test
     void compressAndWriteBlock_v5CrcMustNotBeGatedOnV3Flag_F_R1_dt_1_4(@TempDir Path dir)
             throws Exception {
@@ -569,6 +570,7 @@ class DataTransformationAdversarialTest {
     // flushCurrentBlock (block-size guard before compressAndWriteBlock).
     // Regression watch: normal-sized appends must continue to succeed; the guard must trigger
     // only when the produced block/entry would exceed MAX_BLOCK_SIZE.
+    // @spec sstable.end-to-end-integrity.R46
     @Test
     void append_entryExceedsMaxBlockSize_throwsDescriptiveException_F_R1_data_transformation_1_5(
             @TempDir Path dir) throws IOException {
@@ -755,6 +757,7 @@ class DataTransformationAdversarialTest {
     // the Footer record, so downstream `(int) ...Length` casts cannot truncate.
     // Regression watch: legitimate v5 files with section lengths < 2 GiB must continue to open;
     // the guard must fire only when a v5 file claims a section length > Integer.MAX_VALUE.
+    // @spec sstable.end-to-end-integrity.R48
     @Test
     void open_v5FooterMapLengthExceedsIntRange_throwsIOException_F_R1_data_transformation_C2_01(
             @TempDir Path dir) throws IOException {
@@ -874,6 +877,7 @@ class DataTransformationAdversarialTest {
     // Regression watch: v1/v2/v3/v4 files may legitimately have zero-sized bloom sections in
     // corner cases (writer sentinel paths); the guard must only fire on v5 where verifyCrc
     // is true and the section is expected to carry a real bloom filter.
+    // @spec sstable.end-to-end-integrity.R49
     @Test
     void open_v5FooterBloomFltLengthZeroWithZeroChecksum_throwsIOException_F_R1_dt_C2_02(
             @TempDir Path dir) throws IOException {
@@ -964,6 +968,7 @@ class DataTransformationAdversarialTest {
     // throws IOException before reaching ByteBuffer.allocate(length).
     // Regression watch: length==0 early-return must continue to produce new byte[0]; positive
     // lengths must continue to allocate and read as before.
+    // @spec sstable.end-to-end-integrity.R51
     @Test
     void readBytes_negativeLength_throwsIOException_F_R1_data_transformation_C2_04(
             @TempDir Path dir) throws Exception {
@@ -1014,6 +1019,7 @@ class DataTransformationAdversarialTest {
     // Regression watch: legitimate short reads (partial fills via multiple ch.read calls each
     // returning > 0) must continue to work; EOF detection (read < 0) must still throw the
     // "unexpected EOF" IOException without waiting for the stall threshold.
+    // @spec sstable.end-to-end-integrity.R50
     @Test
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     void readBytes_zeroProgressChannel_failsRatherThanSpins_F_R1_data_transformation_C2_03()

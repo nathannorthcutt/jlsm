@@ -187,6 +187,7 @@ class DispatchRoutingAdversarialTest {
     // Regression watch: a fix must still admit genuine v3 files (MAGIC_V3 + 72-byte footer
     // with the correct v3 field layout) without false-positive rejection, and must not
     // break the existing V5→V4 defence for finding 1.1.
+    // @spec sstable.end-to-end-integrity.R53
     @Test
     void test_readFooter_dispatch_routing_v1_magic_flip_to_v3_bypasses_format_contract()
             throws IOException {
@@ -247,6 +248,7 @@ class DispatchRoutingAdversarialTest {
     // Fix location: TrieSSTableReader.readFooter (magic dispatch region, v5 branch entry)
     // Regression watch: a fix must still admit genuine v4 files (MAGIC_V4 + 88-byte footer
     // with the correct v4 field layout) without false-positive rejection.
+    // @spec sstable.end-to-end-integrity.R52
     @Test
     void test_readFooter_dispatch_routing_v5_magic_lsb_flip_to_v4_bypasses_self_checksum()
             throws IOException {
@@ -311,6 +313,7 @@ class DispatchRoutingAdversarialTest {
     // accepts an expected version and enforces the cross-check after readFooter returns.
     // Regression watch: auto-detect callers must continue to work across v1..v5 without change;
     // a caller specifying expectedVersion=5 that opens a real v5 file must succeed.
+    // @spec sstable.end-to-end-integrity.R54
     @Test
     void test_open_dispatch_routing_expected_version_mismatch_rejects_genuine_legacy_file()
             throws IOException {

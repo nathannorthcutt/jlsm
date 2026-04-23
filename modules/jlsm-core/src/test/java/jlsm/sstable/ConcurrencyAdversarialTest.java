@@ -272,6 +272,7 @@ class ConcurrencyAdversarialTest {
     // (releaseOnceExhausted is still invoked on natural exhaustion); a second
     // close() call after natural exhaustion must be a no-op (idempotent via
     // released flag).
+    // @spec sstable.end-to-end-integrity.R44
     @Test
     @Timeout(15)
     void test_recoveryScan_abandonedIterator_releaseViaClose_unblocksSubsequentScan()
@@ -609,6 +610,7 @@ class ConcurrencyAdversarialTest {
     // then iterator releases on last next()) must continue to release the lock
     // exactly once; the successful recoveryScan() path must still produce a
     // fully-iterable iterator.
+    // @spec sstable.end-to-end-integrity.R45
     @Test
     @Timeout(15)
     void test_recoveryScan_ctorFailureViaIOException_doesNotMaskWithIMSE() throws Exception {

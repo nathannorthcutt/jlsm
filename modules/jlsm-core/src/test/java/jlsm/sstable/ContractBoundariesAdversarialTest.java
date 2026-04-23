@@ -581,6 +581,7 @@ class ContractBoundariesAdversarialTest {
     // constructing the V5Footer / writing to the channel.
     // Regression watch: legitimate v5 writes (blockCount>=1, mapLength>=1, entryCount>=1) must
     // still produce a valid footer; the existing V5 writer test suite must still pass.
+    // @spec sstable.end-to-end-integrity.R55
     @Test
     void test_writeFooterV5_contract_boundaries_rejects_zero_blockCount_before_write()
             throws Exception {
@@ -700,6 +701,7 @@ class ContractBoundariesAdversarialTest {
     // path) identifying the broken invariant.
     // Regression watch: normal v5 recovery-scan (where the invariant holds) must still succeed;
     // the guard must only fire when the invariant is actually violated.
+    // @spec sstable.end-to-end-integrity.R56
     @Test
     void test_readBlockAtCursor_contract_boundaries_rejects_missing_compressionMap_without_crc()
             throws Exception {
