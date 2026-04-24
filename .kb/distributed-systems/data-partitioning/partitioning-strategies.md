@@ -33,6 +33,8 @@ sources:
     type: "blog"
 related:
   - "systems/vector-partitioning/consistent-hashing.md"
+  - "distributed-systems/data-partitioning/decoupled-index-partitioning.md"
+  - "distributed-systems/data-partitioning/cross-partition-query-planning.md"
 ---
 
 # Data Partitioning Strategies for Distributed LSM-Tree Storage

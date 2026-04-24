@@ -29,7 +29,7 @@
 | Remote Dispatch and Parallel Scatter (F04 R68+R77) | f04-obligation-resolution--wd-03 | 2026-04-19 | PR drafted | 103 tests (61 TDD + 24 hardening + 18 audit); 18 audit fixes; F04 v5 (R102-R114); 3 KB patterns; obligations R68+R77 resolved; WD-03 COMPLETE |
 | Fault Tolerance and Smart Rebalancing (F04 R41-43+R47-50+R63) | f04-obligation-resolution--wd-05 | 2026-04-20 | planning complete | 8 stubs; 2-unit balanced split {WU-1, WU-2} |
 | Implement sstable.pool-aware-block-size | implement-sstable-enhancements--wd-02 | 2026-04-22 | refactor complete | Feature shipped + audit found 5 pre-existing bugs on ArenaBufferPool/Builder, all fixed; spec v4→v5 with R0b-R0e+R11b; 2 KB updates + 3 new KB entries |
-| Implement encryption key hierarchy (WD-01) | implement-encryption-lifecycle--wd-01 | 2026-04-21 | planning complete | work-plan.md + 30 stubs, 4 WUs (balanced); rename EncryptionKeyHolder → OffHeapKeyMaterial |
+| Implement encryption key hierarchy (WD-01) | implement-encryption-lifecycle--wd-01 | 2026-04-21 | PR drafted | 581 tests (323 TDD + ~260 adversarial); /audit 52 fixes + spec v9 amendments + 3 KB patterns; jlsm-core + jlsm-table check green |
 
 ## Completed / Archived
 
