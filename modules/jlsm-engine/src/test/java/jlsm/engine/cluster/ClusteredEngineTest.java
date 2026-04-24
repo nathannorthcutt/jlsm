@@ -92,7 +92,7 @@ final class ClusteredEngineTest {
                         .localAddress(NODE_A).discovery(new InJvmDiscoveryProvider()).build());
     }
 
-    // @spec engine.clustering.R56, F04.R79 — discovery is a mandatory builder parameter
+    // @spec engine.clustering.R56 — discovery is a mandatory builder parameter
     @Test
     void builder_missingDiscovery_throwsNPE() {
         assertThrows(NullPointerException.class,

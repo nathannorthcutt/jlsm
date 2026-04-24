@@ -127,7 +127,7 @@ public final class FieldEncryptionDispatch {
                     // AES-SIV requires a 64-byte key split into independent CMAC and CTR
                     // sub-keys. If the table key is 32 bytes, derive two independent
                     // 32-byte sub-keys via HMAC-SHA256 with domain-separated info strings.
-                    // @spec encryption.primitives-key-holder.R8, F41.R16 — zero intermediates in
+                    // @spec encryption.primitives-key-holder.R8 — zero intermediates in
                     // finally, even on exception
                     final AesSivEncryptor siv;
                     if (keyHolder.keyLength() == 32) {
@@ -203,7 +203,7 @@ public final class FieldEncryptionDispatch {
                     // derive an independent 32-byte sub-key via HMAC-SHA256 with a
                     // domain-separated info string. Plain truncation would make the
                     // GCM key equal to the SIV CMAC sub-key, violating key independence.
-                    // @spec encryption.primitives-key-holder.R8, F41.R16 — zero intermediates in
+                    // @spec encryption.primitives-key-holder.R8 — zero intermediates in
                     // finally, even on exception
                     final AesGcmEncryptor gcm;
                     if (keyHolder.keyLength() == 64) {
@@ -345,8 +345,9 @@ public final class FieldEncryptionDispatch {
      *
      * @see #opeDecryptTyped
      */
-    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1 — 25-byte OPE
-    // format with detached MAC
+    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1,R1b,R1c —
+    // 25-byte OPE format with detached MAC; writer produces exact byte count
+    // (1B length prefix + 8B OPE ciphertext + 16B HMAC tag); 8B OPE long written big-endian
     private static byte[] opeEncryptTyped(BoldyrevaOpeEncryptor ope, byte[] plaintext, int maxBytes,
             SecretKeySpec macKeySpec, byte[] associatedData) {
         if (plaintext == null) {
@@ -376,11 +377,12 @@ public final class FieldEncryptionDispatch {
      *
      * @see #opeEncryptTyped
      */
-    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1 — verify MAC
-    // in constant time, then OPE
-    // inverse
+    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1,R1b —
+    // verify MAC in constant time, then OPE inverse; reader rejects blobs whose byte count does not
+    // match the fixed 25-byte OPE envelope formula
     private static byte[] opeDecryptTyped(BoldyrevaOpeEncryptor ope, byte[] ciphertext,
             int maxBytes, SecretKeySpec macKeySpec, byte[] associatedData) {
+        // @spec encryption.ciphertext-envelope.R1b — reader rejects non-conforming length
         if (ciphertext == null || ciphertext.length != OPE_CIPHERTEXT_BYTES) {
             throw new IllegalArgumentException(
                     "OPE ciphertext must be exactly " + OPE_CIPHERTEXT_BYTES + " bytes, got "

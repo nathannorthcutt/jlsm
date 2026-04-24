@@ -67,6 +67,9 @@ public final class AesGcmEncryptor implements AutoCloseable {
      * @param plaintext the data to encrypt; must not be null
      * @return the ciphertext as {@code [12-byte IV || encrypted bytes || 16-byte tag]}
      */
+    // @spec encryption.ciphertext-envelope.R1b — writer produces exact byte count for Opaque
+    // variant (12B IV + ciphertext + 16B tag); caller (FieldEncryptionDispatch / DocumentSerializer)
+    // owns the 4B DEK version prefix if/when envelope versioning is applied
     public byte[] encrypt(byte[] plaintext) {
         Objects.requireNonNull(plaintext, "plaintext must not be null");
         ensureOpen();
@@ -102,6 +105,8 @@ public final class AesGcmEncryptor implements AutoCloseable {
     public byte[] decrypt(byte[] ciphertext) {
         Objects.requireNonNull(ciphertext, "ciphertext must not be null");
         ensureOpen();
+        // @spec encryption.ciphertext-envelope.R1b — reader rejects blobs with inconsistent byte
+        // count (minimum IV+tag overhead for the Opaque variant)
         if (ciphertext.length < OVERHEAD) {
             throw new IllegalArgumentException("Ciphertext too short: minimum " + OVERHEAD
                     + " bytes, got " + ciphertext.length);

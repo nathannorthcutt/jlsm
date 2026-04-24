@@ -25,8 +25,6 @@ import java.util.Objects;
  * @see <a href="../../.decisions/compression-codec-api-design/adr.md">ADR: Compression Codec API
  *      Design</a>
  */
-// (formerly @spec F02.R4 — dropped during migration) — passthrough, copy in both directions
-// (formerly @spec F02.R8 — dropped during migration) — rejects null input
 // @spec compression.codec-contract.R10 — rejects null segments
 final class NoneCodec implements CompressionCodec {
 

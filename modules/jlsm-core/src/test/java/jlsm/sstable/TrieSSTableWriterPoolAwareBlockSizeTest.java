@@ -645,7 +645,7 @@ class TrieSSTableWriterPoolAwareBlockSizeTest {
     @Nested
     class F16CompatibilityInheritance {
 
-        // @spec sstable.pool-aware-block-size.R15 (via F16.R16)
+        // @spec sstable.pool-aware-block-size.R15
         @Test
         void build_throwsIAE_whenPoolDerivedNonDefaultBlockSize_andNoCodec(@TempDir Path dir) {
             Path out = dir.resolve("r15-nocodec.sst");

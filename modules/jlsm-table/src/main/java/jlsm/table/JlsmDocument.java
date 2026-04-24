@@ -12,8 +12,7 @@ import java.util.Objects;
  * Values are stored in schema-field order. A {@code null} entry means the field is absent (PATCH
  * semantics). Type validation is performed eagerly at construction.
  *
- * @spec schema.document-construction.R1 — public final class in jlsm.table (formerly @spec
- *       F14.R48,R49 — dropped during migration) — no YAML methods (absent, removed per F15.R1)
+ * @spec schema.document-construction.R1 — public final class in jlsm.table
  * @spec schema.document-invariants.R6,R7 — no synchronization; effectively immutable from public
  *       API perspective
  * @spec schema.document-field-access.R16 — no toString() override (callers use toJson())

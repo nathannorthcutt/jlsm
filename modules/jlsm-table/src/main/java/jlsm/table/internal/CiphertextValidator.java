@@ -41,6 +41,9 @@ public final class CiphertextValidator {
      * @throws IllegalArgumentException if the ciphertext is structurally invalid
      * @throws NullPointerException if field or ciphertext is null
      */
+    // @spec encryption.ciphertext-envelope.R1b,R3a — reader rejects blobs with inconsistent byte
+    // count per variant formula; caller-supplied pre-encrypted field values must conform to R1 at
+    // the byte level (per-variant length checks enforced below)
     public static void validate(FieldDefinition field, byte[] ciphertext) {
         Objects.requireNonNull(field, "field must not be null");
         Objects.requireNonNull(ciphertext, "ciphertext must not be null");

@@ -51,7 +51,7 @@ public final class AesSivEncryptor implements AutoCloseable {
             throw new IllegalArgumentException(
                     "AES-SIV requires a 512-bit (64-byte) key, got " + keyHolder.keyLength());
         }
-        // @spec encryption.primitives-key-holder.R8, F41.R16 — zero intermediate key material in
+        // @spec encryption.primitives-key-holder.R8 — zero intermediate key material in
         // finally, even on exception
         byte[] fullKey = null;
         byte[] cmacKey = null;
@@ -102,6 +102,9 @@ public final class AesSivEncryptor implements AutoCloseable {
      * @param associatedData optional associated data for IV derivation; may be null
      * @return the ciphertext as {@code [16-byte IV || encrypted bytes]}
      */
+    // @spec encryption.ciphertext-envelope.R1b — writer produces exact byte count for Deterministic
+    // variant (16B synthetic IV + ciphertext); caller owns the 4B DEK version prefix if/when
+    // envelope versioning is applied
     public byte[] encrypt(byte[] plaintext, byte[] associatedData) {
         Objects.requireNonNull(plaintext, "plaintext must not be null");
         ensureOpen();
@@ -128,6 +131,8 @@ public final class AesSivEncryptor implements AutoCloseable {
     public byte[] decrypt(byte[] ciphertext, byte[] associatedData) {
         Objects.requireNonNull(ciphertext, "ciphertext must not be null");
         ensureOpen();
+        // @spec encryption.ciphertext-envelope.R1b — reader rejects blobs with inconsistent byte
+        // count (must contain at least the 16B synthetic IV for the Deterministic variant)
         if (ciphertext.length < BLOCK_SIZE) {
             throw new IllegalArgumentException("Ciphertext too short: minimum " + BLOCK_SIZE
                     + " bytes, got " + ciphertext.length);

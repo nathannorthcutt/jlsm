@@ -95,6 +95,8 @@ class AesGcmEncryptorTest {
 
     // ── Ciphertext expansion ────────────────────────────────────────────────
 
+    // @spec encryption.ciphertext-envelope.R1b — writer produces exact byte count for Opaque
+    // variant (12B IV + ciphertext + 16B tag = +28 overhead)
     @Test
     void encrypt_ciphertextIs28BytesLongerThanPlaintext() {
         final AesGcmEncryptor encryptor = new AesGcmEncryptor(keyHolder);
@@ -160,6 +162,7 @@ class AesGcmEncryptorTest {
         assertThrows(NullPointerException.class, () -> encryptor.decrypt(null));
     }
 
+    // @spec encryption.ciphertext-envelope.R1b — reader rejects blobs with inconsistent byte count
     @Test
     void decrypt_ciphertextTooShort_throwsIllegalArgumentException() {
         final AesGcmEncryptor encryptor = new AesGcmEncryptor(keyHolder);

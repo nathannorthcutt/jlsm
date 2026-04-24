@@ -30,13 +30,13 @@ import jlsm.core.indexing.SimilarityFunction;
 // similarityFunction
 // @spec vector.field-type.R14 — no vectorDimensions field; dimensions derive from schema's
 // VectorType
-// @spec query.index-types.R11,F12.R16 — null similarityFunction rejected when indexType is VECTOR
-// @spec query.index-types.R12,F12.R17 — non-null similarityFunction rejected when indexType is not
+// @spec query.index-types.R11 — null similarityFunction rejected when indexType is VECTOR
+// @spec query.index-types.R12 — non-null similarityFunction rejected when indexType is not
 // VECTOR
 public record IndexDefinition(String fieldName, IndexType indexType,
         SimilarityFunction similarityFunction) {
 
-    // @spec query.index-types.R13,F12.R15 — two-argument convenience constructor passes null for
+    // @spec query.index-types.R13 — two-argument convenience constructor passes null for
     // similarityFunction
     /**
      * Creates an index definition for non-vector index types.

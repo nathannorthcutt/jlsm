@@ -39,8 +39,6 @@ import java.util.zip.Inflater;
  */
 // @spec compression.codec-contract.R2 — configurable level 0-9
 // @spec compression.codec-contract.R3 — Deflater/Inflater released in finally
-// (formerly @spec F02.R9 — dropped during migration) — overflow-safe bounds validation
-// (formerly @spec F02.R10 — dropped during migration) — rejects negative uncompressedLength
 // @spec compression.deflate-codec.R3 — Deflater/Inflater per-call, released in finally
 // @spec compression.deflate-codec.R4 — configurable level 0-9, rejects invalid
 final class DeflateCodec implements CompressionCodec {

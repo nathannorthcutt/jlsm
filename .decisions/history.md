@@ -4,6 +4,8 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| Tenant Key Revocation and External Rotation | tenant-key-revocation-and-external-rotation | 2026-04-21 | API (proof-of-control sentinel) + opt-in polling; streaming paginated rekey with dual-reference migration; 3-state failure machine (healthy → grace-read-only → failed, N=5 / 1h defaults); explicit decommission deferred |
+| Three-Tier Key Hierarchy | three-tier-key-hierarchy | 2026-04-21 | Tenant KEK → data-domain KEK → DEK; per-tenant KMS isolation always-on; 3 KMS flavors (none/local/external); HKDF hybrid derivation; amends `encryption-key-rotation` + `per-field-key-binding` |
 | Client-Side Encryption SDK | client-side-encryption-sdk | 2026-04-15 | Schema-driven auto-encrypt/decrypt with KeyVault SPI — per-field HKDF, off-heap key caching |
 | Encrypted Prefix/Wildcard Queries | encrypted-prefix-wildcard-queries | 2026-04-15 | Prefix tokenization + DET — AES-SIV encrypted prefixes in LsmInvertedIndex, L4 leakage profile |
 | Encrypted Fuzzy Matching | encrypted-fuzzy-matching | 2026-04-15 | LSH + Bloom filter — n-gram shingling, AES-GCM encrypted filter, approximate matching, L2 leakage |

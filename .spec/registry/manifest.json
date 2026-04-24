@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-04-22T21:24:44Z",
-  "spec_count": 75,
+  "generated_at": "2026-04-24T23:30:00Z",
+  "spec_count": 77,
   "specs": [
     {
       "id": "compression.codec-contract",
@@ -247,6 +247,11 @@
         "systems/security/three-level-key-hierarchy",
         "systems/security/encryption-key-rotation-patterns",
         "systems/security/sstable-block-level-ciphertext-envelope"
+      ],
+      "open_obligations": [
+        "OB-ciphertext-envelope-01: Implement the 4-byte big-endian DEK version tag prefix in every variant's writer output (R1). Reader path must parse it (R2), apply wait-free R64-compatible lookup (R2a), and throw IllegalStateException with scope-identifying message on registry miss (R2b). WD-02 implementation-stage work.",
+        "OB-ciphertext-envelope-02: Add cross-tier byte-identity integration test for R1a (MemTable entry === WAL record === SSTable persisted bytes).",
+        "OB-ciphertext-envelope-03: Add hex-literal byte-pattern test for R1c pinning DCPE seed + float-lane BE encoding against a known vector."
       ]
     },
     {
@@ -1533,6 +1538,25 @@
         "systems/security/encryption-key-rotation-patterns",
         "systems/security/jvm-key-handling-patterns"
       ]
+    },
+    {
+      "id": "sstable.footer-encryption-scope",
+      "path": ".spec/domains/sstable/footer-encryption-scope.md",
+      "state": "APPROVED",
+      "version": 4,
+      "domains": [
+        "sstable",
+        "engine",
+        "encryption"
+      ],
+      "requires": [
+        "sstable.v3-format-upgrade",
+        "sstable.end-to-end-integrity",
+        "encryption.primitives-lifecycle",
+        "encryption.ciphertext-envelope"
+      ],
+      "invalidates": [],
+      "open_obligations": null
     }
   ]
 }

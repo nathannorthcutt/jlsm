@@ -238,9 +238,9 @@ class DcpeSapEncryptorTest {
 
     // ── Blob encoding ──────────────────────────────────────────────────────
 
-    // @spec serialization.encrypted-field-serialization.R4, encryption.ciphertext-envelope.R1 —
-    // blob round-trips through
-    // toBlob/fromBlob
+    // @spec serialization.encrypted-field-serialization.R4,
+    // encryption.ciphertext-envelope.R1,R1b,R1c — blob round-trips through toBlob/fromBlob with
+    // exact byte count (8 + dims*4 + 16) and big-endian encoding of seed + float lanes
     @Test
     void blob_roundTrip() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -258,7 +258,8 @@ class DcpeSapEncryptorTest {
         assertArrayEquals(original, recovered, 1e-4f);
     }
 
-    // @spec encryption.primitives-variants.R49 — blob with wrong length rejected
+    // @spec encryption.primitives-variants.R49, encryption.ciphertext-envelope.R1b — reader
+    // rejects blobs whose byte count is inconsistent with variant formula
     @Test
     void blob_wrongLengthRejected() {
         assertThrows(IllegalArgumentException.class,

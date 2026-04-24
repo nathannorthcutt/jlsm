@@ -37,7 +37,7 @@ public final class TableQuery<K> {
 
     private Predicate root;
     private CombineMode nextMode = CombineMode.NONE;
-    // @spec query.table-query.R8,F10.R38 — null runner → unbound → execute() throws UOE;
+    // @spec query.table-query.R8 — null runner → unbound → execute() throws UOE;
     // non-null runner → bound → execute() delegates to the runner.
     private final QueryRunner<K> runner;
 
@@ -76,7 +76,7 @@ public final class TableQuery<K> {
      * @param <K> the primary key type
      * @return a new bound query
      */
-    // @spec engine.in-process-database-engine.R37,F10.R37 — bound factory used by StringKeyedTable
+    // @spec engine.in-process-database-engine.R37 — bound factory used by StringKeyedTable
     // to wire QueryExecutor.
     public static <K> TableQuery<K> bound(QueryRunner<K> runner) {
         Objects.requireNonNull(runner, "runner must not be null");

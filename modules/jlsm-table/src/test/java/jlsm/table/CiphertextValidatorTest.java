@@ -10,6 +10,8 @@ class CiphertextValidatorTest {
 
     // ── AES-SIV (Deterministic): accept >= 16 bytes ────────────────────────
 
+    // @spec encryption.ciphertext-envelope.R1b,R3a — caller-supplied Deterministic ciphertext
+    // conforming to the 16B-synthetic-IV-or-longer formula is accepted
     @Test
     void deterministic_accepts16Bytes() {
         FieldDefinition field = new FieldDefinition("email", FieldType.string(),
@@ -26,6 +28,8 @@ class CiphertextValidatorTest {
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
+    // @spec encryption.ciphertext-envelope.R1b,R3a — reader rejects Deterministic ciphertext
+    // whose byte count violates the 16B-synthetic-IV-or-longer formula
     @Test
     void deterministic_rejectsLessThan16Bytes() {
         FieldDefinition field = new FieldDefinition("email", FieldType.string(),
@@ -39,6 +43,8 @@ class CiphertextValidatorTest {
 
     // ── AES-GCM (Opaque): accept >= 28 bytes ───────────────────────────────
 
+    // @spec encryption.ciphertext-envelope.R1b,R3a — caller-supplied Opaque ciphertext conforming
+    // to the 12B-IV+ciphertext+16B-tag formula is accepted (minimum 28 bytes)
     @Test
     void opaque_accepts28Bytes() {
         FieldDefinition field = new FieldDefinition("secret", FieldType.string(),
@@ -55,6 +61,8 @@ class CiphertextValidatorTest {
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
+    // @spec encryption.ciphertext-envelope.R1b,R3a — reader rejects Opaque ciphertext violating
+    // the minimum overhead formula (12B IV + 16B GCM tag)
     @Test
     void opaque_rejectsLessThan28Bytes() {
         FieldDefinition field = new FieldDefinition("secret", FieldType.string(),
@@ -69,7 +77,8 @@ class CiphertextValidatorTest {
     // ── OPE (OrderPreserving): accept exactly 25 bytes ─────────────────────
     // 1-byte length + 8-byte encrypted long + 16-byte HMAC-SHA256 tag (F03.R39,R72,R78)
 
-    // @spec encryption.primitives-variants.R48 — 25-byte OPE ciphertext accepted
+    // @spec encryption.primitives-variants.R48, encryption.ciphertext-envelope.R1b,R3a —
+    // caller-supplied OPE ciphertext conforming to the fixed 25-byte envelope formula accepted
     @Test
     void orderPreserving_accepts25Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
@@ -78,7 +87,8 @@ class CiphertextValidatorTest {
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
-    // @spec encryption.primitives-variants.R48 — OPE ciphertext shorter than 25 bytes rejected
+    // @spec encryption.primitives-variants.R48, encryption.ciphertext-envelope.R1b,R3a —
+    // reader rejects OPE blob whose byte count is inconsistent with the fixed 25-byte formula
     @Test
     void orderPreserving_rejects24Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
@@ -114,7 +124,8 @@ class CiphertextValidatorTest {
     // ── DCPE (DistancePreserving): 8 + dims*4 + 16 bytes ────────────────────
     // 8B seed + dims*4 encrypted floats + 16B HMAC-SHA256 tag (F03.R73,R79)
 
-    // @spec encryption.primitives-variants.R49 — DCPE blob length accepted when 8 + dims*4 + 16
+    // @spec encryption.primitives-variants.R49, encryption.ciphertext-envelope.R1b,R3a —
+    // caller-supplied DCPE ciphertext conforming to the 8 + 4N + 16 formula accepted
     @Test
     void distancePreserving_acceptsCorrectLength() {
         int dimensions = 128;
@@ -125,7 +136,8 @@ class CiphertextValidatorTest {
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
-    // @spec encryption.primitives-variants.R49 — off-by-one DCPE length rejected
+    // @spec encryption.primitives-variants.R49, encryption.ciphertext-envelope.R1b,R3a —
+    // reader rejects DCPE blob whose byte count deviates from the 8 + 4N + 16 formula
     @Test
     void distancePreserving_rejectsWrongLength() {
         int dimensions = 128;
