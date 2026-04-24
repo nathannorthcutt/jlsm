@@ -147,6 +147,7 @@ public final class Hkdf {
         final byte[] result = new byte[outLenBytes];
         byte[] previousBlock = new byte[0];
         byte[] currentBlock = null;
+        boolean success = false;
         try {
             final Mac mac = Mac.getInstance(HMAC_ALGORITHM);
             final SecretKeySpec keySpec = new SecretKeySpec(prk, HMAC_ALGORITHM);
@@ -167,6 +168,7 @@ public final class Hkdf {
                 currentBlock = null;
             }
             assert written == outLenBytes : "expand should have produced exactly outLenBytes";
+            success = true;
             return result;
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             throw new IllegalStateException("HMAC-SHA256 unavailable — required for HKDF-Expand",
@@ -178,6 +180,15 @@ public final class Hkdf {
             }
             if (currentBlock != null) {
                 Arrays.fill(currentBlock, (byte) 0);
+            }
+            // R16c: on any exception path, zero `result` before it becomes
+            // unreachable GC-garbage. The partial OKM bytes written by
+            // earlier loop iterations (T(1)..T(n-1) + partial T(n)) are
+            // secret-derived and must not linger in the heap slab. On the
+            // happy path (success == true) the caller owns `result` and is
+            // responsible for subsequent zeroization (see Hkdf.deriveKey).
+            if (!success) {
+                Arrays.fill(result, (byte) 0);
             }
         }
     }

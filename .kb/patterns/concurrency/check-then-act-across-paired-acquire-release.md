@@ -12,6 +12,7 @@ applies_to:
 related:
   - "non-atomic-lifecycle-flags"
   - "torn-volatile-publish-multi-field"
+  - "shared-rwlock-bracketing-facade-close-atomicity"
 decision_refs: []
 source_audit: "implement-sstable-enhancements--wd-03"
 sources:

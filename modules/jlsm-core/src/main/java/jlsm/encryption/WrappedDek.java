@@ -29,7 +29,9 @@ public record WrappedDek(DekHandle handle, byte[] wrappedBytes, int domainKekVer
 
     /**
      * @throws NullPointerException if any reference is null
-     * @throws IllegalArgumentException if {@code domainKekVersion} is not positive
+     * @throws IllegalArgumentException if {@code domainKekVersion} is not positive or
+     *             {@code wrappedBytes} is zero-length (a wrapped ciphertext cannot be empty —
+     *             AES-GCM minimum is IV+tag = 28 bytes)
      */
     public WrappedDek {
         Objects.requireNonNull(handle, "handle must not be null");
@@ -39,6 +41,10 @@ public record WrappedDek(DekHandle handle, byte[] wrappedBytes, int domainKekVer
         if (domainKekVersion <= 0) {
             throw new IllegalArgumentException(
                     "domainKekVersion must be positive, got " + domainKekVersion);
+        }
+        if (wrappedBytes.length == 0) {
+            throw new IllegalArgumentException(
+                    "wrappedBytes must not be empty — a wrapped ciphertext cannot be zero-length");
         }
         wrappedBytes = wrappedBytes.clone();
     }

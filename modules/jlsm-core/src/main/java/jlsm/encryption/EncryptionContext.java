@@ -2,6 +2,7 @@ package jlsm.encryption;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Typed, closed-set context record describing an encryption/decryption operation. The context is
@@ -10,7 +11,17 @@ import java.util.Objects;
  * request to unwrap for table B).
  *
  * <p>
- * Factory methods enforce the required attribute keys for each {@link Purpose} (R80a-1).
+ * Factory methods enforce the required attribute keys for each {@link Purpose} (R80a-1). The
+ * compact constructor ALSO enforces the same per-Purpose attribute-key invariant, so callers that
+ * bypass the factories (reflective construction, record deserializers, explicit
+ * {@code new EncryptionContext(...)} calls) cannot produce malformed contexts. The accepted
+ * attribute-key sets are:
+ * <ul>
+ * <li>{@link Purpose#DOMAIN_KEK}: exactly {@code {tenantId, domainId}}</li>
+ * <li>{@link Purpose#DEK}: exactly {@code {tenantId, domainId, tableId, dekVersion}}</li>
+ * <li>{@link Purpose#REKEY_SENTINEL}: exactly {@code {tenantId, domainId}}</li>
+ * <li>{@link Purpose#HEALTH_CHECK}: exactly {@code {tenantId, domainId}}</li>
+ * </ul>
  *
  * <p>
  * Governed by: spec {@code encryption.primitives-lifecycle} R80, R80a, R80a-1.
@@ -20,12 +31,31 @@ import java.util.Objects;
  */
 public record EncryptionContext(Purpose purpose, Map<String, String> attributes) {
 
+    private static final Set<String> DOMAIN_KEK_ATTRS = Set.of("tenantId", "domainId");
+    private static final Set<String> DEK_ATTRS = Set.of("tenantId", "domainId", "tableId",
+            "dekVersion");
+    private static final Set<String> REKEY_SENTINEL_ATTRS = Set.of("tenantId", "domainId");
+    private static final Set<String> HEALTH_CHECK_ATTRS = Set.of("tenantId", "domainId");
+
     /**
      * @throws NullPointerException if either argument is null
+     * @throws IllegalArgumentException if {@code attributes}' key set does not exactly match the
+     *             required-attribute set for {@code purpose} (R80a-1)
      */
     public EncryptionContext {
         Objects.requireNonNull(purpose, "purpose must not be null");
         Objects.requireNonNull(attributes, "attributes must not be null");
+        final Set<String> required = switch (purpose) {
+            case DOMAIN_KEK -> DOMAIN_KEK_ATTRS;
+            case DEK -> DEK_ATTRS;
+            case REKEY_SENTINEL -> REKEY_SENTINEL_ATTRS;
+            case HEALTH_CHECK -> HEALTH_CHECK_ATTRS;
+        };
+        if (!attributes.keySet().equals(required)) {
+            throw new IllegalArgumentException("attributes key set " + attributes.keySet()
+                    + " does not match required " + "attribute-key set " + required
+                    + " for Purpose." + purpose.name() + " (R80a-1)");
+        }
         attributes = Map.copyOf(attributes);
     }
 

@@ -174,24 +174,31 @@ class LocalKmsClientTest {
         client.close(); // must not throw
     }
 
+    // Updated by audit F-R1.contract_boundaries.2.7: post-close wrap throwing IllegalStateException
+    // was a bug (callers cannot distinguish "logic error" from "KMS permanently unavailable"); now
+    // correctly surfaces as KmsPermanentException so retry policies classify it as non-retryable.
     @Test
-    void postClose_wrap_throwsIllegalState(@TempDir Path tempDir) throws IOException {
+    void postClose_wrap_throwsKmsPermanentException(@TempDir Path tempDir) throws IOException {
         final Path keyFile = writeMasterKey(tempDir, validMasterKey());
         final LocalKmsClient client = new LocalKmsClient(keyFile);
         client.close();
         try (Arena arena = Arena.ofConfined()) {
             final MemorySegment pt = arena.allocate(32);
-            assertThrows(IllegalStateException.class, () -> client.wrapKek(pt, KEK_REF,
-                    EncryptionContext.forDomainKek(TENANT, DOMAIN)));
+            assertThrows(jlsm.encryption.KmsPermanentException.class, () -> client.wrapKek(pt,
+                    KEK_REF, EncryptionContext.forDomainKek(TENANT, DOMAIN)));
         }
     }
 
+    // Updated by audit F-R1.contract_boundaries.2.7: post-close unwrap throwing
+    // IllegalStateException
+    // was a bug (callers cannot distinguish "logic error" from "KMS permanently unavailable"); now
+    // correctly surfaces as KmsPermanentException so retry policies classify it as non-retryable.
     @Test
-    void postClose_unwrap_throwsIllegalState(@TempDir Path tempDir) throws IOException {
+    void postClose_unwrap_throwsKmsPermanentException(@TempDir Path tempDir) throws IOException {
         final Path keyFile = writeMasterKey(tempDir, validMasterKey());
         final LocalKmsClient client = new LocalKmsClient(keyFile);
         client.close();
-        assertThrows(IllegalStateException.class,
+        assertThrows(jlsm.encryption.KmsPermanentException.class,
                 () -> client.unwrapKek(ByteBuffer.wrap(new byte[40]), KEK_REF,
                         EncryptionContext.forDomainKek(TENANT, DOMAIN)));
     }

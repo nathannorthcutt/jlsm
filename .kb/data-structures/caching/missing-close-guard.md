@@ -7,6 +7,8 @@ applies_to:
   - "modules/jlsm-core/src/main/java/jlsm/cache/**"
 research_status: active
 last_researched: "2026-03-26"
+related:
+  - "../../patterns/concurrency/shared-rwlock-bracketing-facade-close-atomicity"
 ---
 
 # Missing close guard on cache operations

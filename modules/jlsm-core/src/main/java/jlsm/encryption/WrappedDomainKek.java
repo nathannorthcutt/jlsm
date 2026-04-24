@@ -24,7 +24,9 @@ public record WrappedDomainKek(DomainId domainId, int version, byte[] wrappedByt
 
     /**
      * @throws NullPointerException if any reference is null
-     * @throws IllegalArgumentException if {@code version} is not positive
+     * @throws IllegalArgumentException if {@code version} is not positive or {@code wrappedBytes}
+     *             is zero-length (a wrapped ciphertext cannot be empty — AES-KWP minimum is 24
+     *             bytes)
      */
     public WrappedDomainKek {
         Objects.requireNonNull(domainId, "domainId must not be null");
@@ -32,6 +34,10 @@ public record WrappedDomainKek(DomainId domainId, int version, byte[] wrappedByt
         Objects.requireNonNull(tenantKekRef, "tenantKekRef must not be null");
         if (version <= 0) {
             throw new IllegalArgumentException("version must be positive, got " + version);
+        }
+        if (wrappedBytes.length == 0) {
+            throw new IllegalArgumentException(
+                    "wrappedBytes must not be empty — a wrapped ciphertext cannot be zero-length");
         }
         wrappedBytes = wrappedBytes.clone();
     }

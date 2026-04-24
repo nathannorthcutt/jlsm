@@ -18,6 +18,7 @@ related:
   - "systems/security/three-level-key-hierarchy.md"
   - "systems/security/dek-revocation-vs-rotation.md"
   - "systems/security/encryption-key-rotation-patterns.md"
+  - "patterns/resource-management/defensive-copy-accessor-defeats-zeroize-on-close.md"
 decision_refs: []
 sources:
   - url: "https://docs.aws.amazon.com/encryption-sdk/latest/developer-guide/data-key-caching.html"

@@ -6,9 +6,9 @@
 | Category | Path | Files | Last Updated |
 |----------|------|-------|--------------|
 | adversarial-review | [adversarial-review/](adversarial-review/CLAUDE.md) | 1 | 2026-04-21 |
-| concurrency | [concurrency/](concurrency/CLAUDE.md) | 8 | 2026-04-22 |
-| resource-management | [resource-management/](resource-management/CLAUDE.md) | 13 | 2026-04-22 |
+| concurrency | [concurrency/](concurrency/CLAUDE.md) | 9 | 2026-04-23 |
+| resource-management | [resource-management/](resource-management/CLAUDE.md) | 14 | 2026-04-23 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 2 | 2026-04-20 |
-| testing | [testing/](testing/CLAUDE.md) | 2 | 2026-04-06 |
+| testing | [testing/](testing/CLAUDE.md) | 3 | 2026-04-23 |
 | validation | [validation/](validation/CLAUDE.md) | 18 | 2026-04-22 |
 | transactions | [transactions/](transactions/CLAUDE.md) | 1 | 2026-04-11 |

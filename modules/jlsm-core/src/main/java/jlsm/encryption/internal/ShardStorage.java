@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -71,7 +74,7 @@ import jlsm.encryption.WrappedDomainKek;
  *     [wrappedBytes : 4B BE length + bytes]
  *     [domainKekVersion 4B BE]
  *     [tenantKekRef : length-prefixed UTF-8]
- *     [createdAt epochMilli 8B BE]
+ *     [createdAt epochSeconds 8B BE][createdAt nanosOfSecond 4B BE]
  * [CRC-32C 4B BE  — covers all preceding bytes]
  * </pre>
  *
@@ -87,6 +90,24 @@ public final class ShardStorage {
     private static final short FORMAT_VERSION = 1;
     /** 0xFFFFFFFF as signed int — null sentinel for optional length-prefixed strings. */
     private static final int NULL_SENTINEL = -1;
+
+    /**
+     * Minimum serialized bytes for a single domain-KEK entry. Used to bound reader-side HashMap
+     * allocation against attacker-controlled count prefixes. A domain-KEK entry serializes as:
+     * [domainId 4B len + &gt;=1B] + [version 4B] + [wrappedBytes 4B len + 0B] + [tenantKekRef 4B
+     * len + &gt;=1B] = 18 bytes. Non-empty string values are enforced by the DomainId and KekRef
+     * compact constructors.
+     */
+    private static final int MIN_DOMAIN_KEK_BYTES = 18;
+
+    /**
+     * Minimum serialized bytes for a single DEK entry. A DEK entry serializes as: [tenantId 4B len
+     * + &gt;=1B] + [domainId 4B len + &gt;=1B] + [tableId 4B len + &gt;=1B] + [dekVersion 4B] +
+     * [wrappedBytes 4B len + 0B] + [domainKekVersion 4B] + [tenantKekRef 4B len + &gt;=1B] +
+     * [createdAt epochSeconds 8B + nanosOfSecond 4B] = 44 bytes. Non-empty string values are
+     * enforced by the TenantId, DomainId, TableId, and KekRef compact constructors.
+     */
+    private static final int MIN_DEK_BYTES = 44;
 
     private static final Set<PosixFilePermission> OWNER_ONLY = EnumSet
             .of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
@@ -185,17 +206,52 @@ public final class ShardStorage {
             if (isPosix) {
                 Files.setPosixFilePermissions(tempPath, OWNER_ONLY);
             }
-            // Atomic rename.
+            // Atomic rename — once this returns, the new shard is observable on disk at
+            // shardPath and the previous shard (if any) is overwritten. Flip `committed`
+            // immediately so the caller's view aligns with FS state: any post-rename
+            // failure below must NOT retrigger the temp-cleanup branch (the temp was
+            // renamed away — deleteIfExists is a no-op), and the caller must not observe
+            // a misleading "failed" IOException for a write the filesystem has already
+            // accepted (R20 caller-view-matches-FS-state; F-R1.resource_lifecycle.C2.5).
             Files.move(tempPath, shardPath, StandardCopyOption.ATOMIC_MOVE,
                     StandardCopyOption.REPLACE_EXISTING);
-            // Set perms on the final shard (rename preserves temp perms on most POSIX systems,
-            // but make it explicit).
+            committed = true;
+            // Parent-directory fsync (R20 crash-durability; F-R1.shared_state.3.1).
+            // ATOMIC_MOVE guarantees the rename is atomic with respect to other processes,
+            // but the directory-entry change (`shard.bin.<uuid>.tmp` → `shard.bin`) is a
+            // metadata update on the parent directory — not persisted to the on-disk
+            // journal until the parent dentry is fsync'd. On POSIX filesystems without
+            // metadata-ordering defaults (ext4 data=writeback, xfs without sync-metadata,
+            // many network filesystems) a crash between the rename and the OS's
+            // background metadata flush reverts the shard to its prior on-disk state,
+            // violating the Javadoc's "atomically persist" postcondition. The caller has
+            // already observed a successful return and may have triggered side-effects
+            // (cluster announce, key-version claim). Open the parent directory for READ
+            // and force(true) to persist the dentry change. POSIX permits opening a
+            // directory as a FileChannel only in READ mode; force(true) includes metadata.
+            // On non-POSIX platforms (Windows) directory-channel opens fail — we fall
+            // back to a best-effort skip because the NTFS USN journal handles directory-
+            // entry durability differently and the equivalent guarantee is already
+            // provided by the filesystem driver.
+            if (isPosix) {
+                final Path parentDir = shardPath.getParent();
+                assert parentDir != null : "shardPath must have a parent directory";
+                try (FileChannel dirCh = FileChannel.open(parentDir, StandardOpenOption.READ)) {
+                    dirCh.force(true);
+                }
+            }
+            // Re-assert perms on the final shard (rename preserves temp perms on most
+            // POSIX systems, but make it explicit). The temp file already carried
+            // OWNER_ONLY perms from line 175 (POSIX) or best-effort ACL narrowing (non-
+            // POSIX) before the rename, so this is a defense-in-depth re-assert. A
+            // failure here still surfaces to the caller so they can retry or alert, but
+            // `committed = true` is already set — the finally branch will NOT attempt
+            // cleanup of a file that is already published at shardPath.
             if (isPosix) {
                 Files.setPosixFilePermissions(shardPath, OWNER_ONLY);
             } else {
                 narrowAclBestEffort(shardPath);
             }
-            committed = true;
         } finally {
             if (!committed) {
                 try {
@@ -390,7 +446,11 @@ public final class ShardStorage {
      * "Strictly newer" := the candidate's maximum DEK version across all handles exceeds the
      * existing shard's maximum DEK version. If both are empty, the candidate is not newer. We also
      * consider domain KEK versions for completeness, since a domain rotation without a DEK rotation
-     * should still be promoted.
+     * should still be promoted. Finally, when both version pairs tie, a change in
+     * {@code activeTenantKekRef} is itself a legitimate update (tier-1 KEK rotation without a
+     * DEK/domain-KEK bump) and must also cause the candidate to be promoted — otherwise R20a's
+     * "latest valid write wins" contract silently drops KEK-rotation writes that crash between
+     * temp-write and rename (F-R1.contract_boundaries.3.4).
      */
     private static boolean isStrictlyNewer(KeyRegistryShard candidate, KeyRegistryShard existing) {
         final int cDek = maxDekVersion(candidate);
@@ -403,7 +463,18 @@ public final class ShardStorage {
         }
         final int cDomain = maxDomainKekVersion(candidate);
         final int eDomain = maxDomainKekVersion(existing);
-        return cDomain > eDomain;
+        if (cDomain > eDomain) {
+            return true;
+        }
+        if (cDomain < eDomain) {
+            return false;
+        }
+        // Both version pairs tie: a differing activeTenantKekRef indicates a tier-1 KEK
+        // rotation that committed to the orphan without bumping any DEK or domain-KEK
+        // version. Treat it as newer so orphan recovery promotes the write. Equal refs
+        // (or both null) means the candidate is content-identical to existing — not newer.
+        return !java.util.Objects.equals(candidate.activeTenantKekRef(),
+                existing.activeTenantKekRef());
     }
 
     private static int maxDekVersion(KeyRegistryShard shard) {
@@ -424,11 +495,24 @@ public final class ShardStorage {
 
     // --- serialization ---------------------------------------------------
 
-    private static byte[] serialize(KeyRegistryShard shard) {
+    private static byte[] serialize(KeyRegistryShard shard) throws IOException {
         // First pass: compute required capacity conservatively (2x the strings + sum of byte arrays
         // + headers). Then allocate and write.
-        final int estimated = estimateSize(shard);
-        final ByteBuffer buf = ByteBuffer.allocate(estimated).order(ByteOrder.BIG_ENDIAN);
+        //
+        // The accumulator is widened to long inside estimateSize so a shard carrying enough
+        // DEKs (or sufficiently-large wrappedBytes) to overflow int does not silently wrap
+        // to a negative value. We reject any shard whose serialized size cannot fit into an
+        // `int` (the only size ByteBuffer.allocate accepts) with an IOException — honoring
+        // writeShard's declared `throws IOException` contract rather than letting an
+        // unchecked IllegalArgumentException from ByteBuffer.allocate(negative) leak past
+        // callers (F-R1.contract_boundaries.3.3).
+        final long estimated = estimateSize(shard);
+        if (estimated > Integer.MAX_VALUE) {
+            throw new IOException("shard serialized size " + estimated
+                    + " bytes exceeds Integer.MAX_VALUE; a ByteBuffer cannot hold it. "
+                    + "Split the tenant across multiple shards or reduce wrappedBytes payload.");
+        }
+        final ByteBuffer buf = ByteBuffer.allocate((int) estimated).order(ByteOrder.BIG_ENDIAN);
         buf.put(MAGIC);
         buf.putShort(FORMAT_VERSION);
         putLpString(buf, shard.tenantId().value());
@@ -438,9 +522,18 @@ public final class ShardStorage {
         } else {
             putLpString(buf, shard.activeTenantKekRef().value());
         }
+        // Emit in canonical lexicographic order so identical shards produce identical bytes
+        // (and identical CRCs). Map.copyOf returns an ImmutableCollections.MapN whose
+        // iteration order is hash-bucket probe order (salted per-JVM and insertion-order-
+        // dependent); relying on it would violate R19b byte-for-byte fidelity and break
+        // byte-diff tooling / content-addressed shard hashes. Sorting the entries here
+        // pins the on-wire order to a pure function of the shard's logical content.
         final Map<DomainId, WrappedDomainKek> dKeks = shard.domainKeks();
         buf.putInt(dKeks.size());
-        for (Map.Entry<DomainId, WrappedDomainKek> e : dKeks.entrySet()) {
+        final java.util.List<Map.Entry<DomainId, WrappedDomainKek>> sortedDKeks = new java.util.ArrayList<>(
+                dKeks.entrySet());
+        sortedDKeks.sort(java.util.Comparator.comparing(e -> e.getKey().value()));
+        for (Map.Entry<DomainId, WrappedDomainKek> e : sortedDKeks) {
             final WrappedDomainKek dk = e.getValue();
             putLpString(buf, dk.domainId().value());
             buf.putInt(dk.version());
@@ -449,7 +542,14 @@ public final class ShardStorage {
         }
         final Map<DekHandle, WrappedDek> deks = shard.deks();
         buf.putInt(deks.size());
-        for (Map.Entry<DekHandle, WrappedDek> e : deks.entrySet()) {
+        final java.util.List<Map.Entry<DekHandle, WrappedDek>> sortedDeks = new java.util.ArrayList<>(
+                deks.entrySet());
+        sortedDeks.sort(java.util.Comparator.<Map.Entry<DekHandle, WrappedDek>, String>comparing(
+                e -> e.getKey().tenantId().value())
+                .thenComparing(e -> e.getKey().domainId().value())
+                .thenComparing(e -> e.getKey().tableId().value())
+                .thenComparingInt(e -> e.getKey().version().value()));
+        for (Map.Entry<DekHandle, WrappedDek> e : sortedDeks) {
             final WrappedDek d = e.getValue();
             putLpString(buf, d.handle().tenantId().value());
             putLpString(buf, d.handle().domainId().value());
@@ -458,7 +558,14 @@ public final class ShardStorage {
             putLpBytes(buf, d.wrappedBytes());
             buf.putInt(d.domainKekVersion());
             putLpString(buf, d.tenantKekRef().value());
-            buf.putLong(d.createdAt().toEpochMilli());
+            // Persist createdAt as (epochSeconds, nanosOfSecond) rather than epochMilli.
+            // Instant.toEpochMilli() truncates sub-millisecond nanoseconds, producing a
+            // reloaded WrappedDek that is record-unequal to the original even though no
+            // logical state changed (F-R1.data_transformation.1.01). The 12-byte encoding
+            // below is lossless: Instant.ofEpochSecond(seconds, nanos) reconstructs the
+            // exact original Instant.
+            buf.putLong(d.createdAt().getEpochSecond());
+            buf.putInt(d.createdAt().getNano());
         }
         buf.flip();
         final byte[] out = new byte[buf.remaining()];
@@ -466,9 +573,14 @@ public final class ShardStorage {
         return out;
     }
 
-    private static int estimateSize(KeyRegistryShard shard) {
+    private static long estimateSize(KeyRegistryShard shard) {
         // Conservative: 4 + 2 + 4 + len(tenantId)*4 + 4 + len(salt) + 4 + len(ref)*4 + 4 + ...
-        int size = 4 + 2; // magic + version
+        //
+        // Accumulator is long so a shard carrying enough DEKs or a sufficiently-large
+        // wrappedBytes payload does not silently overflow Integer.MAX_VALUE to a negative
+        // value. Callers compare the return against Integer.MAX_VALUE and reject with
+        // IOException before passing to ByteBuffer.allocate (F-R1.contract_boundaries.3.3).
+        long size = 4 + 2; // magic + version
         size += 4 + shard.tenantId().value().getBytes(StandardCharsets.UTF_8).length;
         size += 4 + shard.hkdfSalt().length;
         size += 4 + (shard.activeTenantKekRef() == null ? 0
@@ -489,7 +601,7 @@ public final class ShardStorage {
             size += 4 + d.wrappedBytes().length;
             size += 4; // domainKekVersion
             size += 4 + d.tenantKekRef().value().getBytes(StandardCharsets.UTF_8).length;
-            size += 8; // createdAt
+            size += 12; // createdAt: 8B epochSeconds + 4B nanosOfSecond (lossless Instant)
         }
         size += 4; // CRC trailer
         // Add small slack to avoid resize corner cases.
@@ -564,11 +676,23 @@ public final class ShardStorage {
                 requireRemaining(buf, refLen, path);
                 final byte[] refBytes = new byte[refLen];
                 buf.get(refBytes);
-                activeRef = new KekRef(new String(refBytes, StandardCharsets.UTF_8));
+                activeRef = new KekRef(decodeStrictUtf8(refBytes, path));
             }
             final int numDomainKeks = buf.getInt();
             if (numDomainKeks < 0) {
                 throw new IOException("invalid domain KEK count: " + numDomainKeks + " at " + path);
+            }
+            // Bound reader-side allocation against the bytes actually available on disk.
+            // An attacker with write access to the shard file could otherwise set this
+            // count to Integer.MAX_VALUE; while the per-entry requireRemaining loop would
+            // eventually abort, HashMap.put() on the first valid entry allocates a
+            // Node[tableSizeFor(numDomainKeks)] backing array sized by the attacker-
+            // supplied capacity — amplifying a 4-byte write into a multi-GB heap commit
+            // (R19a integrity — malformed-file rejection must not be preceded by
+            // adversarially-sized allocations).
+            if (numDomainKeks > buf.remaining() / MIN_DOMAIN_KEK_BYTES) {
+                throw new IOException("domain KEK count " + numDomainKeks
+                        + " exceeds available bytes (" + buf.remaining() + ") at " + path);
             }
             final Map<DomainId, WrappedDomainKek> dKeks = new HashMap<>(numDomainKeks);
             for (int i = 0; i < numDomainKeks; i++) {
@@ -582,6 +706,11 @@ public final class ShardStorage {
             if (numDeks < 0) {
                 throw new IOException("invalid DEK count: " + numDeks + " at " + path);
             }
+            // Same bound as numDomainKeks above — see comment for rationale.
+            if (numDeks > buf.remaining() / MIN_DEK_BYTES) {
+                throw new IOException("DEK count " + numDeks + " exceeds available bytes ("
+                        + buf.remaining() + ") at " + path);
+            }
             final Map<DekHandle, WrappedDek> deks = new HashMap<>(numDeks);
             for (int i = 0; i < numDeks; i++) {
                 final TenantId t = new TenantId(readLpString(buf, path));
@@ -591,7 +720,20 @@ public final class ShardStorage {
                 final byte[] wrapped = readLpBytes(buf, path);
                 final int domainKekVersion = buf.getInt();
                 final KekRef ref = new KekRef(readLpString(buf, path));
-                final Instant createdAt = Instant.ofEpochMilli(buf.getLong());
+                // Matched pair to the serialize side: read epochSeconds (8B) + nanosOfSecond
+                // (4B). Instant.ofEpochSecond(seconds, nanos) normalizes values where nanos
+                // is outside [0, 999_999_999] — validate the nano field explicitly so an
+                // adversarial file cannot smuggle in a normalized Instant whose seconds
+                // field differs from what the serializer wrote
+                // (F-R1.data_transformation.1.01 fix; also hardens the reader against
+                // malformed input per data_transformation discipline).
+                final long epochSeconds = buf.getLong();
+                final int nanosOfSecond = buf.getInt();
+                if (nanosOfSecond < 0 || nanosOfSecond > 999_999_999) {
+                    throw new IOException(
+                            "invalid createdAt nanosOfSecond: " + nanosOfSecond + " at " + path);
+                }
+                final Instant createdAt = Instant.ofEpochSecond(epochSeconds, nanosOfSecond);
                 final DekHandle handle = new DekHandle(t, d, tbl, dv);
                 deks.put(handle, new WrappedDek(handle, wrapped, domainKekVersion, ref, createdAt));
             }
@@ -611,7 +753,26 @@ public final class ShardStorage {
         requireRemaining(buf, len, path);
         final byte[] b = new byte[len];
         buf.get(b);
-        return new String(b, StandardCharsets.UTF_8);
+        return decodeStrictUtf8(b, path);
+    }
+
+    /**
+     * Decode {@code bytes} as UTF-8 using a strict decoder that reports malformed input and
+     * unmappable characters instead of silently substituting U+FFFD. Shard files that contain
+     * invalid UTF-8 in a length-prefixed string region surface as IOException rather than
+     * corrupting tenant/domain/table/KekRef identities (F-R1.data_transformation.1.04).
+     */
+    private static String decodeStrictUtf8(byte[] bytes, Path path) throws IOException {
+        final CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT);
+        try {
+            return decoder.decode(ByteBuffer.wrap(bytes)).toString();
+        } catch (CharacterCodingException e) {
+            throw new IOException(
+                    "invalid UTF-8 in length-prefixed string at " + path + ": " + e.getMessage(),
+                    e);
+        }
     }
 
     private static byte[] readLpBytes(ByteBuffer buf, Path path) throws IOException {

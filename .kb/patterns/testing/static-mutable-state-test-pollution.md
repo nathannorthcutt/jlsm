@@ -12,6 +12,7 @@ applies_to:
   - "modules/jlsm-engine/src/test/java/jlsm/engine/cluster/InJvmDiscoveryProvider.java"
 related:
   - "wall-clock-dependency-in-duration-logic"
+  - "stale-test-after-exception-type-tightening"
 decision_refs: []
 sources: []
 ---

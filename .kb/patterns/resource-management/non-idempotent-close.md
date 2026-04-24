@@ -13,6 +13,7 @@ applies_to:
 related:
   - "partial-init-no-rollback"
   - "fan-out-iterator-leak"
+  - "defensive-copy-accessor-defeats-zeroize-on-close"
 decision_refs: []
 sources: []
 ---

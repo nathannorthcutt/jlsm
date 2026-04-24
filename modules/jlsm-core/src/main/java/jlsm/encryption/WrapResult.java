@@ -22,5 +22,25 @@ public record WrapResult(ByteBuffer wrappedBytes, KekRef kekRef) {
     public WrapResult {
         Objects.requireNonNull(wrappedBytes, "wrappedBytes must not be null");
         Objects.requireNonNull(kekRef, "kekRef must not be null");
+        // Defensive copy: records are value-like, but ByteBuffer carries mutable cursor
+        // state (position/limit). Without isolation, one consumer draining wrappedBytes()
+        // would starve another; caller-side mutation to position/limit after construction
+        // would silently change the record's logical content. Snapshot the current
+        // remaining() bytes into a fresh read-only backing buffer so the record behaves
+        // as a stable value (F-R1.contract_boundaries.2.6).
+        final ByteBuffer snapshot = wrappedBytes.duplicate();
+        final byte[] copy = new byte[snapshot.remaining()];
+        snapshot.get(copy);
+        wrappedBytes = ByteBuffer.wrap(copy).asReadOnlyBuffer();
+    }
+
+    /**
+     * Returns a fresh view of the wrapped bytes with an independent position/limit, so multiple
+     * consumers can each drain the payload without affecting one another. The underlying storage is
+     * shared and read-only.
+     */
+    @Override
+    public ByteBuffer wrappedBytes() {
+        return wrappedBytes.duplicate();
     }
 }

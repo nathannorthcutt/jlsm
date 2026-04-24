@@ -58,8 +58,30 @@ public final class OffHeapKeyMaterial implements AutoCloseable {
         }
 
         final Arena arena = Arena.ofShared();
-        final MemorySegment segment = arena.allocate(keyMaterial.length);
-        MemorySegment.copy(keyMaterial, 0, segment, ValueLayout.JAVA_BYTE, 0, keyMaterial.length);
+        final MemorySegment segment;
+        try {
+            segment = arena.allocate(keyMaterial.length);
+            MemorySegment.copy(keyMaterial, 0, segment, ValueLayout.JAVA_BYTE, 0,
+                    keyMaterial.length);
+        } catch (RuntimeException | Error e) {
+            // On any failure between arena allocation and the successful off-heap copy,
+            // we must (1) still zero the caller's keyMaterial byte[] — the class's
+            // zeroization contract is unconditional — and (2) close the orphaned shared
+            // arena, which would otherwise leak off-heap memory permanently (Arena.ofShared
+            // is not GC-reclaimed). Secondary failures in fill/close are suppressed onto
+            // the original cause so the primary failure propagates.
+            Throwable closeFailure = null;
+            try {
+                Arrays.fill(keyMaterial, (byte) 0);
+                arena.close();
+            } catch (RuntimeException | Error secondary) {
+                closeFailure = secondary;
+            }
+            if (closeFailure != null) {
+                e.addSuppressed(closeFailure);
+            }
+            throw e;
+        }
 
         // Zero the caller's copy
         Arrays.fill(keyMaterial, (byte) 0);

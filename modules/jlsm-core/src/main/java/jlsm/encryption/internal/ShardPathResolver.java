@@ -54,14 +54,32 @@ public final class ShardPathResolver {
     /**
      * Resolve a temp path alongside {@code shardPath} used during atomic commit.
      *
+     * <p>
+     * The {@code suffix} MUST be a non-empty alphanumeric string (ASCII {@code [A-Za-z0-9]+}). Path
+     * separators ({@code /}, {@code \\}), dots, colons, and control characters are rejected to
+     * guarantee the returned path is a sibling of {@code shardPath} — preventing caller-supplied
+     * traversal (e.g. {@code ../../../etc/passwd}) from escaping the shards directory.
+     *
      * @throws NullPointerException if either argument is null
-     * @throws IllegalArgumentException if {@code suffix} is empty
+     * @throws IllegalArgumentException if {@code suffix} is empty or contains any character outside
+     *             {@code [A-Za-z0-9]}
      */
     public static Path tempPath(Path shardPath, String suffix) {
         Objects.requireNonNull(shardPath, "shardPath must not be null");
         Objects.requireNonNull(suffix, "suffix must not be null");
         if (suffix.isEmpty()) {
             throw new IllegalArgumentException("suffix must not be empty");
+        }
+        for (int i = 0; i < suffix.length(); i++) {
+            final char c = suffix.charAt(i);
+            final boolean alphanumeric = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z')
+                    || (c >= 'a' && c <= 'z');
+            if (!alphanumeric) {
+                throw new IllegalArgumentException(
+                        "suffix must be alphanumeric [A-Za-z0-9] — path separators, dots, and "
+                                + "other characters are rejected to prevent path traversal "
+                                + "(suffix='" + suffix + "', offending char index=" + i + ")");
+            }
         }
         final Path fileName = shardPath.getFileName();
         if (fileName == null) {

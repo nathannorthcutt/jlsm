@@ -33,18 +33,24 @@ class EncryptionContextTest {
 
     @Test
     void constructor_defensivelyCopiesAttributes() {
+        // Use a key-set that matches HEALTH_CHECK's required-attribute set (R80a-1). The test
+        // exercises defensive-copy semantics, not the attribute-set invariant.
         final Map<String, String> mutable = new HashMap<>();
-        mutable.put("k1", "v1");
+        mutable.put("tenantId", "v1");
+        mutable.put("domainId", "d1");
         final EncryptionContext ctx = new EncryptionContext(Purpose.HEALTH_CHECK, mutable);
-        mutable.put("k1", "mutated");
-        mutable.put("k2", "added");
-        assertEquals("v1", ctx.attributes().get("k1"));
-        assertFalse(ctx.attributes().containsKey("k2"));
+        mutable.put("tenantId", "mutated");
+        mutable.put("tableId", "added");
+        assertEquals("v1", ctx.attributes().get("tenantId"));
+        assertFalse(ctx.attributes().containsKey("tableId"));
     }
 
     @Test
     void attributes_areImmutable() {
-        final EncryptionContext ctx = new EncryptionContext(Purpose.HEALTH_CHECK, Map.of("k", "v"));
+        // Use a key-set that matches HEALTH_CHECK's required-attribute set (R80a-1). The test
+        // exercises immutability of the returned map, not the attribute-set invariant.
+        final EncryptionContext ctx = new EncryptionContext(Purpose.HEALTH_CHECK,
+                Map.of("tenantId", "t", "domainId", "d"));
         assertThrows(UnsupportedOperationException.class, () -> ctx.attributes().put("x", "y"));
     }
 

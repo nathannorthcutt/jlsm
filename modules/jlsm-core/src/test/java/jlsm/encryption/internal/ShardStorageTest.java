@@ -179,13 +179,17 @@ class ShardStorageTest {
         assertEquals(0, tempCount, "successful write must not leave orphan temp files");
     }
 
+    // Updated by audit F-R1.contract_boundaries.3.7: ShardPathResolver.tempPath now rejects
+    // non-alphanumeric suffix chars (path-traversal defense); previous suffix "corrupt-orphan"
+    // contained a hyphen and is no longer accepted. Replaced with an alphanumeric equivalent
+    // ("corruptorphan") — the test's intent (orphan with invalid CRC is deleted) is unchanged.
     @Test
     void recoverOrphanTemps_deletesOrphanWithInvalidCrc(@TempDir Path tmp) throws IOException {
         final ShardStorage storage = new ShardStorage(tmp);
         // First write the real shard so the directory exists.
         storage.writeShard(TENANT, sampleShard(1));
         final Path shardPath = ShardPathResolver.shardPath(tmp, TENANT);
-        final Path orphan = ShardPathResolver.tempPath(shardPath, "corrupt-orphan");
+        final Path orphan = ShardPathResolver.tempPath(shardPath, "corruptorphan");
         Files.write(orphan, new byte[]{ 1, 2, 3, 4, 5, 6, 7, 8 }); // invalid CRC
         storage.recoverOrphanTemps();
         assertFalse(Files.exists(orphan), "orphan with invalid CRC must be deleted");
@@ -261,6 +265,11 @@ class ShardStorageTest {
         }
     }
 
+    // Updated by audit F-R1.contract_boundaries.3.7: ShardPathResolver.tempPath now rejects
+    // non-alphanumeric suffix chars (path-traversal defense); previous suffix "partial-crash"
+    // contained a hyphen and is no longer accepted. Replaced with an alphanumeric equivalent
+    // ("partialcrash") — the test's intent (crashed partial write remains until recovery runs)
+    // is unchanged.
     @Test
     void writeShard_atomicity_failedWriteLeavesPriorShardVisible(@TempDir Path tmp)
             throws IOException {
@@ -269,7 +278,7 @@ class ShardStorageTest {
         storage.writeShard(TENANT, initial);
         // Simulate a crashed write by creating a partial temp file that doesn't match CRC.
         final Path shardPath = ShardPathResolver.shardPath(tmp, TENANT);
-        final Path partial = ShardPathResolver.tempPath(shardPath, "partial-crash");
+        final Path partial = ShardPathResolver.tempPath(shardPath, "partialcrash");
         Files.write(partial, new byte[]{ 0, 0, 0, 0, 0, 0, 0, 0 });
         // loadShard still returns the prior shard.
         final Optional<KeyRegistryShard> loaded = storage.loadShard(TENANT);

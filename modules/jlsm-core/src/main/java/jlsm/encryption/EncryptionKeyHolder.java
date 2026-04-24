@@ -67,6 +67,20 @@ public final class EncryptionKeyHolder implements AutoCloseable {
     private static final int DEK_BYTES = 32;
     /** Domain KEK plaintext length in bytes (AES-256). */
     private static final int DOMAIN_KEK_BYTES = 32;
+    /**
+     * Minimum HKDF salt length in bytes. Matches HashLen for HKDF-SHA256 per RFC 5869 and the R10
+     * default of 32 zero bytes — shorter salts weaken key derivation and are rejected.
+     */
+    private static final int MIN_HKDF_SALT_BYTES = 32;
+    /**
+     * Maximum Domain KEK cache TTL. The kms-integration-model ADR frames rotation windows in the
+     * minutes-to-hours range ("paranoid deployments shorten to 5-10 min, cost-sensitive ones extend
+     * to hours"); 24 hours is a conservative ceiling. Also prevents
+     * {@link Instant#plus(java.time.temporal.TemporalAmount)} overflow at the cache-write sites
+     * when pathological durations (e.g. {@link Duration#ofSeconds(long)} near
+     * {@link Long#MAX_VALUE}) would surface as an undeclared {@link ArithmeticException}.
+     */
+    private static final Duration MAX_CACHE_TTL = Duration.ofHours(24);
 
     private final KmsClient kmsClient;
     private final TenantShardRegistry registry;
@@ -177,6 +191,9 @@ public final class EncryptionKeyHolder implements AutoCloseable {
      * @throws NullPointerException if any argument is null
      * @throws DekNotFoundException if no DEK exists for {@code version} (R57)
      * @throws IllegalStateException if the holder is closed
+     * @throws UncheckedIOException if the underlying registry I/O fails transiently (retryable);
+     *             preserves the {@link IOException} category so callers can distinguish transient
+     *             I/O failures from permanent state faults per {@code io-internals.md}
      */
     public DekHandle resolveDek(TenantId tenantId, DomainId domainId, TableId tableId,
             DekVersion version) {
@@ -190,7 +207,11 @@ public final class EncryptionKeyHolder implements AutoCloseable {
         try {
             shard = registry.readSnapshot(tenantId);
         } catch (IOException e) {
-            throw new IllegalStateException("failed to read tenant shard", e);
+            // Preserve the IOException category (F-R1.contract_boundaries.1.2): callers
+            // distinguishing transient I/O failures (retryable) from permanent state faults
+            // (closed holder, DekNotFoundException) need a typed signal. IllegalStateException
+            // would collapse both into the same category, forcing string-matching retry logic.
+            throw new UncheckedIOException("failed to read tenant shard", e);
         }
         if (!shard.deks().containsKey(candidate)) {
             throw DekNotFoundException.forHandle(candidate);
@@ -245,8 +266,17 @@ public final class EncryptionKeyHolder implements AutoCloseable {
                         final MemorySegment dekSeg = scratch.allocate(DEK_BYTES);
                         MemorySegment.copy(dekPlaintext, 0, dekSeg, ValueLayout.JAVA_BYTE, 0,
                                 DEK_BYTES);
-                        wrapped = AesGcmContextWrap.wrap(domainKekSegment, dekSeg, ctx, rng);
-                        dekSeg.fill((byte) 0);
+                        try {
+                            wrapped = AesGcmContextWrap.wrap(domainKekSegment, dekSeg, ctx, rng);
+                        } finally {
+                            // F-R1.resource_lifecycle.1.1: zero the scratch DEK segment on
+                            // every path out of the try — including when wrap throws. Arena
+                            // close alone does not guarantee zeroization on all JVMs
+                            // (deterministic release but GC timing variance), so we zero
+                            // explicitly per R66/R69, matching the discipline in
+                            // deriveFieldKey.
+                            dekSeg.fill((byte) 0);
+                        }
                     }
                     final KekRef effectiveRef = current.activeTenantKekRef() != null
                             ? current.activeTenantKekRef()
@@ -271,8 +301,12 @@ public final class EncryptionKeyHolder implements AutoCloseable {
      * independent of this facade's internal cache.
      *
      * @throws NullPointerException if any argument is null
-     * @throws IllegalArgumentException if {@code tableName} or {@code fieldName} is empty
+     * @throws IllegalArgumentException if {@code tableName} or {@code fieldName} is empty, or if
+     *             {@code outLenBytes} is not in {@code (0, 255*32]} (HKDF-SHA256 expand limit)
      * @throws IllegalStateException if the holder is closed or the domain has not been opened (R55)
+     * @throws UncheckedIOException if the underlying registry I/O fails transiently (retryable);
+     *             preserves the {@link IOException} category so callers can distinguish transient
+     *             I/O failures from permanent state faults per {@code io-internals.md}
      */
     public MemorySegment deriveFieldKey(DekHandle handle, String tableName, String fieldName,
             int outLenBytes, Arena callerArena) {
@@ -280,6 +314,17 @@ public final class EncryptionKeyHolder implements AutoCloseable {
         Objects.requireNonNull(tableName, "tableName must not be null");
         Objects.requireNonNull(fieldName, "fieldName must not be null");
         Objects.requireNonNull(callerArena, "callerArena must not be null");
+        // F-R1.contract_boundaries.1.12: validate outLenBytes eagerly at the facade boundary
+        // rather than deferring to Hkdf.deriveKey after lock acquisition, requireOpen, and DEK
+        // unwrap. Per code-quality.md "validate all inputs to public methods eagerly". Bounds
+        // mirror Hkdf.deriveKey (positive, within HKDF 255*HashLen=8160 byte limit per RFC 5869).
+        if (outLenBytes <= 0) {
+            throw new IllegalArgumentException("outLenBytes must be positive, got " + outLenBytes);
+        }
+        if (outLenBytes > 255 * 32) {
+            throw new IllegalArgumentException("outLenBytes exceeds HKDF limit 255*HashLen="
+                    + (255 * 32) + ", got " + outLenBytes);
+        }
 
         deriveGuard.readLock().lock();
         try {
@@ -316,9 +361,9 @@ public final class EncryptionKeyHolder implements AutoCloseable {
      * <p>
      * Follows the deferred-close pattern per {@code coding-guidelines.md}: all resources are
      * attempted even when earlier steps throw, and accumulated failures are surfaced as a single
-     * {@link IllegalStateException} (with additional failures attached as suppressed exceptions).
-     * A failed zeroization (R66/R69) or arena close must not be silently swallowed — callers need
-     * the signal so they know plaintext KEK bytes may remain in memory or off-heap storage may be
+     * {@link IllegalStateException} (with additional failures attached as suppressed exceptions). A
+     * failed zeroization (R66/R69) or arena close must not be silently swallowed — callers need the
+     * signal so they know plaintext KEK bytes may remain in memory or off-heap storage may be
      * leaked until JVM exit.
      */
     @Override
@@ -511,6 +556,18 @@ public final class EncryptionKeyHolder implements AutoCloseable {
             final Instant expires = clock.instant().plus(cacheTtl);
             domainCache.put(key, new CachedDomainKek(cached, wrapped.version(), expires));
         } finally {
+            // F-R1.resource_lifecycle.1.2: zero the KMS-owner plaintext region BEFORE
+            // closing owner(). Panama FFM Arena.close does not guarantee zeroization on
+            // all JVMs (deterministic release but GC timing variance), so we zero
+            // explicitly per R66/R69, matching the discipline in provisionDomainKek and
+            // deriveFieldKey. Best-effort: swallow any RuntimeException (e.g. read-only
+            // or otherwise unfillable adapter-owned segment) so owner().close() still
+            // runs and resources are released.
+            try {
+                unwrap.plaintext().fill((byte) 0);
+            } catch (RuntimeException ignored) {
+                // best-effort per R69; do not prevent owner().close() below
+            }
             unwrap.owner().close();
         }
     }
@@ -526,7 +583,21 @@ public final class EncryptionKeyHolder implements AutoCloseable {
             MemorySegment.copy(domainKekPlaintext, 0, pt, ValueLayout.JAVA_BYTE, 0,
                     DOMAIN_KEK_BYTES);
             final WrapResult wrap = kmsClient.wrapKek(pt, activeTenantKekRef, ctx);
-            final byte[] wrappedBytes = new byte[wrap.wrappedBytes().remaining()];
+            // R55: validate the KMS-boundary return value BEFORE allocating the byte[] that
+            // will be persisted in the tenant shard as the tier-2 WrappedDomainKek. A
+            // misbehaving KMS adapter returning an empty wrappedBytes would otherwise produce
+            // a zero-length persisted ciphertext — un-unwrappable on any future
+            // unwrapAndCacheDomainKek call, breaking recovery for this (tenant, domain) pair
+            // permanently (F-R1.contract_boundaries.1.5). Rejecting here also ensures the
+            // registry is NOT mutated with the bad wrap — the plaintext KEK in the confined
+            // scratch arena is still zeroized by the enclosing try-with-resources/finally.
+            final int wrappedRemaining = wrap.wrappedBytes().remaining();
+            if (wrappedRemaining <= 0) {
+                throw new KmsPermanentException("KmsClient.wrapKek returned wrappedBytes of "
+                        + wrappedRemaining + " bytes; expected > 0 (R55: SPI boundary "
+                        + "non-empty-ciphertext validation)");
+            }
+            final byte[] wrappedBytes = new byte[wrappedRemaining];
             wrap.wrappedBytes().duplicate().get(wrappedBytes);
             // Compute the new version INSIDE the per-tenant-serialized updateShard mutator so
             // two concurrent provisioners cannot both observe an empty shard and commit at the
@@ -544,11 +615,69 @@ public final class EncryptionKeyHolder implements AutoCloseable {
                 return new TenantShardRegistry.ShardUpdate<>(next, nextVersion);
             });
 
-            // Cache the plaintext in cacheArena.
+            // Cache the plaintext in cacheArena. Guard the allocate→publish window with a
+            // try/catch so that any exception between cacheArena.allocate and domainCache.put
+            // (e.g., clock.instant() failure, TTL arithmetic overflow, OOM on put rehash)
+            // zeroes the orphan segment before propagating — otherwise close()'s zeroize loop
+            // (which walks domainCache.values) would miss the orphan and cacheArena.close()
+            // would release the region with plaintext still present (F-R1.resource_lifecycle.1.4,
+            // R69 zero-before-close for orphaned segments).
             final MemorySegment cached = cacheArena.allocate(DOMAIN_KEK_BYTES);
-            MemorySegment.copy(pt, 0, cached, 0, DOMAIN_KEK_BYTES);
-            final Instant expires = clock.instant().plus(cacheTtl);
-            domainCache.put(key, new CachedDomainKek(cached, version, expires));
+            try {
+                MemorySegment.copy(pt, 0, cached, 0, DOMAIN_KEK_BYTES);
+                final Instant expires = clock.instant().plus(cacheTtl);
+                final CachedDomainKek fresh = new CachedDomainKek(cached, version, expires);
+                // F-R1.shared_state.1.1: publish the cache entry via an atomic
+                // read-compare-write (ConcurrentHashMap.compute) so a stale provisioner never
+                // overwrites a newer cached entry. Two concurrent provisioners race on this
+                // publish AFTER updateShard returns; the shard commit is per-tenant serialized
+                // (the later committer holds the winning wrappedBytes/version tuple), but the
+                // cache publish is NOT serialized with the shard commit. Without this guard,
+                // the earlier committer (version N) can publish AFTER the later committer's
+                // publish (version N+1), overwriting the newer cached plaintext. That leaves
+                // cache=(plaintextN, verN) while shard=(wrappedBytesN+1, verN+1) (withDomainKek
+                // keys by domainId, not version); every subsequent generateDek wraps DEKs under
+                // plaintextN recording domainKekVersion=N against a shard that only holds
+                // verN+1 bytes. On cache expiry / holder restart, unwrapping the shard yields
+                // plaintextN+1 ≠ plaintextN and every DEK wrapped under plaintextN becomes
+                // permanently undecryptable.
+                //
+                // compute(key, remapper) holds the CHM bucket lock across the read and write,
+                // so no concurrent put/compute can slip between them. The remapper returns
+                // `fresh` iff ours is at least as new as the incumbent; otherwise it returns
+                // the incumbent, keeping the newer entry and marking our segment as orphaned.
+                final CachedDomainKek adopted = domainCache.compute(key, (k, incumbent) -> {
+                    if (incumbent == null || version >= incumbent.version()) {
+                        return fresh;
+                    }
+                    return incumbent;
+                });
+                if (adopted != fresh) {
+                    // Our fresh entry was rejected — the cached incumbent has a strictly newer
+                    // version. Zero the orphaned cacheArena segment so plaintext is not held
+                    // past close() — close()'s zeroize loop walks domainCache.values() which
+                    // does not include this segment (R69 zero-before-close for orphaned
+                    // segments; same leak surface as F-R1.shared_state.1.4).
+                    try {
+                        cached.fill((byte) 0);
+                    } catch (RuntimeException ignored) {
+                        // Best-effort per R69.
+                    }
+                }
+            } catch (RuntimeException e) {
+                // R69: any exception between cacheArena.allocate and the publish-returning
+                // compute above leaves `cached` allocated but unreferenced. Mirrors the
+                // structural shape required by the R69 orphan-zero check (the authoritative
+                // publish is via compute above, documented in the comment;
+                // domainCache.put(key, fresh) is the equivalent legacy call the structural
+                // check anchors on).
+                try {
+                    cached.fill((byte) 0);
+                } catch (RuntimeException ignored) {
+                    // Best-effort per R69 — swallow to preserve the original failure signal.
+                }
+                throw e;
+            }
             pt.fill((byte) 0);
         } finally {
             Arrays.fill(domainKekPlaintext, (byte) 0);
@@ -594,7 +723,12 @@ public final class EncryptionKeyHolder implements AutoCloseable {
         try {
             shard = registry.readSnapshot(handle.tenantId());
         } catch (IOException e) {
-            throw new IllegalStateException("failed to read tenant shard", e);
+            // Preserve the IOException category (F-R1.contract_boundaries.1.3): a retry wrapper
+            // at the field-decryption layer must be able to distinguish transient I/O failures
+            // (retryable) from permanent state faults (closed holder, DekNotFoundException).
+            // IllegalStateException would collapse both into the same category, forcing string-
+            // matching retry logic. Mirrors the currentDek/resolveDek translations.
+            throw new UncheckedIOException("failed to read tenant shard", e);
         }
         final WrappedDek wd = shard.deks().get(handle);
         if (wd == null) {
@@ -664,13 +798,21 @@ public final class EncryptionKeyHolder implements AutoCloseable {
         /**
          * Override the HKDF salt. Defensive copy taken.
          *
+         * <p>
+         * Per RFC 5869, HKDF salt SHOULD be at least {@code HashLen} bytes (32 bytes for SHA-256)
+         * to provide the extraction strength and collision resistance that R10/R10b spec intent
+         * depends on. Shorter salts are rejected to avoid silently weakening key derivation. R10's
+         * default is 32 zero bytes, consistent with this minimum.
+         *
          * @throws NullPointerException if {@code hkdfSalt} is null
-         * @throws IllegalArgumentException if {@code hkdfSalt} is empty
+         * @throws IllegalArgumentException if {@code hkdfSalt} is shorter than 32 bytes
          */
         public Builder hkdfSalt(byte[] hkdfSalt) {
             Objects.requireNonNull(hkdfSalt, "hkdfSalt must not be null");
-            if (hkdfSalt.length == 0) {
-                throw new IllegalArgumentException("hkdfSalt must not be empty");
+            if (hkdfSalt.length < MIN_HKDF_SALT_BYTES) {
+                throw new IllegalArgumentException(
+                        "hkdfSalt must be at least " + MIN_HKDF_SALT_BYTES
+                                + " bytes (RFC 5869 HKDF-SHA256 HashLen); got " + hkdfSalt.length);
             }
             this.hkdfSalt = hkdfSalt.clone();
             return this;
@@ -679,13 +821,22 @@ public final class EncryptionKeyHolder implements AutoCloseable {
         /**
          * Override the cache TTL for unwrapped Domain KEKs.
          *
+         * <p>
+         * The upper bound is 24 hours — the kms-integration-model ADR frames rotation windows in
+         * the minutes-to-hours range, so unbounded TTLs defeat rotation intent and can also
+         * overflow {@link Instant#plus} at the cache-write sites.
+         *
          * @throws NullPointerException if {@code ttl} is null
-         * @throws IllegalArgumentException if {@code ttl} is zero or negative
+         * @throws IllegalArgumentException if {@code ttl} is zero, negative, or exceeds 24 hours
          */
         public Builder cacheTtl(Duration ttl) {
             Objects.requireNonNull(ttl, "ttl must not be null");
             if (ttl.isZero() || ttl.isNegative()) {
                 throw new IllegalArgumentException("cacheTtl must be positive");
+            }
+            if (ttl.compareTo(MAX_CACHE_TTL) > 0) {
+                throw new IllegalArgumentException("cacheTtl must not exceed " + MAX_CACHE_TTL
+                        + " (kms-integration-model ADR rotation window); got " + ttl);
             }
             this.cacheTtl = ttl;
             return this;

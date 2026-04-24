@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import javax.crypto.AEADBadTagException;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -33,7 +34,7 @@ import jlsm.encryption.EncryptionContext;
  * AAD encoding:
  *
  * <pre>
- *   [4-byte BE purpose-ordinal]
+ *   [4-byte BE purpose-code (Purpose.code(), a stable persistent-format int)]
  *   [4-byte BE attribute-count]
  *   for each attribute in sorted-key order:
  *     [4-byte BE key-length] [UTF-8 key bytes]
@@ -172,10 +173,19 @@ public final class AesGcmContextWrap {
             final MemorySegment out = callerArena.allocate(plaintextLen);
             MemorySegment.copy(plaintextBytes, 0, out, ValueLayout.JAVA_BYTE, 0, plaintextLen);
             return out;
-        } catch (GeneralSecurityException e) {
-            // AEADBadTagException or similar — authentication failed.
+        } catch (AEADBadTagException e) {
+            // GCM tag / AAD mismatch — forged, tampered, or wrong-context ciphertext.
+            // This is a caller-visible programmer-or-input fault, so IAE is correct.
             throw new IllegalArgumentException(
                     "AES-GCM unwrap failed (authentication or context mismatch)", e);
+        } catch (GeneralSecurityException e) {
+            // Non-tag GSE (InvalidKeyException, NoSuchAlgorithmException, etc.) signals
+            // an environmental / infrastructure fault — e.g., a third-party JCE provider
+            // that rejects the KEK, or a stripped JDK missing AES/GCM. Translate to ISE
+            // so callers and ops tooling do not mistake this for a forged ciphertext and
+            // trigger false-positive security alerting. Mirrors wrap's GSE→ISE at the
+            // symmetric location (see wrap catch above).
+            throw new IllegalStateException("AES-GCM unwrap failed", e);
         } finally {
             if (kekBytes != null) {
                 Arrays.fill(kekBytes, (byte) 0);
@@ -190,9 +200,12 @@ public final class AesGcmContextWrap {
     }
 
     /**
-     * Canonical AAD encoding: purpose ordinal + sorted-by-key UTF-8 length-prefixed attributes.
-     * Both sides produce byte-identical AAD for equal contexts; any field drift (tenant, domain,
-     * table, version, purpose) yields different bytes and therefore a GCM authentication failure.
+     * Canonical AAD encoding: Purpose.code() (stable persistent-format int) + sorted-by-key UTF-8
+     * length-prefixed attributes. Both sides produce byte-identical AAD for equal contexts; any
+     * field drift (tenant, domain, table, version, purpose) yields different bytes and therefore a
+     * GCM authentication failure. Using {@link Purpose#code()} rather than
+     * {@link Purpose#ordinal()} is load-bearing: the code is pinned across library versions so
+     * reordering Purpose declarations cannot silently invalidate persisted wraps (R80a).
      */
     private static byte[] encodeAad(EncryptionContext ctx) {
         Objects.requireNonNull(ctx, "ctx must not be null");
@@ -211,7 +224,9 @@ public final class AesGcmContextWrap {
         }
 
         final ByteBuffer buf = ByteBuffer.allocate(total);
-        buf.putInt(ctx.purpose().ordinal());
+        // R80a: embed Purpose.code() — explicit persistent-format contract — NOT ordinal()
+        // which would shift silently if the enum declarations are reordered.
+        buf.putInt(ctx.purpose().code());
         buf.putInt(keys.size());
         for (int i = 0; i < keys.size(); i++) {
             buf.putInt(keyBytes[i].length);

@@ -11,6 +11,7 @@ applies_to:
   - "modules/jlsm-engine/src/main/java/jlsm/engine/cluster/GracePeriodManager.java"
 related:
   - "static-mutable-state-test-pollution"
+  - "stale-test-after-exception-type-tightening"
 decision_refs: []
 sources:
   - url: "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/Clock.html"

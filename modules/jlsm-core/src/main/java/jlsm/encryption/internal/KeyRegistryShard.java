@@ -42,6 +42,30 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
         Objects.requireNonNull(domainKeks, "domainKeks must not be null");
         Objects.requireNonNull(hkdfSalt, "hkdfSalt must not be null");
         // activeTenantKekRef may be null (first-write case)
+        // Per-entry null checks ahead of Map.copyOf so operators see which field and
+        // which key produced the null when a corrupt shard is rejected. Map.copyOf's
+        // own NPE names neither — which defeats triage when the NPE is wrapped as a
+        // "malformed shard file" IOException downstream.
+        for (var entry : deks.entrySet()) {
+            if (entry.getKey() == null) {
+                throw new NullPointerException(
+                        "deks contains a null key — corrupt shard or programmer error");
+            }
+            if (entry.getValue() == null) {
+                throw new NullPointerException(
+                        "deks contains a null value for key " + entry.getKey());
+            }
+        }
+        for (var entry : domainKeks.entrySet()) {
+            if (entry.getKey() == null) {
+                throw new NullPointerException(
+                        "domainKeks contains a null key — corrupt shard or programmer error");
+            }
+            if (entry.getValue() == null) {
+                throw new NullPointerException(
+                        "domainKeks contains a null value for key " + entry.getKey());
+            }
+        }
         deks = Map.copyOf(deks);
         domainKeks = Map.copyOf(domainKeks);
         hkdfSalt = hkdfSalt.clone();
@@ -55,6 +79,21 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
     @Override
     public byte[] hkdfSalt() {
         return hkdfSalt.clone();
+    }
+
+    /**
+     * Best-effort zeroization of the authoritative (internal) salt byte[] backing this shard.
+     * Intended for shutdown / close paths where the shard is about to be dropped and R69 requires
+     * the salt bytes to be scrubbed from memory before GC reclaims them.
+     *
+     * <p>
+     * Package-private on purpose: external callers must not be able to corrupt a live shard. After
+     * this call, any subsequent {@link #hkdfSalt()} invocation returns a clone of zero-filled bytes
+     * and any HKDF derivation using this shard will silently produce wrong keys — so call only when
+     * the shard is unreachable to functional consumers.
+     */
+    void zeroizeSalt() {
+        Arrays.fill(hkdfSalt, (byte) 0);
     }
 
     /**

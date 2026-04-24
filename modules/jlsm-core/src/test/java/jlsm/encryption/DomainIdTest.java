@@ -24,9 +24,20 @@ class DomainIdTest {
     }
 
     @Test
-    void constructor_accepts_walReservedName() {
-        // R75: synthetic "_wal" domain is valid; encryption layer treats as opaque.
-        final DomainId wal = new DomainId("_wal");
+    void constructor_rejects_walReservedName() {
+        // R75: synthetic "_wal" is reserved for the WAL encryption domain. Public
+        // callers must not supply it via the constructor — they obtain the
+        // synthetic instance via DomainId.forWal() (the only sanctioned factory).
+        // Rejecting "_wal" here prevents user-data scopes from colliding with the
+        // internal WAL scope in the per-tenant key registry.
+        assertThrows(IllegalArgumentException.class, () -> new DomainId("_wal"));
+    }
+
+    @Test
+    void forWal_returns_walReservedDomain() {
+        // The synthetic WAL domain IS a DomainId (R71), accessible only via the
+        // dedicated factory.
+        final DomainId wal = DomainId.forWal();
         assertEquals("_wal", wal.value());
     }
 

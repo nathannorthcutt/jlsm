@@ -1,7 +1,6 @@
 package jlsm.encryption.internal;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -123,12 +122,35 @@ public final class TenantShardRegistry implements AutoCloseable {
             final KeyRegistryShard current = entry.snapshot.get();
             final ShardUpdate<R> update = mutator.apply(current);
             Objects.requireNonNull(update, "mutator must not return null");
+            // Enforce R82a per-tenant isolation at the registry boundary: the mutator must
+            // return a shard whose internal tenantId matches the routing key. Without this
+            // guard, a caller-supplied mutator could publish a wrong-tenant shard under the
+            // routing key (F-R1.dispatch_routing.1.01). Storage also validates this, but the
+            // registry is the authoritative enforcement point for the isolation contract.
+            if (!update.newShard().tenantId().equals(tenantId)) {
+                throw new IllegalStateException(
+                        "mutator returned shard for wrong tenant: expected " + tenantId + ", got "
+                                + update.newShard().tenantId() + " (F-R1.dispatch_routing.1.01)");
+            }
             // Close may have executed while the mutator was running (close does not acquire
             // writerLock). Re-check before the durable write so a racing close cannot allow a
             // phantom post-close write to commit to disk (R62/R62a). The mutator's effects on
             // its own local state are discarded; no shard file is created/updated.
             requireOpen();
             storage.writeShard(tenantId, update.newShard());
+            // Close may have CAS'd closed=false→true between our pre-writeShard
+            // requireOpen() at line 140 and here — close() does not acquire writerLock
+            // and runs concurrently with an in-flight writer that is inside writeShard's
+            // fsync window. If so, unconditionally calling snapshot.set below would
+            // re-publish a non-null snapshot on a TenantEntry that close()'s
+            // getAndSet(null)/zeroizeSalt has already drained — I-CL violated
+            // (F-R1.shared_state.2.1). Re-check closed here and throw
+            // IllegalStateException rather than re-publishing. The on-disk shard
+            // already reflects this update; the F-R1.concurrency.2.2 guard at line 140
+            // only closed the pre-writeShard window and an orthogonal during-writeShard
+            // fence would require close() to drain writers (incompatible with the
+            // non-blocking close() contract used elsewhere in this registry).
+            requireOpen();
             entry.snapshot.set(update.newShard());
             return update.result();
         } finally {
@@ -155,7 +177,11 @@ public final class TenantShardRegistry implements AutoCloseable {
         for (TenantEntry entry : tenants.values()) {
             final KeyRegistryShard snap = entry.snapshot.getAndSet(null);
             if (snap != null) {
-                Arrays.fill(snap.hkdfSalt(), (byte) 0);
+                // Zero the authoritative internal salt array — KeyRegistryShard.hkdfSalt()
+                // returns a defensive clone, so Arrays.fill on the accessor result would
+                // scrub only a throwaway copy. zeroizeSalt() touches the real backing
+                // array, satisfying R69's best-effort zeroization contract.
+                snap.zeroizeSalt();
             }
         }
         tenants.clear();
@@ -198,7 +224,10 @@ public final class TenantShardRegistry implements AutoCloseable {
         if (closed.get()) {
             final KeyRegistryShard orphan = created.snapshot.getAndSet(null);
             if (orphan != null) {
-                Arrays.fill(orphan.hkdfSalt(), (byte) 0);
+                // Zero the authoritative internal salt array (same rationale as close()
+                // above — the public accessor clones, so a direct Arrays.fill on it is
+                // a no-op on the real bytes).
+                orphan.zeroizeSalt();
             }
             tenants.remove(tenantId, created);
             throw new IllegalStateException("TenantShardRegistry is closed");
