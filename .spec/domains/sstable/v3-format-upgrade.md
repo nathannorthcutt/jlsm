@@ -1,14 +1,15 @@
 ---
 {
   "id": "sstable.v3-format-upgrade",
-  "version": 2,
+  "version": 3,
   "status": "ACTIVE",
   "state": "APPROVED",
   "domains": [
     "sstable"
   ],
   "requires": [
-    "compression.codec-contract"
+    "compression.codec-contract",
+    "encryption.ciphertext-envelope"
   ],
   "invalidates": [],
   "amends": null,
@@ -189,6 +190,17 @@ The ADR must be updated before implementation to maintain consistency.
 - ADR: sstable-block-compression-format — v2 format being extended.
 
 ---
+
+## Amendments
+
+### Amended: v3 — 2026-04-23 — declare encryption.ciphertext-envelope dependency
+
+- **Frontmatter `requires` extended** to include `encryption.ciphertext-envelope`.
+- **No requirement text changed.** SSTable data blocks persist entry payloads as opaque bytes; the framing, compression, and per-block checksum requirements here do not inspect payload content. When encryption is configured at the field level, entry payloads may contain per-field ciphertext conforming to `encryption.ciphertext-envelope` R1. The new requires makes this cross-tier relationship explicit at the manifest level.
+
+Rationale: the tier hierarchy from `encryption.primitives-lifecycle` R22 and R74 asserts that per-field ciphertext flows unchanged from ingress through MemTable, WAL, and SSTable. Before v3, no SSTable spec declared any encryption dependency — the invariant was documented only at the lifecycle layer. Adding the requires at the SSTable format spec makes the dependency-graph complete: a tool that enumerates "what specs touch the on-disk ciphertext layout?" will now find `sstable.v3-format-upgrade` alongside `wal.encryption` and `serialization.encrypted-field-serialization`.
+
+This is a declarative amendment. No SSTable implementation behaviour changes; the SSTable writer continues to treat entry payloads as opaque.
 
 ## Verification Notes
 

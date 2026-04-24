@@ -177,7 +177,8 @@ public final class FieldEncryptionDispatch {
                     final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder,
                             bounds[0], bounds[1]);
                     final int maxBytes = opeMaxBytes(fd.type());
-                    // @spec encryption.primitives-variants.R54, F41.R22 — derive per-field MAC key
+                    // @spec encryption.primitives-variants.R54, encryption.ciphertext-envelope.R1 —
+                    // derive per-field MAC key
                     // and bind MAC to field name
                     final byte[] masterKey = keyHolder.getKeyBytes();
                     final SecretKeySpec macKeySpec;
@@ -344,7 +345,8 @@ public final class FieldEncryptionDispatch {
      *
      * @see #opeDecryptTyped
      */
-    // @spec encryption.primitives-variants.R21,R54, F41.R22 — 25-byte OPE format with detached MAC
+    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1 — 25-byte OPE
+    // format with detached MAC
     private static byte[] opeEncryptTyped(BoldyrevaOpeEncryptor ope, byte[] plaintext, int maxBytes,
             SecretKeySpec macKeySpec, byte[] associatedData) {
         if (plaintext == null) {
@@ -374,7 +376,8 @@ public final class FieldEncryptionDispatch {
      *
      * @see #opeEncryptTyped
      */
-    // @spec encryption.primitives-variants.R21,R54, F41.R22 — verify MAC in constant time, then OPE
+    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1 — verify MAC
+    // in constant time, then OPE
     // inverse
     private static byte[] opeDecryptTyped(BoldyrevaOpeEncryptor ope, byte[] ciphertext,
             int maxBytes, SecretKeySpec macKeySpec, byte[] associatedData) {

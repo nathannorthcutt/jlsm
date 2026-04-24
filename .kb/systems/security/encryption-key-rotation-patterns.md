@@ -15,6 +15,8 @@ applies_to: []
 related:
   - "systems/security/jvm-key-handling-patterns.md"
   - "systems/security/three-level-key-hierarchy.md"
+  - "systems/security/sstable-block-level-ciphertext-envelope.md"
+  - "systems/security/dek-revocation-vs-rotation.md"
   - "algorithms/encryption/searchable-encryption-schemes.md"
 decision_refs: ["encryption-key-rotation", "per-field-key-binding"]
 sources:

@@ -1,7 +1,7 @@
 ---
 {
   "id": "serialization.encrypted-field-serialization",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
   "state": "APPROVED",
   "domains": [
@@ -10,7 +10,8 @@
   ],
   "requires": [
     "encryption.primitives-variants",
-    "encryption.primitives-dispatch"
+    "encryption.primitives-dispatch",
+    "encryption.ciphertext-envelope"
   ],
   "invalidates": [],
   "amends": null,
@@ -31,7 +32,7 @@ R2. The document serializer must apply field encryption after type-specific seri
 
 R3. For distance-preserving encrypted vector fields, the serializer must encrypt the float array directly (not the serialized bytes) and serialize the encrypted float array. Decryption must deserialize to a float array first, then apply DCPE decryption using the stored perturbation seed.
 
-R4. The serializer must store the DCPE perturbation seed and detached authentication tag alongside each distance-preserving encrypted vector value. The serialized format for a DCPE vector field must be an 8-byte big-endian perturbation seed followed by dimensions * 4 bytes of encrypted float values (each float stored as 4-byte big-endian IEEE-754) followed by a 16-byte HMAC-SHA256 authentication tag. Both seed and tag must be included in the serialized output so that decryption can authenticate and reconstruct the original vector. See R79 for MAC derivation and verification requirements.
+R4. The serializer must store the DCPE perturbation seed and detached authentication tag alongside each distance-preserving encrypted vector value. The DCPE on-disk layout is canonically specified in `encryption.ciphertext-envelope` R1 (the DistancePreserving variant): `[4B DEK version | 8B perturbation seed | N*4B encrypted floats | 16B detached HMAC-SHA256 tag]`, total `8 + N*4 + 20` bytes. Both seed and tag must be included in the serialized output so that decryption can authenticate and reconstruct the original vector. MAC derivation and verification requirements are defined by `encryption.primitives-variants` R79. This requirement preserves `@spec serialization.encrypted-field-serialization.R4` annotations; the canonical byte layout now lives in the envelope spec.
 
 R5. For fields with the none encryption specification, the serializer must not invoke any encryption or decryption operation, regardless of whether a key holder is present.
 
@@ -47,3 +48,10 @@ Extracted from F03 application-layer requirements during the F03 follow-up
 split (2026-04-20). Behavior is the F03 originals — see git history of
 `.spec/_archive/migration-2026-04-20/encryption/F03-encrypt-memory-data.md`
 for the original phrasing and design rationale.
+
+### Amended: v2 — 2026-04-23 — depend on encryption.ciphertext-envelope
+
+- **Frontmatter `requires` extended** to include `encryption.ciphertext-envelope`. Declares the previously-implicit dependency explicit at the manifest level.
+- **R4 rewritten** to reference `encryption.ciphertext-envelope.R1` (DistancePreserving variant) for the canonical DCPE byte layout. The inline duplication of the layout bytes is removed; `@spec serialization.encrypted-field-serialization.R4` annotations remain valid (the ID still exists and still asserts the same contract via normative pointer). No behavioural change.
+
+Rationale: before v2, R4 duplicated the DCPE on-disk layout inline. The extraction of `encryption.ciphertext-envelope` (encryption.primitives-lifecycle v8) made it possible — and safer — to cite a single canonical source. This eliminates the drift risk between R4's inline bytes and F41.R22's inline bytes that existed pre-split.

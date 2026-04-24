@@ -4,6 +4,9 @@ Overflow entries from `.kb/CLAUDE.md` Recently Added table.
 
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-22 | patterns | concurrency | torn-volatile-publish-multi-field |
+| 2026-04-22 | patterns | resource-management | pool-close-with-outstanding-acquires |
+| 2026-04-22 | patterns | validation | partial-init-no-rollback |
 | 2026-04-13 | distributed-systems | cluster-membership | fail-slow-detection |
 | 2026-04-13 | distributed-systems | query-execution | distributed-scan-cursors |
 | 2026-04-13 | systems | database-engines | schema-type-systems |

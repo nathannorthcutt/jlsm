@@ -238,7 +238,8 @@ class DcpeSapEncryptorTest {
 
     // ── Blob encoding ──────────────────────────────────────────────────────
 
-    // @spec serialization.encrypted-field-serialization.R4, F41.R22 — blob round-trips through
+    // @spec serialization.encrypted-field-serialization.R4, encryption.ciphertext-envelope.R1 —
+    // blob round-trips through
     // toBlob/fromBlob
     @Test
     void blob_roundTrip() {

@@ -17,11 +17,14 @@
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 10 | 2026-04-20 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 7 | 25 | 2026-04-19 |
 | patterns | [patterns/](patterns/CLAUDE.md) | 7 | 45 | 2026-04-22 |
-| systems | [systems/](systems/CLAUDE.md) | 5 | 49 | 2026-04-20 |
+| systems | [systems/](systems/CLAUDE.md) | 5 | 52 | 2026-04-23 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-23 | systems | security | dek-caching-policies-multi-tenant |
+| 2026-04-23 | systems | security | dek-revocation-vs-rotation |
+| 2026-04-23 | systems | security | sstable-block-level-ciphertext-envelope |
 | 2026-04-22 | patterns | validation | version-discovery-self-only-no-external-cross-check |
 | 2026-04-22 | patterns | validation | dispatch-discriminant-corruption-bypass |
 | 2026-04-22 | patterns | validation | silent-fallthrough-integrity-defense-coupled-to-flag |
@@ -29,9 +32,6 @@
 | 2026-04-22 | patterns | resource-management | unbounded-zero-progress-channel-read-loop |
 | 2026-04-22 | patterns | resource-management | iterator-without-close-holds-coordination |
 | 2026-04-22 | patterns | concurrency | check-then-act-across-paired-acquire-release |
-| 2026-04-22 | patterns | concurrency | torn-volatile-publish-multi-field |
-| 2026-04-22 | patterns | resource-management | pool-close-with-outstanding-acquires |
-| 2026-04-22 | patterns | validation | partial-init-no-rollback |
 
 ## Shared References
 `_refs/complexity-notation.md` — notation key used in algorithm files
