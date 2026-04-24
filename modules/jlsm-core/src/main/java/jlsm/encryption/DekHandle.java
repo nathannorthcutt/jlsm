@@ -3,16 +3,17 @@ package jlsm.encryption;
 import java.util.Objects;
 
 /**
- * Opaque handle identifying a specific DEK version within a
- * {@code (tenant, domain, table)} scope. Handles do not expose raw DEK bytes —
- * derivation of field keys from a DEK is always routed through
- * {@code EncryptionKeyHolder.deriveFieldKey(...)} (R9).
+ * Opaque handle identifying a specific DEK version within a {@code (tenant, domain, table)} scope.
+ * Handles do not expose raw DEK bytes — derivation of field keys from a DEK is always routed
+ * through {@code EncryptionKeyHolder.deriveFieldKey(...)} (R9).
  *
- * <p>Handles are cheap value objects: they can be freely stored, compared, and
- * serialized. They carry no state of their own — resolving a handle to usable key
- * material requires calling back into the facade that produced it.
+ * <p>
+ * Handles are cheap value objects: they can be freely stored, compared, and serialized. They carry
+ * no state of their own — resolving a handle to usable key material requires calling back into the
+ * facade that produced it.
  *
- * <p>Governed by: spec {@code encryption.primitives-lifecycle} R81, R81a.
+ * <p>
+ * Governed by: spec {@code encryption.primitives-lifecycle} R81, R81a.
  *
  * @param tenantId the owning tenant
  * @param domainId the owning data domain

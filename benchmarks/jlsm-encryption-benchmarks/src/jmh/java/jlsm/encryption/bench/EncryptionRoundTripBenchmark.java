@@ -4,7 +4,7 @@ import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.DcpeSapEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -59,8 +59,8 @@ public class EncryptionRoundTripBenchmark {
         }
     }
 
-    private EncryptionKeyHolder keyHolder64;
-    private EncryptionKeyHolder keyHolder32;
+    private OffHeapKeyMaterial keyHolder64;
+    private OffHeapKeyMaterial keyHolder32;
 
     private AesSivEncryptor siv;
     private AesGcmEncryptor gcm;
@@ -79,8 +79,8 @@ public class EncryptionRoundTripBenchmark {
         for (int i = 0; i < 32; i++) {
             key32[i] = (byte) (0xB0 + i);
         }
-        keyHolder64 = EncryptionKeyHolder.of(key64);
-        keyHolder32 = EncryptionKeyHolder.of(key32);
+        keyHolder64 = OffHeapKeyMaterial.of(key64);
+        keyHolder32 = OffHeapKeyMaterial.of(key32);
 
         siv = new AesSivEncryptor(keyHolder64);
         gcm = new AesGcmEncryptor(keyHolder32);

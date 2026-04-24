@@ -5,31 +5,27 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Persisted record of a wrapped DEK. Stored inside a tenant's key registry shard
- * (R19). The wrapped bytes are produced by AES-GCM wrapping the DEK under a specific
- * version of the tenant's domain KEK ({@code domainKekVersion}), which was itself
- * wrapped under the tenant's KMS KEK ({@code tenantKekRef}) at the time of the
- * outer wrap.
+ * Persisted record of a wrapped DEK. Stored inside a tenant's key registry shard (R19). The wrapped
+ * bytes are produced by AES-GCM wrapping the DEK under a specific version of the tenant's domain
+ * KEK ({@code domainKekVersion}), which was itself wrapped under the tenant's KMS KEK
+ * ({@code tenantKekRef}) at the time of the outer wrap.
  *
- * <p>Defensive copies are made for {@code wrappedBytes} on both construction and
- * accessor to keep the on-disk record immutable from the perspective of any caller
- * holding a reference.
+ * <p>
+ * Defensive copies are made for {@code wrappedBytes} on both construction and accessor to keep the
+ * on-disk record immutable from the perspective of any caller holding a reference.
  *
- * <p>Governed by: spec {@code encryption.primitives-lifecycle} R19.
+ * <p>
+ * Governed by: spec {@code encryption.primitives-lifecycle} R19.
  *
  * @param handle the scope this DEK is bound to
  * @param wrappedBytes opaque ciphertext (defensively copied)
  * @param domainKekVersion version of the wrapping domain KEK (positive)
- * @param tenantKekRef the KMS KEK version that wrapped the domain KEK at the time of
- *                     this DEK's wrap
+ * @param tenantKekRef the KMS KEK version that wrapped the domain KEK at the time of this DEK's
+ *            wrap
  * @param createdAt wall-clock timestamp when this wrap was produced
  */
-public record WrappedDek(
-        DekHandle handle,
-        byte[] wrappedBytes,
-        int domainKekVersion,
-        KekRef tenantKekRef,
-        Instant createdAt) {
+public record WrappedDek(DekHandle handle, byte[] wrappedBytes, int domainKekVersion,
+        KekRef tenantKekRef, Instant createdAt) {
 
     /**
      * @throws NullPointerException if any reference is null
@@ -48,8 +44,8 @@ public record WrappedDek(
     }
 
     /**
-     * Returns a fresh copy of the wrapped bytes. Callers must not assume two
-     * invocations return the same array instance.
+     * Returns a fresh copy of the wrapped bytes. Callers must not assume two invocations return the
+     * same array instance.
      */
     @Override
     public byte[] wrappedBytes() {
@@ -64,11 +60,9 @@ public record WrappedDek(
         if (!(o instanceof WrappedDek other)) {
             return false;
         }
-        return domainKekVersion == other.domainKekVersion
-                && handle.equals(other.handle)
+        return domainKekVersion == other.domainKekVersion && handle.equals(other.handle)
                 && Arrays.equals(wrappedBytes, other.wrappedBytes)
-                && tenantKekRef.equals(other.tenantKekRef)
-                && createdAt.equals(other.createdAt);
+                && tenantKekRef.equals(other.tenantKekRef) && createdAt.equals(other.createdAt);
     }
 
     @Override
@@ -83,16 +77,8 @@ public record WrappedDek(
 
     @Override
     public String toString() {
-        return "WrappedDek[handle="
-                + handle
-                + ", wrappedBytes=<"
-                + wrappedBytes.length
-                + " bytes>, domainKekVersion="
-                + domainKekVersion
-                + ", tenantKekRef="
-                + tenantKekRef
-                + ", createdAt="
-                + createdAt
-                + "]";
+        return "WrappedDek[handle=" + handle + ", wrappedBytes=<" + wrappedBytes.length
+                + " bytes>, domainKekVersion=" + domainKekVersion + ", tenantKekRef=" + tenantKekRef
+                + ", createdAt=" + createdAt + "]";
     }
 }

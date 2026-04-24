@@ -1,13 +1,15 @@
 package jlsm.encryption;
 
 /**
- * A KMS failure that may succeed on retry. Examples: request throttling, socket
- * timeout, 5xx responses from a hosted KMS provider.
+ * A KMS failure that may succeed on retry. Examples: request throttling, socket timeout, 5xx
+ * responses from a hosted KMS provider.
  *
- * <p>Non-sealed so observability-focused subclasses (e.g.,
- * {@link KmsRateLimitExceededException}) can further specialise.
+ * <p>
+ * Non-sealed so observability-focused subclasses (e.g., {@link KmsRateLimitExceededException}) can
+ * further specialise.
  *
- * <p>Governed by: spec {@code encryption.primitives-lifecycle} R76a.
+ * <p>
+ * Governed by: spec {@code encryption.primitives-lifecycle} R76a.
  */
 public non-sealed class KmsTransientException extends KmsException {
 

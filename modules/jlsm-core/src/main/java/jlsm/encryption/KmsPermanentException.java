@@ -1,10 +1,11 @@
 package jlsm.encryption;
 
 /**
- * A KMS failure that will not succeed on retry. Examples: access denied, key disabled,
- * key not found, malformed request.
+ * A KMS failure that will not succeed on retry. Examples: access denied, key disabled, key not
+ * found, malformed request.
  *
- * <p>Governed by: spec {@code encryption.primitives-lifecycle} R76a.
+ * <p>
+ * Governed by: spec {@code encryption.primitives-lifecycle} R76a.
  */
 public final class KmsPermanentException extends KmsException {
 

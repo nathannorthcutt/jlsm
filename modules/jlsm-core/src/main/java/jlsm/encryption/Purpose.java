@@ -1,12 +1,12 @@
 package jlsm.encryption;
 
 /**
- * Closed set of purposes a cryptographic operation may carry. The purpose binds into
- * the {@link EncryptionContext} AAD so that a ciphertext produced for one purpose
- * cannot be reinterpreted for another.
+ * Closed set of purposes a cryptographic operation may carry. The purpose binds into the
+ * {@link EncryptionContext} AAD so that a ciphertext produced for one purpose cannot be
+ * reinterpreted for another.
  *
- * <p>Governed by: spec {@code encryption.primitives-lifecycle} R80a (closed-set
- * purposes).
+ * <p>
+ * Governed by: spec {@code encryption.primitives-lifecycle} R80a (closed-set purposes).
  */
 public enum Purpose {
 

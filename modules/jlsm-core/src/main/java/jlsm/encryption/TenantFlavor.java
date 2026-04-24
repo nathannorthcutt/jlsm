@@ -3,8 +3,9 @@ package jlsm.encryption;
 /**
  * Classifies how a tenant's KEK is managed.
  *
- * <p>Governed by: spec {@code encryption.primitives-lifecycle} R71, R71a;
- * ADR {@code .decisions/kms-integration-model/adr.md}.
+ * <p>
+ * Governed by: spec {@code encryption.primitives-lifecycle} R71, R71a; ADR
+ * {@code .decisions/kms-integration-model/adr.md}.
  */
 public enum TenantFlavor {
 

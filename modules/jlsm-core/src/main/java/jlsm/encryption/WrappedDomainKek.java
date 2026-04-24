@@ -4,23 +4,23 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Persisted record of a wrapped tier-2 domain KEK. Stored inside a tenant's key
- * registry shard alongside the DEKs that descend from it (R19, R17 tier-2). The
- * wrapped bytes are produced by AES-KWP wrapping the domain KEK plaintext under the
- * tenant's KMS KEK ({@code tenantKekRef}).
+ * Persisted record of a wrapped tier-2 domain KEK. Stored inside a tenant's key registry shard
+ * alongside the DEKs that descend from it (R19, R17 tier-2). The wrapped bytes are produced by
+ * AES-KWP wrapping the domain KEK plaintext under the tenant's KMS KEK ({@code tenantKekRef}).
  *
- * <p>Defensive copies are made for {@code wrappedBytes} on both construction and
- * accessor.
+ * <p>
+ * Defensive copies are made for {@code wrappedBytes} on both construction and accessor.
  *
- * <p>Governed by: spec {@code encryption.primitives-lifecycle} R19, R17 (tier-2).
+ * <p>
+ * Governed by: spec {@code encryption.primitives-lifecycle} R19, R17 (tier-2).
  *
  * @param domainId the tier-2 data domain this KEK belongs to
  * @param version monotonic domain-KEK version (positive)
  * @param wrappedBytes opaque ciphertext (defensively copied)
  * @param tenantKekRef the KMS KEK reference that produced the wrap
  */
-public record WrappedDomainKek(
-        DomainId domainId, int version, byte[] wrappedBytes, KekRef tenantKekRef) {
+public record WrappedDomainKek(DomainId domainId, int version, byte[] wrappedBytes,
+        KekRef tenantKekRef) {
 
     /**
      * @throws NullPointerException if any reference is null
@@ -52,8 +52,7 @@ public record WrappedDomainKek(
         if (!(o instanceof WrappedDomainKek other)) {
             return false;
         }
-        return version == other.version
-                && domainId.equals(other.domainId)
+        return version == other.version && domainId.equals(other.domainId)
                 && Arrays.equals(wrappedBytes, other.wrappedBytes)
                 && tenantKekRef.equals(other.tenantKekRef);
     }
@@ -69,14 +68,7 @@ public record WrappedDomainKek(
 
     @Override
     public String toString() {
-        return "WrappedDomainKek[domainId="
-                + domainId
-                + ", version="
-                + version
-                + ", wrappedBytes=<"
-                + wrappedBytes.length
-                + " bytes>, tenantKekRef="
-                + tenantKekRef
-                + "]";
+        return "WrappedDomainKek[domainId=" + domainId + ", version=" + version + ", wrappedBytes=<"
+                + wrappedBytes.length + " bytes>, tenantKekRef=" + tenantKekRef + "]";
     }
 }

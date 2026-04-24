@@ -4,19 +4,19 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Typed, closed-set context record describing an encryption/decryption operation. The
- * context is canonically encoded as Additional Authenticated Data (AAD) on every GCM
- * operation, so an attacker cannot move a ciphertext from one scope to another (e.g.,
- * swap a DEK wrapped for table A into a request to unwrap for table B).
+ * Typed, closed-set context record describing an encryption/decryption operation. The context is
+ * canonically encoded as Additional Authenticated Data (AAD) on every GCM operation, so an attacker
+ * cannot move a ciphertext from one scope to another (e.g., swap a DEK wrapped for table A into a
+ * request to unwrap for table B).
  *
- * <p>Factory methods enforce the required attribute keys for each {@link Purpose}
- * (R80a-1).
+ * <p>
+ * Factory methods enforce the required attribute keys for each {@link Purpose} (R80a-1).
  *
- * <p>Governed by: spec {@code encryption.primitives-lifecycle} R80, R80a, R80a-1.
+ * <p>
+ * Governed by: spec {@code encryption.primitives-lifecycle} R80, R80a, R80a-1.
  *
  * @param purpose the operation classification
- * @param attributes string-keyed string-valued attributes; defensively copied on
- *                   construction
+ * @param attributes string-keyed string-valued attributes; defensively copied on construction
  */
 public record EncryptionContext(Purpose purpose, Map<String, String> attributes) {
 
@@ -37,8 +37,7 @@ public record EncryptionContext(Purpose purpose, Map<String, String> attributes)
     public static EncryptionContext forDomainKek(TenantId tenantId, DomainId domainId) {
         Objects.requireNonNull(tenantId, "tenantId must not be null");
         Objects.requireNonNull(domainId, "domainId must not be null");
-        return new EncryptionContext(
-                Purpose.DOMAIN_KEK,
+        return new EncryptionContext(Purpose.DOMAIN_KEK,
                 Map.of("tenantId", tenantId.value(), "domainId", domainId.value()));
     }
 
@@ -47,32 +46,26 @@ public record EncryptionContext(Purpose purpose, Map<String, String> attributes)
      *
      * @throws NullPointerException if any argument is null
      */
-    public static EncryptionContext forDek(
-            TenantId tenantId, DomainId domainId, TableId tableId, DekVersion dekVersion) {
+    public static EncryptionContext forDek(TenantId tenantId, DomainId domainId, TableId tableId,
+            DekVersion dekVersion) {
         Objects.requireNonNull(tenantId, "tenantId must not be null");
         Objects.requireNonNull(domainId, "domainId must not be null");
         Objects.requireNonNull(tableId, "tableId must not be null");
         Objects.requireNonNull(dekVersion, "dekVersion must not be null");
-        return new EncryptionContext(
-                Purpose.DEK,
-                Map.of(
-                        "tenantId", tenantId.value(),
-                        "domainId", domainId.value(),
-                        "tableId", tableId.value(),
-                        "dekVersion", Integer.toString(dekVersion.value())));
+        return new EncryptionContext(Purpose.DEK,
+                Map.of("tenantId", tenantId.value(), "domainId", domainId.value(), "tableId",
+                        tableId.value(), "dekVersion", Integer.toString(dekVersion.value())));
     }
 
     /**
-     * Build a context for the sentinel operation produced during cascading lazy
-     * rewrap.
+     * Build a context for the sentinel operation produced during cascading lazy rewrap.
      *
      * @throws NullPointerException if any argument is null
      */
     public static EncryptionContext forRekeySentinel(TenantId tenantId, DomainId domainId) {
         Objects.requireNonNull(tenantId, "tenantId must not be null");
         Objects.requireNonNull(domainId, "domainId must not be null");
-        return new EncryptionContext(
-                Purpose.REKEY_SENTINEL,
+        return new EncryptionContext(Purpose.REKEY_SENTINEL,
                 Map.of("tenantId", tenantId.value(), "domainId", domainId.value()));
     }
 
@@ -84,8 +77,7 @@ public record EncryptionContext(Purpose purpose, Map<String, String> attributes)
     public static EncryptionContext forHealthCheck(TenantId tenantId, DomainId domainId) {
         Objects.requireNonNull(tenantId, "tenantId must not be null");
         Objects.requireNonNull(domainId, "domainId must not be null");
-        return new EncryptionContext(
-                Purpose.HEALTH_CHECK,
+        return new EncryptionContext(Purpose.HEALTH_CHECK,
                 Map.of("tenantId", tenantId.value(), "domainId", domainId.value()));
     }
 }

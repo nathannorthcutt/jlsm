@@ -3,13 +3,13 @@ package jlsm.encryption;
 import java.util.Objects;
 
 /**
- * Opaque KMS key reference. The string form is provider-dependent (an AWS KMS ARN, a
- * GCP KMS resource name, a HashiCorp Vault path, a local filesystem UUID, etc.). The
- * encryption layer treats this as opaque and passes it through to the {@link KmsClient}
- * SPI.
+ * Opaque KMS key reference. The string form is provider-dependent (an AWS KMS ARN, a GCP KMS
+ * resource name, a HashiCorp Vault path, a local filesystem UUID, etc.). The encryption layer
+ * treats this as opaque and passes it through to the {@link KmsClient} SPI.
  *
- * <p>Governed by: {@code .decisions/kms-integration-model/adr.md};
- * spec {@code encryption.primitives-lifecycle} R78, R80.
+ * <p>
+ * Governed by: {@code .decisions/kms-integration-model/adr.md}; spec
+ * {@code encryption.primitives-lifecycle} R78, R80.
  *
  * @param value non-null, non-empty KMS reference string
  */
