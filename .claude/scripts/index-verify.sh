@@ -88,7 +88,10 @@ if [[ "$CHECK_KB" == "1" && -d ".kb" && -f ".kb/CLAUDE.md" ]]; then
 
     # Check Recently Added has entries if subject files exist
     subject_count="$(find .kb -name '*.md' ! -name 'CLAUDE.md' ! -path '*/_refs/*' ! -path '*/_archive*' 2>/dev/null | wc -l)"
-    recently_added_count="$(sed -n '/## Recently Added/,/^## /p' ".kb/CLAUDE.md" 2>/dev/null | grep -v 'Date' | grep -c '^|[^-]' || echo 0)"
+    # grep -c prints "0" and exits 1 when there are no matches; swallow the
+    # nonzero exit with `|| true` — do NOT use `|| echo 0`, which would emit
+    # a second "0" and break the subsequent [[ $var -gt 0 ]] arithmetic test.
+    recently_added_count="$(sed -n '/## Recently Added/,/^## /p' ".kb/CLAUDE.md" 2>/dev/null | grep -v 'Date' | grep -c '^|[^-]' || true)"
 
     if [[ "$subject_count" -gt 0 && "$recently_added_count" -le 1 ]]; then
         # Recently Added is empty but subjects exist — rebuild from file dates

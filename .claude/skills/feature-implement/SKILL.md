@@ -85,6 +85,11 @@ All tests were passing as of: <date from status.md>
 
 ```
 
+**In parallel mode (`execution_strategy: balanced | speed`):** do NOT call
+AskUserQuestion — chain to `/feature-refactor "<slug>" --unit WU-<n>`
+immediately.
+
+**Sequential/cost mode:**
 Use AskUserQuestion with two options:
 - "Proceed to refactor"
 - "Stop"
@@ -246,8 +251,11 @@ For each construct:
 6. After a successful compile, re-read the edited lines to verify the edit
    persisted (earlier work unit edits can silently revert if old_string was stale).
 7. Update status.md substage → "implemented: <construct name>" after each passing unit
-8. **Tendency scan** — after this construct's tests pass, check for known
-   anti-patterns before moving to the next construct:
+8. **Tendency scan (MANDATORY)** — after this construct's tests pass, check
+   for known anti-patterns before moving to the next construct. This step
+   is not optional: the compounding-KB claim depends on it firing for every
+   construct. Skipping it is a silent correctness loss.
+
    a. If `.feature/<slug>/known_issues.md` exists, read TENDENCY entries that
       apply to this construct's domain. Do NOT introduce these patterns.
    b. If `.kb/CLAUDE.md` exists, run:
@@ -257,8 +265,18 @@ For each construct:
    c. Scan your just-implemented code for matches against these patterns.
       If found: fix proactively, re-run tests, confirm still green.
       If not found: continue to next construct.
-   d. This scan should take <30 seconds. Do not deep-read more than 5 KB
-      entries. The goal is catching known anti-patterns, not a full audit.
+   d. **Checkpoint writes (MANDATORY).** After the scan — even if `.kb/` is
+      empty or produces zero matches — write both:
+      - `status.md` substage →
+        `tendency-scan-complete: <construct> — <n> patterns checked, <n> applied`
+      - `cycle-log.md` append →
+        `tendency-scan (<construct>): <n> results / <n> applied / <n> skipped`
+
+      Zero-result scans still write the checkpoint (`0 / 0 / 0`). The absence
+      of the checkpoint is the signal that the scan was skipped, so it must
+      always be present.
+   e. Budget: <30 seconds per construct, ≤5 KB entries deep-read. The goal is
+      catching known anti-patterns, not a full audit.
 
 If a test fails unexpectedly after implementation: see Escalation Protocol.
 

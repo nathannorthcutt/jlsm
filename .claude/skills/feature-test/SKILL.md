@@ -131,6 +131,11 @@ All tests verified failing.
 
 ```
 
+**In parallel mode (`execution_strategy: balanced | speed`):** do NOT call
+AskUserQuestion — chain to `/feature-implement "<slug>" --unit WU-<n>`
+immediately. No human is attached to this subagent.
+
+**Sequential/cost mode:**
 Use AskUserQuestion with two options:
 - "Proceed to implementation"
 - "Stop"
@@ -286,6 +291,18 @@ break downstream verification. Resolve this before proceeding:
   3. Or rewrite the brief title to match the domain's vocabulary.
 ```
 
+**In parallel mode (`execution_strategy: balanced | speed`):** do NOT call
+AskUserQuestion. Append a `spec-resolution-escalation` entry to
+`units/WU-<n>/cycle-log.md` (or feature-level cycle-log.md if not in a work
+unit) listing the brief title and the unmatched domains, set per-unit
+status.md substage → `escalated-spec-resolution` (or feature status.md in
+non-unit mode), return:
+```
+<slug>: ESCALATED — spec-resolution: no specs matched brief "<title>"
+```
+STOP. The coordinator (or user) triages spec selection.
+
+**Sequential/cost mode:**
 Use AskUserQuestion to offer:
 - "I'll re-invoke with --specs" — stop; user re-invokes
 - "Proceed without specs" — override: set SPEC_BUNDLE empty and continue

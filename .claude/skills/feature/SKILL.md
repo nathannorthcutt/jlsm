@@ -366,9 +366,9 @@ last_updated: "<YYYY-MM-DD HH:MM>"
 
 The `Pipeline mode` field controls which stages are active:
 
-- **full** (default) — all stages: scoping → domains → spec authoring → planning → testing → hardening → implementation → refactor
+- **full** (default) — all stages: scoping → domains → spec authoring → planning → testing → hardening → implementation → refactor → audit. The audit runs as `feature-refactor` Step 4b (delegated to `/audit`) after the first clean refactor cycle; later refactor cycles skip it unless you invoke `/audit` directly.
 - **specification** — specification-only: scoping → domains → spec authoring → complete. Used when a work definition's job is to produce artifacts (specs, ADRs, interface contracts) rather than implement behavior. Set by `/work-plan`.
-- **implementation** — implementation-only: planning → testing → hardening → implementation → refactor → complete. Skips scoping and domains (done during a prior specification phase). Starts from planning, consuming the artifacts produced by specification-phase runs. Set by `/work-start`.
+- **implementation** — implementation-only: planning → testing → hardening → implementation → refactor → audit → complete. Skips scoping and domains (done during a prior specification phase). Starts from planning, consuming the artifacts produced by specification-phase runs. Set by `/work-start`.
 
 When `pipeline_mode` is `specification`:
 - The Stage Completion table omits Planning, Testing, Hardening, Implementation, Refactor rows

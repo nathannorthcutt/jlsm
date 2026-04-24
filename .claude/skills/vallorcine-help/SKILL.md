@@ -113,8 +113,26 @@ command to run, then explain what it does and what the user can expect.
 <1-2 sentences of context: what it does, what to expect>
 ```
 
-If the question doesn't match any command, say so and suggest `/vallorcine-help`
-with no arguments to get routed interactively.
+If the question is conceptual or "how does this whole thing fit
+together?" rather than about a specific command — for example, "what's
+the difference between KB and ADRs?", "when do I use work groups?",
+"how do I get started on an existing codebase?" — point them at the
+repo-hosted onboarding guides instead of trying to answer inline:
+
+```
+That question is covered by the vallorcine onboarding guides on GitHub:
+
+  Overview + mental model:
+    https://github.com/telefrek/vallorcine/blob/main/GETTING-STARTED.md
+
+  Existing codebase adoption path:
+    https://github.com/telefrek/vallorcine/blob/main/GETTING-STARTED-EXISTING.md
+
+<1-2 sentences pointing at the specific section that answers their question>
+```
+
+If the question doesn't match any command or guide topic, say so and
+suggest `/vallorcine-help` with no arguments to get routed interactively.
 
 After answering, stop. Do not continue to the routing flow.
 
@@ -150,6 +168,13 @@ and configures everything automatically:
   /setup-vallorcine
 
 Then come back and run /vallorcine-help again.
+
+New to vallorcine? The GitHub repo has two onboarding guides that
+explain the mental model before you dive in:
+  - https://github.com/telefrek/vallorcine/blob/main/GETTING-STARTED.md
+    (overview of knowledge layers, feature pipeline, work groups)
+  - https://github.com/telefrek/vallorcine/blob/main/GETTING-STARTED-EXISTING.md
+    (for bringing vallorcine into a codebase with existing history)
 ```
 
 Stop.

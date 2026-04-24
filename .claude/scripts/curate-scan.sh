@@ -19,6 +19,13 @@
 
 set -euo pipefail
 
+# Load spec-lib for v1/v2 manifest-aware enumeration + file resolution.
+_CURATE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_CURATE_SCRIPT_DIR/spec-lib.sh" ]]; then
+    # shellcheck source=spec-lib.sh
+    source "$_CURATE_SCRIPT_DIR/spec-lib.sh"
+fi
+
 # ── Defaults ─────────────────────────────────────────────────────────────────
 
 INIT_MODE=0
@@ -988,13 +995,14 @@ if [[ -d ".spec" && -f ".spec/registry/manifest.json" ]]; then
 
     while IFS= read -r fid; do
         [[ -z "$fid" ]] && continue
-        spec_state=$(jq -r --arg id "$fid" '.features[$id].state // ""' "$MANIFEST")
+        spec_state=$(spec_manifest_state "$MANIFEST" "$fid")
         [[ "$spec_state" != "APPROVED" ]] && continue
 
-        spec_rel=$(jq -r --arg id "$fid" '.features[$id].latest_file // ""' "$MANIFEST")
-        [[ -z "$spec_rel" ]] && continue
-        spec_file=".spec/$spec_rel"
-        [[ ! -f "$spec_file" ]] && continue
+        # spec_file_for_id handles v1/v2 path normalization.
+        spec_file=$(spec_file_for_id "$MANIFEST" "$fid")
+        [[ -z "$spec_file" || ! -f "$spec_file" ]] && continue
+        # Re-derive a repo-relative form for downstream diagnostics/output.
+        spec_rel="${spec_file#"$PWD"/.spec/}"
 
         # Extract subject tokens from requirements (CamelCase + snake_case, 4+ chars)
         subject_tokens=$(awk '/^---$/{n++; next} n==2{print} n>=3{exit}' "$spec_file" \
@@ -1021,11 +1029,11 @@ if [[ -d ".spec" && -f ".spec/registry/manifest.json" ]]; then
         done
 
         if [[ "$found" == "false" ]]; then
-            spec_domains=$(jq -r --arg id "$fid" '.features[$id].domains // [] | join(",")' "$MANIFEST")
+            spec_domains=$(spec_manifest_domains_for "$MANIFEST" "$fid" | tr '\n' ',' | sed 's/,$//')
             token_list=$(echo "$subject_tokens" | tr '\n' ',' | sed 's/,$//')
             echo "ORPHANED|$fid|$spec_domains|$token_list" >> "$TMPDIR_SCAN/spec-orphaned.txt"
         fi
-    done < <(jq -r '.features | keys[]' "$MANIFEST" 2>/dev/null)
+    done < <(spec_manifest_ids "$MANIFEST")
 fi
 
 # ── Analysis 15: Cross-WD displacement (specs displaced that WDs depend on) ──
@@ -1038,16 +1046,19 @@ fi
 if [[ -d ".work" && -d ".spec" && -f ".spec/registry/manifest.json" ]]; then
     MANIFEST=".spec/registry/manifest.json"
 
-    # Collect all INVALIDATED spec paths
+    # Collect all INVALIDATED spec paths (v1/v2 manifest-aware).
     invalidated_paths=()
     while IFS= read -r fid; do
         [[ -z "$fid" ]] && continue
-        state=$(jq -r --arg id "$fid" '.features[$id].state // ""' "$MANIFEST")
+        state=$(spec_manifest_state "$MANIFEST" "$fid")
         [[ "$state" != "INVALIDATED" ]] && continue
-        rel=$(jq -r --arg id "$fid" '.features[$id].latest_file // ""' "$MANIFEST")
-        [[ -z "$rel" ]] && continue
+        absfile=$(spec_file_for_id "$MANIFEST" "$fid")
+        [[ -z "$absfile" ]] && continue
+        # Downstream compares against WD artifact_deps which store paths
+        # relative to .spec/. Re-derive that form.
+        rel="${absfile#"$PWD"/.spec/}"
         invalidated_paths+=("$rel")
-    done < <(jq -r '.features | keys[]' "$MANIFEST" 2>/dev/null)
+    done < <(spec_manifest_ids "$MANIFEST")
 
     # Check each WD's artifact_deps against invalidated specs
     # Write invalidated paths to a temp file to avoid subshell array issues

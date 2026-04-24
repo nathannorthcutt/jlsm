@@ -108,17 +108,100 @@ spec_file_for_id() {
   fi
 }
 
+# ── Manifest query helpers (v1/v2 schema-agnostic) ───────────────────────────
+# v1 schema: {"features": {"F01": {...}}, "domains": {"compression": {...}}}
+# v2 schema: {"schema_version": 2, "specs": [{"id": "...", "domains": [...]}]}
+# Every helper below detects the schema by probing for the `.specs` array.
+
+# Emit every spec ID in the manifest, one per line.
+spec_manifest_ids() {
+  local manifest="$1"
+  jq -r '
+    if .specs then .specs[].id
+    else (.features // {}) | keys[]
+    end
+  ' "$manifest" 2>/dev/null
+}
+
+# Emit the state for a single spec ID.
+spec_manifest_state() {
+  local manifest="$1" fid="$2"
+  jq -r --arg id "$fid" '
+    if .specs then ((.specs[] | select(.id == $id) | .state) // "")
+    else (.features[$id].state // "")
+    end
+  ' "$manifest" 2>/dev/null
+}
+
+# Emit the domains for a single spec ID, one per line.
+spec_manifest_domains_for() {
+  local manifest="$1" fid="$2"
+  jq -r --arg id "$fid" '
+    if .specs then ((.specs[] | select(.id == $id) | .domains // []) | .[])
+    else (.features[$id].domains // [] | .[])
+    end
+  ' "$manifest" 2>/dev/null
+}
+
+# Emit the unique set of all domains across the manifest, one per line.
+spec_manifest_all_domains() {
+  local manifest="$1"
+  jq -r '
+    if .specs then ([.specs[].domains[]] | unique | .[])
+    else ((.domains // {}) | keys[])
+    end
+  ' "$manifest" 2>/dev/null
+}
+
+# Report whether this is a v2 manifest. Returns 0 (v2) or 1 (v1/unknown).
+spec_manifest_is_v2() {
+  local manifest="$1"
+  [[ "$(jq -r 'has("specs")' "$manifest" 2>/dev/null)" == "true" ]]
+}
+
 # ── Update manifest registry entry atomically via temp file ──────────────────
-# latest_file is relative to .spec/ directory.
+# v1: latest_file relative to .spec/; schema is {"features": {fid: {...}}}.
+# v2: path relative to repo root (".spec/domains/..."); schema is
+#     {"schema_version": 2, "specs": [{"id": ..., "path": ..., ...}]}.
+# Callers pass the v1-style latest_file; this function normalizes for v2.
 spec_registry_update() {
   local manifest="$1" fid="$2" latest_file="$3" state="$4"
   local domains_json="${5:-[]}"
   local tmp
   tmp=$(mktemp)
-  jq --arg id "$fid" --arg lf "$latest_file" --arg st "$state" \
-    --argjson doms "$domains_json" \
-    '.features[$id] = {"latest_file": $lf, "state": $st, "domains": $doms}' \
-    "$manifest" > "$tmp" && mv "$tmp" "$manifest"
+  if spec_manifest_is_v2 "$manifest"; then
+    # v2 stores paths relative to the repo root. Prepend .spec/ only if the
+    # caller hasn't already included it (callers historically pass paths like
+    # "domains/foo/F01-x.md").
+    local v2_path="$latest_file"
+    [[ "$v2_path" != .spec/* ]] && v2_path=".spec/$v2_path"
+    jq --arg id "$fid" --arg p "$v2_path" --arg st "$state" \
+      --argjson doms "$domains_json" \
+      '
+        .specs = (
+          (.specs // [])
+          | map(select(.id != $id))
+          | . + [{
+              "id": $id,
+              "path": $p,
+              "state": $st,
+              "version": 1,
+              "domains": $doms,
+              "requires": [],
+              "invalidates": [],
+              "decision_refs": [],
+              "kb_refs": []
+            }]
+        )
+        | .spec_count = (.specs | length)
+        | .generated_at = (now | todate)
+      ' "$manifest" > "$tmp" && mv "$tmp" "$manifest"
+  else
+    jq --arg id "$fid" --arg lf "$latest_file" --arg st "$state" \
+      --argjson doms "$domains_json" \
+      '.features[$id] = {"latest_file": $lf, "state": $st, "domains": $doms}' \
+      "$manifest" > "$tmp" && mv "$tmp" "$manifest"
+  fi
   echo "[registry] $fid -> $latest_file ($state)" >&2
 }
 

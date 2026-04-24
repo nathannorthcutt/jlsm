@@ -931,7 +931,9 @@ Ask the user using AskUserQuestion for each RELAX-<N>:
      prove-fix to confirm the fix now lands.
   2. "Accept as wontfix" — the old behavior is authoritative (backward
      compat, external contract). Record the finding in the report as a
-     known-accepted-risk with rationale.
+     known-accepted-risk with rationale, and log a non-blocking
+     `wontfix:` obligation on the most-relevant spec so `/curate`
+     analysis 19 can resurface it if the rationale ever stales.
   3. "Escalate to /spec-author" — the pin test encodes an implicit spec
      requirement that was never written down. Author the spec, then the
      decision becomes a normal spec-conflict.
@@ -950,6 +952,26 @@ contract pins this behavior; cannot change without versioned migration").
 Update the prove-fix output's `fix_detail` to record the user's
 rationale. The finding stays FIX_IMPOSSIBLE in the audit report but is
 now explicitly accepted, not silent drag.
+
+Then, **if `.spec/` exists and a relevant spec can be identified** (same
+heuristic used for option 4 — domain matches the construct under test),
+append a non-blocking obligation to that spec's `open_obligations` array:
+
+```
+"wontfix: <finding ID> — <brief rationale>"
+```
+
+The `wontfix:` prefix lets humans reading `/curate` output distinguish
+accepted-risk entries from deferred work. **Unlike option 4, the spec
+stays APPROVED** — wontfix is a landed design decision, not a gap.
+The obligation is the resurface hook: `/curate` analysis 19 ages it by
+last-commit time and flags it once it exceeds `--obligation-age-days`
+(default 30). A human reviewing the curate report can then decide
+whether the rationale still holds or the wontfix is now fixable.
+
+If `.spec/` is absent or no relevant spec exists, skip the obligation
+write — the audit report entry is the only durable record. Note this in
+the prove-fix output so reviewers know the resurface hook is not wired.
 
 For option 3: invoke `/spec-author` with a brief describing the pinned
 behavior the test encodes. After spec-author returns, re-evaluate the

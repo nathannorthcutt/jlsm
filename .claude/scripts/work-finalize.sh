@@ -11,6 +11,11 @@
 
 set -euo pipefail
 
+# Load spec-lib for v1/v2 manifest-aware file resolution.
+_WF_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=spec-lib.sh
+source "$_WF_SCRIPT_DIR/spec-lib.sh"
+
 SLUG="${1:-}"
 [[ -z "$SLUG" ]] && { echo "Usage: work-finalize.sh <feature-slug>" >&2; exit 0; }
 
@@ -149,11 +154,14 @@ SPEC_IDS=($(printf '%s\n' "${SPEC_IDS[@]}" 2>/dev/null | sort -u))
 
 MANIFEST=".spec/registry/manifest.json"
 for spec_id in "${SPEC_IDS[@]}"; do
-    # Find the spec file via manifest
+    # Find the spec file via manifest (v1 + v2 schema-aware lookup).
     spec_file=""
     if [[ -f "$MANIFEST" ]]; then
-        rel_path="$(jq -r --arg id "$spec_id" '.features[$id].latest_file // ""' "$MANIFEST" 2>/dev/null || true)"
-        [[ -n "$rel_path" ]] && spec_file=".spec/$rel_path"
+        resolved="$(spec_file_for_id "$MANIFEST" "$spec_id" 2>/dev/null || true)"
+        if [[ -n "$resolved" && -f "$resolved" ]]; then
+            # Convert to repo-relative path for downstream grep/sed operations.
+            spec_file="${resolved#"$PWD"/}"
+        fi
     fi
 
     # Fallback: search .spec/domains/

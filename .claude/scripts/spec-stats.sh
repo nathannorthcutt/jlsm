@@ -33,8 +33,7 @@ done < <(find "$SPEC_DIR/domains" -name "*.md" ! -name "INDEX.md" -print0 2>/dev
 
 OPEN_OBLIGATIONS=$(jq '[.obligations[] | select(.status=="open")] | length' \
   "$OBLIGATIONS" 2>/dev/null || echo 0)
-DOMAINS=$(jq '.domains | keys | length' \
-  "$MANIFEST" 2>/dev/null || echo 0)
+DOMAINS=$(spec_manifest_all_domains "$MANIFEST" 2>/dev/null | grep -c . || echo 0)
 
 cat <<EOF
 # Spec Corpus Health

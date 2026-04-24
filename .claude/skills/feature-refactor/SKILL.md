@@ -60,6 +60,15 @@ Count completed `refactor-complete` entries in cycle-log.md to get cycle number.
 Stop and display: "We've completed 5 refactor cycles and you approved continuation.
 Continue with cycle 6?"
 
+**In parallel mode (`execution_strategy: balanced | speed`):** do NOT call
+AskUserQuestion. Append a `cycle-cap-escalation` entry to
+`units/WU-<n>/cycle-log.md`, set substage → `escalated-cycle-cap`, return:
+```
+WU-<n>: ESCALATED — cycle-cap reached at cycle <n>
+```
+STOP. Coordinator triages whether to approve another cycle.
+
+**Sequential/cost mode:**
 Use AskUserQuestion with options:
   - "Proceed"
   - "Stop here"
@@ -214,9 +223,24 @@ Run tests after changes.
 - No micro-optimisation — only obvious, high-impact fixes
 Run tests after changes.
 
-**Structural escalation (both modes):** If 2c or 2d reveals an issue requiring
-interface changes, new dependencies, or contract renegotiation — pause and
-surface it regardless of automation_mode:
+**Structural escalation:** If 2c or 2d reveals an issue requiring interface
+changes, new dependencies, or contract renegotiation — surface it.
+
+**In parallel mode (`execution_strategy: balanced | speed`):** do NOT call
+AskUserQuestion — the Agent tool call would hang forever with no human to
+answer. Instead:
+1. Append a `structural-escalation` entry to `units/WU-<n>/cycle-log.md`
+   describing the issue and why it can't be self-contained.
+2. Set `units/WU-<n>/status.md` substage → `escalated-structural`.
+3. Return the summary line with ESCALATED status:
+   ```
+   WU-<n>: ESCALATED — structural issue at <stage>: <one-line description>
+   ```
+4. STOP. The coordinator reads the per-unit status and surfaces the
+   escalation to the user via its own escalation flow.
+
+**Sequential/cost mode (`execution_strategy: cost | not-set`):** pause and
+surface via AskUserQuestion, regardless of automation_mode:
 ```
 ── Refactor paused — structural issue found ─────
 This issue may affect other units or require interface changes:
@@ -413,7 +437,21 @@ Continue to Step 4.
   1. [HIGH] <description> — <file:line>
   2. [MEDIUM] <description> — <file:line>
   3. [LOW/INFO] <description>
+```
 
+**In parallel mode (`execution_strategy: balanced | speed`):** do NOT call
+AskUserQuestion. Instead:
+1. Append a `security-escalation` entry to `units/WU-<n>/cycle-log.md`
+   listing every finding with severity.
+2. Set `units/WU-<n>/status.md` substage → `escalated-security`.
+3. Return the summary line:
+   ```
+   WU-<n>: ESCALATED — security review: <n> issues (<severity breakdown>)
+   ```
+4. STOP. Coordinator handles triage.
+
+**Sequential/cost mode:**
+```
 Use AskUserQuestion with options:
   - "Fix now"
   - "Stop to review"
@@ -615,7 +653,19 @@ We've completed 5 refactor cycles. Before starting another:
 
 Remaining concerns: <list or "none">
 Missing tests added this cycle: <n>
+```
 
+**In parallel mode (`execution_strategy: balanced | speed`):** do NOT call
+AskUserQuestion. Append a `cycle-5-checkpoint` escalation to
+`units/WU-<n>/cycle-log.md` with the remaining concerns, set substage →
+`escalated-cycle-5`, return:
+```
+WU-<n>: ESCALATED — cycle-5 checkpoint: <n remaining concerns>
+```
+STOP.
+
+**Sequential/cost mode:**
+```
 Use AskUserQuestion with options:
   - "Continue (approve cycle 6)"
   - "Stop (mark complete with noted limitations)"
@@ -682,18 +732,40 @@ Read `automation_mode` from status.md.
 
 **If `execution_strategy` is `balanced` or `speed` (parallel mode):**
 
-Mark unit complete in per-unit `unit_status`.
+Mark unit complete in per-unit `unit_status` (Stage = `refactor`, Substage =
+`complete`, Last checkpoint = `<N> tests passing`).
 Mark unit complete in feature-level Work Units table.
 Do NOT chain to next unit or PR — the coordinator handles that.
+
+**Subagent termination contract (read this carefully).**
+The Agent tool call that launched you returns to the coordinator only when
+you emit your final assistant message. Coordinators have no timeout and
+cannot poll you — if you keep taking actions after the work is done, the
+coordinator stays blocked while the rest of the batch finishes. That is
+the hang failure mode from 2026-04-23 (WU-3: status.md wrote COMPLETE,
+then the subagent kept working for ~2 more minutes without returning, and
+the user had to Ctrl+C to unblock the coordinator).
+
+Therefore, after writing status.md = complete and the Work Units table
+entry, **your very next message MUST be the single-line summary below —
+nothing else.** Do NOT:
+- run any more tools (no more Read, Bash, Grep, Edit, etc.)
+- re-verify test results you already verified
+- polish or re-read cycle-log.md
+- check "just one more thing"
+
+The block below IS the return:
 
 ```
 ───────────────────────────────────────────────
 ✨ REFACTOR AGENT complete · <slug> · WU-<n>
   Tokens : <TOKEN_USAGE>
 ───────────────────────────────────────────────
-Unit complete. Returning to coordinator.
+WU-<n>: COMPLETE — <n> tests, <n> constructs, <brief detail>
 ```
-STOP. (Coordinator launched this as subagent; returning is sufficient.)
+
+Emit that block as your final message and stop. If you catch yourself
+about to call another tool, stop and emit the summary instead.
 
 **If more work units remain (not the final unit) — sequential/cost mode only:**
 
@@ -770,8 +842,20 @@ Use AskUserQuestion with options:
 If "Proceed": invoke `/feature-pr "<slug>"`.
 If "Stop": display manual commands and stop.
 
-**If missing tests escalation triggered (either mode):**
+**If missing tests escalation triggered:**
 
+**In parallel mode (`execution_strategy: balanced | speed`):** the parallel
+exit block above already fired and you returned — if you're here, you are
+NOT in parallel mode. But just in case: do NOT call AskUserQuestion. Append
+a `missing-tests-escalation` entry to `units/WU-<n>/cycle-log.md` listing
+the missing test categories, set substage → `escalated-missing-tests`,
+return:
+```
+WU-<n>: ESCALATED — missing tests: <n categories>
+```
+STOP.
+
+**Sequential/cost mode:**
 ```
 ───────────────────────────────────────────────
 ✨ REFACTOR AGENT complete · <slug> · Cycle <n>
@@ -784,5 +868,6 @@ Use AskUserQuestion with options:
   - "Stop"
 ```
 Wait for input regardless of automation_mode — missing tests are always a
-human checkpoint. If "Proceed": invoke `/feature-test "<slug>" --add-missing`.
-If "Stop": display the manual sequence and stop.
+human checkpoint (in sequential mode). If "Proceed": invoke
+`/feature-test "<slug>" --add-missing`. If "Stop": display the manual
+sequence and stop.

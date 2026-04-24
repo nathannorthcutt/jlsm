@@ -65,12 +65,21 @@ elif [[ -n "${OVERRIDE_DOMAINS:-}" ]]; then
   IFS=',' read -ra MATCHED_DOMAINS <<< "$OVERRIDE_DOMAINS"
   echo "[resolve] Domain override: ${MATCHED_DOMAINS[*]}" >&2
 else
-  mapfile -t ALL_DOMAINS < <(jq -r '.domains | keys[]' "$MANIFEST")
+  mapfile -t ALL_DOMAINS < <(spec_manifest_all_domains "$MANIFEST")
   desc_lower=$(echo "$FEATURE_DESC" | tr '[:upper:]' '[:lower:]')
   MATCHED_DOMAINS=()
+  # v2 manifests carry no domain descriptions; description-keyword matching
+  # degrades to name-only matching, which is correct behavior — ambiguous
+  # cases fall through to NEEDS_DOMAIN_INFERENCE.
+  v2_manifest=false
+  spec_manifest_is_v2 "$MANIFEST" && v2_manifest=true
   for domain in "${ALL_DOMAINS[@]}"; do
-    domain_desc=$(jq -r --arg d "$domain" '.domains[$d].description // ""' "$MANIFEST" \
-      | tr '[:upper:]' '[:lower:]')
+    if [[ "$v2_manifest" == "true" ]]; then
+      domain_desc=""
+    else
+      domain_desc=$(jq -r --arg d "$domain" '.domains[$d].description // ""' "$MANIFEST" \
+        | tr '[:upper:]' '[:lower:]')
+    fi
     # Match if feature desc contains domain name OR any keyword in domain desc
     if echo "$desc_lower" | grep -qw "$domain"; then
       MATCHED_DOMAINS+=("$domain")
@@ -92,7 +101,13 @@ if [[ ${#MATCHED_DOMAINS[@]} -eq 0 ]]; then
   echo "Feature request: $FEATURE_DESC"
   echo ""
   echo "## Available Domains"
-  jq -r '.domains | to_entries[] | "- \(.key): \(.value.description)"' "$MANIFEST"
+  jq -r '
+    if .specs then
+      ([.specs[].domains[]] | unique | .[] | "- \(.)")
+    else
+      (.domains | to_entries[] | "- \(.key): \(.value.description)")
+    end
+  ' "$MANIFEST"
   exit 0
 fi
 
@@ -100,14 +115,14 @@ echo "[resolve] Domains matched: ${MATCHED_DOMAINS[*]}" >&2
 
 # ── Step 2: Collect candidate spec files via registry ────────────────────────
 # Skipped when EXPLICIT_SPEC_IDS populated CANDIDATE_FILES above.
-mapfile -t ALL_FEATURE_IDS < <(jq -r '.features | keys[]' "$MANIFEST")
+mapfile -t ALL_FEATURE_IDS < <(spec_manifest_ids "$MANIFEST")
 
 if [[ "$EXPLICIT_ID_MODE" == "true" ]]; then
   : # CANDIDATE_FILES already populated from explicit IDs; skip domain filter loop
 else
 for fid in "${ALL_FEATURE_IDS[@]}"; do
   # Check if this feature belongs to any matched domain
-  feature_domains=$(jq -r --arg id "$fid" '.features[$id].domains // [] | .[]' "$MANIFEST")
+  feature_domains=$(spec_manifest_domains_for "$MANIFEST" "$fid")
   matched=false
   for fd in $feature_domains; do
     for md in "${MATCHED_DOMAINS[@]}"; do
@@ -162,7 +177,7 @@ fi  # end: if EXPLICIT_ID_MODE else
 INVALIDATED_FILES=()
 if [[ "${INCLUDE_INVALIDATED:-}" == "true" ]]; then
   for fid in "${ALL_FEATURE_IDS[@]}"; do
-    feature_domains=$(jq -r --arg id "$fid" '.features[$id].domains // [] | .[]' "$MANIFEST")
+    feature_domains=$(spec_manifest_domains_for "$MANIFEST" "$fid")
     matched=false
     for fd in $feature_domains; do
       for md in "${MATCHED_DOMAINS[@]}"; do

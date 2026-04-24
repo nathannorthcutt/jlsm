@@ -117,6 +117,125 @@ sub-agents.
 
 ---
 
+## Step 1a — Subagent dispatch contract
+
+Every Agent call the coordinator issues to run a work unit MUST include the
+following termination contract in the prompt. The pipeline skills
+(`/feature-test`, `/feature-implement`, `/feature-refactor`) already
+mode-gate their AskUserQuestion sites against
+`execution_strategy: balanced | speed`, so subagents will chain autonomously
+between stages. The contract below closes the remaining hang vector:
+subagents that finish their work but keep taking actions instead of
+returning.
+
+Hang root-cause (2026-04-23): WU-3 wrote status.md = COMPLETE and all tests
+green, then the subagent continued running ~2 min with no further
+meaningful work before the user had to Ctrl+C to unblock the coordinator.
+The Agent tool blocks the parent until the child emits its final assistant
+message; there is no timeout, no polling, no "you're clearly done" signal.
+
+### Required prompt fragments
+
+Include these verbatim (or paraphrased keeping the semantics) in every
+subagent prompt:
+
+```
+## Termination contract (MANDATORY)
+
+The Agent tool call that launched you returns to the coordinator only when
+you emit your final assistant message. The coordinator has no timeout and
+cannot poll you.
+
+You MUST return to the coordinator IMMEDIATELY after:
+- writing units/WU-<n>/status.md with Substage = `complete`, OR
+- writing an escalation entry to cycle-log.md and setting substage to
+  `escalated-<reason>`.
+
+Your final message MUST be the single-line summary below — nothing else.
+Do NOT run any more tools, re-verify, re-read cycle-log.md, or polish.
+If you catch yourself about to call another tool after marking complete,
+STOP and emit the summary instead.
+
+## Return format (exactly one line)
+
+WU-<n>: <COMPLETE | ESCALATED | STOPPED_AT_<stage> | ERROR> — <n tests>, <n constructs>, <brief detail>
+```
+
+### Automation mode
+
+Every dispatched subagent prompt must explicitly set the expectation:
+
+```
+Treat automation_mode as autonomous. Do NOT pause between pipeline stages.
+All AskUserQuestion sites in /feature-test, /feature-implement,
+/feature-refactor are mode-gated against execution_strategy = balanced/speed
+— you will not encounter an interactive prompt. If a pipeline skill would
+still try to open AskUserQuestion (new site added without gating), treat
+that as a bug: record it to cycle-log.md and return ESCALATED.
+```
+
+### KB tendency-scan contract (MANDATORY)
+
+Rich per-unit dispatch prompts describe the work concretely (spec
+requirements, construct contracts, test expectations). A side-effect is
+that cross-cutting pipeline steps buried inside `/feature-implement` and
+`/feature-test` never surface into the subagent's attention — the subagent
+runs the dispatch prompt faithfully and skips the skill's numbered steps
+it was nominally told to invoke.
+
+Empirical gap (2026-04-24): across a 4-WU parallel run, 0 of 4 subagents
+consulted `.kb/` during implementation. The Step 8 tendency scan in
+`/feature-implement` and the Lens B scan in `/feature-test` did not fire
+on any unit. Audit subsequently produced findings for patterns already in
+`.kb/` as adversarial-finding entries.
+
+Include the following verbatim (or paraphrased keeping the semantics) in
+every subagent prompt that invokes `/feature-implement` or `/feature-test`:
+
+```
+## KB tendency-scan contract (MANDATORY)
+
+After each construct's tests pass in `/feature-implement` Step 8 — and for
+each new test class in `/feature-test` Lens B — you MUST run:
+
+  bash .claude/scripts/kb-search.sh "<domain> <construct-type>" --kb-root .kb --top 5
+
+For each result with `type: adversarial-finding`:
+  - Read the entry's `applies_to` patterns and `## Test guidance`
+  - Check your just-implemented code (or tests) against the pattern
+  - If matched: fix proactively and re-run tests (implementation), or add
+    a targeted test method (tests)
+  - If not applicable: record why in a one-line note
+
+After each scan, write the substage checkpoint to units/WU-<n>/status.md:
+  Substage: tendency-scan-complete: <n> patterns checked, <n> applied
+
+Append one line to units/WU-<n>/cycle-log.md:
+  tendency-scan (<construct>): <n> results / <n> applied / <n> skipped
+
+Budget: <30 seconds per construct, ≤5 KB entries deep-read. The scan
+prevents re-introducing patterns already known to `.kb/`. Skipping it is a
+silent correctness loss, not a performance win — audit will rediscover the
+same patterns at higher cost.
+```
+
+### Coordinator-side verification
+
+After each subagent returns, in addition to checking status.md for
+`complete` vs escalation substage, the coordinator should sanity-check:
+- Status.md Stage/Substage matches the summary line verb (COMPLETE →
+  `complete`; ESCALATED → `escalated-<reason>`).
+- If they disagree, trust status.md — the canonical state is on disk.
+- Grep `units/WU-<n>/cycle-log.md` for `tendency-scan (` entries. A
+  COMPLETE unit with zero `tendency-scan` entries AND a non-empty `.kb/`
+  is a contract violation — the KB scan contract was dispatched but the
+  subagent skipped it. Record this to the feature-level `cycle-log.md`:
+  `tendency-scan-missing: WU-<n> — <n constructs>, KB present`. Do not
+  escalate; surface this in the Step 4e token summary so the user knows
+  KB leverage was lost for that unit.
+
+---
+
 ## Step 2 — Launch and monitor (speed mode)
 
 The coordinator runs a **completion-driven loop** instead of batch-wait:

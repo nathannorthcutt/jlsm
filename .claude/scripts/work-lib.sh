@@ -4,6 +4,15 @@
 #   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #   source "$SCRIPT_DIR/work-lib.sh"
 
+# spec-lib.sh provides manifest query helpers used below. Sourcing is
+# idempotent — the wrapper guard prevents double-definition warnings.
+if [[ -z "${VALLORCINE_SPEC_LIB_LOADED:-}" ]]; then
+  _WORK_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=spec-lib.sh
+  source "$_WORK_LIB_DIR/spec-lib.sh"
+  VALLORCINE_SPEC_LIB_LOADED=1
+fi
+
 # ── Dependency preflight ─────────────────────────────────────────────────────
 work_require_deps() {
   local missing=()
@@ -234,9 +243,14 @@ work_check_spec_dep() {
   local spec_name="${spec_path##*/}"
 
   while IFS= read -r fid; do
-    local latest
-    latest=$(jq -r --arg id "$fid" '.features[$id].latest_file // ""' "$manifest")
-    [[ -z "$latest" ]] && continue
+    # spec_file_for_id resolves the absolute path for both v1 and v2 manifests.
+    local absfile
+    absfile=$(spec_file_for_id "$manifest" "$fid")
+    [[ -z "$absfile" ]] && continue
+    # Re-derive the path relative to .spec/ for substring matching. Callers
+    # pass spec_path as "<domain>/<name>", so we match against the tail of the
+    # resolved path.
+    local latest="${absfile#"$project_root"/.spec/}"
 
     local match=false
 
@@ -262,14 +276,14 @@ work_check_spec_dep() {
     fi
 
     if [[ "$match" == "true" ]]; then
-      found_file="$project_root/.spec/$latest"
+      found_file="$absfile"
       if [[ -f "$found_file" ]]; then
         found_state=$(awk '/^---$/{n++; next} n==1{print} n>=2{exit}' "$found_file" \
           | jq -r '.state // ""' 2>/dev/null || true)
       fi
       break
     fi
-  done < <(jq -r '.features | keys[]' "$manifest" 2>/dev/null)
+  done < <(spec_manifest_ids "$manifest")
 
   if [[ -z "$found_file" || ! -f "$found_file" ]]; then
     echo "spec not found: $spec_path"
