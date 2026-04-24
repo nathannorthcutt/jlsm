@@ -6,7 +6,7 @@ import java.util.Arrays;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicReference;
 
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldEncryptionDispatch;
 import org.junit.jupiter.api.AfterEach;
@@ -15,13 +15,13 @@ import org.junit.jupiter.api.Test;
 
 class FieldEncryptionDispatchTest {
 
-    private EncryptionKeyHolder keyHolder;
+    private OffHeapKeyMaterial keyHolder;
 
     @BeforeEach
     void setUp() {
         byte[] key = new byte[64];
         Arrays.fill(key, (byte) 0xAB);
-        keyHolder = EncryptionKeyHolder.of(key);
+        keyHolder = OffHeapKeyMaterial.of(key);
     }
 
     @AfterEach
@@ -105,7 +105,7 @@ class FieldEncryptionDispatchTest {
         // AES-GCM requires 32-byte key
         byte[] key32 = new byte[32];
         Arrays.fill(key32, (byte) 0xCD);
-        try (var kh32 = EncryptionKeyHolder.of(key32)) {
+        try (var kh32 = OffHeapKeyMaterial.of(key32)) {
             JlsmSchema schema = JlsmSchema.builder("test", 1)
                     .field("opq", FieldType.string(), EncryptionSpec.opaque()).build();
 
@@ -128,7 +128,7 @@ class FieldEncryptionDispatchTest {
     void opaqueField_roundTrip() {
         byte[] key32 = new byte[32];
         Arrays.fill(key32, (byte) 0xCD);
-        try (var kh32 = EncryptionKeyHolder.of(key32)) {
+        try (var kh32 = OffHeapKeyMaterial.of(key32)) {
             JlsmSchema schema = JlsmSchema.builder("test", 1)
                     .field("opq", FieldType.string(), EncryptionSpec.opaque()).build();
 
@@ -317,7 +317,7 @@ class FieldEncryptionDispatchTest {
 
         byte[] otherKey = new byte[64];
         Arrays.fill(otherKey, (byte) 0xCC);
-        try (var otherHolder = EncryptionKeyHolder.of(otherKey)) {
+        try (var otherHolder = OffHeapKeyMaterial.of(otherKey)) {
             var decryptDispatch = new FieldEncryptionDispatch(schema, otherHolder);
             assertThrows(SecurityException.class,
                     () -> decryptDispatch.decryptorFor(0).decrypt(ciphertext),

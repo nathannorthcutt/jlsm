@@ -11,6 +11,7 @@ ability to search encrypted data without decryption.
 | Capability | Type | Status | Tags | Features |
 |-----------|------|--------|------|----------|
 | [field-encryption](field-encryption.md) | core | active | encryption, security, per-field, at-rest | 4 |
+| [per-tenant-encryption-key-hierarchy](per-tenant-encryption-key-hierarchy.md) | core | planned | encryption, security, key-management, multi-tenant, envelope-encryption, kms | 1 |
 | [searchable-encryption](searchable-encryption.md) | emergent | active | encryption, search, SSE, OPE | 0 |
 
 ## Cross-references

@@ -58,6 +58,7 @@ jmh {
         '--add-exports', 'jlsm.core/jlsm.sstable.internal=ALL-UNNAMED',
         '--add-exports', 'jlsm.core/jlsm.compaction.internal=ALL-UNNAMED',
         '--add-exports', 'jlsm.core/jlsm.tree.internal=ALL-UNNAMED',
+        '--add-exports', 'jlsm.core/jlsm.encryption.internal=ALL-UNNAMED',
 
         // jlsm-table internal package
         '--add-exports', 'jlsm.table/jlsm.table.internal=ALL-UNNAMED',

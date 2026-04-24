@@ -17,6 +17,9 @@ related:
   - "systems/security/encryption-key-rotation-patterns.md"
   - "systems/security/wal-encryption-approaches.md"
   - "systems/security/client-side-encryption-patterns.md"
+  - "systems/security/dek-revocation-vs-rotation.md"
+  - "systems/security/dek-caching-policies-multi-tenant.md"
+  - "patterns/resource-management/defensive-copy-accessor-defeats-zeroize-on-close.md"
 sources:
   - url: "https://github.com/dbsystel/SecureSecretKeySpec"
     title: "SecureSecretKeySpec — AutoCloseable/Destroyable SecretKey"

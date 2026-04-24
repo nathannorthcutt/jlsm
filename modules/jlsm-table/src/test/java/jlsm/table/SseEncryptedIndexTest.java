@@ -16,7 +16,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.table.internal.SseEncryptedIndex;
 
 /**
@@ -28,7 +28,7 @@ import jlsm.table.internal.SseEncryptedIndex;
  */
 class SseEncryptedIndexTest {
 
-    private EncryptionKeyHolder keyHolder;
+    private OffHeapKeyMaterial keyHolder;
     private SseEncryptedIndex index;
 
     @BeforeEach
@@ -37,7 +37,7 @@ class SseEncryptedIndexTest {
         for (int i = 0; i < 32; i++) {
             keyMaterial[i] = (byte) (i + 0xA0);
         }
-        keyHolder = EncryptionKeyHolder.of(keyMaterial);
+        keyHolder = OffHeapKeyMaterial.of(keyMaterial);
         index = new SseEncryptedIndex(keyHolder);
     }
 
@@ -283,7 +283,7 @@ class SseEncryptedIndexTest {
         for (int i = 0; i < 32; i++) {
             otherKeyMaterial[i] = (byte) (i + 0x50);
         }
-        try (final EncryptionKeyHolder otherKey = EncryptionKeyHolder.of(otherKeyMaterial)) {
+        try (final OffHeapKeyMaterial otherKey = OffHeapKeyMaterial.of(otherKeyMaterial)) {
             final SseEncryptedIndex otherIndex = new SseEncryptedIndex(otherKey);
 
             final byte[] token1 = index.deriveToken("same-term");

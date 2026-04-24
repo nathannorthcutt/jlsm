@@ -4,6 +4,9 @@ Overflow entries from `.kb/CLAUDE.md` Recently Added table.
 
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-22 | patterns | concurrency | torn-volatile-publish-multi-field |
+| 2026-04-22 | patterns | resource-management | pool-close-with-outstanding-acquires |
+| 2026-04-22 | patterns | validation | partial-init-no-rollback |
 | 2026-04-13 | distributed-systems | cluster-membership | fail-slow-detection |
 | 2026-04-13 | distributed-systems | query-execution | distributed-scan-cursors |
 | 2026-04-13 | systems | database-engines | schema-type-systems |
@@ -22,6 +25,23 @@ Overflow entries from `.kb/CLAUDE.md` Recently Added table.
 | 2026-04-11 | systems | lsm-index-patterns | close-atomicity-cas |
 | 2026-04-11 | systems | lsm-index-patterns | cache-mutation-after-close |
 | 2026-04-11 | algorithms | sql-extensions | locale-dependent-string-operations |
+| 2026-04-07 | patterns | validation | incomplete-serialization-round-trip |
+| 2026-04-07 | patterns | concurrency | phantom-registration-after-lifecycle-transition |
+| 2026-04-07 | patterns | resource-management | eviction-scope-mismatch |
+| 2026-04-06 | patterns | validation | assert-only-public-api-validation |
+| 2026-04-06 | patterns | validation | non-finite-float-bypass |
+| 2026-04-06 | patterns | validation | else-branch-assumes-last-variant |
+| 2026-04-06 | patterns | concurrency | read-method-missing-close-guard |
+| 2026-04-06 | patterns | resource-management | mutation-outside-rollback-scope |
+| 2026-04-06 | patterns | concurrency | non-atomic-lifecycle-flags |
+| 2026-03-30 | algorithms | vector-indexing | incremental-graph-maintenance |
+| 2026-03-30 | algorithms | vector-indexing | incremental-partition-maintenance |
+| 2026-03-30 | algorithms | vector-indexing | index-quality-lifecycle |
+| 2026-03-30 | algorithms | vector-indexing | object-storage-ann-landscape |
+| 2026-03-30 | algorithms | vector-indexing | spann-spfresh |
+| 2026-03-30 | algorithms | vector-indexing | acorn |
+| 2026-03-30 | algorithms | vector-indexing | filtered-diskann |
+| 2026-04-22 | patterns | resource-management | atomic-move-vs-fallback-commit-divergence |
 | 2026-03-30 | algorithms | vector-indexing | sieve |
 | 2026-03-30 | algorithms | vector-indexing | compass |
 | 2026-03-27 | algorithms | vector-indexing | partitioned-fanout-queries |

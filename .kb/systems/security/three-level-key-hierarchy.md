@@ -18,6 +18,9 @@ related:
   - "systems/security/encryption-key-rotation-patterns.md"
   - "systems/security/jvm-key-handling-patterns.md"
   - "systems/security/wal-encryption-approaches.md"
+  - "systems/security/sstable-block-level-ciphertext-envelope.md"
+  - "systems/security/dek-revocation-vs-rotation.md"
+  - "systems/security/dek-caching-policies-multi-tenant.md"
   - "systems/security/client-side-encryption-patterns.md"
 decision_refs: ["implement-encryption-lifecycle"]
 sources:

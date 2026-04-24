@@ -227,15 +227,39 @@
       ]
     },
     {
+      "id": "encryption.ciphertext-envelope",
+      "path": ".spec/domains/encryption/ciphertext-envelope.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "requires": [
+        "encryption.primitives-variants"
+      ],
+      "invalidates": [],
+      "decision_refs": [
+        "per-field-key-binding",
+        "dek-scoping-granularity",
+        "three-tier-key-hierarchy"
+      ],
+      "kb_refs": [
+        "systems/security/three-level-key-hierarchy",
+        "systems/security/encryption-key-rotation-patterns",
+        "systems/security/sstable-block-level-ciphertext-envelope"
+      ]
+    },
+    {
       "id": "encryption.primitives-lifecycle",
       "path": ".spec/domains/encryption/primitives-lifecycle.md",
       "state": "APPROVED",
-      "version": 6,
+      "version": 8,
       "domains": [
         "encryption"
       ],
       "requires": [
         "encryption.primitives-variants",
+        "encryption.ciphertext-envelope",
         "schema.document-construction"
       ],
       "invalidates": [
@@ -1109,14 +1133,15 @@
       "id": "serialization.encrypted-field-serialization",
       "path": ".spec/domains/serialization/encrypted-field-serialization.md",
       "state": "APPROVED",
-      "version": 1,
+      "version": 2,
       "domains": [
         "serialization",
         "encryption"
       ],
       "requires": [
         "encryption.primitives-variants",
-        "encryption.primitives-dispatch"
+        "encryption.primitives-dispatch",
+        "encryption.ciphertext-envelope"
       ],
       "invalidates": [],
       "decision_refs": [],
@@ -1314,12 +1339,13 @@
       "id": "sstable.v3-format-upgrade",
       "path": ".spec/domains/sstable/v3-format-upgrade.md",
       "state": "APPROVED",
-      "version": 2,
+      "version": 3,
       "domains": [
         "sstable"
       ],
       "requires": [
-        "compression.codec-contract"
+        "compression.codec-contract",
+        "encryption.ciphertext-envelope"
       ],
       "invalidates": [],
       "decision_refs": [
@@ -1488,13 +1514,14 @@
       "id": "wal.encryption",
       "path": ".spec/domains/wal/encryption.md",
       "state": "APPROVED",
-      "version": 3,
+      "version": 4,
       "domains": [
         "wal",
         "encryption"
       ],
       "requires": [
         "encryption.primitives-lifecycle",
+        "encryption.ciphertext-envelope",
         "compression.codec-contract"
       ],
       "invalidates": [],

@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.AfterEach;
@@ -13,7 +15,7 @@ import java.util.Arrays;
  */
 class AesSivEncryptorTest {
 
-    private EncryptionKeyHolder keyHolder;
+    private OffHeapKeyMaterial keyHolder;
 
     private static byte[] key512() {
         final byte[] key = new byte[64];
@@ -33,7 +35,7 @@ class AesSivEncryptorTest {
 
     @BeforeEach
     void setUp() {
-        keyHolder = EncryptionKeyHolder.of(key512());
+        keyHolder = OffHeapKeyMaterial.of(key512());
     }
 
     @AfterEach
@@ -158,7 +160,7 @@ class AesSivEncryptorTest {
         final byte[] ad = "context".getBytes();
         final byte[] ciphertext = encryptor.encrypt(plaintext, ad);
 
-        try (final EncryptionKeyHolder otherKey = EncryptionKeyHolder.of(key512Alt())) {
+        try (final OffHeapKeyMaterial otherKey = OffHeapKeyMaterial.of(key512Alt())) {
             final AesSivEncryptor otherEncryptor = new AesSivEncryptor(otherKey);
             assertThrows(SecurityException.class, () -> otherEncryptor.decrypt(ciphertext, ad),
                     "Decryption with wrong key must throw SecurityException");
@@ -189,7 +191,7 @@ class AesSivEncryptorTest {
     void constructor_rejects256BitKey() {
         final byte[] smallKey = new byte[32];
         Arrays.fill(smallKey, (byte) 0x42);
-        try (final EncryptionKeyHolder holder256 = EncryptionKeyHolder.of(smallKey)) {
+        try (final OffHeapKeyMaterial holder256 = OffHeapKeyMaterial.of(smallKey)) {
             assertThrows(IllegalArgumentException.class, () -> new AesSivEncryptor(holder256));
         }
     }

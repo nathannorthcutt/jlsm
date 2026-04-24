@@ -1,7 +1,7 @@
 ---
 {
   "id": "wal.encryption",
-  "version": 3,
+  "version": 4,
   "status": "ACTIVE",
   "state": "APPROVED",
   "domains": [
@@ -10,6 +10,7 @@
   ],
   "requires": [
     "encryption.primitives-lifecycle",
+    "encryption.ciphertext-envelope",
     "compression.codec-contract"
   ],
   "invalidates": [],
@@ -311,6 +312,13 @@ non-blocking deferred zeroing). Medium: 0x00 indicator vs sparse pre-allocation 
 amended — 0xE1 for encrypted), valid header + zero records (R32a amended), CRC vs
 uncompressed size ambiguity (R34a), corrupt sidecar handling (R41b). Low: frame overflow
 formula (R25a amended).
+
+### Amended: v4 — 2026-04-23 — depend on encryption.ciphertext-envelope
+
+- **Frontmatter `requires` extended** to include `encryption.ciphertext-envelope`. `encryption.primitives-lifecycle` remains in requires because this spec still depends on the three-tier hierarchy mapping (R75 / `_wal` domain), the per-field-ciphertext ingress invariant (R74b), and the grace-period invariant (R75b).
+- **No requirement text changed.** The WAL envelope (SEK + AES-GCM-256 per R21–R28) operates on the record payload as opaque bytes. When the caller has encryption configured at the field level, the payload contains per-field ciphertext that already conforms to `encryption.ciphertext-envelope` R1; the WAL's SEK layer wraps it a second time. The new requires makes this implicit dependency explicit at the manifest level.
+
+Rationale: before v4, the wal.encryption → encryption.primitives-lifecycle edge was the only declared dependency on any encryption spec, and it conflated the broad lifecycle with the narrow wire format. Adding `encryption.ciphertext-envelope` lets dependency-graph tooling distinguish "WAL depends on ingress invariants" (primitives-lifecycle) from "WAL depends on inner-payload wire format" (ciphertext-envelope). No behavioural change.
 
 ### Clarification: Three-tier-hierarchy mapping (2026-04-21)
 

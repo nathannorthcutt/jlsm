@@ -12,6 +12,7 @@ applies_to:
 related:
   - "non-atomic-lifecycle-flags"
   - "lock-held-side-effects"
+  - "shared-rwlock-bracketing-facade-close-atomicity"
 decision_refs: []
 sources: []
 ---

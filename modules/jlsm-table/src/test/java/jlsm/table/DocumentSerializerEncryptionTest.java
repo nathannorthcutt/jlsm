@@ -8,7 +8,7 @@ import java.lang.foreign.ValueLayout;
 import java.util.Arrays;
 
 import jlsm.core.io.MemorySerializer;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,18 +16,18 @@ import org.junit.jupiter.api.Test;
 
 class DocumentSerializerEncryptionTest {
 
-    private EncryptionKeyHolder keyHolder64;
-    private EncryptionKeyHolder keyHolder32;
+    private OffHeapKeyMaterial keyHolder64;
+    private OffHeapKeyMaterial keyHolder32;
 
     @BeforeEach
     void setUp() {
         byte[] key64 = new byte[64];
         Arrays.fill(key64, (byte) 0xAB);
-        keyHolder64 = EncryptionKeyHolder.of(key64);
+        keyHolder64 = OffHeapKeyMaterial.of(key64);
 
         byte[] key32 = new byte[32];
         Arrays.fill(key32, (byte) 0xCD);
-        keyHolder32 = EncryptionKeyHolder.of(key32);
+        keyHolder32 = OffHeapKeyMaterial.of(key32);
     }
 
     @AfterEach

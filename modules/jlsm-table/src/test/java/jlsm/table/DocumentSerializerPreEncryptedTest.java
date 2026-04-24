@@ -7,7 +7,7 @@ import java.util.Arrays;
 
 import jlsm.core.io.MemorySerializer;
 import jlsm.encryption.AesSivEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,13 +15,13 @@ import org.junit.jupiter.api.Test;
 
 class DocumentSerializerPreEncryptedTest {
 
-    private EncryptionKeyHolder keyHolder64;
+    private OffHeapKeyMaterial keyHolder64;
 
     @BeforeEach
     void setUp() {
         byte[] key64 = new byte[64];
         Arrays.fill(key64, (byte) 0xAB);
-        keyHolder64 = EncryptionKeyHolder.of(key64);
+        keyHolder64 = OffHeapKeyMaterial.of(key64);
     }
 
     @AfterEach
@@ -45,7 +45,7 @@ class DocumentSerializerPreEncryptedTest {
         System.arraycopy(key64Copy, 0, sivKey, 0, 32);
         System.arraycopy(key64Copy, 0, sivKey, 32, 32);
         Arrays.fill(key64Copy, (byte) 0);
-        EncryptionKeyHolder sivKeyHolder = EncryptionKeyHolder.of(sivKey);
+        OffHeapKeyMaterial sivKeyHolder = OffHeapKeyMaterial.of(sivKey);
         AesSivEncryptor siv = new AesSivEncryptor(sivKeyHolder);
 
         // Serialize "Alice" to bytes the same way DocumentSerializer does
@@ -116,7 +116,7 @@ class DocumentSerializerPreEncryptedTest {
         System.arraycopy(key64Copy, 0, sivKey, 0, 32);
         System.arraycopy(key64Copy, 0, sivKey, 32, 32);
         Arrays.fill(key64Copy, (byte) 0);
-        EncryptionKeyHolder sivKeyHolder = EncryptionKeyHolder.of(sivKey);
+        OffHeapKeyMaterial sivKeyHolder = OffHeapKeyMaterial.of(sivKey);
         AesSivEncryptor siv = new AesSivEncryptor(sivKeyHolder);
 
         byte[] plainBytes = "bob@test.com".getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -174,7 +174,7 @@ class DocumentSerializerPreEncryptedTest {
         byte[] key64Copy = keyHolder64.getKeyBytes();
         byte[] gcmKey = hmacSha256DeriveKey(key64Copy, "gcm-opaque-key");
         Arrays.fill(key64Copy, (byte) 0);
-        EncryptionKeyHolder gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
+        OffHeapKeyMaterial gcmKeyHolder = OffHeapKeyMaterial.of(gcmKey);
         jlsm.encryption.AesGcmEncryptor gcm = new jlsm.encryption.AesGcmEncryptor(gcmKeyHolder);
 
         byte[] plainBytes = "top-secret".getBytes(java.nio.charset.StandardCharsets.UTF_8);

@@ -10,11 +10,13 @@ backed stores that need range scan support.
 
 | File | Subject | Status | Key Metric | Best For |
 |------|---------|--------|------------|----------|
-| [partitioning-strategies.md](partitioning-strategies.md) | Range, Hash, Consistent Hashing comparison | active | O(log R) routing | Choosing a partitioning model |
-| [vector-search-partitioning.md](vector-search-partitioning.md) | Vector search + hybrid filtering in distributed systems | active | scatter-gather O(P*k) | Vector + filter + text search topology |
-| [table-partitioning.md](table-partitioning.md) | table-partitioning (feature footprint) | stable | feature audit record | Range partitioning implementation overview |
+| [cross-partition-query-planning.md](cross-partition-query-planning.md) | Distributed query planning across partitions | active | join/filter cost models | Query planner design for decoupled partitions |
+| [decoupled-index-partitioning.md](decoupled-index-partitioning.md) | Local vs global index partitioning | active | O(1) global probe vs O(P) scatter-gather | Choosing index placement strategy |
 | [multi-writer-wal.md](multi-writer-wal.md) | Multi-Writer WAL Design Patterns | active | Per-partition: zero coordination | Partitioned table WAL coordination |
 | [partition-rebalancing-protocols.md](partition-rebalancing-protocols.md) | Partition Rebalancing and Data Migration Protocols | active | Raft snapshot + learner replica | Trigger policies, split/merge, ownership transfer |
+| [partitioning-strategies.md](partitioning-strategies.md) | Range, Hash, Consistent Hashing comparison | active | O(log R) routing | Choosing a partitioning model |
+| [table-partitioning.md](table-partitioning.md) | table-partitioning (feature footprint) | stable | feature audit record | Range partitioning implementation overview |
+| [vector-search-partitioning.md](vector-search-partitioning.md) | Vector search + hybrid filtering in distributed systems | active | scatter-gather O(P*k) | Vector + filter + text search topology |
 
 ## Comparison Summary
 
@@ -33,12 +35,12 @@ extreme scale, but doesn't co-locate with document storage.
 
 | Paper | Venue | Key Contribution |
 |-------|-------|-----------------|
-| HAKES | VLDB 2025 | Disaggregated filter-refine with IVF sharding; 16x throughput |
-| SIEVE | VLDB 2025 | Multi-index approach for filtered search; 8x speedup |
-| CrackIVF | arXiv 2025 | Deferred adaptive index construction; 10-1000x faster startup |
 | Attribute Filtering in ANN | arXiv 2025 | Comprehensive filtering benchmark; IVF best at low selectivity |
-| LSM-tree Survey | arXiv 2025 | 100+ papers; distributed compaction + disaggregation trends |
+| CrackIVF | arXiv 2025 | Deferred adaptive index construction; 10-1000x faster startup |
 | EcoTune | SIGMOD 2025 | Dynamic compaction policy selection |
+| HAKES | VLDB 2025 | Disaggregated filter-refine with IVF sharding; 16x throughput |
+| LSM-tree Survey | arXiv 2025 | 100+ papers; distributed compaction + disaggregation trends |
+| SIEVE | VLDB 2025 | Multi-index approach for filtered search; 8x speedup |
 
 ## Research Gaps
 - Multi-tenant partition isolation strategies

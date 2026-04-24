@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.AfterEach;
@@ -13,7 +15,7 @@ import java.util.Arrays;
  */
 class AesGcmEncryptorTest {
 
-    private EncryptionKeyHolder keyHolder;
+    private OffHeapKeyMaterial keyHolder;
 
     private static byte[] key256() {
         final byte[] key = new byte[32];
@@ -33,7 +35,7 @@ class AesGcmEncryptorTest {
 
     @BeforeEach
     void setUp() {
-        keyHolder = EncryptionKeyHolder.of(key256());
+        keyHolder = OffHeapKeyMaterial.of(key256());
     }
 
     @AfterEach
@@ -122,7 +124,7 @@ class AesGcmEncryptorTest {
         final byte[] plaintext = "secret data".getBytes();
         final byte[] ciphertext = encryptor.encrypt(plaintext);
 
-        try (final EncryptionKeyHolder otherKey = EncryptionKeyHolder.of(key256Alt())) {
+        try (final OffHeapKeyMaterial otherKey = OffHeapKeyMaterial.of(key256Alt())) {
             final AesGcmEncryptor otherEncryptor = new AesGcmEncryptor(otherKey);
             assertThrows(SecurityException.class, () -> otherEncryptor.decrypt(ciphertext),
                     "Decryption with wrong key must throw SecurityException");
@@ -168,7 +170,7 @@ class AesGcmEncryptorTest {
     void constructor_rejects512BitKey() {
         final byte[] bigKey = new byte[64];
         Arrays.fill(bigKey, (byte) 0x42);
-        try (final EncryptionKeyHolder holder512 = EncryptionKeyHolder.of(bigKey)) {
+        try (final OffHeapKeyMaterial holder512 = OffHeapKeyMaterial.of(bigKey)) {
             assertThrows(IllegalArgumentException.class, () -> new AesGcmEncryptor(holder512));
         }
     }

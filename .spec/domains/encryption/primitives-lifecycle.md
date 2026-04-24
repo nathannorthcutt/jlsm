@@ -1,14 +1,15 @@
 ---
 {
   "id": "encryption.primitives-lifecycle",
-  "version": 6,
+  "version": 9,
   "status": "ACTIVE",
-  "state": "APPROVED",
+  "state": "DRAFT",
   "domains": [
     "encryption"
   ],
   "requires": [
     "encryption.primitives-variants",
+    "encryption.ciphertext-envelope",
     "schema.document-construction"
   ],
   "invalidates": [
@@ -79,7 +80,7 @@ R9. EncryptionKeyHolder must provide a `deriveFieldKey(DekHandle dek, String tab
 
 R10. Key derivation must use HKDF-SHA256. The extract step must compute `PRK = HMAC-SHA256(salt, IKM=dekBytes)` where salt defaults to `0x00{32}` (all-zero, 32 bytes) and `dekBytes` is the unwrapped DEK material resolved from the DekHandle. The expand step must compute `OKM = HMAC-SHA256(PRK, info || 0x01)` truncated to 32 bytes.
 
-R10a. The HKDF salt must be configurable via EncryptionKeyHolder's constructor. The default all-zero salt is acceptable for single-deployment scenarios. For multi-tenant or multi-deployment environments, the caller should provide a unique salt (e.g., a deployment identifier hash). When provided, the salt replaces the all-zero default in the extract step.
+R10a. The HKDF salt must be configurable via EncryptionKeyHolder's constructor. The default all-zero salt is acceptable for single-deployment scenarios. For multi-tenant or multi-deployment environments, the caller should provide a unique salt (e.g., a deployment identifier hash). When provided, the salt replaces the all-zero default in the extract step. When a caller supplies a non-default salt, its length must be at least 32 bytes (the HashLen of HKDF-SHA256 per RFC 5869 §3.1). A caller-supplied salt shorter than 32 bytes must be rejected at construction with IllegalArgumentException before any registry interaction. The default all-zero 32-byte salt remains acceptable. Rationale: RFC 5869 §3.1 phrases the HashLen guidance as "ideally, the salt value is a random or pseudorandom value with length HashLen" — it is a recommendation, not a mandate. jlsm tightens this to a MUST because the library cannot audit callers' salt sources, and an undersized salt weakens HKDF-Extract below its nominal security level. `[UNVERIFIED: RFC 5869 §3.1 recommends (not mandates) HashLen; the MUST here is a jlsm policy choice above the RFC baseline — source confirmation RFC-5869 is a future research gate]`.
 
 R10b. The HKDF salt must be recorded in the per-tenant sharded key registry (R71) alongside the wrapped DEK entries. On EncryptionKeyHolder construction, if a salt is provided and a registry already exists, the constructor must verify that the provided salt matches the registry's recorded salt. A mismatch must throw IllegalArgumentException identifying the salt mismatch (without revealing salt bytes beyond a hash prefix). This prevents silent key derivation mismatch when salt is misconfigured across instances — particularly dangerous for OPE and DCPE fields where wrong-key decryption produces plausible but incorrect values rather than authentication failures.
 
@@ -133,16 +134,9 @@ R21. For each `(tenantId, domainId, tableId)` tuple, exactly one DEK version mus
 
 ### Ciphertext format with version tag
 
-R22. Every encrypted field value must be prefixed with a 4-byte big-endian DEK version tag in plaintext. The version tag alone does not carry tenant or domain identity — the reader derives `(tenantId, domainId, tableId)` from the SSTable footer metadata (R23a). Cross-scope reads must be rejected (R22b). The ciphertext layout per encryption variant is:
+R22. Every encrypted field value persisted to MemTable, WAL, or SSTable must conform to the per-variant byte layout canonically specified in `encryption.ciphertext-envelope` R1 (and the cross-tier uniformity invariant R1a). The 4-byte plaintext DEK version prefix, per-variant payload bytes, and authentication-tag placement (inline GCM/SIV tags; detached OPE/DCPE HMAC tags) are defined there. This requirement preserves the F41.R22 identity as a normative pointer — existing `@spec F41.R22` annotations remain valid and may additionally cite `encryption.ciphertext-envelope.R1` for precision. The reader derives `(tenantId, domainId, tableId)` from the SSTable footer metadata (R23a); cross-scope reads must be rejected (R22b).
 
-- `[4B DEK version | 12B IV/nonce | encrypted payload | 16B GCM auth tag]` for AES-GCM (Opaque). The GCM tag provides inline authentication.
-- `[4B DEK version | 16B synthetic IV | ciphertext]` for AES-SIV (Deterministic). The S2V synthetic IV provides inline authentication.
-- `[4B DEK version | 1B length prefix | 8B OPE ciphertext long | 16B detached HMAC-SHA256 tag]` for OPE (OrderPreserving) — total 29 bytes. The 16-byte detached tag is computed per F03.R78 and binds the OPE ciphertext to the UTF-8 field name and the DEK version. MAC verification must run before the OPE inverse.
-- `[4B DEK version | 8B perturbation seed | N*4B encrypted floats | 16B detached HMAC-SHA256 tag]` for DCPE (DistancePreserving) — total `8 + N*4 + 20` bytes (4 version + 8 seed + 4N ciphertext + 16 tag). The 16-byte detached tag is computed per F03.R79 and binds the seed and encrypted vector to the UTF-8 field name and the DEK version. MAC verification must run before the DCPE inverse.
-
-Detached MAC tags for OPE and DCPE close the authenticity gap identified in F03 v1 where wrong-key decryption produced plausible but incorrect values. Tags for GCM and SIV are inherent to those schemes and require no additional wrapping.
-
-R22a. The 4-byte version tag must contain a positive integer (1 or greater). If the reader encounters a version tag of 0 or a negative value (when interpreted as signed big-endian int), it must throw IOException indicating corrupt ciphertext. This applies to both normal reads and compaction re-encryption reads. The version-0/negative check must be performed as part of the same lookup path as the hash map check (R64) — the implementation must not branch to a separate error path before performing the map lookup. Version 0 is never inserted into the map, so both version-0 and version-not-found follow the same code path, preserving the constant-time property of R64.
+R22a. The 4-byte DEK version tag validity rules (positive-integer-only; IOException on 0 or negative values; constant-time failure path sharing the R64 wait-free lookup path) are canonically specified in `encryption.ciphertext-envelope` R2 and R2a. Version-not-found semantics (IllegalStateException identifying the `(tenantId, domainId, tableId)` scope without revealing key material) are canonically specified in `encryption.ciphertext-envelope` R2b and are also asserted locally as R24.
 
 R22b. The reader must resolve the DEK by the tuple `(tenantId, domainId, tableId, dekVersion)` where the first three components are derived from the SSTable's footer metadata (R23a) and the fourth from the ciphertext's version tag. The reader's **expected scope** must be materialised from the caller's `Table` handle obtained via catalog lookup — not inferred from the same SSTable footer it is validating (which would be tautological). If the SSTable's declared `(tenantId, domainId, tableId)` does not match the `Table` handle's scope (i.e., the SSTable was mis-routed to a different tenant's or domain's read path), decryption must throw IllegalStateException before any DEK lookup. This enforces per-tenant isolation at the read boundary.
 
@@ -300,6 +294,16 @@ R70. The per-tenant key registry shard files on disk must contain only wrapped (
 
 R70a. The per-tenant key registry shard files and any temporary files created during atomic updates must be created with owner-only permissions (0600 on POSIX systems, equivalent on other platforms). The implementation must set permissions before writing any key material to the file.
 
+### Key cache lifecycle
+
+R91. Unwrapped domain KEKs and DEKs held in the in-memory cache must expire after a configurable TTL. The default TTL, per-tenant LRU scoping under memory pressure, and observability metrics are specified in the `kms-integration-model` ADR; this spec references that ADR as normative for the concrete defaults and eviction policy. On TTL expiry or LRU eviction, the off-heap MemorySegment holding key material must be zeroised per R69 before the segment is released. Zeroisation must occur even if an exception is thrown during eviction. The configurable TTL must carry a finite, implementation-enforced upper bound not exceeding **24 hours**. The bound must be finite so that TTL-based expiry arithmetic (e.g., `Instant.plus(ttl)`) cannot overflow or produce a past/invalid expiry time for any supported `Instant` within the lifetime of a holder, and so that R69 / R91 zeroisation is guaranteed to occur within a bounded window regardless of deployer configuration. A lower maximum is permitted for deployments that require shorter cache residency; cross-reference `kms-integration-model` ADR for the rationale and default bound. `[UNVERIFIED: the 24h upper bound is the audit-landed constant; a future research step should align this with comparable library defaults (AWS Encryption SDK CMM, Google Tink KeysetHandle) before the ADR pins a normative value — future research gate]`.
+
+R91a. Cache eviction must be per-tenant — one tenant's cache pressure or eviction storm must not evict another tenant's cached entries, consistent with the per-tenant isolation invariant from `three-tier-key-hierarchy` ADR.
+
+R91b. Cache entries are keyed by the four-tuple `(tenantId, domainId, tableId, dekVersion)` for DEKs and `(tenantId, domainId)` for domain KEKs. A cache lookup must match the full tuple; a partial match must not return a cached entry.
+
+R91c. The cache must remain usable while a tenant is in the `grace-read-only` state (R76): reads against cached entries within their remaining TTL must succeed. New unwrap attempts against the KMS are blocked during `grace-read-only` per R76's state semantics, but no additional cache-side guard is required.
+
 ### Tenant encryption flavors
 
 R71. The encryption system must support three tenant encryption flavors per `three-tier-key-hierarchy` ADR:
@@ -326,7 +330,7 @@ R74b. The WAL record envelope must cover only metadata (schema ref, opcode, time
 
 ### WAL encryption mapping
 
-R75. For WAL encryption per F42 (`wal.encryption`), each tenant carries a synthetic **`_wal` data domain** per `three-tier-key-hierarchy` ADR. WAL metadata-envelope ciphertext is encrypted under a DEK belonging to the `_wal` domain; field payload bytes embedded in WAL records are the per-field ciphertext already produced at ingress (R74b) and are not encrypted again by the WAL envelope.
+R75. For WAL encryption per F42 (`wal.encryption`), each tenant carries a synthetic **`_wal` data domain** per `three-tier-key-hierarchy` ADR. WAL metadata-envelope ciphertext is encrypted under a DEK belonging to the `_wal` domain; field payload bytes embedded in WAL records are the per-field ciphertext already produced at ingress (R74b) and are not encrypted again by the WAL envelope. The `_wal` domain identifier is **reserved** and must be runtime-enforced: the public `DomainId` constructor must reject the string `_wal` with IllegalArgumentException from any application caller. Construction of the `_wal` domain is permitted only via a sanctioned internal factory path — `DomainId.forWal()` — that is either package-private to the jlsm WAL subsystem or gated on caller identity (e.g., via `StackWalker`) so that only internal code can construct it. Violating constructions from application callers must throw IllegalArgumentException. This promotes the reservation from a naming convention / javadoc note into a runtime invariant, preventing registry-collision attacks where an application-authored domain shadows the jlsm-internal WAL domain and aliases WAL DEKs into application-visible storage.
 
 R75a. F42's "KEK" input parameter at WAL builder construction must resolve internally to the tenant's `_wal` domain DEK-resolver. No F42 spec amendment is required; the mapping is an implementation-level resolution documented in this spec and in a Verification Note on `wal.encryption`.
 
@@ -341,10 +345,10 @@ R75d. For the polling path (R79) that does NOT invoke a rekey (transient outage 
 R76. Per `tenant-key-revocation-and-external-rotation` ADR, each tenant under flavor 3 must have one of three operational states, tracked per-tenant in the `EncryptionKeyHolder`:
 
 - **`healthy`** — Tenant KEK unwrap operations succeed; all reads and writes proceed normally.
-- **`grace-read-only`** — N consecutive permanent-class unwrap failures (default N=5, configurable) with jittered exponential backoff (per `kms-integration-model` R89). Writes are rejected with `TenantKekUnavailableException`; reads continue using cached domain KEKs for their remaining TTL (R91).
+- **`grace-read-only`** — N consecutive permanent-class unwrap failures (default N=5, configurable) with jittered exponential backoff (per `kms-integration-model` ADR). Writes are rejected with `TenantKekUnavailableException`; reads continue using cached domain KEKs for their remaining TTL (R91).
 - **`failed`** — Grace window exhausts (default 1 hour, configurable), OR all cached domain KEKs have TTL-expired. Reads and writes both rejected until the tenant rekeys to a usable Tenant KEK.
 
-R76a. Permanent-class KMS errors (AccessDenied, KeyDisabled, KeyNotFound) count toward N. Transient-class errors (throttling, timeout, 5xx) do not count toward N; they are retried per the backoff policy of `kms-integration-model` R89 and only escalate to a permanent-class outcome if the retry budget is exhausted.
+R76a. Permanent-class KMS errors (AccessDenied, KeyDisabled, KeyNotFound) count toward N. Transient-class errors (throttling, timeout, 5xx) do not count toward N; they are retried per the backoff policy of `kms-integration-model` ADR and only escalate to a permanent-class outcome if the retry budget is exhausted.
 
 R76b. State transitions must be observable: emit `tenantKekStateTransition` structured log events and `tenantKekState` metric (gauge per tenant) via the `KmsObserver` interface (`kms-integration-model` R93).
 
@@ -406,6 +410,15 @@ R80a. `encryptionContext` passed on every wrap/unwrap must include at minimum: `
 - `health_check` — sentinel blob for opt-in polling (R79)
 
 jlsm must **reject** any `purpose` value not in this closed set with IllegalArgumentException before invoking the `KmsClient`. Third-party `KmsClient` implementations must not add `purpose` values of their own. Extending the set requires a spec amendment. Additional context keys (e.g., `tableId`, `dekVersion` per R80a-1) are permitted and extensible, but `purpose` is closed.
+
+The integer codes representing `purpose` values in any persisted or AAD-bound form are a **persistence-format contract** and must be stable across jlsm versions. Implementations must expose a total `code()` accessor on `Purpose` whose values are pinned by spec:
+
+- `domain_kek` = **1**
+- `dek` = **2**
+- `rekey_sentinel` = **3**
+- `health_check` = **4**
+
+These integer codes MUST NOT change. The ordinal position of the `Purpose` enumeration (for implementations that use enums) must not be used as a persistence token — reordering enum constants or inserting a value with a lower code would silently invalidate every previously-wrapped DEK. Adding a new `purpose` value to the closed set must assign the next unused integer code and must not reorder existing codes. The AAD encoding required by R80 must include the stable `code()` value, never the ordinal.
 
 R80a-1. For `purpose=dek` wraps and unwraps, the `encryptionContext` must additionally include `tableId` and `dekVersion` (the latter as decimal UTF-8 of the version integer) so the KMS AAD binding prevents cross-table DEK-blob swap within the same `(tenant, domain)`. For `purpose=domain_kek`, `purpose=rekey_sentinel`, and `purpose=health_check`, `tableId` and `dekVersion` are not applicable and must not be included.
 
@@ -532,6 +545,63 @@ The 4-byte DEK version tag added to every encrypted field value is a wire format
 ---
 
 ## Verification Notes
+
+### Amended: v9 — 2026-04-23 — audit-driven Pass 6 amendments (promoted APPROVED → DRAFT)
+
+Audit reconciliation from `implement-encryption-lifecycle--wd-01` run-001 surfaced four contract invariants that were present only in source or convention, not in the spec. This amendment promotes each to an enforceable spec invariant. State demoted APPROVED → DRAFT pending adversarial Pass 6 confirmation; the four amendments are tightening (spec-gap closures per audit reconciliation), not scope changes.
+
+**Changes:**
+
+- **R10a extended** — Minimum HKDF salt length when caller-supplied: at least 32 bytes (HashLen of HKDF-SHA256 per RFC 5869 §3.1). jlsm tightens the RFC's "ideally HashLen" recommendation to a MUST because the library cannot audit caller salt sources. Default all-zero 32-byte salt remains acceptable. `[UNVERIFIED]` annotation retained — the tightening is a jlsm policy above the RFC baseline. Closes finding `F-R1.contract_boundaries.1.13`.
+- **R75 extended** — `_wal` DomainId reservation promoted from javadoc convention to runtime invariant: the public `DomainId` constructor must reject `_wal` with IllegalArgumentException; the synthetic `_wal` domain is constructed only via a sanctioned `DomainId.forWal()` factory (package-private or stack-gated). Prevents registry-collision shadowing attacks. Closes finding `F-R1.contract_boundaries.5.1`.
+- **R80a extended** — `Purpose` integer codes pinned as a persistence-format contract: `domain_kek=1, dek=2, rekey_sentinel=3, health_check=4`. These values MUST NOT change; reordering or inserting values with lower codes breaks every previously-wrapped DEK. AAD encoding per R80 must bind the stable `code()`, never the ordinal. Closes finding `F-R1.contract_boundaries.4.1`.
+- **R91 extended** — Cache TTL upper bound set to ≤24 hours, finite, implementation-enforced. Prevents `Instant.plus` arithmetic overflow and guarantees R69 / R91 zeroisation within a bounded window regardless of deployer configuration. `[UNVERIFIED]` annotation on the 24h value — a future research step should align with AWS Encryption SDK CMM and Google Tink KeysetHandle defaults before the ADR pins a normative bound. Closes finding `F-R1.contract_boundaries.1.14`; normative bound cross-referenced to `kms-integration-model` ADR.
+
+**Verification impact:**
+
+- No existing requirement is invalidated. All four changes are additive to existing R-numbers; prior text preserved verbatim.
+- No existing `@spec` annotation is broken. R10a / R75 / R80a / R91 identities remain stable.
+- Two `[UNVERIFIED]` annotations (R10a RFC-5869 characterization, R91 24h bound) are future research gates — neither blocks implementation but both should be resolved before a future APPROVED promotion that pins the bounds normatively in the ADR.
+- Downstream specs currently referencing `encryption.primitives-lifecycle` in their `requires` are unaffected at the R-identity level; the new clauses tighten existing obligations rather than introduce new cross-spec contracts.
+
+**Post-fix disposition:** State demoted APPROVED → DRAFT; re-promotion to APPROVED requires adversarial Pass 6 on the four amended clauses. Implementation tracking: obligation `implement-f41-lifecycle` now encompasses the v9 surface. WD-01 audit remediation is complete on the code side; this spec amendment captures the contract invariants the fixes enforce.
+
+### Amended: v8 — 2026-04-23 — R22/R22a extracted to encryption.ciphertext-envelope
+
+Structural refactor to publish the per-field ciphertext wire format as a narrowly-scoped interface-contract spec that downstream domains (`sstable`, `wal`, `serialization`, `query`) can import without pulling in the broader lifecycle, rotation, and registry-sharding surface of `encryption.primitives-lifecycle`. Extraction satisfies WD-02's "Interface-contract spec published for cross-domain consumption" acceptance criterion within the `implement-encryption-lifecycle` work group.
+
+**Changes:**
+
+- **New spec created** — `encryption.ciphertext-envelope` v1 (APPROVED), with frontmatter `_extracted_from: "encryption.primitives-lifecycle (R22, R22a)"`. Contains R1 (per-variant byte layouts + cross-tier uniformity invariant R1a + integer-encoding invariant R1c + byte-count consistency invariant R1b), R2/R2a/R2b (version tag validity, constant-time lookup path, version-not-found semantics), R3/R3a (consumer interface and pre-encrypted layout conformance), R4 (explicit scope boundary listing out-of-scope concerns).
+- **R22 rewritten as normative pointer** to `encryption.ciphertext-envelope.R1` and R1a. Preserves F41.R22 identity; existing `@spec F41.R22` annotations (14+ sites across `FieldEncryptionDispatch`, `CiphertextValidator`, `DcpeSapEncryptor`, `DcpeSapEncryptorTest`) remain valid. Behavioural contract is unchanged — the annotation target still asserts the same wire-format requirement, now via a one-hop normative reference.
+- **R22a rewritten as normative pointer** to `encryption.ciphertext-envelope.R2`, R2a, R2b. Same preservation argument as R22.
+- **Frontmatter `requires` extended** to include `encryption.ciphertext-envelope`. primitives-lifecycle now depends on the extracted wire-format spec at the manifest level.
+- **R23, R23a, R24, R25–R27 retained** in primitives-lifecycle. Reader-side scope validation (R22b), SSTable footer metadata (R23a), and compaction-driven re-encryption semantics (R25–R27) are lifecycle concerns, not wire format, and remain canonically here.
+
+**Verification impact:**
+
+- No existing requirement is invalidated. R22 and R22a continue to assert the same contract, now by normative reference.
+- No existing `@spec` annotation is broken. The F41.R22 identity still exists and still carries the wire-format obligation.
+- Consumers of `encryption.ciphertext-envelope` (future `sstable.*` or `wal.*` spec amendments) can depend on the narrow wire-format contract without importing the full lifecycle surface.
+
+**Post-fix disposition:** State remains APPROVED. Implementation tracking: obligation `implement-f41-lifecycle` now spans primitives-lifecycle v8 + ciphertext-envelope v1 jointly. WD-02 of the work group can cite `encryption.ciphertext-envelope` as the "Interface-contract spec published" deliverable.
+
+### Amended: v7 — 2026-04-23 — dangling reference cleanup (R91 defined, R89 citation fix)
+
+Additive cleanup of broken cross-references surfaced during WD-05 (runtime concerns) pre-implementation audit. No existing requirement is invalidated; no implementation `@spec` annotation is affected.
+
+**Changes:**
+
+- **R91 added (new)** under a new subsection "### Key cache lifecycle" placed between "Resource lifecycle and key zeroization" (R66–R70a) and "Tenant encryption flavors" (R71+). R91 formalises the in-memory cache TTL/eviction semantics that R69 ("pruned from the in-memory registry or expired from the cache (R91)") and R76 ("cached domain KEKs for their remaining TTL (R91)") already reference as an existing requirement. Concrete defaults (TTL duration, LRU policy) remain normatively owned by `kms-integration-model` ADR per the reference-don't-duplicate pattern established in R80.
+- **R91a added (new)** — per-tenant eviction scoping, making the isolation invariant from `three-tier-key-hierarchy` ADR explicit at the cache layer.
+- **R91b added (new)** — cache-key tuple shape, preventing wrong-tuple cache hits that could return a DEK wrapped for a different `(tenant, domain, table, version)` scope.
+- **R91c added (new)** — cache availability during `grace-read-only` state, clarifying that cached entries remain usable while new KMS unwraps are blocked.
+- **R76 text corrected** — "(per `kms-integration-model` R89)" → "(per `kms-integration-model` ADR)". ADRs do not use requirement numbering; the original citation was a broken reference to a non-existent R89 in the ADR.
+- **R76a text corrected** — same fix: "the backoff policy of `kms-integration-model` R89" → "the backoff policy of `kms-integration-model` ADR".
+
+**Rationale:** The v5 amendment introduced R69 and R76 with forward references to "R91", but R91 was never drafted in v5 or v6. The v6 Low-priority cleanup addressed similar stale-reference issues (L1: "R85" → R78b; L2: "R71–R85" → R71–R82b) but missed R91/R89. This amendment completes that cleanup.
+
+**Post-fix disposition:** State remains APPROVED. Implementation tracking: obligation `implement-f41-lifecycle` now encompasses R91, R91a–c. Implementation work on WD-03 (DEK lifecycle + rotation) and WD-05 (runtime concerns) of the `implement-encryption-lifecycle` work group proceeds against the v7 surface.
 
 ### Amended: v6 — 2026-04-21 — Pass 5 adversarial findings addressed (promoted DRAFT → APPROVED)
 

@@ -8,4 +8,12 @@ dependencies {
     implementation project(':modules:jlsm-table')
 }
 
+// Compile-time access to OffHeapKeyMaterial (internal package, qualified-exported only to
+// jlsm.table; benchmarks run as unnamed module and need an explicit add-exports).
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += [
+        '--add-exports', 'jlsm.core/jlsm.encryption.internal=ALL-UNNAMED',
+    ]
+}
+
 apply from: "${rootDir}/benchmarks/jmh-common.gradle"

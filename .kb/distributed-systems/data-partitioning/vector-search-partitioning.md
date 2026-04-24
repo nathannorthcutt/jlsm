@@ -35,6 +35,9 @@ sources:
     title: "How to Choose Between IVF and HNSW for ANN Vector Search (Milvus)"
     accessed: "2026-03-16"
     type: "blog"
+related:
+  - "distributed-systems/data-partitioning/decoupled-index-partitioning.md"
+  - "distributed-systems/data-partitioning/cross-partition-query-planning.md"
 ---
 
 # Partitioning Strategies for Distributed Vector Search with Hybrid Filtering

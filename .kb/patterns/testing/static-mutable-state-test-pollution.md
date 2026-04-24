@@ -12,6 +12,8 @@ applies_to:
   - "modules/jlsm-engine/src/test/java/jlsm/engine/cluster/InJvmDiscoveryProvider.java"
 related:
   - "wall-clock-dependency-in-duration-logic"
+  - "stale-test-after-exception-type-tightening"
+  - "tdd-failure-first-degeneracy-for-pure-record-enum-work"
 decision_refs: []
 sources: []
 ---

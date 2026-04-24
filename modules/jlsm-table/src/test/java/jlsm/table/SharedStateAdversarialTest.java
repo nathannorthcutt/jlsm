@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.DcpeSapEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import java.util.ArrayList;
 import jlsm.table.internal.FieldIndex;
 import jlsm.table.internal.IndexRegistry;
@@ -455,7 +455,7 @@ class SharedStateAdversarialTest {
         for (int i = 0; i < keyBytes.length; i++) {
             keyBytes[i] = (byte) (i + 1);
         }
-        var keyHolder = EncryptionKeyHolder.of(keyBytes);
+        var keyHolder = OffHeapKeyMaterial.of(keyBytes);
         var encryptor = new BoldyrevaOpeEncryptor(keyHolder, 100, 10_000);
 
         // Access the private encryptRecursive method via reflection
@@ -505,7 +505,7 @@ class SharedStateAdversarialTest {
         for (int i = 0; i < keyBytes.length; i++) {
             keyBytes[i] = (byte) (i + 1);
         }
-        var keyHolder = EncryptionKeyHolder.of(keyBytes);
+        var keyHolder = OffHeapKeyMaterial.of(keyBytes);
         var encryptor = new BoldyrevaOpeEncryptor(keyHolder, 100, 10_000);
 
         // Access the private sampleHypergeometric method via reflection
@@ -553,7 +553,7 @@ class SharedStateAdversarialTest {
         for (int i = 0; i < keyBytes.length; i++) {
             keyBytes[i] = (byte) (i + 1);
         }
-        var keyHolder = EncryptionKeyHolder.of(keyBytes);
+        var keyHolder = OffHeapKeyMaterial.of(keyBytes);
 
         // Use a domain large enough that the recursive bisection will pass
         // (dLo, dHi, rLo, rHi) tuples with high-bit-only differences to prfSeed.
@@ -644,7 +644,7 @@ class SharedStateAdversarialTest {
         for (int i = 0; i < keyBytes.length; i++) {
             keyBytes[i] = (byte) (i + 1);
         }
-        var keyHolder = EncryptionKeyHolder.of(keyBytes);
+        var keyHolder = OffHeapKeyMaterial.of(keyBytes);
         var encryptor = new DcpeSapEncryptor(keyHolder, 128);
 
         // Assert no keyBytes field exists on DcpeSapEncryptor — stronger than "field zeroed".

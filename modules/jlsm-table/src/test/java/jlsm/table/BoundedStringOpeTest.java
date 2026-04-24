@@ -9,7 +9,7 @@ import java.util.List;
 
 import jlsm.core.io.MemorySerializer;
 
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.internal.IndexRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -23,13 +23,13 @@ import org.junit.jupiter.api.Test;
  */
 class BoundedStringOpeTest {
 
-    private EncryptionKeyHolder keyHolder;
+    private OffHeapKeyMaterial keyHolder;
 
     @BeforeEach
     void setUp() {
         byte[] key = new byte[64];
         Arrays.fill(key, (byte) 0xAB);
-        keyHolder = EncryptionKeyHolder.of(key);
+        keyHolder = OffHeapKeyMaterial.of(key);
     }
 
     @AfterEach

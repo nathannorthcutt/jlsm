@@ -112,8 +112,10 @@ class ResourceLifecycleAdversarialTest {
             concurrentGetCompleted.set(true);
         });
 
-        // Give the get thread time to complete if the lock is NOT held
-        getThread.join(500);
+        // Give the get thread time to complete if the lock is NOT held.
+        // 1s is generous headroom for vthread scheduling under CI load; discrimination
+        // against the bug is strong (buggy path blocks 8s on the loader's latch).
+        getThread.join(1000);
 
         // Assert: if the lock is held during loader, the get will be blocked
         // If the lock is NOT held (correct behavior), the get completes quickly

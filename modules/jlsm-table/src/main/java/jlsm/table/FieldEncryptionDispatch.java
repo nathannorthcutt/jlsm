@@ -15,7 +15,7 @@ import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.DcpeSapEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.FieldDefinition;
 import jlsm.table.JlsmSchema;
@@ -70,7 +70,7 @@ public final class FieldEncryptionDispatch {
      * @param schema the schema describing the document structure; must not be null
      * @param keyHolder the key holder providing encryption keys; may be null (no encryption)
      */
-    public FieldEncryptionDispatch(JlsmSchema schema, EncryptionKeyHolder keyHolder) {
+    public FieldEncryptionDispatch(JlsmSchema schema, OffHeapKeyMaterial keyHolder) {
         Objects.requireNonNull(schema, "schema must not be null");
 
         final List<FieldDefinition> fields = schema.fields();
@@ -135,7 +135,7 @@ public final class FieldEncryptionDispatch {
                         byte[] cmacHalf = null;
                         byte[] ctrHalf = null;
                         byte[] sivKey = null;
-                        EncryptionKeyHolder sivKeyHolder = null;
+                        OffHeapKeyMaterial sivKeyHolder = null;
                         try {
                             masterKey = keyHolder.getKeyBytes();
                             cmacHalf = hmacSha256(masterKey, "siv-cmac-key");
@@ -143,7 +143,7 @@ public final class FieldEncryptionDispatch {
                             sivKey = new byte[64];
                             System.arraycopy(cmacHalf, 0, sivKey, 0, 32);
                             System.arraycopy(ctrHalf, 0, sivKey, 32, 32);
-                            sivKeyHolder = EncryptionKeyHolder.of(sivKey);
+                            sivKeyHolder = OffHeapKeyMaterial.of(sivKey);
                             siv = new AesSivEncryptor(sivKeyHolder);
                         } finally {
                             if (masterKey != null) {
@@ -177,7 +177,8 @@ public final class FieldEncryptionDispatch {
                     final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(keyHolder,
                             bounds[0], bounds[1]);
                     final int maxBytes = opeMaxBytes(fd.type());
-                    // @spec encryption.primitives-variants.R54, F41.R22 — derive per-field MAC key
+                    // @spec encryption.primitives-variants.R54, encryption.ciphertext-envelope.R1 —
+                    // derive per-field MAC key
                     // and bind MAC to field name
                     final byte[] masterKey = keyHolder.getKeyBytes();
                     final SecretKeySpec macKeySpec;
@@ -208,11 +209,11 @@ public final class FieldEncryptionDispatch {
                     if (keyHolder.keyLength() == 64) {
                         byte[] fullKey = null;
                         byte[] gcmKey = null;
-                        EncryptionKeyHolder gcmKeyHolder = null;
+                        OffHeapKeyMaterial gcmKeyHolder = null;
                         try {
                             fullKey = keyHolder.getKeyBytes();
                             gcmKey = hmacSha256(fullKey, "gcm-opaque-key");
-                            gcmKeyHolder = EncryptionKeyHolder.of(gcmKey);
+                            gcmKeyHolder = OffHeapKeyMaterial.of(gcmKey);
                             gcm = new AesGcmEncryptor(gcmKeyHolder);
                         } finally {
                             if (fullKey != null) {
@@ -344,7 +345,8 @@ public final class FieldEncryptionDispatch {
      *
      * @see #opeDecryptTyped
      */
-    // @spec encryption.primitives-variants.R21,R54, F41.R22 — 25-byte OPE format with detached MAC
+    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1 — 25-byte OPE
+    // format with detached MAC
     private static byte[] opeEncryptTyped(BoldyrevaOpeEncryptor ope, byte[] plaintext, int maxBytes,
             SecretKeySpec macKeySpec, byte[] associatedData) {
         if (plaintext == null) {
@@ -374,7 +376,8 @@ public final class FieldEncryptionDispatch {
      *
      * @see #opeEncryptTyped
      */
-    // @spec encryption.primitives-variants.R21,R54, F41.R22 — verify MAC in constant time, then OPE
+    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1 — verify MAC
+    // in constant time, then OPE
     // inverse
     private static byte[] opeDecryptTyped(BoldyrevaOpeEncryptor ope, byte[] ciphertext,
             int maxBytes, SecretKeySpec macKeySpec, byte[] associatedData) {

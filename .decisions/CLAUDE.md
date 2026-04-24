@@ -19,18 +19,22 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| AAD Canonical Encoding for Context-Bound Ciphertext Wrapping | aad-canonical-encoding | 2026-04-23 | Length-prefixed TLV — `[4B BE Purpose.code() \| 4B BE attr-count \| sorted (4B BE key-len \| UTF-8 key \| 4B BE val-len \| UTF-8 val) pairs]`; zero-dep; mirrors R11 HKDF info pattern; amends `kms-integration-model` |
 | KMS Integration Model | kms-integration-model | 2026-04-21 | KmsClient SPI (wrap/unwrap/isUsable + transient/permanent exceptions); 30min cache TTL; 3-retry exp-backoff (100ms→400ms→1.6s, ±25% jitter); 10s call timeout; encryption context carries tenantId+domainId+purpose |
 | DEK Scoping Granularity | dek-scoping-granularity | 2026-04-21 | Per-(tenant, domain, table) DEK with version; domain groups tables; HKDF field derivation from tableDek with length-prefixed info (tenantId, domainId, tableName, fieldName, dekVersion) |
 | Tenant Key Revocation and External Rotation | tenant-key-revocation-and-external-rotation | 2026-04-21 | API (proof-of-control sentinel) + opt-in polling; streaming paginated rekey with dual-reference migration; 3-state failure machine (healthy → grace-read-only → failed, N=5 / 1h defaults); explicit decommission deferred |
 | Three-Tier Key Hierarchy | three-tier-key-hierarchy | 2026-04-21 | Tenant KEK → data-domain KEK → DEK; per-tenant KMS isolation always-on; 3 KMS flavors (none/local/external); HKDF hybrid derivation; amends `encryption-key-rotation` + `per-field-key-binding` |
-| Client-Side Encryption SDK | client-side-encryption-sdk | 2026-04-15 | Schema-driven auto-encrypt/decrypt with KeyVault SPI — per-field HKDF, off-heap key caching |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
-<!-- 39 items (was 42: -3 confirmed from WD-12 client-side-encryption-sdk, encrypted-prefix-wildcard-queries, encrypted-fuzzy-matching; encrypted-cross-field-joins re-deferred with updated date). Grouped by parent ADR for readability. -->
+<!-- 43 items (was 39; +4 from aad-canonical-encoding out-of-scope promotions on 2026-04-23). Grouped by parent ADR for readability. -->
 
 | Problem | Slug | Deferred | Parent ADR |
 |---------|------|----------|------------|
+| AAD Attribute-Set Evolution | aad-attribute-set-evolution | 2026-04-23 | aad-canonical-encoding |
+| AAD Identifier Normalization (Unicode NFC) | aad-identifier-normalization | 2026-04-23 | aad-canonical-encoding |
+| AAD Non-Java Consumer Interoperability | aad-non-java-consumer-interop | 2026-04-23 | aad-canonical-encoding |
+| AAD Heterogeneous Attribute Value Types | aad-heterogeneous-value-types | 2026-04-23 | aad-canonical-encoding |
 | Tenant Lifecycle (decommission, data erasure, audit retention) | tenant-lifecycle | 2026-04-21 | tenant-key-revocation-and-external-rotation |
 | Shuffle/Repartition Joins | shuffle-repartition-joins | 2026-04-14 | distributed-join-execution |
 | Semi-Join Reduction | semi-join-reduction | 2026-04-14 | distributed-join-execution |

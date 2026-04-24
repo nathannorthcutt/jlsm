@@ -13,6 +13,7 @@ applies_to:
   - "modules/jlsm-engine/src/test/java/jlsm/engine/cluster/InJvmTransport.java"
 related:
   - "lock-held-side-effects"
+  - "shared-rwlock-bracketing-facade-close-atomicity"
 decision_refs: []
 sources:
   - url: "https://docs.oracle.com/javase/specs/jls/se21/html/jls-17.html"

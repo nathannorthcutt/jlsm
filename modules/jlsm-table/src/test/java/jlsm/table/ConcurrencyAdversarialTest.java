@@ -7,11 +7,12 @@ import java.lang.foreign.MemorySegment;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.table.internal.FieldIndex;
 import jlsm.table.internal.IndexRegistry;
 import jlsm.table.internal.SseEncryptedIndex;
@@ -386,7 +387,7 @@ class ConcurrencyAdversarialTest {
                 + "documentStore (LinkedHashMap is not thread-safe): " + failure.get());
     }
 
-    // ── F-R1.concurrency.2.1: TOCTOU race in EncryptionKeyHolder.getKeyBytes ──
+    // ── F-R1.concurrency.2.1: TOCTOU race in OffHeapKeyMaterial.getKeyBytes ──
 
     // Finding: F-R1.concurrency.2.1
     // Bug: TOCTOU race between getKeyBytes() ensureOpen() check and keySegment
@@ -394,13 +395,13 @@ class ConcurrencyAdversarialTest {
     // and closes arena, Thread A reads all-zero bytes (silent data corruption)
     // or gets an uncontrolled IllegalStateException from arena scope
     // Correct behavior: getKeyBytes() must either return valid key bytes or throw
-    // IllegalStateException("EncryptionKeyHolder has been closed") — never
+    // IllegalStateException("OffHeapKeyMaterial has been closed") — never
     // return zeroed bytes and never throw an arena scope exception
-    // Fix location: EncryptionKeyHolder.java lines 74-79 (getKeyBytes) and 103-111 (close)
+    // Fix location: OffHeapKeyMaterial.java lines 74-79 (getKeyBytes) and 103-111 (close)
     // Regression watch: fix must not deadlock under concurrent getKeyBytes() calls
     @Test
     @Timeout(30)
-    void test_EncryptionKeyHolder_getKeyBytes_TOCTOU_returns_zeroed_key() throws Exception {
+    void test_OffHeapKeyMaterial_getKeyBytes_TOCTOU_returns_zeroed_key() throws Exception {
         // Strategy: race getKeyBytes() against close() in a tight loop.
         // If the TOCTOU window exists, eventually a reader will pass ensureOpen()
         // then read zeroed memory (all-zero byte array) — silent data corruption.
@@ -413,7 +414,7 @@ class ConcurrencyAdversarialTest {
             for (int k = 0; k < 32; k++)
                 keyMaterial[k] = (byte) (k + 0xA0);
             final byte[] expectedKey = keyMaterial.clone();
-            final EncryptionKeyHolder holder = EncryptionKeyHolder.of(keyMaterial);
+            final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(keyMaterial);
 
             CyclicBarrier barrier = new CyclicBarrier(3);
 
@@ -444,7 +445,7 @@ class ConcurrencyAdversarialTest {
                                 // Expected: holder was closed. But verify it's the holder's
                                 // message.
                                 if (!e.getMessage()
-                                        .contains("EncryptionKeyHolder has been closed")) {
+                                        .contains("OffHeapKeyMaterial has been closed")) {
                                     failure.compareAndSet(null, new AssertionError(
                                             "getKeyBytes() threw unexpected IllegalStateException: "
                                                     + e.getMessage(),
@@ -634,7 +635,7 @@ class ConcurrencyAdversarialTest {
         final byte[] keyMaterial = new byte[32];
         for (int k = 0; k < 32; k++)
             keyMaterial[k] = (byte) (k + 0xA0);
-        final EncryptionKeyHolder kh = EncryptionKeyHolder.of(keyMaterial);
+        final OffHeapKeyMaterial kh = OffHeapKeyMaterial.of(keyMaterial);
         final SseEncryptedIndex idx = new SseEncryptedIndex(kh);
 
         // Add one entry to create the per-term counter
@@ -803,9 +804,14 @@ class ConcurrencyAdversarialTest {
                 }
             });
 
-            // Give the thread time to either block on the lock or complete
-            Thread.sleep(200);
-
+            // Wait deterministically: exit as soon as the thread is queued on the
+            // read lock (expected) OR has completed (bug — bypassed the lock).
+            // getQueueLength() reads the AQS waiter count directly, no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (rwLock.getQueueLength() == 0 && !isEmptyCompleted.get()
+                    && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
             // If isEmpty() completed while write lock is held, it bypassed
             // the read lock — the bug exists. With the fix, isEmpty() acquires
             // the read lock and blocks until the write lock is released.
@@ -813,6 +819,9 @@ class ConcurrencyAdversarialTest {
                     "isEmpty() completed while write lock was held — proves it does "
                             + "not acquire the read lock, violating the lock protocol "
                             + "that all other read operations follow");
+            assertTrue(rwLock.getQueueLength() >= 1,
+                    "isEmpty() did not queue on the read lock within 1s — it may "
+                            + "have taken a path that skipped the lock");
 
             checker.join(1000);
         } finally {
@@ -872,15 +881,23 @@ class ConcurrencyAdversarialTest {
                 }
             });
 
-            // Give the thread time to either block on the lock or complete
-            Thread.sleep(200);
-
+            // Wait deterministically: exit as soon as the thread is queued on the
+            // read lock (expected) OR has completed (bug — bypassed the lock).
+            // getQueueLength() reads the AQS waiter count directly, no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (rwLock.getQueueLength() == 0 && !resolveCompleted.get()
+                    && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
             // If resolveEntry() completed while write lock is held, it bypassed
             // the read lock — the bug exists.
             assertFalse(resolveCompleted.get(),
                     "resolveEntry() completed while write lock was held — proves it does "
                             + "not acquire the read lock, violating the lock protocol "
                             + "that all other read operations follow");
+            assertTrue(rwLock.getQueueLength() >= 1,
+                    "resolveEntry() did not queue on the read lock within 1s — it may "
+                            + "have taken a path that skipped the lock");
 
             resolver.join(1000);
         } finally {
@@ -929,7 +946,7 @@ class ConcurrencyAdversarialTest {
             final byte[] keyMaterial = new byte[32];
             for (int k = 0; k < 32; k++)
                 keyMaterial[k] = (byte) (k + 0xA0);
-            final EncryptionKeyHolder kh = EncryptionKeyHolder.of(keyMaterial);
+            final OffHeapKeyMaterial kh = OffHeapKeyMaterial.of(keyMaterial);
             final SseEncryptedIndex idx = new SseEncryptedIndex(kh);
             final byte[] token = idx.deriveToken("testTerm");
 
@@ -1049,15 +1066,23 @@ class ConcurrencyAdversarialTest {
                 }
             });
 
-            // Give the thread time to either block on the lock or complete
-            Thread.sleep(200);
-
+            // Wait deterministically: exit as soon as the thread is queued on the
+            // read lock (expected) OR has completed (bug — bypassed the lock).
+            // getQueueLength() reads the AQS waiter count directly, no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (rwLock.getQueueLength() == 0 && !schemaCompleted.get()
+                    && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
             // If schema() completed while write lock is held, it bypassed
             // the read lock — the bug exists.
             assertFalse(schemaCompleted.get(),
                     "schema() completed while write lock was held — proves it does "
                             + "not acquire the read lock, violating the lock protocol "
                             + "that all other read operations follow");
+            assertTrue(rwLock.getQueueLength() >= 1,
+                    "schema() did not queue on the read lock within 1s — it may "
+                            + "have taken a path that skipped the lock");
 
             caller.join(1000);
         } finally {
@@ -1116,15 +1141,23 @@ class ConcurrencyAdversarialTest {
                 }
             });
 
-            // Give the thread time to either block on the lock or complete
-            Thread.sleep(200);
-
+            // Wait deterministically: exit as soon as the thread is queued on the
+            // read lock (expected) OR has completed (bug — bypassed the lock).
+            // getQueueLength() reads the AQS waiter count directly, no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (rwLock.getQueueLength() == 0 && !allEntriesCompleted.get()
+                    && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
             // If allEntries() completed while write lock is held, it bypassed
             // the read lock — the bug exists.
             assertFalse(allEntriesCompleted.get(),
                     "allEntries() completed while write lock was held — proves it does "
                             + "not acquire the read lock, violating the lock protocol "
                             + "that all other read operations follow");
+            assertTrue(rwLock.getQueueLength() >= 1,
+                    "allEntries() did not queue on the read lock within 1s — it may "
+                            + "have taken a path that skipped the lock");
 
             caller.join(1000);
         } finally {

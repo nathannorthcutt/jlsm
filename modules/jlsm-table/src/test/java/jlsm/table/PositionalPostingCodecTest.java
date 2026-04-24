@@ -9,7 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import jlsm.encryption.BoldyrevaOpeEncryptor;
-import jlsm.encryption.EncryptionKeyHolder;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.table.internal.PositionalPostingCodec;
 
 /**
@@ -25,7 +25,7 @@ class PositionalPostingCodecTest {
     private static final long DOMAIN_SIZE = 10_000L;
     private static final long RANGE_SIZE = 1_000_000L;
 
-    private EncryptionKeyHolder keyHolder;
+    private OffHeapKeyMaterial keyHolder;
     private BoldyrevaOpeEncryptor opeEncryptor;
     private PositionalPostingCodec codec;
 
@@ -35,7 +35,7 @@ class PositionalPostingCodecTest {
         for (int i = 0; i < 64; i++) {
             keyMaterial[i] = (byte) (i + 1);
         }
-        keyHolder = EncryptionKeyHolder.of(keyMaterial);
+        keyHolder = OffHeapKeyMaterial.of(keyMaterial);
         opeEncryptor = new BoldyrevaOpeEncryptor(keyHolder, DOMAIN_SIZE, RANGE_SIZE);
         codec = new PositionalPostingCodec(opeEncryptor);
     }

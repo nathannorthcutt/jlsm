@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import jlsm.encryption.internal.OffHeapKeyMaterial;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.Arrays;
@@ -32,7 +34,7 @@ class EncryptionAdversarialTest {
         return key;
     }
 
-    // ── C1-1: EncryptionKeyHolder.close() race condition ─────────────────────────
+    // ── C1-1: OffHeapKeyMaterial.close() race condition ─────────────────────────
     // Two threads racing past the volatile boolean guard both call arena.close(),
     // causing IllegalStateException on the second call.
 
@@ -41,7 +43,7 @@ class EncryptionAdversarialTest {
         // Vector: C1-1 — concurrent close() must be idempotent
         final int iterations = 100;
         for (int iter = 0; iter < iterations; iter++) {
-            final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+            final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
             final CountDownLatch startGate = new CountDownLatch(1);
             final AtomicInteger errors = new AtomicInteger(0);
 
@@ -82,7 +84,7 @@ class EncryptionAdversarialTest {
         // Vector: C2-1 — verify getKeyBytes returns independent copies
         final byte[] keyMaterial = key256();
         final byte[] expected = Arrays.copyOf(keyMaterial, keyMaterial.length);
-        try (final EncryptionKeyHolder holder = EncryptionKeyHolder.of(keyMaterial)) {
+        try (final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(keyMaterial)) {
             final byte[] copy1 = holder.getKeyBytes();
             // Zero copy1 (as the contract requires)
             Arrays.fill(copy1, (byte) 0);
@@ -103,7 +105,7 @@ class EncryptionAdversarialTest {
         // Vector: C2-4 — decrypt with wrong-sized array should throw, not silently corrupt
         final byte[] keyMaterial = key256();
         final DcpeSapEncryptor enc = new DcpeSapEncryptor(
-                EncryptionKeyHolder.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 8);
+                OffHeapKeyMaterial.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 8);
 
         final float[] vector = new float[]{ 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f };
         final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector, AD);
@@ -121,7 +123,7 @@ class EncryptionAdversarialTest {
         // Vector: C2-4 — decrypt with too many elements should also be rejected
         final byte[] keyMaterial = key256();
         final DcpeSapEncryptor enc = new DcpeSapEncryptor(
-                EncryptionKeyHolder.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 4);
+                OffHeapKeyMaterial.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 4);
 
         final float[] vector = new float[]{ 1.0f, 2.0f, 3.0f, 4.0f };
         final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector, AD);
@@ -141,7 +143,7 @@ class EncryptionAdversarialTest {
         // Vector: C2-5 — mutating the returned array should not corrupt the record
         final byte[] keyMaterial = key256();
         final DcpeSapEncryptor enc = new DcpeSapEncryptor(
-                EncryptionKeyHolder.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 4);
+                OffHeapKeyMaterial.of(Arrays.copyOf(keyMaterial, keyMaterial.length)), 4);
 
         final float[] vector = new float[]{ 1.0f, 2.0f, 3.0f, 4.0f };
         final DcpeSapEncryptor.EncryptedVector ev = enc.encrypt(vector, AD);
@@ -165,7 +167,7 @@ class EncryptionAdversarialTest {
     void boldyrevaOpeEncryptor_worksAfterKeyHolderClosed() {
         // Vector: C2-2 — encryptor should work after key holder is closed
         // (it copies key material at construction, not stores a reference)
-        final EncryptionKeyHolder holder = EncryptionKeyHolder.of(key256());
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key256());
         final BoldyrevaOpeEncryptor ope = new BoldyrevaOpeEncryptor(holder, 100, 1000);
         holder.close();
 
