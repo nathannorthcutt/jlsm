@@ -13,6 +13,7 @@ applies_to:
 related:
   - "wall-clock-dependency-in-duration-logic"
   - "stale-test-after-exception-type-tightening"
+  - "tdd-failure-first-degeneracy-for-pure-record-enum-work"
 decision_refs: []
 sources: []
 ---

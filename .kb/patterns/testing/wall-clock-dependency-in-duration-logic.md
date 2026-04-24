@@ -12,6 +12,7 @@ applies_to:
 related:
   - "static-mutable-state-test-pollution"
   - "stale-test-after-exception-type-tightening"
+  - "tdd-failure-first-degeneracy-for-pure-record-enum-work"
 decision_refs: []
 sources:
   - url: "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/Clock.html"

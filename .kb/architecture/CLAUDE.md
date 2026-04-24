@@ -5,4 +5,4 @@
 
 | Category | Path | Files | Last Updated |
 |----------|------|-------|--------------|
-| feature-footprints | [feature-footprints/](feature-footprints/CLAUDE.md) | 3 | 2026-04-22 |
+| feature-footprints | [feature-footprints/](feature-footprints/CLAUDE.md) | 5 | 2026-04-23 |

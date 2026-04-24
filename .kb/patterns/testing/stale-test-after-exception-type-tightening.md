@@ -17,6 +17,7 @@ applies_to:
 related:
   - "wall-clock-dependency-in-duration-logic"
   - "static-mutable-state-test-pollution"
+  - "tdd-failure-first-degeneracy-for-pure-record-enum-work"
 decision_refs: []
 sources:
   - url: "https://docs.junit.org/current/api/org.junit.jupiter.api/org/junit/jupiter/api/Assertions.html#assertThrows(java.lang.Class,org.junit.jupiter.api.function.Executable)"
