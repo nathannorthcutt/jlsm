@@ -7,6 +7,7 @@ import java.lang.foreign.MemorySegment;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -803,9 +804,14 @@ class ConcurrencyAdversarialTest {
                 }
             });
 
-            // Give the thread time to either block on the lock or complete
-            Thread.sleep(200);
-
+            // Wait deterministically: exit as soon as the thread is queued on the
+            // read lock (expected) OR has completed (bug — bypassed the lock).
+            // getQueueLength() reads the AQS waiter count directly, no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (rwLock.getQueueLength() == 0 && !isEmptyCompleted.get()
+                    && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
             // If isEmpty() completed while write lock is held, it bypassed
             // the read lock — the bug exists. With the fix, isEmpty() acquires
             // the read lock and blocks until the write lock is released.
@@ -813,6 +819,9 @@ class ConcurrencyAdversarialTest {
                     "isEmpty() completed while write lock was held — proves it does "
                             + "not acquire the read lock, violating the lock protocol "
                             + "that all other read operations follow");
+            assertTrue(rwLock.getQueueLength() >= 1,
+                    "isEmpty() did not queue on the read lock within 1s — it may "
+                            + "have taken a path that skipped the lock");
 
             checker.join(1000);
         } finally {
@@ -872,15 +881,23 @@ class ConcurrencyAdversarialTest {
                 }
             });
 
-            // Give the thread time to either block on the lock or complete
-            Thread.sleep(200);
-
+            // Wait deterministically: exit as soon as the thread is queued on the
+            // read lock (expected) OR has completed (bug — bypassed the lock).
+            // getQueueLength() reads the AQS waiter count directly, no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (rwLock.getQueueLength() == 0 && !resolveCompleted.get()
+                    && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
             // If resolveEntry() completed while write lock is held, it bypassed
             // the read lock — the bug exists.
             assertFalse(resolveCompleted.get(),
                     "resolveEntry() completed while write lock was held — proves it does "
                             + "not acquire the read lock, violating the lock protocol "
                             + "that all other read operations follow");
+            assertTrue(rwLock.getQueueLength() >= 1,
+                    "resolveEntry() did not queue on the read lock within 1s — it may "
+                            + "have taken a path that skipped the lock");
 
             resolver.join(1000);
         } finally {
@@ -1049,15 +1066,23 @@ class ConcurrencyAdversarialTest {
                 }
             });
 
-            // Give the thread time to either block on the lock or complete
-            Thread.sleep(200);
-
+            // Wait deterministically: exit as soon as the thread is queued on the
+            // read lock (expected) OR has completed (bug — bypassed the lock).
+            // getQueueLength() reads the AQS waiter count directly, no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (rwLock.getQueueLength() == 0 && !schemaCompleted.get()
+                    && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
             // If schema() completed while write lock is held, it bypassed
             // the read lock — the bug exists.
             assertFalse(schemaCompleted.get(),
                     "schema() completed while write lock was held — proves it does "
                             + "not acquire the read lock, violating the lock protocol "
                             + "that all other read operations follow");
+            assertTrue(rwLock.getQueueLength() >= 1,
+                    "schema() did not queue on the read lock within 1s — it may "
+                            + "have taken a path that skipped the lock");
 
             caller.join(1000);
         } finally {
@@ -1116,15 +1141,23 @@ class ConcurrencyAdversarialTest {
                 }
             });
 
-            // Give the thread time to either block on the lock or complete
-            Thread.sleep(200);
-
+            // Wait deterministically: exit as soon as the thread is queued on the
+            // read lock (expected) OR has completed (bug — bypassed the lock).
+            // getQueueLength() reads the AQS waiter count directly, no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (rwLock.getQueueLength() == 0 && !allEntriesCompleted.get()
+                    && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
             // If allEntries() completed while write lock is held, it bypassed
             // the read lock — the bug exists.
             assertFalse(allEntriesCompleted.get(),
                     "allEntries() completed while write lock was held — proves it does "
                             + "not acquire the read lock, violating the lock protocol "
                             + "that all other read operations follow");
+            assertTrue(rwLock.getQueueLength() >= 1,
+                    "allEntries() did not queue on the read lock within 1s — it may "
+                            + "have taken a path that skipped the lock");
 
             caller.join(1000);
         } finally {

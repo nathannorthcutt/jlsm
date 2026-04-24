@@ -353,8 +353,19 @@ class SharedStateAdversarialTest {
 
             // Wait for close() to have been called (it will set closed=true then block)
             assertTrue(closeStarted.await(5, TimeUnit.SECONDS), "closer thread did not start");
-            // Give close() a moment to set the flag and block on the lock
-            Thread.sleep(50);
+            // Wait deterministically for the closer thread to be queued on the lock.
+            // hasQueuedThreads() reads AQS state directly — no polling jitter.
+            final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+            while (!internalLock.hasQueuedThreads() && System.nanoTime() < deadlineNanos) {
+                Thread.onSpinWait();
+            }
+            // Fail explicitly if the precondition was not established — otherwise
+            // the following cache.get() would pass vacuously (closer never ran, so
+            // closed is false regardless of bug presence), masking the test's ability
+            // to discriminate between buggy and correct implementations.
+            assertTrue(internalLock.hasQueuedThreads(),
+                    "closer thread did not queue on the lock within 1s — the test "
+                            + "could not establish the race precondition");
 
             // Now get() — with the bug, this throws IllegalStateException because
             // closed is already true, even though the map still has our entry.

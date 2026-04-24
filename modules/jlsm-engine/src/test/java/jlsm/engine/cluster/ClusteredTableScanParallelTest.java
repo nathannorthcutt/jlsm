@@ -258,8 +258,16 @@ final class ClusteredTableScanParallelTest {
             localTable.close();
             scanThread.join(5_000L);
         }
-        // Allow pending whenComplete callbacks to drain.
-        Thread.sleep(200);
+        // Allow pending whenComplete callbacks to drain. Poll up to 5s rather than a fixed
+        // window: the async cleanup path (nodeFut.whenComplete → client.close()) can lag
+        // scanThread.join() by transport-delivery latency (50ms per remote call, set above)
+        // plus SCATTER_EXECUTOR vthread scheduling latency, which compounds under host load.
+        // The invariant is that cleanup eventually converges; the test just needs to wait
+        // for it rather than assume a fixed drain window is enough.
+        final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (RemotePartitionClient.openInstances() > 0 && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
         assertEquals(0, RemotePartitionClient.openInstances(),
                 "No RemotePartitionClient instances may leak after close races with scan");
         // Require that scan() actually did *something* useful across the iterations — otherwise

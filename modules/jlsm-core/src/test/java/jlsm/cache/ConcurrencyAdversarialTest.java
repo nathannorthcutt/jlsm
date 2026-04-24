@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Timeout;
 import java.lang.foreign.Arena;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -177,8 +178,15 @@ class ConcurrencyAdversarialTest {
 
         // Wait for Thread A to start and pass the outer check
         threadPassedOuterCheck.await();
-        // Brief pause to ensure Thread A is blocked on lock.lock()
-        Thread.sleep(50);
+        // Wait deterministically for Thread A to be parked on internalLock.
+        // hasQueuedThreads() reads AQS state directly — no polling jitter.
+        final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (!internalLock.hasQueuedThreads() && System.nanoTime() < deadlineNanos) {
+            Thread.onSpinWait();
+        }
+        assertTrue(internalLock.hasQueuedThreads(),
+                "Thread A did not queue on internalLock within 1s — get() may "
+                        + "have returned without attempting the lock");
 
         // Step 3: set closed=true while we hold the lock, then release
         closedField.setBoolean(cache, true);
@@ -260,7 +268,15 @@ class ConcurrencyAdversarialTest {
         });
 
         threadReady.await();
-        Thread.sleep(50); // ensure Thread A is blocked on lock.lock()
+        // Wait deterministically for Thread A to be parked on internalLock.
+        // hasQueuedThreads() reads AQS state directly — no polling jitter.
+        final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (!internalLock.hasQueuedThreads() && System.nanoTime() < deadlineNanos) {
+            Thread.onSpinWait();
+        }
+        assertTrue(internalLock.hasQueuedThreads(),
+                "Thread A did not queue on internalLock within 1s — getOrLoad() may "
+                        + "have returned without attempting the first-section lock");
 
         // Step 3: set closed=true via reflection (simulates close() from another thread),
         // then release the lock. Thread A will acquire the lock and see closed==true.
@@ -330,7 +346,15 @@ class ConcurrencyAdversarialTest {
 
         // Wait for Thread A to start and pass the outer check
         threadReady.await();
-        Thread.sleep(50);
+        // Wait deterministically for Thread A to be parked on internalLock.
+        // hasQueuedThreads() reads AQS state directly — no polling jitter.
+        final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (!internalLock.hasQueuedThreads() && System.nanoTime() < deadlineNanos) {
+            Thread.onSpinWait();
+        }
+        assertTrue(internalLock.hasQueuedThreads(),
+                "Thread A did not queue on internalLock within 1s — size() may "
+                        + "have returned without attempting the lock");
 
         // Step 3: set closed=true while we hold the lock, then release
         closedField.setBoolean(cache, true);
@@ -452,7 +476,15 @@ class ConcurrencyAdversarialTest {
 
         // Wait for Thread A to start and pass the outer check
         threadReady.await();
-        Thread.sleep(50);
+        // Wait deterministically for Thread A to be parked on internalLock.
+        // hasQueuedThreads() reads AQS state directly — no polling jitter.
+        final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (!internalLock.hasQueuedThreads() && System.nanoTime() < deadlineNanos) {
+            Thread.onSpinWait();
+        }
+        assertTrue(internalLock.hasQueuedThreads(),
+                "Thread A did not queue on internalLock within 1s — evict() may "
+                        + "have returned without attempting the lock");
 
         // Step 3: set closed=true while we hold the lock, then release
         closedField.setBoolean(cache, true);
