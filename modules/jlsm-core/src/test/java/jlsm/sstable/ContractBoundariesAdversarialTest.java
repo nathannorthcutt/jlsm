@@ -331,8 +331,10 @@ class ContractBoundariesAdversarialTest {
 
         // Attempt to open using the v1 API — should get a clear error about v3 format (the
         // writer now always produces v3 when a compression codec is configured, per F16 R16).
-        IOException ex = assertThrows(IOException.class, () -> TrieSSTableReader.open(file,
-                jlsm.bloom.blocked.BlockedBloomFilter.deserializer(), null));
+        IOException ex = assertThrows(IOException.class,
+                () -> TrieSSTableReader.open(file,
+                        jlsm.bloom.blocked.BlockedBloomFilter.deserializer(),
+                        (jlsm.core.cache.BlockCache) null));
         // The error message should mention the compressed version (v3) to help the caller
         // understand they need the open method with codecs, not just an opaque "bad magic" error.
         assertTrue(ex.getMessage().toLowerCase().contains("v3"),

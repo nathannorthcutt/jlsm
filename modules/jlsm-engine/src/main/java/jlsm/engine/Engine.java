@@ -1,5 +1,6 @@
 package jlsm.engine;
 
+import jlsm.encryption.TableScope;
 import jlsm.engine.internal.LocalEngine;
 import jlsm.table.JlsmSchema;
 
@@ -66,6 +67,60 @@ public interface Engine extends Closeable {
      * @throws IOException if no table with the given name exists, or on I/O failure
      */
     void dropTable(String name) throws IOException;
+
+    /**
+     * Creates a new encrypted table with the given name, schema, and scope. The table's
+     * {@link TableMetadata#encryption()} is set to {@code Optional.of(EncryptionMetadata(scope))}
+     * at creation; subsequent SSTable writers in this table emit format magic v6 with the scope
+     * section in the footer.
+     *
+     * <p>
+     * The default method throws {@link UnsupportedOperationException} so test stubs implementing
+     * {@code Engine} need not override it. Production implementations
+     * ({@link jlsm.engine.internal.LocalEngine}, {@link jlsm.engine.cluster.ClusteredEngine})
+     * override with the 5-step protocol body landed by WU-3.
+     *
+     * @param name the table name; must not be null or empty
+     * @param schema the table schema; must not be null
+     * @param scope the table's encryption scope; must not be null
+     * @return a handle to the newly created encrypted table
+     * @throws IllegalArgumentException if name is null or empty, or schema is null
+     * @throws NullPointerException if scope is null
+     * @throws IOException if a table with the given name already exists, or on I/O failure
+     *
+     * @spec sstable.footer-encryption-scope.R7
+     */
+    default Table createEncryptedTable(String name, JlsmSchema schema, TableScope scope)
+            throws IOException {
+        throw new UnsupportedOperationException(
+                "createEncryptedTable is not implemented by this Engine impl (R7)");
+    }
+
+    /**
+     * Enables encryption on an existing unencrypted table by atomically transitioning its
+     * {@link TableMetadata#encryption()} from {@code Optional.empty()} to
+     * {@code Optional.of(EncryptionMetadata(scope))}. Encryption is one-way: there is no symmetric
+     * {@code disableEncryption}; callers who need to plaintext a table must use future
+     * {@code copyTable} + {@code dropTable} primitives.
+     *
+     * <p>
+     * The default method throws {@link UnsupportedOperationException} so test stubs implementing
+     * {@code Engine} need not override it. Production implementations override with the 5-step
+     * protocol body landed by WU-3.
+     *
+     * @param name the table name; must not be null or empty
+     * @param scope the table's encryption scope; must not be null
+     * @throws IllegalArgumentException if name is null or empty
+     * @throws NullPointerException if scope is null
+     * @throws IllegalStateException if the table is already encrypted
+     * @throws IOException if no table with the given name exists, or on I/O failure
+     *
+     * @spec sstable.footer-encryption-scope.R7b
+     */
+    default void enableEncryption(String name, TableScope scope) throws IOException {
+        throw new UnsupportedOperationException(
+                "enableEncryption is not implemented by this Engine impl (R7b)");
+    }
 
     /**
      * Returns metadata for all known tables.

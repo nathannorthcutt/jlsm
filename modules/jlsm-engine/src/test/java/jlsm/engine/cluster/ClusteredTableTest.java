@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.InJvmTransport;
 import jlsm.table.FieldType;
@@ -23,8 +25,8 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for {@link ClusteredTable} — partition-aware proxy that scatters queries across remote
- * partition owners and gathers results.
+ * Tests for {@link CatalogClusteredTable} — partition-aware proxy that scatters queries across
+ * remote partition owners and gathers results.
  *
  * @spec engine.clustering.R59 — partition-aware proxy routes ops by ownership
  * @spec engine.clustering.R61 — remote ops serialized through transport
@@ -48,7 +50,7 @@ final class ClusteredTableTest {
     private InJvmTransport remoteATransport;
     private InJvmTransport remoteBTransport;
     private StubMembershipProtocol membership;
-    private ClusteredTable table;
+    private CatalogClusteredTable table;
 
     @BeforeEach
     void setUp() {
@@ -65,7 +67,7 @@ final class ClusteredTableTest {
                         new Member(REMOTE_B, MemberState.ALIVE, 0)),
                 NOW);
 
-        table = new ClusteredTable(TABLE_META, localTransport, membership, LOCAL);
+        table = CatalogClusteredTable.forEngine(TABLE_META, localTransport, membership, LOCAL);
     }
 
     @AfterEach
@@ -82,19 +84,19 @@ final class ClusteredTableTest {
     @Test
     void constructor_nullTableMetadata_throws() {
         assertThrows(NullPointerException.class,
-                () -> new ClusteredTable(null, localTransport, membership, LOCAL));
+                () -> CatalogClusteredTable.forEngine(null, localTransport, membership, LOCAL));
     }
 
     @Test
     void constructor_nullTransport_throws() {
         assertThrows(NullPointerException.class,
-                () -> new ClusteredTable(TABLE_META, null, membership, LOCAL));
+                () -> CatalogClusteredTable.forEngine(TABLE_META, null, membership, LOCAL));
     }
 
     @Test
     void constructor_nullMembership_throws() {
         assertThrows(NullPointerException.class,
-                () -> new ClusteredTable(TABLE_META, localTransport, null, LOCAL));
+                () -> CatalogClusteredTable.forEngine(TABLE_META, localTransport, null, LOCAL));
     }
 
     // --- metadata() ---

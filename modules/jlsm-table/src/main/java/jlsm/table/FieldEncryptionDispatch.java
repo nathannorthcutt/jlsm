@@ -1,5 +1,7 @@
 package jlsm.table;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
@@ -7,6 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.IntPredicate;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -15,8 +18,11 @@ import jlsm.encryption.AesGcmEncryptor;
 import jlsm.encryption.AesSivEncryptor;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
 import jlsm.encryption.DcpeSapEncryptor;
-import jlsm.encryption.internal.OffHeapKeyMaterial;
+import jlsm.encryption.DekVersion;
 import jlsm.encryption.EncryptionSpec;
+import jlsm.encryption.EnvelopeCodec;
+import jlsm.encryption.ReadContext;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.table.FieldDefinition;
 import jlsm.table.JlsmSchema;
 
@@ -37,6 +43,14 @@ public final class FieldEncryptionDispatch {
     private final FieldEncryptor[] encryptors;
     private final FieldDecryptor[] decryptors;
     /**
+     * Pre-envelope-wrap raw decryptors. Captured before {@link #applyEnvelopeWrap} replaces
+     * {@link #decryptors} with the legacy-single-arg envelope-aware variant. The
+     * {@link #decryptWithContext(int, byte[], ReadContext)} method calls these directly to avoid
+     * double-parsing the version prefix (the WU-4 R3e gate already validated version + resolver
+     * before reaching the variant body).
+     */
+    private final FieldDecryptor[] rawDecryptors;
+    /**
      * Per-DCPE-field encryptor. DCPE operates on {@code float[]}, not {@code byte[]}, so it does
      * not fit the generic {@link FieldEncryptor} byte-in/byte-out interface. The serializer reads
      * this array directly and invokes {@link DcpeSapEncryptor#encrypt} inline during vector
@@ -47,6 +61,18 @@ public final class FieldEncryptionDispatch {
     // byte-level dispatch
     private final DcpeSapEncryptor[] dcpeEncryptors;
     private final byte[][] dcpeAssociatedData;
+    /**
+     * Current write-time DEK version stamped into every encrypted envelope's 4-byte BE prefix. Per
+     * spec encryption.ciphertext-envelope.R1 / R1c.
+     */
+    private final int currentDekVersion;
+    /**
+     * Resolver hook: {@code true} iff the version is present in the registry for the dispatch's
+     * scope. Per spec encryption.ciphertext-envelope.R2a (wait-free path) and R2b (registry-miss).
+     * The 2-arg legacy constructor installs a permissive "version-equals-currentDekVersion"
+     * predicate to preserve backward-compat for callers that have not yet wired the full registry.
+     */
+    private final IntPredicate versionResolver;
 
     /**
      * Encrypts a byte array field value.
@@ -65,18 +91,52 @@ public final class FieldEncryptionDispatch {
     }
 
     /**
-     * Constructs a dispatch table for the given schema and key holder.
+     * Backward-compatible constructor: writes envelopes stamped with
+     * {@link DekVersion#FIRST}.value() and accepts only that version on read. Equivalent to
+     * {@code new FieldEncryptionDispatch(schema, keyHolder, DekVersion.FIRST.value(), v -> v ==
+     * DekVersion.FIRST.value())}. Existing callers that have not yet wired DEK rotation continue to
+     * function — but every encrypted output now begins with the WU-4 4-byte BE DEK version prefix
+     * per encryption.ciphertext-envelope.R1.
      *
      * @param schema the schema describing the document structure; must not be null
      * @param keyHolder the key holder providing encryption keys; may be null (no encryption)
      */
     public FieldEncryptionDispatch(JlsmSchema schema, OffHeapKeyMaterial keyHolder) {
+        this(schema, keyHolder, DekVersion.FIRST.value(), v -> v == DekVersion.FIRST.value());
+    }
+
+    /**
+     * Constructs a dispatch table with explicit current write DEK version + version-known resolver
+     * (R2a / R2b path).
+     *
+     * @param schema schema describing the document structure; must not be null
+     * @param keyHolder key holder providing encryption keys; may be null (no encryption)
+     * @param currentDekVersion positive DEK version stamped into every encrypt envelope's 4-byte BE
+     *            prefix
+     * @param versionResolver wait-free predicate returning {@code true} iff a version is known to
+     *            the registry for the dispatch's scope; called only AFTER the R3e gate passes
+     * @throws IllegalArgumentException if {@code currentDekVersion} is not positive
+     * @throws NullPointerException on null {@code schema} or {@code versionResolver}
+     * @spec encryption.ciphertext-envelope.R1
+     * @spec encryption.ciphertext-envelope.R1c
+     * @spec encryption.ciphertext-envelope.R2a
+     */
+    public FieldEncryptionDispatch(JlsmSchema schema, OffHeapKeyMaterial keyHolder,
+            int currentDekVersion, IntPredicate versionResolver) {
         Objects.requireNonNull(schema, "schema must not be null");
+        Objects.requireNonNull(versionResolver, "versionResolver must not be null");
+        if (currentDekVersion <= 0) {
+            throw new IllegalArgumentException(
+                    "currentDekVersion must be positive, got " + currentDekVersion);
+        }
+        this.currentDekVersion = currentDekVersion;
+        this.versionResolver = versionResolver;
 
         final List<FieldDefinition> fields = schema.fields();
         final int fieldCount = fields.size();
         this.encryptors = new FieldEncryptor[fieldCount];
         this.decryptors = new FieldDecryptor[fieldCount];
+        this.rawDecryptors = new FieldDecryptor[fieldCount];
         this.dcpeEncryptors = new DcpeSapEncryptor[fieldCount];
         this.dcpeAssociatedData = new byte[fieldCount][];
 
@@ -234,6 +294,155 @@ public final class FieldEncryptionDispatch {
                 }
             }
         }
+
+        // WU-4: wrap every per-field byte-level encryptor/decryptor pair with the 4-byte BE
+        // DEK version envelope (encryption.ciphertext-envelope.R1, R1c, R2). DCPE blobs are
+        // wrapped in DocumentSerializer at the point the [seed | values | tag] blob is built.
+        // Snapshot the raw (unwrapped) decryptors first so decryptWithContext can call them
+        // directly without paying the legacy wrapper's version re-parse cost.
+        System.arraycopy(decryptors, 0, rawDecryptors, 0, decryptors.length);
+        applyEnvelopeWrap();
+    }
+
+    /**
+     * Wraps every non-null byte-level encryptor/decryptor pair with the 4-byte BE DEK version
+     * envelope:
+     *
+     * <ul>
+     * <li><b>encrypt</b>: {@code body = underlying.encrypt(plaintext)} → {@code envelope =
+     * EnvelopeCodec.prefixVersion(currentDekVersion, body)}</li>
+     * <li><b>decrypt</b>: {@code version = EnvelopeCodec.parseVersion(envelope)} → resolver gate →
+     * {@code body = EnvelopeCodec.stripPrefix(envelope)} → {@code underlying.decrypt(body)}</li>
+     * </ul>
+     *
+     * <p>
+     * The decrypt wrapper here is the legacy single-arg path; the
+     * {@link #decryptWithContext(int, byte[], ReadContext)} method below is the WU-4 R3e gate path.
+     *
+     * @spec encryption.ciphertext-envelope.R1
+     * @spec encryption.ciphertext-envelope.R1c
+     * @spec encryption.ciphertext-envelope.R2
+     * @spec encryption.ciphertext-envelope.R2a
+     */
+    private void applyEnvelopeWrap() {
+        for (int i = 0; i < encryptors.length; i++) {
+            final FieldEncryptor inner = encryptors[i];
+            if (inner == null) {
+                continue;
+            }
+            // Encrypt: prefix the BE DEK version atop the variant body.
+            encryptors[i] = plaintext -> EnvelopeCodec.prefixVersion(currentDekVersion,
+                    inner.encrypt(plaintext));
+        }
+        for (int i = 0; i < decryptors.length; i++) {
+            final FieldDecryptor inner = decryptors[i];
+            if (inner == null) {
+                continue;
+            }
+            // Decrypt: parse the version, run resolver gate, strip prefix, delegate.
+            decryptors[i] = envelope -> {
+                final int version;
+                try {
+                    version = EnvelopeCodec.parseVersion(envelope);
+                } catch (IOException e) {
+                    // FieldDecryptor signature is byte[]→byte[] (no checked throws). Surface
+                    // through UncheckedIOException so callers may unwrap; the SSTable read path
+                    // (DocumentSerializer.deserialize(seg, ReadContext)) goes via
+                    // decryptWithContext which surfaces IOException directly.
+                    throw new UncheckedIOException(e);
+                }
+                if (!versionResolver.test(version)) {
+                    // R2b — surface registry miss, naming the version (R12 — no key bytes).
+                    throw new UncheckedIOException(new IOException(
+                            "DEK version not in registry for this scope: version=" + version));
+                }
+                return inner.decrypt(EnvelopeCodec.stripPrefix(envelope));
+            };
+        }
+    }
+
+    /**
+     * R3e dispatch gate: parses the envelope's DEK version, checks membership in
+     * {@code ctx.allowedDekVersions()} BEFORE invoking the resolver hook, and only on success
+     * delegates to the underlying variant decrypt.
+     *
+     * <p>
+     * Distinguishes:
+     * <ul>
+     * <li><b>R3f — empty allowedDekVersions</b>: file-level "no encrypted entries declared" with a
+     * distinct message</li>
+     * <li><b>R3e — non-empty but does not include the parsed version</b>: "version not in declared
+     * set" naming the missing version</li>
+     * <li><b>R2b — version passed gate but unknown to registry</b>: "DEK version not in registry"
+     * naming the missing version</li>
+     * </ul>
+     *
+     * <p>
+     * The resolver hook is NOT invoked when the gate rejects — verifying R3e's "BEFORE resolveDek"
+     * guarantee. R12 — error messages reference version numbers and scope-shaped descriptors only;
+     * never key bytes or partial key material.
+     *
+     * @param fieldIndex zero-based field index whose decryptor processes the envelope
+     * @param envelope the on-disk envelope bytes (4B BE DEK version + variant body)
+     * @param ctx the per-read context produced by the SSTable reader's footer parse
+     * @return the variant plaintext bytes returned by the underlying decryptor
+     * @throws NullPointerException on null {@code envelope} or {@code ctx}
+     * @throws IllegalStateException if the field has no decryptor (no encryption configured)
+     * @throws UncheckedIOException wrapping an {@link IOException} on R2 / R2b / R3e / R3f
+     *             violations
+     * @spec sstable.footer-encryption-scope.R3e
+     * @spec sstable.footer-encryption-scope.R3f
+     * @spec encryption.ciphertext-envelope.R2
+     * @spec encryption.ciphertext-envelope.R2b
+     * @spec encryption.primitives-lifecycle.R24
+     */
+    public byte[] decryptWithContext(int fieldIndex, byte[] envelope, ReadContext ctx) {
+        Objects.requireNonNull(envelope, "envelope must not be null");
+        Objects.requireNonNull(ctx, "ctx must not be null");
+        if (fieldIndex < 0 || fieldIndex >= rawDecryptors.length) {
+            throw new IllegalArgumentException("fieldIndex out of bounds: " + fieldIndex);
+        }
+        final FieldDecryptor raw = rawDecryptors[fieldIndex];
+        if (raw == null) {
+            throw new IllegalStateException("field at index " + fieldIndex
+                    + " has no decryptor configured (no encryption for this field)");
+        }
+
+        final int version;
+        try {
+            version = EnvelopeCodec.parseVersion(envelope);
+        } catch (IOException e) {
+            // R2 — under-length / 0 / negative envelope rejected.
+            throw new UncheckedIOException(e);
+        }
+
+        // R3f — empty allowed-set on a file containing encrypted entries surfaces a distinct
+        // message from R3e's "version not in declared set".
+        if (ctx.allowedDekVersions().isEmpty()) {
+            throw new UncheckedIOException(new IOException(
+                    "ReadContext allowedDekVersions is empty but file contained an encrypted "
+                            + "entry — empty-set file contained encrypted entries (R3f); "
+                            + "envelope version=" + version));
+        }
+
+        // R3e — version-not-in-declared-set, BEFORE invoking the resolver hook.
+        if (!ctx.allowedDekVersions().contains(version)) {
+            throw new UncheckedIOException(new IOException(
+                    "DEK version " + version + " not in declared set for this SSTable scope "
+                            + "(R3e — version not in declared set; allowed="
+                            + ctx.allowedDekVersions() + ")"));
+        }
+
+        // R2b — invoke the registry resolver. Per spec R2a this is the same code path that
+        // version-0 would have taken (R2a wait-free guarantee preserved by parseVersion's
+        // IOException not branching to a separate exception class).
+        if (!versionResolver.test(version)) {
+            throw new UncheckedIOException(new IOException("DEK version " + version
+                    + " not in registry for this SSTable scope " + "(R2b / R24 — registry miss)"));
+        }
+
+        // Strip prefix once and call the raw underlying variant decryptor — no double parse.
+        return raw.decrypt(EnvelopeCodec.stripPrefix(envelope));
     }
 
     /**
@@ -289,6 +498,16 @@ public final class FieldEncryptionDispatch {
             throw new IllegalArgumentException("fieldIndex out of bounds: " + fieldIndex);
         }
         return dcpeAssociatedData[fieldIndex];
+    }
+
+    /**
+     * Current write-time DEK version used when stamping envelope prefixes. Returns the version
+     * configured at construction time (legacy 2-arg ctor: {@link DekVersion#FIRST}).
+     *
+     * @spec encryption.ciphertext-envelope.R1c
+     */
+    public int currentDekVersion() {
+        return currentDekVersion;
     }
 
     /**

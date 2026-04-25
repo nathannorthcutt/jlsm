@@ -362,15 +362,18 @@ class BoundedStringOpeTest {
     // =========================================================================
 
     /**
-     * Extracts the 8-byte encrypted long from OPE ciphertext, skipping the 1-byte length prefix at
-     * position 0 and ignoring the trailing 16-byte HMAC-SHA256 tag (bytes 9..24). OPE ciphertext is
-     * 25 bytes total per F03.R39 / F41.R22.
+     * Extracts the 8-byte encrypted long from a WU-4 OPE envelope, skipping the 4-byte BE DEK
+     * version prefix (bytes 0..3) and the 1-byte length prefix at position 4, and ignoring the
+     * trailing 16-byte HMAC-SHA256 tag (bytes 13..28). Total envelope is 29 bytes per
+     * encryption.ciphertext-envelope.R1 / R1b.
      */
     private static long extractEncryptedLong(byte[] ct) {
-        assert ct.length == 25 : "OPE ciphertext must be 25 bytes (1B len + 8B OPE + 16B MAC)";
+        assert ct.length == 29
+                : "OPE envelope must be 29 bytes (4B BE DEK version + 1B length + 8B OPE + 16B MAC)";
         long result = 0;
         for (int i = 0; i < 8; i++) {
-            result |= ((long) (ct[1 + i] & 0xFF)) << (56 - i * 8);
+            // 4B prefix + 1B length = 5 leading bytes before the encrypted long
+            result |= ((long) (ct[5 + i] & 0xFF)) << (56 - i * 8);
         }
         return result;
     }

@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
@@ -20,8 +22,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests that {@link ClusteredTable} write operations throw {@link QuorumLostException} when the
- * engine reports {@link ClusterOperationalMode#READ_ONLY} (@spec engine.clustering.R41), while
+ * Tests that {@link CatalogClusteredTable} write operations throw {@link QuorumLostException} when
+ * the engine reports {@link ClusterOperationalMode#READ_ONLY} (@spec engine.clustering.R41), while
  * reads continue to succeed.
  */
 final class ClusteredTableReadOnlyTest {
@@ -38,7 +40,7 @@ final class ClusteredTableReadOnlyTest {
     private InJvmTransport transport;
     private StubMembershipProtocol membership;
     private AtomicReference<ClusterOperationalMode> mode;
-    private ClusteredTable table;
+    private CatalogClusteredTable table;
 
     @BeforeEach
     void setUp() {
@@ -48,8 +50,8 @@ final class ClusteredTableReadOnlyTest {
         membership.view = new MembershipView(1, Set.of(new Member(LOCAL, MemberState.ALIVE, 0),
                 new Member(REMOTE, MemberState.ALIVE, 0)), NOW);
         mode = new AtomicReference<>(ClusterOperationalMode.NORMAL);
-        table = new ClusteredTable(META, transport, membership, LOCAL, new RendezvousOwnership(),
-                null, mode::get);
+        table = CatalogClusteredTable.forEngine(META, transport, membership, LOCAL,
+                new RendezvousOwnership(), null, mode::get);
     }
 
     @AfterEach

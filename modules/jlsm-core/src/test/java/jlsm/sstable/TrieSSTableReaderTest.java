@@ -2,6 +2,7 @@ package jlsm.sstable;
 
 import jlsm.bloom.blocked.BlockedBloomFilter;
 import jlsm.cache.LruBlockCache;
+import jlsm.core.cache.BlockCache;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
@@ -363,7 +364,7 @@ class TrieSSTableReaderTest {
     @Test
     void withNullCacheOpenStillWorks() throws IOException {
         try (TrieSSTableReader r = TrieSSTableReader.open(sstPath,
-                BlockedBloomFilter.deserializer(), null)) {
+                BlockedBloomFilter.deserializer(), (BlockCache) null)) {
             Optional<Entry> result = r.get(seg("d"));
             assertTrue(result.isPresent());
             assertEquals(-1L, seg("vd").mismatch(((Entry.Put) result.get()).value()));

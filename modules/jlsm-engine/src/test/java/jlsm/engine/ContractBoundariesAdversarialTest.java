@@ -297,13 +297,13 @@ class ContractBoundariesAdversarialTest {
     }
 
     // Finding: F-R1.cb.2.8
-    // Bug: LocalTable.metadata() does not call checkValid(), so it returns stale
+    // Bug: CatalogTable.metadata() does not call checkValid(), so it returns stale
     // construction-time metadata on an evicted/invalidated handle. Every other
-    // operation on LocalTable checks handle validity before proceeding, but
+    // operation on CatalogTable checks handle validity before proceeding, but
     // metadata() silently returns READY state even after the table is dropped.
     // Correct behavior: metadata() should throw HandleEvictedException on an evicted handle,
     // consistent with all other Table operations
-    // Fix location: LocalTable.java:126-128 — metadata() method
+    // Fix location: CatalogTable.java:126-128 — metadata() method
     // Regression watch: Ensure metadata() still works on live, valid handles
     @Test
     void test_LocalTable_metadata_throwsOnEvictedHandle(@TempDir Path tempDir) throws Exception {
@@ -442,14 +442,14 @@ class ContractBoundariesAdversarialTest {
     }
 
     // Finding: F-R1.cb.2.9
-    // Bug: LocalTable.insert() calls doc.getString(primaryKeyField) without checking the field
+    // Bug: CatalogTable.insert() calls doc.getString(primaryKeyField) without checking the field
     // type is STRING first. For a non-string primary key (e.g., INT32), the error message
     // comes from JlsmDocument.getString() and says "has type INT32, not STRING" — which
     // does not mention the primary key constraint. The error should clearly state that
     // primary keys must be string-typed.
     // Correct behavior: insert() should throw IllegalArgumentException with a message mentioning
     // "primary key" and "string" when the schema's first field is non-string
-    // Fix location: LocalTable.java:94-95 — add type check before getString call
+    // Fix location: CatalogTable.java:94-95 — add type check before getString call
     // Regression watch: Ensure string primary keys still work normally
     @Test
     void test_LocalTable_insert_nonStringPrimaryKey_throwsMeaningfulError(@TempDir Path tempDir)

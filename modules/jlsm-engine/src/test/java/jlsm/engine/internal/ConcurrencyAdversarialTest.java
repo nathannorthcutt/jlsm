@@ -288,7 +288,7 @@ class ConcurrencyAdversarialTest {
     // Correct behavior: If the registration is invalidated before or during the delegate
     // operation, the operation must throw HandleEvictedException — it must not
     // silently execute on an invalidated handle.
-    // Fix location: LocalTable.checkValid (lines 123-129) and each delegate call site
+    // Fix location: CatalogTable.checkValid (lines 123-129) and each delegate call site
     // Regression watch: Ensure non-invalidated handles still work correctly
     // @spec engine.in-process-database-engine.R68,R83 — checkValid and delegate execute atomically
     // w.r.t. concurrent
@@ -321,7 +321,7 @@ class ConcurrencyAdversarialTest {
 
             final HandleRegistration reg = tracker.register("t1", "src");
             final var stub = new InvalidationDetectingStub(reg);
-            final var localTable = new LocalTable(stub, reg, tracker, metadata);
+            final var localTable = new CatalogTable(stub, reg, tracker, metadata);
             final var doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
 
             final var barrier = new CyclicBarrier(2);
@@ -365,12 +365,12 @@ class ConcurrencyAdversarialTest {
     }
 
     // Finding: F-R1.concurrency.1.5
-    // Bug: LocalTable.close() calls tracker.release(registration) which removes the
+    // Bug: CatalogTable.close() calls tracker.release(registration) which removes the
     // registration from the tracker's maps but does NOT invalidate it. Subsequent
     // operations pass checkValid() because registration.isInvalidated() is still false.
-    // Correct behavior: After close(), any operation on the LocalTable must throw
+    // Correct behavior: After close(), any operation on the CatalogTable must throw
     // HandleEvictedException (or IllegalStateException) — use-after-close must be rejected.
-    // Fix location: LocalTable.close (lines 128-130)
+    // Fix location: CatalogTable.close (lines 128-130)
     // Regression watch: Ensure close() is idempotent and doesn't throw on double-close
     @Test
     @Timeout(10)
@@ -387,7 +387,7 @@ class ConcurrencyAdversarialTest {
 
         final HandleRegistration reg = tracker.register("t1", "src");
         final var stub = new InvalidationDetectingStub(reg);
-        final var localTable = new LocalTable(stub, reg, tracker, metadata);
+        final var localTable = new CatalogTable(stub, reg, tracker, metadata);
 
         // Close the table — should prevent subsequent operations
         localTable.close();

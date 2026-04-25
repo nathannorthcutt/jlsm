@@ -95,7 +95,8 @@ class SSTableV1V4CollapseTest {
     void readerRejectsLegacyV1Magic(@TempDir Path dir) throws IOException {
         Path path = writeFileWithTrailingMagic(dir, "legacy-v1.sst", LEGACY_MAGIC_V1);
         IncompleteSSTableException ex = assertThrows(IncompleteSSTableException.class,
-                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(), null));
+                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                        (jlsm.core.cache.BlockCache) null));
         assertTrue(ex.getMessage().contains("recognised SSTable magic"),
                 "post-collapse: v1 magic must be rejected as unrecognised; got: "
                         + ex.getMessage());
@@ -105,7 +106,8 @@ class SSTableV1V4CollapseTest {
     void readerRejectsLegacyV2Magic(@TempDir Path dir) throws IOException {
         Path path = writeFileWithTrailingMagic(dir, "legacy-v2.sst", LEGACY_MAGIC_V2);
         IncompleteSSTableException ex = assertThrows(IncompleteSSTableException.class,
-                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(), null));
+                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                        (jlsm.core.cache.BlockCache) null));
         assertTrue(ex.getMessage().contains("recognised SSTable magic"),
                 "post-collapse: v2 magic must be rejected as unrecognised; got: "
                         + ex.getMessage());
@@ -115,7 +117,8 @@ class SSTableV1V4CollapseTest {
     void readerRejectsLegacyV3Magic(@TempDir Path dir) throws IOException {
         Path path = writeFileWithTrailingMagic(dir, "legacy-v3.sst", LEGACY_MAGIC_V3);
         IncompleteSSTableException ex = assertThrows(IncompleteSSTableException.class,
-                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(), null));
+                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                        (jlsm.core.cache.BlockCache) null));
         assertTrue(ex.getMessage().contains("recognised SSTable magic"),
                 "post-collapse: v3 magic must be rejected as unrecognised; got: "
                         + ex.getMessage());
@@ -125,7 +128,8 @@ class SSTableV1V4CollapseTest {
     void readerRejectsLegacyV4Magic(@TempDir Path dir) throws IOException {
         Path path = writeFileWithTrailingMagic(dir, "legacy-v4.sst", LEGACY_MAGIC_V4);
         IncompleteSSTableException ex = assertThrows(IncompleteSSTableException.class,
-                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(), null));
+                () -> TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
+                        (jlsm.core.cache.BlockCache) null));
         assertTrue(ex.getMessage().contains("recognised SSTable magic"),
                 "post-collapse: v4 magic must be rejected as unrecognised; got: "
                         + ex.getMessage());

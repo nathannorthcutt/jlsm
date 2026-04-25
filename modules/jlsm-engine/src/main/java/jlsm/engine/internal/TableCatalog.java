@@ -1,14 +1,22 @@
 package jlsm.engine.internal;
 
+import jlsm.encryption.DomainId;
+import jlsm.encryption.TableId;
+import jlsm.encryption.TableScope;
+import jlsm.encryption.TenantId;
+import jlsm.encryption.internal.IdentifierValidator;
+import jlsm.engine.EncryptionMetadata;
 import jlsm.engine.TableMetadata;
 import jlsm.table.FieldDefinition;
 import jlsm.table.FieldType;
 import jlsm.table.JlsmSchema;
 
+import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -39,11 +47,32 @@ final class TableCatalog implements Closeable {
 
     private static final String METADATA_FILE = "table.meta";
     private static final int MAGIC = 0x4A4C534D; // "JLSM"
+    /**
+     * Pre-encryption {@code table.meta} format — the original layout starting directly with
+     * {@code MAGIC}. Inferred from the first byte of the file at load time.
+     *
+     * @spec sstable.footer-encryption-scope.R8
+     */
+    private static final int FORMAT_PRE_ENCRYPTION = 0;
+    /**
+     * Encryption-aware {@code table.meta} format — leading version byte {@code 0x02} followed by
+     * the existing layout, then an {@code [hasEncryption:byte]} flag and (if true) the encryption
+     * block.
+     *
+     * @spec sstable.footer-encryption-scope.R9a
+     */
+    private static final int FORMAT_ENCRYPTION_AWARE = 2;
 
     private final Path rootDir;
     private final ConcurrentHashMap<String, TableMetadata> tables = new ConcurrentHashMap<>();
     private volatile boolean loading = true;
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    /**
+     * Persistent (tableName -> meta_format_version_highwater) index used as the R9a-mono cold-start
+     * defence. Lazily-initialised on {@link #open()} so a missing index file at cold-start is
+     * treated as "no tables exist".
+     */
+    private volatile CatalogIndex catalogIndex;
 
     /**
      * Constructs a new TableCatalog for the given root directory.
@@ -68,12 +97,20 @@ final class TableCatalog implements Closeable {
             Files.createDirectories(rootDir);
         }
 
+        // R9a-mono — load (or initialise) the catalog index BEFORE scanning per-table dirs so
+        // every load decision can consult the high-water.
+        this.catalogIndex = new CatalogIndex(rootDir);
+
         try (final DirectoryStream<Path> stream = Files.newDirectoryStream(rootDir)) {
             for (final Path entry : stream) {
                 if (!Files.isDirectory(entry)) {
                     continue;
                 }
                 final String tableName = entry.getFileName().toString();
+                // Skip the catalog's reserved subdirectories (locks, etc.).
+                if (tableName.startsWith("_")) {
+                    continue;
+                }
                 final Path metadataPath = entry.resolve(METADATA_FILE);
 
                 if (!Files.exists(metadataPath)) {
@@ -82,8 +119,17 @@ final class TableCatalog implements Closeable {
                     continue;
                 }
 
+                // R9a-mono cold-start: a table.meta file with no catalog-index entry must NOT
+                // be loaded. This guards the cold-start downgrade attack (an attacker drops an
+                // older table.meta into a fresh-looking root after the index file was deleted).
+                final Optional<Integer> indexVersion = catalogIndex.highwater(tableName);
+                if (indexVersion.isEmpty()) {
+                    continue; // table.meta on disk but unknown to the index → not-existent
+                }
+
                 try {
-                    final TableMetadata metadata = readMetadata(tableName, metadataPath);
+                    final TableMetadata metadata = readMetadata(tableName, metadataPath,
+                            indexVersion.get());
                     tables.put(tableName, metadata);
                 } catch (IOException e) {
                     // Corrupt or unreadable metadata — preserve data, mark as ERROR
@@ -92,10 +138,39 @@ final class TableCatalog implements Closeable {
                             Instant.EPOCH, TableMetadata.TableState.ERROR);
                     tables.put(tableName, errorMetadata);
                 }
+
+                // R10e — restart cleanup: any *.partial.<writerId> SSTable tmp file in this
+                // table's directory belongs to a writer that crashed mid-finish; deleting them
+                // is mandatory before any reader touches the directory.
+                cleanupPartialSstFiles(entry);
             }
         }
 
         loading = false;
+    }
+
+    /**
+     * Deletes any {@code *.partial.<writerId>} files in {@code tableDir}. Writers are not
+     * restart-resumable per R10e — surviving partial SSTable tmp files are uncommitted state and
+     * must be removed before any reader touches the directory.
+     *
+     * @spec sstable.footer-encryption-scope.R10e
+     */
+    private static void cleanupPartialSstFiles(Path tableDir) {
+        try (final DirectoryStream<Path> stream = Files.newDirectoryStream(tableDir)) {
+            for (final Path p : stream) {
+                final String name = p.getFileName().toString();
+                if (name.contains(".partial.")) {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException ignored) {
+                        // Best-effort; surface via the table state on next mutation if needed.
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+            // Best-effort directory walk.
+        }
     }
 
     /**
@@ -128,16 +203,36 @@ final class TableCatalog implements Closeable {
     // @spec engine.in-process-database-engine.R14,R15,R16,R17,R56,R67,R84,R87,R88 — register is the
     // catalog write contract
     TableMetadata register(String name, JlsmSchema schema) throws IOException {
+        return registerInternal(name, schema, Optional.empty());
+    }
+
+    /**
+     * Registers a new encrypted table (R7). Persists encryption metadata to {@code table.meta} and
+     * bumps the {@link CatalogIndex} high-water to the encryption-aware format version.
+     *
+     * @spec sstable.footer-encryption-scope.R7
+     * @spec sstable.footer-encryption-scope.R8a
+     * @spec sstable.footer-encryption-scope.R9a-mono
+     */
+    TableMetadata registerEncrypted(String name, JlsmSchema schema, EncryptionMetadata encryption)
+            throws IOException {
+        Objects.requireNonNull(encryption, "encryption must not be null");
+        return registerInternal(name, schema, Optional.of(encryption));
+    }
+
+    private TableMetadata registerInternal(String name, JlsmSchema schema,
+            Optional<EncryptionMetadata> encryption) throws IOException {
         ensureReady();
         Objects.requireNonNull(name, "name must not be null");
         Objects.requireNonNull(schema, "schema must not be null");
+        Objects.requireNonNull(encryption, "encryption must not be null");
         if (name.isEmpty()) {
             throw new IllegalArgumentException("name must not be empty");
         }
 
         final Instant createdAt = Instant.now();
         final TableMetadata metadata = new TableMetadata(name, schema, createdAt,
-                TableMetadata.TableState.READY);
+                TableMetadata.TableState.READY, encryption);
 
         // Atomically claim the name before any I/O — prevents TOCTOU race where
         // two threads both pass a containsKey check, both create directories,
@@ -147,10 +242,14 @@ final class TableCatalog implements Closeable {
             throw new IOException("Table already exists: " + name);
         }
 
+        final int targetVersion = encryption.isPresent() ? FORMAT_ENCRYPTION_AWARE
+                : FORMAT_PRE_ENCRYPTION;
         try {
             final Path tableDir = rootDir.resolve(name);
             Files.createDirectories(tableDir);
-            writeMetadata(tableDir.resolve(METADATA_FILE), metadata);
+            writeMetadata(tableDir.resolve(METADATA_FILE), metadata, targetVersion);
+            // R9a-mono — bump the high-water atomically with the metadata write completing.
+            catalogIndex.setHighwater(name, targetVersion);
         } catch (IOException e) {
             // Roll back the map entry on I/O failure
             tables.remove(name, metadata);
@@ -161,10 +260,58 @@ final class TableCatalog implements Closeable {
             } catch (IOException suppressed) {
                 e.addSuppressed(suppressed);
             }
+            // Roll back the index entry too — the table never existed.
+            try {
+                catalogIndex.remove(name);
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
             throw e;
         }
 
         return metadata;
+    }
+
+    /**
+     * Atomically transitions {@code table.meta} for an existing plaintext table to the
+     * encryption-aware format with {@code encryption} populated, bumping the {@link CatalogIndex}
+     * high-water atomically with the metadata change. Implements R7b steps 4–5 of the
+     * enableEncryption protocol.
+     *
+     * @spec sstable.footer-encryption-scope.R7b
+     * @spec sstable.footer-encryption-scope.R11a
+     * @spec sstable.footer-encryption-scope.R9a-mono
+     */
+    void updateEncryption(String name, EncryptionMetadata encryption) throws IOException {
+        ensureReady();
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(encryption, "encryption must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+        final TableMetadata existing = tables.get(name);
+        if (existing == null) {
+            throw new IOException("Table does not exist: " + name);
+        }
+        final TableMetadata next = new TableMetadata(existing.name(), existing.schema(),
+                existing.createdAt(), existing.state(), Optional.of(encryption));
+        final Path metaPath = rootDir.resolve(name).resolve(METADATA_FILE);
+        // R11a — write-temp + rename is atomic; readers see either the prior or the new metadata.
+        writeMetadata(metaPath, next, FORMAT_ENCRYPTION_AWARE);
+        catalogIndex.setHighwater(name, FORMAT_ENCRYPTION_AWARE);
+        tables.put(name, next);
+    }
+
+    /**
+     * Returns the {@link CatalogIndex} format-version high-water for {@code name}, or
+     * {@link Optional#empty()} if no entry exists.
+     *
+     * @spec sstable.footer-encryption-scope.R9a-mono
+     */
+    Optional<Integer> indexHighwater(String name) {
+        Objects.requireNonNull(name, "name must not be null");
+        ensureOpen();
+        return catalogIndex.highwater(name);
     }
 
     /**
@@ -190,6 +337,10 @@ final class TableCatalog implements Closeable {
         final Path tableDir = rootDir.resolve(name);
         if (Files.exists(tableDir)) {
             deleteDirectoryTree(tableDir);
+        }
+        // R9a-mono — clear the index entry so the table is not loaded on next open.
+        if (catalogIndex != null) {
+            catalogIndex.remove(name);
         }
     }
 
@@ -220,10 +371,12 @@ final class TableCatalog implements Closeable {
         }
 
         final TableMetadata tombstone = new TableMetadata(existing.name(), existing.schema(),
-                existing.createdAt(), TableMetadata.TableState.DROPPED);
+                existing.createdAt(), TableMetadata.TableState.DROPPED, existing.encryption());
 
         final Path metaPath = rootDir.resolve(name).resolve(METADATA_FILE);
-        writeMetadata(metaPath, tombstone);
+        final int targetVersion = existing.encryption().isPresent() ? FORMAT_ENCRYPTION_AWARE
+                : FORMAT_PRE_ENCRYPTION;
+        writeMetadata(metaPath, tombstone, targetVersion);
         tables.put(name, tombstone);
 
         // @spec engine.in-process-database-engine.R31 — best-effort cleanup; the tombstone must
@@ -353,10 +506,19 @@ final class TableCatalog implements Closeable {
      * atomic rename is not supported.
      */
     // @spec engine.in-process-database-engine.R54 — write-then-rename atomic metadata write
-    private static void writeMetadata(Path path, TableMetadata metadata) throws IOException {
+    // @spec sstable.footer-encryption-scope.R9 R9a R9b R11a — leading format-version byte +
+    // optional encryption block; atomic publication via write-temp + rename.
+    private static void writeMetadata(Path path, TableMetadata metadata, int formatVersion)
+            throws IOException {
         assert metadata != null : "metadata must not be null";
         final Path temp = path.resolveSibling(path.getFileName().toString() + ".tmp");
         try (final DataOutputStream out = new DataOutputStream(Files.newOutputStream(temp))) {
+            // R9a — encryption-aware format prepends a single explicit format-version byte. For
+            // backward-compat the pre-encryption format writes nothing extra at the head; the
+            // loader infers FORMAT_PRE_ENCRYPTION when the first 4 bytes form the legacy MAGIC.
+            if (formatVersion != FORMAT_PRE_ENCRYPTION) {
+                out.writeByte(formatVersion);
+            }
             out.writeInt(MAGIC);
             out.writeUTF(metadata.schema().name());
             out.writeInt(metadata.schema().version());
@@ -367,6 +529,15 @@ final class TableCatalog implements Closeable {
             }
             out.writeLong(metadata.createdAt().toEpochMilli());
             out.writeInt(metadata.state().ordinal());
+            // R9b — encryption-aware format trails with [hasEncryption:byte][encryption block].
+            if (formatVersion == FORMAT_ENCRYPTION_AWARE) {
+                if (metadata.encryption().isPresent()) {
+                    out.writeByte(1);
+                    writeEncryptionBlock(out, metadata.encryption().get());
+                } else {
+                    out.writeByte(0);
+                }
+            }
         }
         try {
             Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE,
@@ -417,13 +588,44 @@ final class TableCatalog implements Closeable {
     /**
      * Reads table metadata from a binary file, reconstructing the full schema including field
      * definitions and persisted table state.
+     *
+     * @param indexHighwater the {@link CatalogIndex} high-water for this table, used to enforce the
+     *            R9a-mono format-version monotonicity defence (a tampered downgrade rewrites
+     *            table.meta to the pre-encryption format; the loader rejects it).
+     * @spec sstable.footer-encryption-scope.R9 R9a R9b R9c R9a-mono R12
      */
     // @spec engine.in-process-database-engine.R55,R84 — read full schema + state from a single
     // per-table metadata file
-    private static TableMetadata readMetadata(String tableName, Path path) throws IOException {
+    private static TableMetadata readMetadata(String tableName, Path path, int indexHighwater)
+            throws IOException {
         assert tableName != null : "tableName must not be null";
         assert path != null : "path must not be null";
-        try (final DataInputStream in = new DataInputStream(Files.newInputStream(path))) {
+        final byte[] raw = Files.readAllBytes(path);
+        if (raw.length < 4) {
+            throw new IOException("metadata file is too short to be valid");
+        }
+        // R9a — detect the format version. The pre-encryption format starts directly with the
+        // legacy MAGIC bytes (high byte 0x4A); the encryption-aware format prepends a small
+        // version byte. Any other leading byte is unknown and must throw IOException.
+        final int firstByte = raw[0] & 0xFF;
+        final int formatVersion;
+        final int payloadOffset;
+        if (firstByte == 0x4A) {
+            formatVersion = FORMAT_PRE_ENCRYPTION;
+            payloadOffset = 0;
+        } else if (firstByte == FORMAT_ENCRYPTION_AWARE) {
+            formatVersion = FORMAT_ENCRYPTION_AWARE;
+            payloadOffset = 1;
+        } else {
+            throw new IOException("Unknown metadata format version: " + firstByte);
+        }
+        // R9a-mono — reject any persisted format below the catalog index's high-water.
+        if (formatVersion < indexHighwater) {
+            throw new IOException(
+                    "metadata format version downgrade rejected for table '" + tableName + "'");
+        }
+        try (final DataInputStream in = new DataInputStream(
+                new ByteArrayInputStream(raw, payloadOffset, raw.length - payloadOffset))) {
             final int magic = in.readInt();
             if (magic != MAGIC) {
                 throw new IOException("Invalid metadata magic: 0x" + Integer.toHexString(magic));
@@ -449,8 +651,84 @@ final class TableCatalog implements Closeable {
             final JlsmSchema schema = builder.build();
             final Instant createdAt = Instant.ofEpochMilli(createdAtMillis);
 
-            return new TableMetadata(tableName, schema, createdAt, states[stateOrdinal]);
+            // R9b/R9c — encryption block parsing. The loader must not silently degrade malformed
+            // bytes to encryption=Optional.empty() — that would let a tampered file disable the
+            // scope check.
+            Optional<EncryptionMetadata> encryption = Optional.empty();
+            if (formatVersion == FORMAT_ENCRYPTION_AWARE) {
+                final int hasEncryption = in.readByte() & 0xFF;
+                if (hasEncryption == 1) {
+                    encryption = Optional.of(readEncryptionBlock(in));
+                } else if (hasEncryption != 0) {
+                    throw new IOException("encryption flag must be 0 or 1");
+                }
+                // R9c — reject orphan trailing bytes; a tampered length prefix could silently
+                // truncate an identifier and leave plausibly-valid bytes after the block.
+                if (in.available() > 0) {
+                    throw new IOException(
+                            "encryption-aware metadata file has trailing bytes after encryption block");
+                }
+            }
+
+            return new TableMetadata(tableName, schema, createdAt, states[stateOrdinal],
+                    encryption);
         }
+    }
+
+    /**
+     * Encodes the encryption block using {@link IdentifierValidator}-validated UTF-8 identifier
+     * triples. Layout: {@code [tenantLen:u16][tenant][domainLen:u16][domain][tableLen:u16][table]}.
+     *
+     * @spec sstable.footer-encryption-scope.R9b
+     */
+    private static void writeEncryptionBlock(DataOutputStream out, EncryptionMetadata encryption)
+            throws IOException {
+        final TableScope scope = encryption.scope();
+        IdentifierValidator.validateForWrite(scope.tenantId().value(), "tenantId");
+        IdentifierValidator.validateForWrite(scope.domainId().value(), "domainId");
+        IdentifierValidator.validateForWrite(scope.tableId().value(), "tableId");
+        final byte[] tenant = scope.tenantId().value().getBytes(StandardCharsets.UTF_8);
+        final byte[] domain = scope.domainId().value().getBytes(StandardCharsets.UTF_8);
+        final byte[] table = scope.tableId().value().getBytes(StandardCharsets.UTF_8);
+        out.writeShort(tenant.length);
+        out.write(tenant);
+        out.writeShort(domain.length);
+        out.write(domain);
+        out.writeShort(table.length);
+        out.write(table);
+    }
+
+    /**
+     * Decodes the encryption block. Identifier rules from
+     * {@link IdentifierValidator#validateForRead} are enforced; any violation raises
+     * {@link IOException} without revealing the offending byte (R12).
+     *
+     * @spec sstable.footer-encryption-scope.R9b
+     * @spec sstable.footer-encryption-scope.R9c
+     * @spec sstable.footer-encryption-scope.R12
+     */
+    private static EncryptionMetadata readEncryptionBlock(DataInputStream in) throws IOException {
+        final byte[] tenant = readPrefixedIdentifier(in, "tenantId");
+        final byte[] domain = readPrefixedIdentifier(in, "domainId");
+        final byte[] table = readPrefixedIdentifier(in, "tableId");
+        return new EncryptionMetadata(
+                new TableScope(new TenantId(new String(tenant, StandardCharsets.UTF_8)),
+                        new DomainId(new String(domain, StandardCharsets.UTF_8)),
+                        new TableId(new String(table, StandardCharsets.UTF_8))));
+    }
+
+    private static byte[] readPrefixedIdentifier(DataInputStream in, String fieldName)
+            throws IOException {
+        final int len = in.readUnsignedShort();
+        if (len < 1) {
+            throw new IOException("encryption block has zero-length " + fieldName);
+        }
+        final byte[] bytes = new byte[len];
+        in.readFully(bytes);
+        // R2e — defensive validation of well-formed UTF-8 + identifier rules without revealing
+        // byte values.
+        IdentifierValidator.validateForRead(bytes, fieldName);
+        return bytes;
     }
 
     private static FieldType readFieldType(DataInputStream in) throws IOException {

@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.RemotePartitionClient;
 import jlsm.table.FieldType;
@@ -241,7 +243,7 @@ final class DataTransformationAdversarialTest {
     }
 
     // Finding: F-R1.data_transformation.1.5
-    // Bug: ClusteredTable.mergeOrdered uses a PriorityQueue comparator
+    // Bug: CatalogClusteredTable.mergeOrdered uses a PriorityQueue comparator
     // `Comparator.comparing(he -> he.current.key())` that dereferences without a null guard; if
     // a local-short-circuit iterator ever yields a malformed TableEntry element (null reference
     // or — hypothetically — a TableEntry whose key is null), the comparator invocation from
@@ -260,7 +262,8 @@ final class DataTransformationAdversarialTest {
     // failure mode is a malformed iterator that yields a null TableEntry reference. This test
     // exercises that scenario via a local Engine whose scan() returns a rogue iterator.
     //
-    // Fix location: ClusteredTable.mergeOrdered lines 554-559 (null-guard on it.next() before
+    // Fix location: CatalogClusteredTable.mergeOrdered lines 554-559 (null-guard on it.next()
+    // before
     // the heap.offer call) AND/OR the heap comparator at line 552 (handle a null current).
     // Regression watch: well-behaved local iterators must continue to merge correctly; scans
     // that never encounter a malformed element must produce identical results.
@@ -275,7 +278,7 @@ final class DataTransformationAdversarialTest {
         final Iterator<TableEntry<String>> rogue2 = newRogueIterator();
         final List<Iterator<TableEntry<String>>> iterators = List.of(rogue1, rogue2);
 
-        final Method mergeOrdered = ClusteredTable.class.getDeclaredMethod("mergeOrdered",
+        final Method mergeOrdered = CatalogClusteredTable.class.getDeclaredMethod("mergeOrdered",
                 List.class);
         mergeOrdered.setAccessible(true);
 
@@ -328,7 +331,8 @@ final class DataTransformationAdversarialTest {
     // client configuration by returning Collections.emptyIterator() whenever the schema is null
     // — regardless of whether the response payload carries a populated, valid RANGE body. A
     // scatter-gather scan invoked on a client built via the no-schema constructor discards an
-    // entire partition's response without any error, metric, or log. Upstream ClusteredTable.scan
+    // entire partition's response without any error, metric, or log. Upstream
+    // CatalogClusteredTable.scan
     // counts this iterator toward "responding" (not "unavailable") so PartialResultMetadata
     // reports isComplete=true while the user has silently lost data.
     // Correct behavior: when schema is null but the response payload is non-empty (indicating
@@ -388,7 +392,7 @@ final class DataTransformationAdversarialTest {
     // Bug: RemotePartitionClient.getRangeAsync catches a RuntimeException from
     // QueryRequestPayload.encodeRange (a local, client-side encoding failure) and returns a
     // CompletableFuture that fails with IOException("Failed to encode RANGE payload", e).
-    // Upstream ClusteredTable.scan treats every failed future as a node-availability issue
+    // Upstream CatalogClusteredTable.scan treats every failed future as a node-availability issue
     // (adds the node to `unavailable` in PartialResultMetadata) — so a purely local encoding
     // bug is reported to operators as a remote-node outage, masking the real root cause.
     // Correct behavior: a RuntimeException from encodeRange is a programmer/state bug on the
@@ -429,7 +433,7 @@ final class DataTransformationAdversarialTest {
 
             // Correct behaviour: the client-side encoding failure propagates synchronously as
             // a RuntimeException (the real root cause), rather than being laundered into a
-            // failed future that upstream ClusteredTable.scan would silently reclassify as
+            // failed future that upstream CatalogClusteredTable.scan would silently reclassify as
             // node unavailability.
             assertThrows(RuntimeException.class, () -> client.getRangeAsync("a", "z"),
                     "A client-side encoding failure must propagate synchronously — it is a "

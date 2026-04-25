@@ -9,10 +9,12 @@ import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
 import jlsm.core.sstable.SSTableMetadata;
 import jlsm.core.sstable.SSTableWriter;
+import jlsm.encryption.TableScope;
 import jlsm.sstable.internal.CompressionMap;
 import jlsm.sstable.internal.DataBlock;
 import jlsm.sstable.internal.EntryCodec;
 import jlsm.sstable.internal.SSTableFormat;
+import jlsm.sstable.internal.V6Footer;
 
 import java.io.IOException;
 import java.lang.foreign.Arena;
@@ -84,6 +86,36 @@ public final class TrieSSTableWriter implements SSTableWriter {
     /** Listener invoked when fsync/force() is skipped for non-FileChannel outputs (R23). */
     private final FsyncSkipListener fsyncSkipListener;
 
+    /**
+     * Optional encryption scope; when present, the writer emits a v6 footer with a scope section
+     * after the v5 footer body and {@link SSTableFormat#MAGIC_V6} as the trailing magic.
+     *
+     * @spec sstable.footer-encryption-scope.R10
+     */
+    private final TableScope scope;
+
+    /**
+     * Sorted ascending DEK versions referenced by this SSTable. Empty array is permitted (R3c).
+     *
+     * @spec sstable.footer-encryption-scope.R3
+     */
+    private final int[] dekVersions;
+
+    /**
+     * Optional R10c commit hook. When present, finish() acquires the lease, compares the fresh
+     * scope to construction-time, and only commits under the held lease.
+     *
+     * @spec sstable.footer-encryption-scope.R10c
+     */
+    private final WriterCommitHook commitHook;
+
+    /**
+     * Logical table name passed to {@link WriterCommitHook#acquire(String)} during finish().
+     *
+     * @spec sstable.footer-encryption-scope.R10c
+     */
+    private final String tableNameForLock;
+
     // Stats
     private long entryCount = 0L;
     private long approximateSizeBytes = 0L;
@@ -137,18 +169,23 @@ public final class TrieSSTableWriter implements SSTableWriter {
      */
     public TrieSSTableWriter(long id, Level level, Path outputPath,
             BloomFilter.Factory bloomFactory, CompressionCodec codec) throws IOException {
-        this(id, level, outputPath, bloomFactory, codec, SSTableFormat.DEFAULT_BLOCK_SIZE, null);
+        this(id, level, outputPath, bloomFactory, codec, SSTableFormat.DEFAULT_BLOCK_SIZE, null,
+                null, null, null, null);
     }
 
     /**
-     * Internal constructor used by the public constructors and the {@link Builder}. Always emits v5
-     * with the partial-path + atomic-commit lifecycle; a missing codec is normalised to
-     * {@link CompressionCodec#none()} so the v5 layout always carries a compression-map entry per
-     * block.
+     * Internal constructor used by the public constructors and the {@link Builder}. Emits v5 by
+     * default; if {@code scope} is non-null, emits v6 with a scope section appended after the v5
+     * footer body and {@link SSTableFormat#MAGIC_V6} as the trailing magic. A missing codec is
+     * normalised to {@link CompressionCodec#none()}.
+     *
+     * @spec sstable.footer-encryption-scope.R1
+     * @spec sstable.footer-encryption-scope.R10
      */
     private TrieSSTableWriter(long id, Level level, Path outputPath,
             BloomFilter.Factory bloomFactory, CompressionCodec codec, int blockSize,
-            FsyncSkipListener fsyncSkipListener) throws IOException {
+            FsyncSkipListener fsyncSkipListener, TableScope scope, int[] dekVersions,
+            WriterCommitHook commitHook, String tableNameForLock) throws IOException {
         Objects.requireNonNull(level, "level must not be null");
         Objects.requireNonNull(outputPath, "outputPath must not be null");
         Objects.requireNonNull(bloomFactory, "bloomFactory must not be null");
@@ -163,6 +200,26 @@ public final class TrieSSTableWriter implements SSTableWriter {
         this.codec = (codec != null) ? codec : CompressionCodec.none();
         this.blockSize = blockSize;
         this.fsyncSkipListener = fsyncSkipListener;
+        // v6 wiring: scope is opt-in; dekVersions defaults to an empty array (R3c — empty set
+        // permitted). When scope is null, this writer emits v5 unchanged.
+        this.scope = scope;
+        this.dekVersions = (dekVersions != null) ? dekVersions.clone() : new int[0];
+        this.commitHook = commitHook;
+        this.tableNameForLock = tableNameForLock;
+        if (this.scope != null) {
+            // R10: writer constructed for v6 must validate dek-version array up-front; runtime
+            // conditional, not assert.
+            for (int i = 0; i < this.dekVersions.length; i++) {
+                if (this.dekVersions[i] <= 0) {
+                    throw new IllegalArgumentException("dekVersions must be positive (R3b); got "
+                            + this.dekVersions[i] + " at index " + i);
+                }
+                if (i > 0 && this.dekVersions[i] <= this.dekVersions[i - 1]) {
+                    throw new IllegalArgumentException(
+                            "dekVersions must be strictly ascending (R3a) at index " + i);
+                }
+            }
+        }
 
         // v5 always uses a per-writer-unique partial path, then atomically renames to outputPath
         // at finish().
@@ -355,9 +412,22 @@ public final class TrieSSTableWriter implements SSTableWriter {
                 bloomFilter.add(MemorySegment.ofArray(key));
             }
 
-            // v5 finish path: emit v5 sections with per-section CRC32C and the 3-fsync
-            // discipline (R19-R21) before writing the footer.
+            // R10c step 1 — pre-lock heavy work: emit v5 layout + fsync data + metadata. This
+            // happens BEFORE the catalog lock is acquired, so long-running I/O is fenced out of
+            // the critical section.
             finishV5Layout();
+
+            // R10c steps 2-7 — acquire the lease, re-read the fresh scope, compare to
+            // construction-time, and either commit the v6 scope section + magic under the lease
+            // or transition to FAILED.
+            if (commitHook != null) {
+                finishUnderCommitHook();
+            } else if (scope != null) {
+                // Legacy path (no hook supplied): emit v6 with construction-time scope. Engine
+                // integration always supplies a hook; this branch exists for unit tests that
+                // exercise the byte-layer in isolation.
+                finishV6ScopeSection();
+            }
 
             long sizeBytes = writePosition;
 
@@ -377,6 +447,43 @@ public final class TrieSSTableWriter implements SSTableWriter {
         } catch (IOException e) {
             state = State.FAILED;
             throw e;
+        }
+    }
+
+    /**
+     * R10c steps 2-7: acquire the {@link WriterCommitHook} lease, perform a fresh catalog read,
+     * compare the freshly-read encryption scope to construction-time, and either emit the v6 scope
+     * section + magic under the held lease or FAIL the commit.
+     *
+     * @spec sstable.footer-encryption-scope.R10c
+     */
+    private void finishUnderCommitHook() throws IOException {
+        if (tableNameForLock == null) {
+            throw new IllegalStateException(
+                    "commitHook supplied without tableNameForLock — engine integration error");
+        }
+        // R10c step 2 — acquire the per-table exclusive lease.
+        try (final WriterCommitHook.Lease lease = commitHook.acquire(tableNameForLock)) {
+            // R10c step 3 — fresh catalog read of the encryption scope.
+            final java.util.Optional<TableScope> freshScope = lease.freshScope();
+            // R10c step 4 — compare construction-time scope to freshly-read scope.
+            final boolean wasEncrypted = (scope != null);
+            final boolean isEncryptedNow = freshScope.isPresent();
+            // R10c step 5 — encryption transitioned mid-write; refuse the commit. R12 — error
+            // message must NOT reveal scope identifiers.
+            if (wasEncrypted != isEncryptedNow
+                    || (wasEncrypted && isEncryptedNow && !scope.equals(freshScope.get()))) {
+                state = State.FAILED;
+                throw new IOException(
+                        "encryption state changed between writer construction and finish; "
+                                + "refusing to commit (R10c)");
+            }
+            // R10c step 6 — encryption state is consistent: emit scope section + magic + double
+            // fsync (when applicable).
+            if (isEncryptedNow) {
+                finishV6ScopeSection();
+            }
+            // R10c step 7 — release happens via try-with-resources at block exit.
         }
     }
 
@@ -492,6 +599,49 @@ public final class TrieSSTableWriter implements SSTableWriter {
         CRC32C crc = new CRC32C();
         crc.update(bytes, 0, bytes.length);
         return (int) crc.getValue();
+    }
+
+    /**
+     * Append the v6 scope section after the v5 footer, then overwrite the trailing v5 magic with
+     * the v6 magic. Per R10d, perform a pre-magic fsync to push the scope-section bytes durable
+     * before magic, then a post-magic fsync to make the commit durable. The v5 footer's 112 bytes
+     * (including its own MAGIC_V5) remain intact above the scope section — dispatch is by the
+     * file's trailing magic only.
+     *
+     * @spec sstable.footer-encryption-scope.R1
+     * @spec sstable.footer-encryption-scope.R2
+     * @spec sstable.footer-encryption-scope.R2a
+     * @spec sstable.footer-encryption-scope.R10d
+     */
+    private void finishV6ScopeSection() throws IOException {
+        // Encode the scope section bytes [bodyLen:u32 BE][body][crc32c:u32 BE].
+        final byte[] scopeBytes = V6Footer.encodeScopeSection(scope, dekVersions);
+        // Append the scope section after the v5 footer body.
+        writeBytes(scopeBytes);
+        // Append a 4-byte u32 BE: scope-section-total-size (= scopeBytes.length). This enables
+        // the reader to walk back from the trailing v6 magic.
+        final byte[] sizeBytes = new byte[4];
+        sizeBytes[0] = (byte) (scopeBytes.length >>> 24);
+        sizeBytes[1] = (byte) (scopeBytes.length >>> 16);
+        sizeBytes[2] = (byte) (scopeBytes.length >>> 8);
+        sizeBytes[3] = (byte) scopeBytes.length;
+        writeBytes(sizeBytes);
+        // R10d: pre-magic fsync — push scope bytes durable before the magic flips.
+        forceOrSkip("v6-pre-magic");
+        // Append the v6 magic (8 bytes, big-endian).
+        final byte[] magicBytes = new byte[8];
+        long magic = SSTableFormat.MAGIC_V6;
+        magicBytes[0] = (byte) (magic >>> 56);
+        magicBytes[1] = (byte) (magic >>> 48);
+        magicBytes[2] = (byte) (magic >>> 40);
+        magicBytes[3] = (byte) (magic >>> 32);
+        magicBytes[4] = (byte) (magic >>> 24);
+        magicBytes[5] = (byte) (magic >>> 16);
+        magicBytes[6] = (byte) (magic >>> 8);
+        magicBytes[7] = (byte) magic;
+        writeBytes(magicBytes);
+        // R10d: post-magic fsync — make the commit durable.
+        forceOrSkip("v6-post-magic");
     }
 
     /** Issue a force(true) on the channel if it is a FileChannel; otherwise notify listener. */
@@ -648,6 +798,15 @@ public final class TrieSSTableWriter implements SSTableWriter {
         private ArenaBufferPool pool = null;
         private long derivedBlockSizeCandidate = 0L;
         private FsyncSkipListener fsyncSkipListener = null;
+        // v6 footer scope-aware emit (sstable.footer-encryption-scope R1, R10).
+        // When `scope` is non-null at build time, the writer emits a v6 footer with the
+        // identifier triple + DEK-version-set scope section; otherwise, it emits v5.
+        private TableScope scope = null;
+        private int[] dekVersions = null;
+        // R10c integration hooks (WU-3). Engine integration supplies the commit hook so the
+        // writer can take the catalog's exclusive lock + perform the fresh re-read at finish().
+        private WriterCommitHook commitHook = null;
+        private String tableNameForLock = null;
 
         private Builder() {
         }
@@ -771,6 +930,94 @@ public final class TrieSSTableWriter implements SSTableWriter {
         }
 
         /**
+         * Configures the writer to emit a v6 footer with a scope section bound to {@code scope}.
+         * Calling this method causes the writer to emit {@link SSTableFormat#MAGIC_V6} as the
+         * trailing magic instead of {@link SSTableFormat#MAGIC_V5}. When this method is not called,
+         * the writer emits v5 unchanged.
+         *
+         * <p>
+         * R10 invariant: a writer constructed with a scope must own a corresponding {@link Table}
+         * whose {@code TableMetadata.encryption} is present at finish-time. WU-2 implements the
+         * construction-time wiring; WU-3 adds the R10c finish-time fresh-catalog re-check.
+         *
+         * @param scope the table scope this writer's SSTable belongs to; never null
+         * @return this builder
+         * @throws NullPointerException if {@code scope} is null
+         * @spec sstable.footer-encryption-scope.R1
+         * @spec sstable.footer-encryption-scope.R10
+         */
+        public Builder scope(TableScope scope) {
+            this.scope = Objects.requireNonNull(scope, "scope must not be null");
+            return this;
+        }
+
+        /**
+         * Sets the strictly-ascending positive DEK version set referenced by this SSTable's
+         * ciphertext. Empty array is permitted (R3c — applies to v6 SSTables that persist no
+         * encrypted entries).
+         *
+         * @param dekVersions strictly ascending, positive int[]; never null
+         * @return this builder
+         * @throws NullPointerException if {@code dekVersions} is null
+         * @throws IllegalArgumentException if any version is non-positive or pairs are not strictly
+         *             ascending
+         * @spec sstable.footer-encryption-scope.R3
+         * @spec sstable.footer-encryption-scope.R3a
+         * @spec sstable.footer-encryption-scope.R3b
+         * @spec sstable.footer-encryption-scope.R3c
+         */
+        /**
+         * Configures the per-table commit hook the writer's {@code finish()} acquires during the
+         * R10c protocol. The hook supplies an exclusive lease + a fresh-read encryption scope
+         * accessor; the writer compares the fresh scope to the construction-time scope and either
+         * commits under the held lease or transitions to FAILED.
+         *
+         * <p>
+         * Stub: the wiring lands in WU-3 of WD-02. Calling this method on the current build records
+         * the hook reference for future resolution.
+         *
+         * @param commitHook non-null commit hook
+         * @return this builder
+         * @throws NullPointerException if {@code commitHook} is null
+         * @spec sstable.footer-encryption-scope.R10c
+         */
+        public Builder commitHook(WriterCommitHook commitHook) {
+            this.commitHook = Objects.requireNonNull(commitHook, "commitHook must not be null");
+            return this;
+        }
+
+        /**
+         * Sets the logical table name passed to the {@link WriterCommitHook#acquire(String)} call
+         * at finish-time.
+         *
+         * @param tableNameForLock non-null table name
+         * @return this builder
+         * @throws NullPointerException if {@code tableNameForLock} is null
+         * @spec sstable.footer-encryption-scope.R10c
+         */
+        public Builder tableNameForLock(String tableNameForLock) {
+            this.tableNameForLock = Objects.requireNonNull(tableNameForLock,
+                    "tableNameForLock must not be null");
+            return this;
+        }
+
+        public Builder dekVersions(int[] dekVersions) {
+            Objects.requireNonNull(dekVersions, "dekVersions must not be null");
+            for (int i = 0; i < dekVersions.length; i++) {
+                if (dekVersions[i] <= 0) {
+                    throw new IllegalArgumentException("dekVersions must be positive (R3b); got "
+                            + dekVersions[i] + " at index " + i);
+                }
+                if (i > 0 && dekVersions[i] <= dekVersions[i - 1]) {
+                    throw new IllegalArgumentException(
+                            "dekVersions must be strictly ascending (R3a) at index " + i);
+                }
+            }
+            this.dekVersions = dekVersions.clone();
+            return this;
+        }
+
+        /**
          * Builds and returns a new writer.
          *
          * @return a new writer
@@ -804,7 +1051,8 @@ public final class TrieSSTableWriter implements SSTableWriter {
             final BloomFilter.Factory effectiveBloomFactory = (bloomFactory != null) ? bloomFactory
                     : n -> new BlockedBloomFilter(n, 0.01);
             return new TrieSSTableWriter(id, level, path, effectiveBloomFactory, codec,
-                    effectiveBlockSize, fsyncSkipListener);
+                    effectiveBlockSize, fsyncSkipListener, scope, dekVersions, commitHook,
+                    tableNameForLock);
         }
     }
 

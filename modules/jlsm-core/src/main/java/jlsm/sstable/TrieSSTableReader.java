@@ -8,11 +8,14 @@ import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
 import jlsm.core.sstable.SSTableMetadata;
 import jlsm.core.sstable.SSTableReader;
+import jlsm.encryption.ReadContext;
+import jlsm.encryption.TableScope;
 import jlsm.sstable.internal.CompressionMap;
 import jlsm.sstable.internal.EntryCodec;
 import jlsm.sstable.internal.KeyIndex;
 import jlsm.sstable.internal.SSTableFormat;
 import jlsm.sstable.internal.V5Footer;
+import jlsm.sstable.internal.V6Footer;
 import jlsm.sstable.internal.VarInt;
 
 import java.io.IOException;
@@ -113,6 +116,16 @@ public final class TrieSSTableReader implements SSTableReader {
     /** End of the data region (i.e. mapOffset) — used by v5 recovery scans. */
     private final long dataRegionEnd;
 
+    /**
+     * Per-read context produced from the v6 footer scope section. For v5 files (no scope), this is
+     * a {@link ReadContext} carrying an empty {@code allowedDekVersions} set — the dispatch R3e
+     * gate then trivially rejects every envelope (which is correct: a v5 file has no encrypted
+     * entries, so no envelope dispatch should occur).
+     *
+     * @spec sstable.footer-encryption-scope.R3e
+     */
+    private final ReadContext readContext;
+
     /** Reader-level failure surfaced by a lazy first-load failure (R43); null otherwise. */
     // @spec sstable.end-to-end-integrity.R43 — FAILED-state storage: a non-null failureCause
     // represents the originating CorruptSectionException from a post-open lazy first-load;
@@ -175,6 +188,16 @@ public final class TrieSSTableReader implements SSTableReader {
             CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap,
             boolean hasChecksums, long blockSize, int formatVersion, int footerBlockCount,
             long dataRegionEnd) {
+        this(metadata, keyIndex, bloomFilter, dataEnd, eagerData, lazyChannel, blockCache,
+                compressionMap, codecMap, hasChecksums, blockSize, formatVersion, footerBlockCount,
+                dataRegionEnd, new ReadContext(java.util.Collections.emptySet()));
+    }
+
+    private TrieSSTableReader(SSTableMetadata metadata, KeyIndex keyIndex, BloomFilter bloomFilter,
+            long dataEnd, byte[] eagerData, SeekableByteChannel lazyChannel, BlockCache blockCache,
+            CompressionMap compressionMap, Map<Byte, CompressionCodec> codecMap,
+            boolean hasChecksums, long blockSize, int formatVersion, int footerBlockCount,
+            long dataRegionEnd, ReadContext readContext) {
         this.metadata = metadata;
         this.keyIndex = keyIndex;
         this.bloomFilter = bloomFilter;
@@ -189,6 +212,7 @@ public final class TrieSSTableReader implements SSTableReader {
         this.formatVersion = formatVersion;
         this.footerBlockCount = footerBlockCount;
         this.dataRegionEnd = dataRegionEnd;
+        this.readContext = Objects.requireNonNull(readContext, "readContext must not be null");
     }
 
     /**
@@ -202,6 +226,20 @@ public final class TrieSSTableReader implements SSTableReader {
         return blockSize;
     }
 
+    /**
+     * Returns the per-read context produced from the v6 footer scope section. For v5 files (no
+     * scope), the context carries an empty {@code allowedDekVersions} set.
+     *
+     * <p>
+     * The same {@link ReadContext} instance is returned across calls so hot-path R3e dispatch
+     * checks in {@code FieldEncryptionDispatch} pay zero allocation per envelope.
+     *
+     * @spec sstable.footer-encryption-scope.R3e
+     */
+    public ReadContext readContext() {
+        return readContext;
+    }
+
     // ---- Convenience factory methods (no codec varargs) ----
     //
     // Post v1-v4 collapse, every SSTable is v5. The simple overloads delegate to the
@@ -211,6 +249,37 @@ public final class TrieSSTableReader implements SSTableReader {
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer)
             throws IOException {
         return open(path, bloomDeserializer, null, new CompressionCodec[0]);
+    }
+
+    /**
+     * Opens an SSTable with magic-dispatched v5/v6 footer parsing. When the trailing magic is v6,
+     * validates the scope section against {@code expectedScope} (R5/R6); the {@link ReadContext}
+     * produced from the scope's DEK-version set is exposed via {@link #readContext()} for
+     * downstream R3e dispatch gates.
+     *
+     * <p>
+     * Callers must pass a non-null {@code Optional} (use {@link Optional#empty()} for
+     * plaintext-only reads); this prevents Java overload resolution from clashing with the existing
+     * {@link #open(Path, BloomFilter.Deserializer, BlockCache)} overload on {@code null}.
+     *
+     * @param path path to the SSTable file
+     * @param bloomDeserializer deserializer for the bloom filter
+     * @param expectedScope when present, the caller-asserted scope this SSTable should belong to;
+     *            when empty, the reader rejects v6 files (R5)
+     * @return an opened reader
+     * @throws IOException on truncation, CRC mismatch, identifier-rule violation, or unknown magic
+     * @throws IllegalStateException on v6-without-scope (R5) or scope mismatch (R6)
+     * @spec sstable.footer-encryption-scope.R1a
+     * @spec sstable.footer-encryption-scope.R5
+     * @spec sstable.footer-encryption-scope.R6
+     */
+    public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
+            Optional<TableScope> expectedScope) throws IOException {
+        Objects.requireNonNull(path, "path must not be null");
+        Objects.requireNonNull(bloomDeserializer, "bloomDeserializer must not be null");
+        Objects.requireNonNull(expectedScope, "expectedScope must not be null");
+        return openWithExpectedScope(path, bloomDeserializer, null, expectedScope,
+                new CompressionCodec[0]);
     }
 
     public static TrieSSTableReader open(Path path, BloomFilter.Deserializer bloomDeserializer,
@@ -226,6 +295,138 @@ public final class TrieSSTableReader implements SSTableReader {
     public static TrieSSTableReader openLazy(Path path, BloomFilter.Deserializer bloomDeserializer,
             BlockCache blockCache) throws IOException {
         return openLazy(path, bloomDeserializer, blockCache, new CompressionCodec[0]);
+    }
+
+    /**
+     * Magic-dispatching v5/v6 open path. Reads the trailing 8 bytes to decide format. For v6, reads
+     * the scope section (and trailing scope-size + magic), validates against {@code expectedScope}
+     * (R5/R6), and then opens the file as if its size equalled the v5 footer end (so the existing
+     * v5 parsing code applies unchanged).
+     *
+     * @spec sstable.footer-encryption-scope.R1a
+     * @spec sstable.footer-encryption-scope.R2f
+     * @spec sstable.footer-encryption-scope.R5
+     * @spec sstable.footer-encryption-scope.R6
+     */
+    private static TrieSSTableReader openWithExpectedScope(Path path,
+            BloomFilter.Deserializer bloomDeserializer, BlockCache blockCache,
+            Optional<TableScope> expectedScope, CompressionCodec... codecs) throws IOException {
+        // First, peek at the trailing 8 bytes to dispatch on magic.
+        final long fileSize = Files.size(path);
+        if (fileSize < 8) {
+            throw new IncompleteSSTableException("no-magic", fileSize, 0,
+                    "file too small to contain an SSTable magic number");
+        }
+        final long magic;
+        final long scopeTotalSize;
+        final byte[] scopeBytes;
+        try (SeekableByteChannel probe = Files.newByteChannel(path, StandardOpenOption.READ)) {
+            byte[] magicBuf = readBytes(probe, fileSize - 8, 8);
+            magic = readLong(magicBuf, 0);
+            if (magic == SSTableFormat.MAGIC_V6) {
+                if (expectedScope.isEmpty()) {
+                    throw new IllegalStateException(
+                            "attempt to decrypt SSTable belonging to a Table without encryption "
+                                    + "metadata (R5): the file's trailing magic is v6 but no "
+                                    + "expectedScope was supplied");
+                }
+                if (fileSize < 8 + 4) {
+                    throw new IOException(
+                            "v6 file too small to contain scope-section-size (R2f) — corrupt "
+                                    + "footer");
+                }
+                byte[] sizeBuf = readBytes(probe, fileSize - 8 - 4, 4);
+                long readSize = ((sizeBuf[0] & 0xFFL) << 24) | ((sizeBuf[1] & 0xFFL) << 16)
+                        | ((sizeBuf[2] & 0xFFL) << 8) | (sizeBuf[3] & 0xFFL);
+                if (readSize <= 0 || readSize > fileSize - 8 - 4 - SSTableFormat.FOOTER_SIZE_V5) {
+                    throw new IOException("v6 footer scope-section-size invalid: " + readSize
+                            + " (R2d/R2f) — corrupt footer");
+                }
+                scopeTotalSize = readSize;
+                scopeBytes = readBytes(probe, fileSize - 8 - 4 - readSize, (int) readSize);
+            } else {
+                scopeTotalSize = 0;
+                scopeBytes = null;
+            }
+        }
+        if (magic == SSTableFormat.MAGIC_V6) {
+            V6Footer.Parsed parsed = V6Footer.parse(scopeBytes, fileSize);
+            TableScope expected = expectedScope.get();
+            if (!expected.equals(parsed.scope())) {
+                throw new IllegalStateException("SSTable scope mismatch (R6): expected scope "
+                        + expected + " does not match SSTable's declared scope " + parsed.scope());
+            }
+            final long v5FileSize = fileSize - scopeTotalSize - 4 - 8;
+            if (v5FileSize < SSTableFormat.FOOTER_SIZE_V5) {
+                throw new IOException(
+                        "v6 file too small to contain a v5 footer below the scope section "
+                                + "(R2f) — corrupt footer");
+            }
+            ReadContext ctx = new ReadContext(parsed.dekVersionSet());
+            return openInner(path, bloomDeserializer, blockCache, codecs, v5FileSize, ctx);
+        }
+        // v5 path: delegate to existing open() with default empty ReadContext.
+        return openInner(path, bloomDeserializer, blockCache, codecs, fileSize,
+                new ReadContext(java.util.Collections.emptySet()));
+    }
+
+    /**
+     * Inner open path that reads the v5 footer at {@code virtualFileSize} (which equals
+     * {@code Files.size(path)} for v5 files and {@code Files.size(path) - v6Trailer} for v6 files).
+     * Builds the reader with the given {@link ReadContext}.
+     */
+    private static TrieSSTableReader openInner(Path path,
+            BloomFilter.Deserializer bloomDeserializer, BlockCache blockCache,
+            CompressionCodec[] codecs, long virtualFileSize, ReadContext readContext)
+            throws IOException {
+        Objects.requireNonNull(codecs, "codecs must not be null");
+        SeekableByteChannel ch = Files.newByteChannel(path, StandardOpenOption.READ);
+        try {
+            Footer footer = readFooter(ch, virtualFileSize);
+
+            byte[] mapBytes = readBytes(ch, footer.mapOffset, (int) footer.mapLength);
+            verifySectionCrc32c(mapBytes, footer.mapChecksum,
+                    CorruptSectionException.SECTION_COMPRESSION_MAP);
+            CompressionMap compressionMap = CompressionMap.deserialize(mapBytes, 3);
+            if (compressionMap.blockCount() != footer.blockCount) {
+                throw new CorruptSectionException(CorruptSectionException.SECTION_COMPRESSION_MAP,
+                        "v5 footer.blockCount=" + footer.blockCount
+                                + " disagrees with compression-map entry count="
+                                + compressionMap.blockCount());
+            }
+            Map<Byte, CompressionCodec> codecMap = buildCodecMap(codecs);
+            if (footer.dictLength > 0) {
+                codecMap = overrideWithDictionaryCodec(ch, footer, codecMap);
+            } else {
+                codecMap = overrideWithPlainZstdCodec(codecMap);
+            }
+            validateCodecMap(compressionMap, codecMap);
+            KeyIndex keyIndex = readKeyIndexV2Bytes(ch, footer, compressionMap.blockCount(), true);
+            long dataEnd = footer.mapOffset;
+            BloomFilter bloom = readBloomFilterWithCrc(ch, footer, bloomDeserializer, true);
+            SSTableMetadata meta = buildMetadata(path, virtualFileSize, footer, keyIndex);
+            int dataLen = (int) dataEnd;
+            byte[] data = readBytes(ch, 0L, dataLen);
+            ch.close();
+            return new TrieSSTableReader(meta, keyIndex, bloom, dataEnd, data, null, blockCache,
+                    compressionMap, codecMap, true, footer.blockSize, footer.version,
+                    footer.blockCount, footer.mapOffset, readContext);
+        } catch (ClosedByInterruptException e) {
+            Thread.currentThread().interrupt();
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
+            throw e;
+        } catch (IOException | RuntimeException | Error e) {
+            try {
+                ch.close();
+            } catch (IOException closeEx) {
+                e.addSuppressed(closeEx);
+            }
+            throw e;
+        }
     }
 
     // ---- Magic-dispatch factory methods ----

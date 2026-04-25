@@ -16,21 +16,34 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Local implementation of {@link Table} wrapping a {@link JlsmTable.StringKeyed} with handle
- * lifecycle tracking.
+ * Catalog-mediated, single-node implementation of {@link Table} wrapping a
+ * {@link JlsmTable.StringKeyed} with handle lifecycle tracking. One of the two permitted subtypes
+ * of the sealed {@link Table} interface (the other is
+ * {@code jlsm.engine.cluster.internal.CatalogClusteredTable}).
  *
  * <p>
  * Every method checks handle validity before delegating to the underlying table. If the handle has
  * been evicted, a {@link HandleEvictedException} is thrown.
  *
  * <p>
- * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
+ * <b>Trust-boundary discipline (R8f).</b> The constructor is package-private; instantiation is
+ * limited to {@code jlsm.engine.internal} factory code. The class explicitly does NOT implement
+ * {@code java.io.Serializable} — no deserialisation back-door exists. Resides in the non-exported
+ * {@code jlsm.engine.internal} package so external modules cannot reach it without a
+ * project-controlled {@code --add-exports}/{@code --add-opens} flag.
+ *
+ * <p>
+ * Governed by: {@code .decisions/engine-api-surface-design/adr.md},
+ * {@code .decisions/table-handle-scope-exposure/adr.md} v2.
+ *
+ * @spec sstable.footer-encryption-scope.R8e
+ * @spec sstable.footer-encryption-scope.R8f
  */
 // @spec engine.in-process-database-engine.R22,R32,R33,R34,R35,R36,R38,R39,R47,R48,R68,R70,R77,R83 —
 // delegating handle surface;
 // registration-synchronized delegate calls make concurrent drop + query on the same table safe
 // (R68).
-final class LocalTable implements Table {
+public non-sealed class CatalogTable implements Table {
 
     private final JlsmTable.StringKeyed delegate;
     private final HandleRegistration registration;
@@ -38,7 +51,7 @@ final class LocalTable implements Table {
     private final TableMetadata metadata;
     private final JlsmSchema schema;
 
-    LocalTable(JlsmTable.StringKeyed delegate, HandleRegistration registration,
+    CatalogTable(JlsmTable.StringKeyed delegate, HandleRegistration registration,
             HandleTracker tracker, TableMetadata metadata) {
         this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
         this.registration = Objects.requireNonNull(registration, "registration must not be null");

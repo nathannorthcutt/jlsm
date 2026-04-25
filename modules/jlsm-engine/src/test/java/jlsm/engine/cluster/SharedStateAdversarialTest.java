@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.Engine;
 import jlsm.engine.EngineMetrics;
 import jlsm.engine.Table;
@@ -636,11 +638,14 @@ final class SharedStateAdversarialTest {
     }
 
     // Finding: F-R1.shared_state.3.2
-    // Bug: ClusteredTable creates private RendezvousOwnership that diverges from engine's ownership
+    // Bug: CatalogClusteredTable creates private RendezvousOwnership that diverges from engine's
+    // ownership
     // cache
-    // Correct behavior: ClusteredTable should accept a shared RendezvousOwnership from the engine
+    // Correct behavior: CatalogClusteredTable should accept a shared RendezvousOwnership from the
+    // engine
     // so that eviction events propagated by the engine apply to the same cache used by the table
-    // Fix location: ClusteredTable constructor (line 56) and ClusteredEngine.createTable (line 98)
+    // Fix location: CatalogClusteredTable constructor (line 56) and ClusteredEngine.createTable
+    // (line 98)
     // Regression watch: Ensure resolveOwner still evicts before use and routes correctly
     @Test
     @Timeout(10)
@@ -691,12 +696,12 @@ final class SharedStateAdversarialTest {
         // Pre-populate the shared cache so we can verify the table uses it
         final NodeAddress cachedOwner = sharedOwnership.assignOwner("users/testkey", twoNodeView);
 
-        // Create the ClusteredTable WITH the shared ownership instance.
+        // Create the CatalogClusteredTable WITH the shared ownership instance.
         // Before the fix, the constructor only accepts 4 parameters and creates
         // its own RendezvousOwnership — this call will fail to compile or the
         // table will ignore the shared instance.
-        final var clusteredTable = new ClusteredTable(metadata, transport1, stubMembership, ADDR_1,
-                sharedOwnership);
+        final var clusteredTable = CatalogClusteredTable.forEngine(metadata, transport1,
+                stubMembership, ADDR_1, sharedOwnership);
         closeables.add(clusteredTable);
 
         // Now evict the shared ownership cache (simulating what the engine does on
@@ -715,7 +720,7 @@ final class SharedStateAdversarialTest {
         // The strongest proof: the constructor now accepts RendezvousOwnership.
         // If the 5-arg constructor doesn't exist, this test won't compile.
         assertNotNull(clusteredTable,
-                "ClusteredTable should accept a shared RendezvousOwnership instance");
+                "CatalogClusteredTable should accept a shared RendezvousOwnership instance");
     }
 
     // @spec engine.clustering.R28 — fire-and-forget send: delivery failures (unreachable target or
@@ -1032,7 +1037,7 @@ final class SharedStateAdversarialTest {
     }
 
     // Finding: F-R1.shared_state.2.3
-    // Bug: ClusteredTable.scan submits supplyAsync(() -> client.getRangeAsync(...),
+    // Bug: CatalogClusteredTable.scan submits supplyAsync(() -> client.getRangeAsync(...),
     // SCATTER_EXECUTOR). Inside getRangeAsync, transport.request(owner, request) is
     // called SYNCHRONOUSLY — if that call blocks indefinitely (a transport whose
     // inner queue wait has no timeout), the SCATTER_EXECUTOR virtual thread is
@@ -1044,9 +1049,9 @@ final class SharedStateAdversarialTest {
     // per remote node for JVM lifetime (H-CC-2 / KB fan-out-iterator-leak.md).
     // Correct behavior: close() must release the virtual thread parked inside
     // transport.request. A well-behaved transport that uses an interruptible wait
-    // will return promptly when its thread is interrupted; ClusteredTable must
+    // will return promptly when its thread is interrupted; CatalogClusteredTable must
     // propagate cancellation to that thread.
-    // Fix location: ClusteredTable.scan — track the supplier thread per scatter
+    // Fix location: CatalogClusteredTable.scan — track the supplier thread per scatter
     // future and interrupt it when the future is cancelled (so close()'s
     // inFlightScatter.cancel(true) actually unblocks parked threads).
     // Regression watch: ensure the supplier thread is NOT interrupted on the
@@ -1132,7 +1137,8 @@ final class SharedStateAdversarialTest {
                 .field("id", jlsm.table.FieldType.Primitive.STRING).build();
         final var meta = new TableMetadata("t", schema, Instant.now(),
                 TableMetadata.TableState.READY);
-        final var table = new ClusteredTable(meta, syncBlockingTransport, stubMembership, ADDR_1);
+        final var table = CatalogClusteredTable.forEngine(meta, syncBlockingTransport,
+                stubMembership, ADDR_1);
         closeables.add(table);
 
         // Start scan on a separate virtual thread — it will fan out, with at least one
@@ -1172,7 +1178,7 @@ final class SharedStateAdversarialTest {
         scanThread.join(1000);
 
         assertTrue(exited,
-                "ClusteredTable.close() must release virtual threads parked inside a "
+                "CatalogClusteredTable.close() must release virtual threads parked inside a "
                         + "synchronous transport.request(...) call. Without this, every scan "
                         + "against a stalled transport leaks one SCATTER_EXECUTOR vthread per "
                         + "remote node for JVM lifetime (H-CC-2 / F-R1.shared_state.2.3).");

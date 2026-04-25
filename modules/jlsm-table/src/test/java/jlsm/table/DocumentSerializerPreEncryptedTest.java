@@ -58,7 +58,11 @@ class DocumentSerializerPreEncryptedTest {
         serializedPlain[0] = (byte) plainBytes.length;
         System.arraycopy(plainBytes, 0, serializedPlain, 1, plainBytes.length);
         byte[] associatedData = "name".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] ciphertext = siv.encrypt(serializedPlain, associatedData);
+        byte[] variantBody = siv.encrypt(serializedPlain, associatedData);
+        // @spec encryption.ciphertext-envelope.R1, R1c — pre-encrypted callers must wrap variant
+        // body bytes with the 4B BE DEK version prefix; the dispatch's permissive 2-arg
+        // resolver accepts version=1 (DekVersion.FIRST).
+        byte[] ciphertext = jlsm.encryption.EnvelopeCodec.prefixVersion(1, variantBody);
 
         sivKeyHolder.close();
 
@@ -129,7 +133,9 @@ class DocumentSerializerPreEncryptedTest {
         serializedPlain[0] = (byte) plainBytes.length;
         System.arraycopy(plainBytes, 0, serializedPlain, 1, plainBytes.length);
         byte[] associatedData = "email".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] ciphertext = siv.encrypt(serializedPlain, associatedData);
+        byte[] variantBody = siv.encrypt(serializedPlain, associatedData);
+        // @spec encryption.ciphertext-envelope.R1, R1c — wrap variant body with 4B BE DEK version
+        byte[] ciphertext = jlsm.encryption.EnvelopeCodec.prefixVersion(1, variantBody);
 
         sivKeyHolder.close();
 
@@ -188,7 +194,9 @@ class DocumentSerializerPreEncryptedTest {
         byte[] serializedPlain = new byte[1 + plainBytes.length];
         serializedPlain[0] = (byte) plainBytes.length;
         System.arraycopy(plainBytes, 0, serializedPlain, 1, plainBytes.length);
-        byte[] ciphertext = gcm.encrypt(serializedPlain);
+        byte[] variantBody = gcm.encrypt(serializedPlain);
+        // @spec encryption.ciphertext-envelope.R1, R1c — wrap variant body with 4B BE DEK version
+        byte[] ciphertext = jlsm.encryption.EnvelopeCodec.prefixVersion(1, variantBody);
 
         gcmKeyHolder.close();
 

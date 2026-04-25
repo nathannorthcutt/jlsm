@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.RemotePartitionClient;
@@ -30,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for parallel scatter-gather in {@link ClusteredTable#scan(String, String)}.
+ * Tests for parallel scatter-gather in {@link CatalogClusteredTable#scan(String, String)}.
  *
  * <p>
  * Delivers: F04.R77 (parallel fanout); preserves F04.R60, R64, R67, R70, R100.
@@ -56,7 +58,7 @@ final class ClusteredTableScanParallelTest {
     private InJvmTransport remoteATransport;
     private InJvmTransport remoteBTransport;
     private StubMembershipProtocol membership;
-    private ClusteredTable table;
+    private CatalogClusteredTable table;
 
     @BeforeEach
     void setUp() {
@@ -70,7 +72,7 @@ final class ClusteredTableScanParallelTest {
                 new Member(REMOTE_B, MemberState.ALIVE, 0)), NOW);
         // Use 4-arg ctor (no localEngine) so scan always goes through the remote path — the local
         // short-circuit would bypass the fanout logic we need to exercise.
-        table = new ClusteredTable(TABLE_META, localTransport, membership, LOCAL);
+        table = CatalogClusteredTable.forEngine(TABLE_META, localTransport, membership, LOCAL);
     }
 
     @AfterEach
@@ -219,7 +221,7 @@ final class ClusteredTableScanParallelTest {
     // reference is lost.
     // Correct behavior: Across many scan/close race iterations, openInstances() returns to 0 —
     // every client instantiated by the scan was closed despite the concurrent close.
-    // Fix location: ClusteredTable.scan whenComplete + close ordering
+    // Fix location: CatalogClusteredTable.scan whenComplete + close ordering
     // Regression watch: Non-racing scans continue to close clients properly (covered by
     // scan_closesClientsOnSuccess / scan_closesClientsOnException).
     @Test
@@ -235,8 +237,8 @@ final class ClusteredTableScanParallelTest {
         final AtomicInteger scansCompleted = new AtomicInteger(0);
         for (int i = 0; i < iterations; i++) {
             // Fresh table per iteration to exercise close() vs scan() race.
-            final ClusteredTable localTable = new ClusteredTable(TABLE_META, localTransport,
-                    membership, LOCAL);
+            final CatalogClusteredTable localTable = CatalogClusteredTable.forEngine(TABLE_META,
+                    localTransport, membership, LOCAL);
             final CountDownLatch started = new CountDownLatch(1);
             final Thread scanThread = new Thread(() -> {
                 started.countDown();
@@ -258,13 +260,14 @@ final class ClusteredTableScanParallelTest {
             localTable.close();
             scanThread.join(5_000L);
         }
-        // Allow pending whenComplete callbacks to drain. Poll up to 5s rather than a fixed
-        // window: the async cleanup path (nodeFut.whenComplete → client.close()) can lag
-        // scanThread.join() by transport-delivery latency (50ms per remote call, set above)
-        // plus SCATTER_EXECUTOR vthread scheduling latency, which compounds under host load.
-        // The invariant is that cleanup eventually converges; the test just needs to wait
-        // for it rather than assume a fixed drain window is enough.
-        final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        // Allow pending whenComplete callbacks to drain. Poll up to 25s (well within the
+        // 30s @Timeout): the async cleanup path (nodeFut.whenComplete → client.close()) can
+        // lag scanThread.join() by transport-delivery latency (50ms per remote call, set
+        // above) plus SCATTER_EXECUTOR vthread scheduling latency, which compounds under
+        // host load. The invariant is that cleanup eventually converges; the test just
+        // needs to wait for it rather than assume a fixed drain window is enough. A 5s
+        // deadline was previously observed to be flaky under full ./gradlew check load.
+        final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25);
         while (RemotePartitionClient.openInstances() > 0 && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
@@ -282,7 +285,7 @@ final class ClusteredTableScanParallelTest {
     // on node K, clients already created for nodes 0..K-1 leak without being closed.
     // Correct behavior: A handler failure on one node does not prevent client cleanup on the
     // other — openInstances() returns to 0 after the scan completes.
-    // Fix location: ClusteredTable.scan exception path (whenComplete on every future)
+    // Fix location: CatalogClusteredTable.scan exception path (whenComplete on every future)
     // Regression watch: Both-fail + both-succeed cases are unaffected.
     @Test
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -308,7 +311,7 @@ final class ClusteredTableScanParallelTest {
     // Correct behavior: The truncated-response future is captured as unavailable in
     // PartialResultMetadata; the scan does not silently return an empty iterator.
     // Fix location: RemotePartitionClient.getRangeAsync (reject malformed responses) +
-    // ClusteredTable.scan (treat failed future as unavailable)
+    // CatalogClusteredTable.scan (treat failed future as unavailable)
     // Regression watch: Well-formed empty responses still work.
     @Test
     @Timeout(value = 15, unit = TimeUnit.SECONDS)
@@ -342,7 +345,7 @@ final class ClusteredTableScanParallelTest {
     // the field in an inconsistent hybrid state.
     // Correct behavior: The metadata field observed after both scans completes with one of the
     // two scans' metadata (last-writer-wins) — no torn/hybrid state, no null.
-    // Fix location: ClusteredTable.lastPartialResult (volatile single-writer semantics)
+    // Fix location: CatalogClusteredTable.lastPartialResult (volatile single-writer semantics)
     // Regression watch: Single-threaded scan + metadata access continues to match.
     @Test
     @Timeout(value = 30, unit = TimeUnit.SECONDS)

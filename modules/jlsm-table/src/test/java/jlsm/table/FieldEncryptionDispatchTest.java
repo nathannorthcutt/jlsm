@@ -223,18 +223,19 @@ class FieldEncryptionDispatchTest {
     // cross-field substitution must throw SecurityException.
     // F41.R22 amended: on-disk OPE layout matches (DEK version tag is F41 future work).
 
-    // @spec encryption.primitives-variants.R21,R54 — OPE ciphertext is exactly 25 bytes
+    // @spec encryption.primitives-variants.R21,R54, encryption.ciphertext-envelope.R1 — OPE
+    // envelope is exactly 29 bytes after WU-4 (4B BE DEK version + 1B length + 8B OPE + 16B MAC)
     @Test
-    void orderPreservingField_ciphertextIs25Bytes() {
+    void orderPreservingField_envelopeIs29Bytes() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
                 .field("level", FieldType.Primitive.INT8, EncryptionSpec.orderPreserving()).build();
 
         var dispatch = new FieldEncryptionDispatch(schema, keyHolder);
         byte[] plaintext = new byte[]{ (byte) 42 };
-        byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
+        byte[] envelope = dispatch.encryptorFor(0).encrypt(plaintext);
 
-        assertEquals(25, ciphertext.length,
-                "OPE ciphertext must be 25 bytes (1 length + 8 OPE + 16 MAC tag)");
+        assertEquals(29, envelope.length,
+                "OPE envelope must be 29 bytes (4B DEK version + 1B length + 8B OPE + 16B MAC)");
     }
 
     // @spec encryption.primitives-variants.R22,R54 — round-trip works when MAC verifies
@@ -263,8 +264,8 @@ class FieldEncryptionDispatchTest {
         byte[] plaintext = new byte[]{ 17 };
         byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
 
-        // Tag occupies bytes [9..24]; flip byte at position 20.
-        ciphertext[20] ^= (byte) 0xFF;
+        // After WU-4 prefix: tag occupies bytes [13..28]; flip byte at position 24 (was 20).
+        ciphertext[24] ^= (byte) 0xFF;
 
         assertThrows(SecurityException.class, () -> dispatch.decryptorFor(0).decrypt(ciphertext),
                 "Tampered MAC must throw SecurityException");
@@ -281,8 +282,8 @@ class FieldEncryptionDispatchTest {
         byte[] plaintext = new byte[]{ 5 };
         byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
 
-        // OPE long occupies bytes [1..8]; flip byte at position 4.
-        ciphertext[4] ^= (byte) 0xFF;
+        // After WU-4 prefix: OPE long occupies bytes [5..12]; flip byte at position 8 (was 4).
+        ciphertext[8] ^= (byte) 0xFF;
 
         assertThrows(SecurityException.class, () -> dispatch.decryptorFor(0).decrypt(ciphertext),
                 "Tampered OPE ciphertext must throw SecurityException");
@@ -299,7 +300,9 @@ class FieldEncryptionDispatchTest {
         byte[] plaintext = new byte[]{ 9 };
         byte[] ciphertext = dispatch.encryptorFor(0).encrypt(plaintext);
 
-        ciphertext[0] = (byte) (ciphertext[0] ^ 0x01);
+        // After WU-4 prefix: OPE length prefix is at byte 4 (bytes [0..3] are the DEK version
+        // prefix). Tampering byte 4 changes the inner OPE format and must trip the MAC check.
+        ciphertext[4] = (byte) (ciphertext[4] ^ 0x01);
 
         assertThrows(SecurityException.class, () -> dispatch.decryptorFor(0).decrypt(ciphertext),
                 "Tampered length prefix must throw SecurityException");
@@ -383,12 +386,14 @@ class FieldEncryptionDispatchTest {
     }
 
     /**
-     * Extracts the 8-byte OPE ciphertext long (big-endian) from bytes [1..8] of the 25-byte format.
+     * Extracts the 8-byte OPE ciphertext long (big-endian) from bytes [5..12] of the 29-byte WU-4
+     * envelope (skips 4B DEK version prefix + 1B length prefix).
      */
     private static long readOpePortion(byte[] ciphertext) {
         long v = 0;
         for (int i = 0; i < 8; i++) {
-            v = (v << 8) | (ciphertext[1 + i] & 0xFFL);
+            // 4B DEK version + 1B length = 5 leading bytes before the encrypted long
+            v = (v << 8) | (ciphertext[5 + i] & 0xFFL);
         }
         return v;
     }

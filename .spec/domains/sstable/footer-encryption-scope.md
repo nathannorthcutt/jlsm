@@ -1,7 +1,7 @@
 ---
 {
   "id": "sstable.footer-encryption-scope",
-  "version": 4,
+  "version": 5,
   "status": "ACTIVE",
   "state": "APPROVED",
   "domains": [
@@ -118,7 +118,7 @@ R6a. The expected scope must NOT be derived from the same SSTable footer it is v
 
 R6b. R6's comparison is a fast-fail / clear-error mechanism. The cryptographic defence against wrong-scope decryption is the HKDF scope binding from `encryption.primitives-lifecycle` R11 (DEK material is bound to the full `(tenantId, domainId, tableId, dekVersion)` tuple). R6 exists to produce a clear, early error; R11's binding exists to make wrong-scope decryption cryptographically impossible. Both must hold.
 
-R6c. **Trust boundary on the Table handle.** The `Table` interface that the reader consumes for R5 must be `sealed` (see R8e) with exactly one permitted implementation in `jlsm.engine.internal`. External consumers of `jlsm-engine` cannot implement `Table`; only `Engine` factory methods (`getTable`, `createTable`, `createEncryptedTable`) can produce handles that reach the reader. This enforces at compile time that the handle passed to R5 is catalog-mediated and that its `metadata().encryption()` value is authoritative — not an attacker-constructed Table whose `metadata()` returns forged scope.
+R6c. **Trust boundary on the Table handle.** The `Table` interface that the reader consumes for R5 must be `sealed` (see R8e) with exactly two permitted implementations, both in non-exported internal packages: `jlsm.engine.internal.CatalogTable` (single-node) and `jlsm.engine.cluster.internal.CatalogClusteredTable` (clustered). External consumers of `jlsm-engine` cannot implement `Table`; only `Engine` / `ClusteredEngine` factory methods (`getTable`, `createTable`, `createEncryptedTable`) can produce handles that reach the reader. Both internal classes are catalog-mediated — the single-node class reads directly from the local `TableCatalog`; the clustered class wraps a multi-partition router whose per-node scatter targets dispatch through the local catalog on each node. This enforces at compile time that any handle passed to R5 is catalog-mediated and that its `metadata().encryption()` value is authoritative — not an attacker-constructed Table whose `metadata()` returns forged scope.
 
 R2f. **Footer CRC32C covers the full v6 footer; file-size matches footer-end.** Every byte of the v6 footer except the `footerChecksum` field itself must be covered by the CRC32C — specifically, the CRC is computed over `[0 .. footerChecksumOffset) ∪ [footerChecksumOffset+4 .. footerEnd)`, where `footerEnd` is the offset of the byte after `magic`. This generalises `sstable.end-to-end-integrity` R16 (which specifies a fixed 104-byte offset range for v5) to the variable-length v6 footer.
 
@@ -170,21 +170,24 @@ R8e. **`Table` interface is sealed.** The public `Table` interface in `jlsm.engi
 
 ```java
 public sealed interface Table extends AutoCloseable
-    permits jlsm.engine.internal.CatalogTable {
+    permits jlsm.engine.internal.CatalogTable,
+            jlsm.engine.cluster.internal.CatalogClusteredTable {
     // existing methods unchanged
 }
 ```
 
-`CatalogTable` is the sole permitted implementation, lives in `jlsm.engine.internal` (a package NOT exported in `module-info.java`), and is constructed exclusively by `Engine` factory methods. External consumers of `jlsm-engine` cannot implement `Table` — the Java compiler rejects any non-permitted subtype.
+The two permitted implementations are: `CatalogTable` (single-node, in `jlsm.engine.internal`) and `CatalogClusteredTable` (clustered, in `jlsm.engine.cluster.internal`). Neither package is exported in `module-info.java`. Both are constructed exclusively by their respective engine factory methods (`Engine.getTable` / `createTable` / `createEncryptedTable`; `ClusteredEngine.getTable` / `createTable` / `createEncryptedTable`). External consumers of `jlsm-engine` cannot implement `Table` — the Java compiler rejects any non-permitted subtype.
 
-R8f. **Runtime defence for the sealed Table**:
+The two-permits shape reflects that jlsm has two production paths (single-node and clustered) and both are catalog-mediated. `ClusteredTable` (the prior public class in the exported `jlsm.engine.cluster` package) relocates to `jlsm.engine.cluster.internal.CatalogClusteredTable` as part of this requirement; callers consume the public sealed `Table` type instead.
 
-- `CatalogTable`'s canonical constructor must be **non-public** (package-private) and must only be callable by `Engine` factory code within `jlsm.engine.internal`.
-- `CatalogTable` must NOT implement `java.io.Serializable` or `Externalizable`. No deserialisation constructor may exist.
-- The `module-info.java` of the `jlsm-engine` module must NOT `opens` or `exports` the `jlsm.engine.internal` package to any external module in production builds. Test builds may `opens jlsm.engine.internal to <test-module>` via a test-only `module-info.java` or a `--add-opens` flag scoped to test tasks.
+R8f. **Runtime defence for the sealed Table**. The discipline applies uniformly to BOTH permitted implementations (`CatalogTable` and `CatalogClusteredTable`):
+
+- Each canonical constructor must be **non-public** (package-private) and must only be callable by its respective `Engine` / `ClusteredEngine` factory code within the same internal package.
+- Neither `CatalogTable` nor `CatalogClusteredTable` may implement `java.io.Serializable` or `Externalizable`. No deserialisation constructor may exist on either class.
+- The `module-info.java` of the `jlsm-engine` module must NOT `opens` or `exports` the `jlsm.engine.internal` package OR the `jlsm.engine.cluster.internal` package to any external module in production builds. Test builds may `opens` either internal package to test modules via a test-only `module-info.java` or a `--add-opens` flag scoped to test tasks.
 - Reflection-based instantiation (via `--add-opens ... = ALL-UNNAMED`, `MethodHandles.privateLookupIn`, or `sun.misc.Unsafe`) is outside the language-level trust boundary. If an attacker has reflection access to internal packages, they are already inside the module boundary — the cryptographic defence (R6b HKDF binding) remains the final barrier, but R8e/R8f's defence-in-depth raises the attack bar meaningfully.
 
-R8g. Test code requiring a mock Table must use a test-only factory constructed within `jlsm-engine`'s test module boundary. The production module descriptor must not expose any mechanism for external modules to construct `CatalogTable`.
+R8g. Test code requiring a mock Table must use a test-only factory constructed within `jlsm-engine`'s test module boundary. The production module descriptor must not expose any mechanism for external modules to construct `CatalogTable` or `CatalogClusteredTable`. Existing test stubs that previously declared `implements Table` (e.g., cluster test helpers `RecordingTable`, `StubTable`, `StubTableImpl`, `PermissiveStubTable`) must migrate to the test-only factory pattern as part of this requirement.
 
 ### Catalog persistence
 

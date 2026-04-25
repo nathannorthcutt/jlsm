@@ -22,6 +22,16 @@ public final class SSTableFormat {
     public static final long MAGIC_V5 = 0x4A4C534D53535405L;
 
     /**
+     * Magic number for SSTable v6 files (v5 layout extended with a fixed-position scope section
+     * appended after the v5 sections; the scope section carries TableScope identifiers and the
+     * DEK-version set, covered by a CRC32C generalised to variable-length payloads). v6 is emitted
+     * for encrypted tables; v5 remains the format for plaintext tables.
+     *
+     * @spec sstable.footer-encryption-scope.R1
+     */
+    public static final long MAGIC_V6 = 0x4A4C534D53535406L;
+
+    /**
      * Byte size of the SSTable v5 footer. See {@code sstable.end-to-end-integrity.R11} for the
      * 17-field layout.
      *
