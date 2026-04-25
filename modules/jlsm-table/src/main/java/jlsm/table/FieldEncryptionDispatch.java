@@ -342,8 +342,13 @@ public final class FieldEncryptionDispatch {
             // Decrypt: parse the version, run resolver gate, strip prefix, delegate.
             decryptors[i] = envelope -> {
                 final int version;
+                final byte[] body;
                 try {
                     version = EnvelopeCodec.parseVersion(envelope);
+                    // stripPrefix now declares IOException (sibling-symmetric with parseVersion);
+                    // length is already validated above so this cannot fire here in practice, but
+                    // the compiler still requires the catch.
+                    body = EnvelopeCodec.stripPrefix(envelope);
                 } catch (IOException e) {
                     // FieldDecryptor signature is byte[]→byte[] (no checked throws). Surface
                     // through UncheckedIOException so callers may unwrap; the SSTable read path
@@ -352,11 +357,16 @@ public final class FieldEncryptionDispatch {
                     throw new UncheckedIOException(e);
                 }
                 if (!versionResolver.test(version)) {
-                    // R2b — surface registry miss, naming the version (R12 — no key bytes).
-                    throw new UncheckedIOException(new IOException(
-                            "DEK version not in registry for this scope: version=" + version));
+                    // R2b / primitives-lifecycle.R24 — registry miss is a state error (the
+                    // registry is mis-wired or the SSTable's DEK version was deleted before
+                    // read), not an I/O error. Routing this onto the I/O exception channel
+                    // would prevent callers from distinguishing it from a malformed-envelope
+                    // IOException (R2 — under-length / non-positive parsed). R12 — message
+                    // names the missing version only, never key bytes.
+                    throw new IllegalStateException(
+                            "DEK version not in registry for this scope: version=" + version);
                 }
-                return inner.decrypt(EnvelopeCodec.stripPrefix(envelope));
+                return inner.decrypt(body);
             };
         }
     }
@@ -442,7 +452,15 @@ public final class FieldEncryptionDispatch {
         }
 
         // Strip prefix once and call the raw underlying variant decryptor — no double parse.
-        return raw.decrypt(EnvelopeCodec.stripPrefix(envelope));
+        // stripPrefix declares IOException (sibling-symmetric with parseVersion); length already
+        // verified above so this cannot fire in practice, but the compiler requires the catch.
+        final byte[] body;
+        try {
+            body = EnvelopeCodec.stripPrefix(envelope);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return raw.decrypt(body);
     }
 
     /**

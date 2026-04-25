@@ -101,17 +101,26 @@ public final class EnvelopeCodec {
      * Strips the 4-byte prefix, returning variant body bytes. Length-only operation; does not
      * validate the parsed version (use {@link #parseVersion} for that).
      *
+     * <p>
+     * Sibling-method symmetry with {@link #parseVersion}: both entry points reject an under-length
+     * envelope with {@link IOException} so identical on-disk corruption shapes surface as identical
+     * exception types regardless of which sibling a caller invokes. Null input remains a
+     * caller-side bug and is signalled with {@link NullPointerException}.
+     *
      * @param envelope non-null envelope byte array, length {@code >= 4}
      * @return non-null variant body byte array of length
      *         {@code envelope.length - VERSION_PREFIX_LENGTH}
      * @throws NullPointerException if {@code envelope} is null
-     * @throws IllegalArgumentException if {@code envelope.length < VERSION_PREFIX_LENGTH}
+     * @throws IOException if {@code envelope.length < VERSION_PREFIX_LENGTH}
      */
-    public static byte[] stripPrefix(byte[] envelope) {
+    public static byte[] stripPrefix(byte[] envelope) throws IOException {
         Objects.requireNonNull(envelope, "envelope must not be null");
         if (envelope.length < VERSION_PREFIX_LENGTH) {
-            throw new IllegalArgumentException("envelope too short to strip prefix: "
-                    + envelope.length + " bytes (need >= " + VERSION_PREFIX_LENGTH + ")");
+            // R2 reader-side guard symmetric with parseVersion: under-length envelopes are
+            // on-disk corruption and surface as IOException so callers do not need a separate
+            // catch clause for the sibling entry point.
+            throw new IOException("envelope too short to strip prefix: " + envelope.length
+                    + " bytes (need >= " + VERSION_PREFIX_LENGTH + ")");
         }
         // Defensive copy — the body must not share backing storage with the input envelope.
         return Arrays.copyOfRange(envelope, VERSION_PREFIX_LENGTH, envelope.length);

@@ -4,6 +4,7 @@ import jlsm.core.io.MemorySerializer;
 import jlsm.encryption.DcpeSapEncryptor;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.encryption.EnvelopeCodec;
+import jlsm.encryption.ReadContext;
 import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.table.internal.CiphertextValidator;
 import jdk.incubator.vector.ByteVector;
@@ -386,6 +387,22 @@ public final class DocumentSerializer {
         // deserialize
         @Override
         public JlsmDocument deserialize(MemorySegment segment) {
+            return deserializeImpl(segment, /* ctx= */ null);
+        }
+
+        // @spec sstable.footer-encryption-scope.R3e — when a non-null ReadContext is provided
+        // (the SSTable read path), the dispatch's decryptWithContext path is invoked, which
+        // checks ctx.allowedDekVersions() membership BEFORE invoking the registry resolver.
+        // @spec sstable.footer-encryption-scope.R3f — empty allowedDekVersions on a file that
+        // contains an encrypted entry surfaces a distinct R3f error message via decryptWithContext.
+        @Override
+        public JlsmDocument deserialize(MemorySegment segment, ReadContext readContext) {
+            Objects.requireNonNull(segment, "segment must not be null");
+            Objects.requireNonNull(readContext, "readContext must not be null");
+            return deserializeImpl(segment, readContext);
+        }
+
+        private JlsmDocument deserializeImpl(MemorySegment segment, ReadContext readContext) {
             Objects.requireNonNull(segment, "segment must not be null");
 
             final ByteArrayView view = extractBytes(segment);
@@ -460,12 +477,23 @@ public final class DocumentSerializer {
                             .decryptorFor(i);
                     final DcpeSapEncryptor dcpe = encryptionDispatch.dcpeEncryptorFor(i);
                     if (dec != null) {
-                        // Read length-prefixed encrypted blob, decrypt, then decode
+                        // Read length-prefixed encrypted blob, decrypt, then decode.
                         final int encLen = readVarInt(buf, cursor);
                         final byte[] ciphertext = new byte[encLen];
                         System.arraycopy(buf, cursor.pos, ciphertext, 0, encLen);
                         cursor.pos += encLen;
-                        final byte[] plainBytes = dec.decrypt(ciphertext);
+                        // @spec sstable.footer-encryption-scope.R3e — when a ReadContext is
+                        // threaded in (the SSTable read path), enforce the dispatch-side gate
+                        // (allowedDekVersions membership) BEFORE the registry resolver. Without
+                        // a ReadContext (legacy single-arg path), fall back to the wrapped
+                        // decryptor that consults only the resolver predicate.
+                        final byte[] plainBytes;
+                        if (readContext != null) {
+                            plainBytes = encryptionDispatch.decryptWithContext(i, ciphertext,
+                                    readContext);
+                        } else {
+                            plainBytes = dec.decrypt(ciphertext);
+                        }
                         final Cursor plainCursor = new Cursor(plainBytes, 0);
                         values[i] = decoders[i].decode(plainBytes, plainCursor);
                     } else if (dcpe != null) {
@@ -482,12 +510,42 @@ public final class DocumentSerializer {
                         // R2 — parseVersion (rejects 0/negative; would surface IOException-as
                         // -UncheckedIOException on corrupt prefix). The decrypted DCPE blob is
                         // the bytes after the 4B prefix.
+                        final int dcpeVersion;
                         try {
-                            EnvelopeCodec.parseVersion(envelope);
+                            dcpeVersion = EnvelopeCodec.parseVersion(envelope);
                         } catch (java.io.IOException e) {
                             throw new java.io.UncheckedIOException(e);
                         }
-                        final byte[] blob = EnvelopeCodec.stripPrefix(envelope);
+                        // @spec sstable.footer-encryption-scope.R3e/R3f — when a ReadContext is
+                        // threaded in (the SSTable read path), enforce the dispatch gate on the
+                        // DCPE leg too, mirroring the byte-level dispatch's decryptWithContext
+                        // semantics. R3f — empty allowedDekVersions surfaces a distinct error.
+                        // R3e — version not in declared set is rejected before any DEK lookup.
+                        if (readContext != null) {
+                            if (readContext.allowedDekVersions().isEmpty()) {
+                                throw new java.io.UncheckedIOException(new java.io.IOException(
+                                        "ReadContext allowedDekVersions is empty but file contained an "
+                                                + "encrypted entry — empty-set file contained "
+                                                + "encrypted entries (R3f); envelope version="
+                                                + dcpeVersion));
+                            }
+                            if (!readContext.allowedDekVersions().contains(dcpeVersion)) {
+                                throw new java.io.UncheckedIOException(
+                                        new java.io.IOException("DEK version " + dcpeVersion
+                                                + " not in declared set for this SSTable scope "
+                                                + "(R3e — version not in declared set; allowed="
+                                                + readContext.allowedDekVersions() + ")"));
+                            }
+                        }
+                        // stripPrefix declares IOException (sibling-symmetric with parseVersion);
+                        // length already validated above so this cannot fire in practice, but
+                        // the compiler requires the catch.
+                        final byte[] blob;
+                        try {
+                            blob = EnvelopeCodec.stripPrefix(envelope);
+                        } catch (java.io.IOException e) {
+                            throw new java.io.UncheckedIOException(e);
+                        }
                         final int dims = ((FieldType.VectorType) schema.fields().get(i).type())
                                 .dimensions();
                         final DcpeSapEncryptor.EncryptedVector ev = DcpeSapEncryptor.fromBlob(blob,

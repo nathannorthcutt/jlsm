@@ -15,10 +15,12 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import jlsm.core.indexing.SimilarityFunction;
 import jlsm.core.io.MemorySerializer;
 import jlsm.encryption.BoldyrevaOpeEncryptor;
+import jlsm.encryption.ReadContext;
 import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
 import jlsm.table.internal.FieldIndex;
@@ -1862,6 +1864,68 @@ class ContractBoundariesAdversarialTest {
 
         assertTrue(ex.getMessage() != null && ex.getMessage().contains("element"),
                 "Error message should identify null 'element' — got: " + ex.getMessage());
+    }
+
+    // Finding: F-R1.contract_boundaries.3.1
+    // Bug: SSTable read path bypasses the R3e dispatch gate — DocumentSerializer's
+    // deserialize calls FieldEncryptionDispatch.decryptorFor(i) (legacy versionResolver-only
+    // wrapper) instead of decryptWithContext(i, ciphertext, ctx). The footer-derived
+    // ReadContext.allowedDekVersions is never consulted on the read path, so a version that
+    // is in the registry but NOT in the footer's declared DEK-version set decrypts
+    // successfully — defeating sstable.footer-encryption-scope.R3e.
+    // Correct behavior: A deserialize overload that accepts a ReadContext must enforce R3e —
+    // when the envelope's parsed version is not in ctx.allowedDekVersions(), throw
+    // UncheckedIOException (or IOException) BEFORE invoking the underlying decryptor.
+    // Fix location: DocumentSerializer.SchemaSerializer.deserialize (DocumentSerializer.java:459)
+    // and MemorySerializer (jlsm-core) — add a deserialize(MemorySegment, ReadContext) overload
+    // and route the SSTable read path through it.
+    // Regression watch: Existing single-arg deserialize callers (legacy path) must continue
+    // to work; the dispatch-side R3e tests in FieldEncryptionDispatchEnvelopeTest must still
+    // pass; pre-encrypted round-trip tests must still pass.
+    @Test
+    void test_DocumentSerializer_deserializeWithContext_enforcesR3eDekVersionGate() {
+        JlsmSchema schema = JlsmSchema.builder("r3e-bypass-test", 1)
+                .field("name", FieldType.string(), EncryptionSpec.deterministic())
+                .field("age", FieldType.Primitive.INT32).build();
+
+        // Reproduce the keyHolder pattern used by other encrypted-field tests in this module.
+        final byte[] rawKey = new byte[64];
+        Arrays.fill(rawKey, (byte) 0xAB);
+        try (var keyHolder = OffHeapKeyMaterial.of(rawKey)) {
+            // forSchema uses the 2-arg FieldEncryptionDispatch ctor → currentDekVersion=1 and
+            // versionResolver = (v == 1). The serializer stamps every encrypted envelope with
+            // the 4B BE prefix [0,0,0,1]. The registry-resolver therefore accepts version 1.
+            MemorySerializer<JlsmDocument> serializer = DocumentSerializer.forSchema(schema,
+                    keyHolder);
+
+            JlsmDocument doc = JlsmDocument.of(schema, "name", "Alice", "age", 42);
+            MemorySegment serialized = serializer.serialize(doc);
+
+            // R3e gate: the SSTable footer declares allowedDekVersions = {2}. Version 1 (the
+            // envelope's stamped version) is NOT in this set. Per spec
+            // sstable.footer-encryption-scope.R3e the read path MUST reject this decrypt
+            // attempt BEFORE invoking the registry resolver, even though the resolver would
+            // otherwise admit version 1.
+            ReadContext ctxRejectingV1 = new ReadContext(Set.of(2));
+
+            // Correct behavior: deserializing with a ReadContext that excludes the envelope's
+            // version surfaces an UncheckedIOException (R3e — version not in declared set).
+            // Bug: legacy deserialize ignores ReadContext entirely and decrypts successfully.
+            assertThrows(java.io.UncheckedIOException.class,
+                    () -> serializer.deserialize(serialized, ctxRejectingV1),
+                    "deserialize(seg, ReadContext) must enforce R3e — envelope version not in "
+                            + "ctx.allowedDekVersions() must be rejected before any DEK lookup");
+
+            // Sanity: when the ReadContext DOES include the envelope's version, deserialize
+            // succeeds and recovers the plaintext. This guards against an over-eager fix that
+            // rejects all reads.
+            ReadContext ctxAcceptingV1 = new ReadContext(Set.of(1));
+            JlsmDocument out = serializer.deserialize(serialized, ctxAcceptingV1);
+            assertEquals("Alice", out.getString("name"),
+                    "Deserialize with allowedDekVersions={1} must recover the plaintext");
+            assertEquals(42, out.getInt("age"),
+                    "Deserialize with allowedDekVersions={1} must recover the plaintext");
+        }
     }
 
 }

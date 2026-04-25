@@ -2,6 +2,8 @@ package jlsm.table.internal;
 
 import jlsm.core.json.JsonObject;
 import jlsm.core.json.JsonPrimitive;
+import jlsm.encryption.EncryptionSpec;
+import jlsm.table.FieldDefinition;
 import jlsm.table.FieldType;
 import jlsm.table.JlsmSchema;
 
@@ -75,5 +77,49 @@ class ContractBoundariesAdversarialTest {
                 () -> JsonValueAdapter.fromJsonValue(overflowInput, schema));
         assertTrue(overflowEx.getMessage().contains("out of range"),
                 "Expected 'out of range' for overflow input but got: " + overflowEx.getMessage());
+    }
+
+    // Finding: F-R1.contract_boundaries.3.2
+    // Bug: CiphertextValidator.validate enforces only per-variant length checks; it does NOT
+    // verify that the leading 4-byte BE DEK version prefix encodes a positive integer
+    // (R2 / R1c). A pre-encrypted Deterministic ciphertext whose first 4 bytes are
+    // 0x00000000 (or any negative-int representation) is admitted and persisted to disk,
+    // producing an envelope that the read path then rejects as "non-positive version" — a
+    // write-side spec violation that creates poisoned-on-disk entries.
+    // Correct behavior: validate must reject a ciphertext whose 4B BE prefix decodes to
+    // a non-positive int with IllegalArgumentException, symmetric with
+    // EnvelopeCodec.prefixVersion's writer-side guard.
+    // Fix location: CiphertextValidator.java lines 61-122 — add a parseVersion-equivalent
+    // positivity check after the per-variant length checks pass.
+    // Regression watch: ensure valid envelopes (positive version prefix) are still accepted
+    // for all four variants; ensure NPE/empty/length errors still surface correctly.
+    @Test
+    void test_CiphertextValidator_versionPrefixPositivity_rejectsZeroPrefix() {
+        FieldDefinition field = new FieldDefinition("email", FieldType.string(),
+                EncryptionSpec.deterministic());
+        // 20-byte AES-SIV envelope whose 4B BE prefix is 0x00 0x00 0x00 0x00 — passes the
+        // length check (>=20), but R2 says version 0 is corrupt.
+        byte[] ciphertext = new byte[20];
+        // Leading 4 bytes left as 0x00 — encodes int 0 which is non-positive.
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> jlsm.table.internal.CiphertextValidator.validate(field, ciphertext),
+                "Zero version prefix must be rejected at write-side validation per R2");
+        assertTrue(ex.getMessage().contains("email"), "error should include field name");
+    }
+
+    @Test
+    void test_CiphertextValidator_versionPrefixPositivity_rejectsNegativePrefix() {
+        FieldDefinition field = new FieldDefinition("email", FieldType.string(),
+                EncryptionSpec.deterministic());
+        byte[] ciphertext = new byte[20];
+        // 0x80 0x00 0x00 0x00 = Integer.MIN_VALUE (negative).
+        ciphertext[0] = (byte) 0x80;
+        ciphertext[1] = 0x00;
+        ciphertext[2] = 0x00;
+        ciphertext[3] = 0x00;
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> jlsm.table.internal.CiphertextValidator.validate(field, ciphertext),
+                "Negative version prefix must be rejected at write-side validation per R2");
+        assertTrue(ex.getMessage().contains("email"), "error should include field name");
     }
 }

@@ -1,13 +1,21 @@
 package jlsm.sstable;
 
 import jlsm.core.compression.CompressionCodec;
+import jlsm.core.io.MemorySerializer;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
+import jlsm.encryption.DomainId;
+import jlsm.encryption.ReadContext;
+import jlsm.encryption.TableId;
+import jlsm.encryption.TableScope;
+import jlsm.encryption.TenantId;
 import jlsm.sstable.internal.CompressionMap;
 import jlsm.sstable.internal.SSTableFormat;
 import jlsm.sstable.internal.V5Footer;
+import jlsm.sstable.internal.V6Footer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -21,7 +29,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -772,6 +782,255 @@ class ContractBoundariesAdversarialTest {
                             + "got: " + thrown.getMessage());
         } finally {
             reader.close();
+        }
+    }
+
+    // Finding: F-R1.contract_boundaries.1.001
+    // Bug: V6Footer.encodeScopeSection reads sortedDekVersions twice — once at line 86 for
+    // validation, again at lines 114-116 for encoding — without snapshotting. A caller
+    // that mutates the array between the two reads (single-threaded via a callback in
+    // the validation path or, as exercised here, directly observable across the
+    // validation→encoding transition) can produce a footer whose CRC32C is computed
+    // over corrupt (non-ascending or non-positive) DEK versions even though validation
+    // passed.
+    // Correct behavior: encodeScopeSection must operate on a snapshot of sortedDekVersions
+    // captured at method entry; the encoded bytes must always satisfy R3a/R3b regardless
+    // of caller-side mutation timing. Equivalently: a caller cannot influence the
+    // encoded output by mutating the array reference after encodeScopeSection has
+    // accepted it for processing.
+    // Fix location: V6Footer.encodeScopeSection (modules/jlsm-core/.../V6Footer.java:78-122)
+    // — clone the array on entry, validate and encode from the clone.
+    // Regression watch: ensure normal (non-concurrent) encode/decode round-trip still works,
+    // and that legitimate IAE for invalid input arrays still fires before the snapshot
+    // defence affects callers.
+    // @spec sstable.footer-encryption-scope.R3a
+    // @spec sstable.footer-encryption-scope.R3b
+    @Test
+    @Timeout(60)
+    void test_V6Footer_encodeScopeSection_contract_boundaries_caller_mutation_window_yields_corrupt_footer()
+            throws Exception {
+        final TableScope scope = new TableScope(new TenantId("t"), new DomainId("d"),
+                new TableId("tbl"));
+        // Strictly ascending, positive — passes validation as-is. Use a longer array so the
+        // encoder loop spans more wall-clock time, broadening the race window.
+        final int n = 64;
+        final int[] versions = new int[n];
+        for (int i = 0; i < n; i++) {
+            versions[i] = i + 1;
+        }
+        final java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean(
+                false);
+        // Mutator: cycle between (a) hold a poison value (-1) at versions[n-1] for a brief
+        // window so the encoder loop's tail iteration has a real chance to read it, and
+        // (b) restore the legitimate value so the next call's validation pass succeeds.
+        // Two-phase hold prevents the mutator from being a no-op race that the encoder
+        // never observes.
+        final Thread mutator = new Thread(() -> {
+            while (!stop.get()) {
+                versions[n - 1] = -1; // poison
+                // Spin briefly — long enough to span an encode call's tail iteration but
+                // short enough to allow many test iterations.
+                for (int k = 0; k < 50 && !stop.get(); k++) {
+                    Thread.onSpinWait();
+                }
+                versions[n - 1] = n; // restore
+                for (int k = 0; k < 50 && !stop.get(); k++) {
+                    Thread.onSpinWait();
+                }
+            }
+        }, "v6footer-mutator");
+        mutator.setDaemon(true);
+        mutator.start();
+        try {
+            // Run many encode-then-parse iterations. With the snapshot fix every parse
+            // succeeds because the encoded bytes always reflect the entry-time copy.
+            // Without the fix, the encoded CRC will sometimes cover a -1 in the tail,
+            // and parse() throws IOException citing R3b ("non-positive") — failing
+            // this test.
+            final int iterations = 1_000_000;
+            for (int i = 0; i < iterations; i++) {
+                // Skip iterations whose validation pass would itself trip the
+                // -1 — the bug is only observable when validation passes (caller
+                // sees no error) yet encoding emits the poisoned value.
+                byte[] encoded;
+                try {
+                    encoded = V6Footer.encodeScopeSection(scope, versions);
+                } catch (IllegalArgumentException expected) {
+                    // Mutator caught the validation read — caller-visible failure,
+                    // not a TOCTOU. Continue.
+                    continue;
+                }
+                // parseInternal verifies CRC32C, then walks DEK versions enforcing
+                // R3a/R3b. If a mutation slipped between validation (line 86) and
+                // encoding (lines 114-116), parse() throws IOException identifying
+                // the violated invariant.
+                V6Footer.parse(encoded, encoded.length);
+            }
+        } finally {
+            stop.set(true);
+            mutator.join();
+        }
+    }
+
+    // Finding: F-R1.contract_boundaries.1.002
+    // Bug: V6Footer.Parsed canonical constructor accepts any Set without defensive copy or
+    // unmodifiable wrap. A caller (parseInternal, materialiseDekVersionSet, future tests/mocks
+    // or refactors) can construct Parsed with a mutable HashSet they later mutate. The
+    // accessor dekVersionSet() returns the live mutable reference, so R3e's "materialised at
+    // footer-parse time" guarantee — and the dispatch-side membership pre-check that depends
+    // on a stable snapshot — is broken.
+    // Correct behavior: Parsed's compact constructor must take an unmodifiable snapshot of
+    // dekVersionSet (e.g. Set.copyOf(...)) so that mutations of the source set after
+    // construction do not affect the contents observed via Parsed.dekVersionSet().
+    // Fix location: V6Footer.Parsed (modules/jlsm-core/.../V6Footer.java:151) — add a compact
+    // constructor that wraps dekVersionSet via Set.copyOf and null-checks all components.
+    // Regression watch: parseInternal and materialiseDekVersionSet must still produce a Parsed
+    // whose dekVersionSet contains exactly the parsed versions; encode/decode round trips
+    // must still succeed; existing v6 footer tests must still pass.
+    // @spec sstable.footer-encryption-scope.R3e
+    @Test
+    void test_V6Footer_Parsed_contract_boundaries_mutable_set_mutation_visible_to_consumers() {
+        // Construct a Parsed with a HashSet the caller still holds a reference to.
+        TableScope scope = new TableScope(new TenantId("t"), new DomainId("d"), new TableId("tbl"));
+        Set<Integer> source = new HashSet<>();
+        source.add(1);
+        source.add(2);
+        source.add(3);
+        V6Footer.Parsed parsed = new V6Footer.Parsed(scope, source, 100L);
+
+        // Snapshot the size and a known member at construction.
+        int sizeAtConstruction = parsed.dekVersionSet().size();
+        boolean containsTwoAtConstruction = parsed.dekVersionSet().contains(2);
+        assertEquals(3, sizeAtConstruction);
+        assertTrue(containsTwoAtConstruction);
+
+        // Caller mutates the source set after Parsed has been constructed. With the defensive
+        // copy in place, parsed.dekVersionSet() must continue to reflect the snapshot taken
+        // at construction time (R3e materialised-at-parse-time invariant).
+        source.remove(2);
+        source.add(999);
+
+        // The parsed view must NOT see the post-construction mutations.
+        assertEquals(sizeAtConstruction, parsed.dekVersionSet().size(),
+                "Parsed.dekVersionSet() must be a snapshot — size changed after source "
+                        + "mutation, indicating R3e dispatch invariant is broken");
+        assertTrue(parsed.dekVersionSet().contains(2),
+                "Parsed.dekVersionSet() must still contain version 2 after source removed it; "
+                        + "live mutable reference defeats R3e dispatch-side pre-check");
+        assertTrue(!parsed.dekVersionSet().contains(999),
+                "Parsed.dekVersionSet() must not contain version 999 added to source after "
+                        + "construction; live mutable reference defeats R3e snapshot guarantee");
+
+        // The returned Set must itself be unmodifiable so a downstream consumer cannot mutate
+        // the parse-time snapshot either.
+        assertThrows(UnsupportedOperationException.class, () -> parsed.dekVersionSet().add(42),
+                "Parsed.dekVersionSet() must return an unmodifiable view — direct mutation by "
+                        + "a downstream consumer must be rejected to preserve R3e's snapshot");
+    }
+
+    // Finding: F-R1.contract_boundaries.3.5
+    // Bug: TrieSSTableReader holds a populated ReadContext (constructed at openWithExpectedScope
+    // line 365 from the v6 footer's DEK-version set) but no production caller in this cluster
+    // wires it into the deserialize path. The producer side (TrieSSTableReader) materialises the
+    // Set<Integer> for hot-path R3e dispatch checks but the consumer side
+    // (MemorySerializer<T>.deserialize) is never invoked with an overload that consumes that
+    // context — the boundary is structurally severed.
+    // Correct behavior: TrieSSTableReader must expose a typed get/scan API that threads its
+    // own readContext() into the MemorySerializer's (segment, ReadContext) overload, so the
+    // R3e gate is reachable from the SSTable read path. A test asserting the reader invokes
+    // serializer.deserialize(seg, ctx) — not serializer.deserialize(seg) — when reading via
+    // the typed API proves the bridge is wired.
+    // Fix location: TrieSSTableReader — add a public typed get(MemorySegment key,
+    // MemorySerializer<V> serializer) that deserialises via the (segment, ReadContext)
+    // overload, passing this.readContext.
+    // Regression watch: existing single-arg get(MemorySegment) must still return the raw
+    // Optional<Entry> unchanged; the new typed overload must NOT alter the on-disk format or
+    // the legacy read path; non-encrypted MemorySerializer implementations (no override of
+    // the default (seg, ctx) overload) must still produce the same value as the single-arg
+    // path (the default delegates back to deserialize(segment)).
+    // @spec sstable.footer-encryption-scope.R3e
+    // @spec sstable.footer-encryption-scope.R3f
+    @Test
+    void test_TrieSSTableReader_contract_boundaries_typedGet_threadsReadContextToDeserialize()
+            throws IOException {
+        // Step 1: write a v6 SSTable with a populated dekVersionSet so the reader's ReadContext
+        // is non-empty and observable in the serializer dispatch.
+        TableScope scope = new TableScope(new TenantId("tenantA"), new DomainId("domainX"),
+                new TableId("table1"));
+        int[] dekVersions = new int[]{ 42 };
+        Path file = tempDir.resolve("v6-typed-get.sst");
+        try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(7L).level(Level.L0).path(file)
+                .bloomFactory(n -> new jlsm.bloom.blocked.BlockedBloomFilter(n, 0.01))
+                .codec(CompressionCodec.none()).scope(scope).dekVersions(dekVersions).build()) {
+            MemorySegment key = MemorySegment.ofArray(new byte[]{ 'k' });
+            MemorySegment value = MemorySegment.ofArray(new byte[]{ 'v' });
+            w.append(new Entry.Put(key, value, new SequenceNumber(1L)));
+            w.finish();
+        }
+
+        // Step 2: open the v6 reader with the matching expected scope; readContext() must
+        // expose dekVersionSet={42}.
+        try (TrieSSTableReader reader = TrieSSTableReader.open(file,
+                jlsm.bloom.blocked.BlockedBloomFilter.deserializer(),
+                java.util.Optional.of(scope))) {
+            assertEquals(Set.of(42), reader.readContext().allowedDekVersions(),
+                    "precondition: reader's ReadContext must reflect the v6 footer's "
+                            + "DEK-version set");
+
+            // Step 3: build a recording MemorySerializer that distinguishes which deserialize
+            // overload was called. The (segment, ReadContext) override captures the context
+            // it was invoked with; the single-arg overload records that it was hit instead.
+            final java.util.concurrent.atomic.AtomicReference<ReadContext> observedCtx = new java.util.concurrent.atomic.AtomicReference<>(
+                    null);
+            final java.util.concurrent.atomic.AtomicBoolean singleArgHit = new java.util.concurrent.atomic.AtomicBoolean(
+                    false);
+            MemorySerializer<String> recording = new MemorySerializer<String>() {
+                @Override
+                public MemorySegment serialize(String value) {
+                    return MemorySegment
+                            .ofArray(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
+
+                @Override
+                public String deserialize(MemorySegment segment) {
+                    singleArgHit.set(true);
+                    byte[] copy = new byte[(int) segment.byteSize()];
+                    MemorySegment.copy(segment, 0, MemorySegment.ofArray(copy), 0,
+                            segment.byteSize());
+                    return new String(copy, java.nio.charset.StandardCharsets.UTF_8);
+                }
+
+                @Override
+                public String deserialize(MemorySegment segment, ReadContext readContext) {
+                    observedCtx.set(readContext);
+                    byte[] copy = new byte[(int) segment.byteSize()];
+                    MemorySegment.copy(segment, 0, MemorySegment.ofArray(copy), 0,
+                            segment.byteSize());
+                    return new String(copy, java.nio.charset.StandardCharsets.UTF_8);
+                }
+            };
+
+            // Step 4: invoke the typed get. Before the fix, no such overload exists on
+            // TrieSSTableReader (compile failure). With the fix, it must dispatch to
+            // deserialize(segment, ReadContext) and pass this.readContext.
+            java.util.Optional<String> result = reader.get(MemorySegment.ofArray(new byte[]{ 'k' }),
+                    recording);
+
+            // Step 5: assert the bridge is wired.
+            assertTrue(result.isPresent(), "typed get must surface the value");
+            assertEquals("v", result.get(), "typed get must return the deserialised value");
+            assertFalse(singleArgHit.get(),
+                    "typed get must NOT dispatch to deserialize(MemorySegment) — that path "
+                            + "loses the ReadContext and the R3e gate becomes unreachable");
+            ReadContext seen = observedCtx.get();
+            assertNotNull(seen, "typed get must invoke deserialize(MemorySegment, ReadContext)");
+            assertSame(reader.readContext(), seen,
+                    "typed get must thread the reader's own ReadContext (same instance) into "
+                            + "the deserializer to preserve the materialised-at-parse-time "
+                            + "snapshot guarantee (R3e)");
+            assertEquals(Set.of(42), seen.allowedDekVersions(),
+                    "the threaded ReadContext must carry the footer's DEK-version set so the "
+                            + "consumer-side R3e gate has the data it needs");
         }
     }
 

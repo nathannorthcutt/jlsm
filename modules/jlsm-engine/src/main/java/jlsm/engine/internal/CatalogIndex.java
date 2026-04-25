@@ -153,18 +153,14 @@ final class CatalogIndex {
                 throw new IOException("catalog index downgrade rejected for table '" + tableName
                         + "' (R9a-mono)");
             }
+            // Stage-then-publish: persist the proposed state to disk first, then publish to
+            // in-memory readers. This avoids exposing a transient, not-yet-durable value to
+            // concurrent highwater() readers if the persist fails. (entries is a
+            // ConcurrentHashMap and readers do not hold persistLock.)
+            final Map<String, Integer> proposed = new HashMap<>(entries);
+            proposed.put(tableName, version);
+            persistAtomically(proposed);
             entries.put(tableName, version);
-            try {
-                persistAtomically();
-            } catch (IOException | RuntimeException e) {
-                // Roll back the in-memory mutation so memory and disk stay in sync.
-                if (prev == null) {
-                    entries.remove(tableName);
-                } else {
-                    entries.put(tableName, prev);
-                }
-                throw e;
-            }
         } finally {
             persistLock.unlock();
         }
@@ -198,7 +194,11 @@ final class CatalogIndex {
     }
 
     private void persistAtomically() throws IOException {
-        final byte[] payload = encode();
+        persistAtomically(entries);
+    }
+
+    private void persistAtomically(Map<String, Integer> snapshot) throws IOException {
+        final byte[] payload = encode(snapshot);
         final Path temp = indexPath.resolveSibling(INDEX_FILENAME + ".tmp");
         try (FileChannel ch = FileChannel.open(temp, StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -223,17 +223,17 @@ final class CatalogIndex {
         }
     }
 
-    private byte[] encode() {
+    private byte[] encode(Map<String, Integer> snapshot) {
         // Pre-compute capacity.
         int total = 4 + 4;
-        for (Map.Entry<String, Integer> e : entries.entrySet()) {
+        for (Map.Entry<String, Integer> e : snapshot.entrySet()) {
             final byte[] nameBytes = e.getKey().getBytes(StandardCharsets.UTF_8);
             total += 2 + nameBytes.length + 4;
         }
         final ByteBuffer out = ByteBuffer.allocate(total);
         out.putInt(MAGIC);
-        out.putInt(entries.size());
-        for (Map.Entry<String, Integer> e : entries.entrySet()) {
+        out.putInt(snapshot.size());
+        for (Map.Entry<String, Integer> e : snapshot.entrySet()) {
             final byte[] nameBytes = e.getKey().getBytes(StandardCharsets.UTF_8);
             if (nameBytes.length < 1 || nameBytes.length > MAX_NAME_BYTES) {
                 throw new IllegalStateException(

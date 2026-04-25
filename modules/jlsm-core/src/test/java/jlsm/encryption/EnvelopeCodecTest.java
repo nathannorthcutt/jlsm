@@ -156,21 +156,23 @@ class EnvelopeCodecTest {
     // ── stripPrefix ──────────────────────────────────────────────────────────
 
     @Test
-    void stripPrefix_returnsBodyVerbatim() {
+    void stripPrefix_returnsBodyVerbatim() throws IOException {
         final byte[] envelope = new byte[]{ 0x01, 0x02, 0x03, 0x04, (byte) 0xAA, (byte) 0xBB,
                 (byte) 0xCC };
         final byte[] body = EnvelopeCodec.stripPrefix(envelope);
         assertArrayEquals(new byte[]{ (byte) 0xAA, (byte) 0xBB, (byte) 0xCC }, body);
     }
 
+    // Sibling-method symmetry with parseVersion: under-length envelopes are on-disk
+    // corruption and surface as IOException (not IAE) so callers do not need separate
+    // catch clauses for the two entry points.
     @Test
-    void stripPrefix_underLength_throwsIae() {
-        assertThrows(IllegalArgumentException.class,
-                () -> EnvelopeCodec.stripPrefix(new byte[]{ 1, 2, 3 }));
+    void stripPrefix_underLength_throwsIo() {
+        assertThrows(IOException.class, () -> EnvelopeCodec.stripPrefix(new byte[]{ 1, 2, 3 }));
     }
 
     @Test
-    void stripPrefix_exactlyFourBytes_returnsEmptyBody() {
+    void stripPrefix_exactlyFourBytes_returnsEmptyBody() throws IOException {
         final byte[] body = EnvelopeCodec.stripPrefix(new byte[]{ 0, 0, 0, 1 });
         assertEquals(0, body.length);
     }
@@ -181,7 +183,7 @@ class EnvelopeCodecTest {
     }
 
     @Test
-    void stripPrefix_doesNotShareBackingArrayWithInput() {
+    void stripPrefix_doesNotShareBackingArrayWithInput() throws IOException {
         final byte[] envelope = new byte[]{ 0, 0, 0, 1, 9, 8, 7 };
         final byte[] body = EnvelopeCodec.stripPrefix(envelope);
         envelope[4] = (byte) 0xFF;
@@ -192,7 +194,7 @@ class EnvelopeCodecTest {
     // ── Round-trip / structural ───────────────────────────────────────────────
 
     @Test
-    void prefixThenStrip_isIdentity() {
+    void prefixThenStrip_isIdentity() throws IOException {
         final byte[] body = new byte[]{ 1, 2, 3, 4, 5 };
         final byte[] envelope = EnvelopeCodec.prefixVersion(42, body);
         assertArrayEquals(body, EnvelopeCodec.stripPrefix(envelope));

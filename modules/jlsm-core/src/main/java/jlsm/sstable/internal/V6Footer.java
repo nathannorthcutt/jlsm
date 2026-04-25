@@ -78,15 +78,21 @@ public final class V6Footer {
     public static byte[] encodeScopeSection(TableScope scope, int[] sortedDekVersions) {
         Objects.requireNonNull(scope, "scope must not be null");
         Objects.requireNonNull(sortedDekVersions, "sortedDekVersions must not be null");
+        // Snapshot the caller-supplied array so validation and encoding observe an
+        // identical sequence of values (closes a TOCTOU window: without the clone, a
+        // caller mutating the array between validateDekVersionsForWrite and the encode
+        // loop below could ship a footer whose CRC covers non-ascending or non-positive
+        // versions, violating R3a/R3b at the read side).
+        final int[] dekVersions = sortedDekVersions.clone();
         // Validate identifiers (R2b/R2c/R2e via IdentifierValidator).
         IdentifierValidator.validateForWrite(scope.tenantId().value(), "tenantId");
         IdentifierValidator.validateForWrite(scope.domainId().value(), "domainId");
         IdentifierValidator.validateForWrite(scope.tableId().value(), "tableId");
-        // Validate DEK versions (R3a/R3b).
-        validateDekVersionsForWrite(sortedDekVersions);
-        if (sortedDekVersions.length > MAX_DEK_VERSION_COUNT) {
+        // Validate DEK versions (R3a/R3b) on the snapshot.
+        validateDekVersionsForWrite(dekVersions);
+        if (dekVersions.length > MAX_DEK_VERSION_COUNT) {
             throw new IllegalStateException("DEK-version-count exceeds u16 maximum: "
-                    + sortedDekVersions.length + " > " + MAX_DEK_VERSION_COUNT);
+                    + dekVersions.length + " > " + MAX_DEK_VERSION_COUNT);
         }
         // Encode bytes.
         final byte[] tenant = scope.tenantId().value().getBytes(StandardCharsets.UTF_8);
@@ -95,7 +101,7 @@ public final class V6Footer {
         // Body length = (4 + tenant.length) + (4 + domain.length) + (4 + table.length) + 2
         // + 4 * dekCount. Compute with long arithmetic per R2d.
         final long bodyLen = 4L + tenant.length + 4L + domain.length + 4L + table.length + 2L
-                + 4L * sortedDekVersions.length;
+                + 4L * dekVersions.length;
         if (bodyLen > Integer.MAX_VALUE - 8L) {
             // Reserve room for length-prefix (4) and CRC trailer (4)
             throw new IllegalStateException("scope-section body too large: " + bodyLen + " bytes");
@@ -110,8 +116,8 @@ public final class V6Footer {
         bb.put(domain);
         bb.putInt(table.length);
         bb.put(table);
-        bb.putShort((short) sortedDekVersions.length);
-        for (int v : sortedDekVersions) {
+        bb.putShort((short) dekVersions.length);
+        for (int v : dekVersions) {
             bb.putInt(v);
         }
         // Compute CRC32C over [0..totalLen-4) (everything except the trailing CRC field).
@@ -138,11 +144,28 @@ public final class V6Footer {
     /**
      * Parsed v6 footer view returned by {@link #read}.
      *
+     * <p>
+     * The compact constructor takes a defensive snapshot of {@code dekVersionSet} via
+     * {@link Set#copyOf(java.util.Collection)} so that subsequent mutations of the source
+     * collection are not visible through {@link #dekVersionSet()}. This preserves R3e's
+     * "materialised at footer-parse time" guarantee for the per-record dispatch hot path: the
+     * membership-check view is immutable for the lifetime of the {@code Parsed} instance.
+     *
      * @param scope the parsed table scope
-     * @param dekVersionSet pre-materialised set for constant-time lookup
+     * @param dekVersionSet pre-materialised set for constant-time lookup; snapshotted on entry
      * @param footerEnd absolute byte offset of the footer's last byte (exclusive)
+     * @spec sstable.footer-encryption-scope.R3e
      */
     public record Parsed(TableScope scope, Set<Integer> dekVersionSet, long footerEnd) {
+        public Parsed {
+            Objects.requireNonNull(scope, "scope must not be null");
+            Objects.requireNonNull(dekVersionSet, "dekVersionSet must not be null");
+            // Set.copyOf returns an unmodifiable snapshot regardless of source mutability —
+            // closes the TOCTOU between Parsed construction and dispatch-side membership
+            // pre-check (R3e). Set.copyOf is a no-op when the argument is already an
+            // unmodifiable Set produced by Set.copyOf or Set.of.
+            dekVersionSet = Set.copyOf(dekVersionSet);
+        }
     }
 
     /**

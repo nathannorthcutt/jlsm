@@ -2265,6 +2265,52 @@ class ContractBoundariesAdversarialTest {
                 "exception message should identify the field; got: " + kekEx.getMessage());
     }
 
+    // Finding: F-R1.contract_boundaries.3.3
+    // Bug: EnvelopeCodec.stripPrefix throws IllegalArgumentException for under-length
+    // envelopes, but its sibling EnvelopeCodec.parseVersion throws IOException for the
+    // same on-disk corruption shape. Identical input failure (under-length envelope)
+    // surfaces as different exception types depending on which entry point a caller
+    // touches. Caller error-mapping (e.g., translating to CorruptSectionException) is
+    // forced to know which sibling was called, and a refactor that swaps the call
+    // order would silently change the caller-visible error type.
+    // Correct behavior: stripPrefix's under-length rejection must surface as IOException
+    // (matching parseVersion) — both methods speak the same dialect for the same shape
+    // of on-disk corruption. The NPE-on-null contract remains; only the under-length
+    // exception type is harmonized.
+    // Fix location: EnvelopeCodec.stripPrefix (modules/jlsm-core/src/main/java/jlsm/
+    // encryption/EnvelopeCodec.java:110-115) — change the under-length throw from
+    // IllegalArgumentException to IOException; declare `throws IOException` on the
+    // method. Update the small set of callers (FieldEncryptionDispatch, DocumentSerializer)
+    // that already either declare IOException or wrap via UncheckedIOException.
+    // Regression watch: existing well-formed-envelope round-trip tests must keep passing.
+    // The legacy EnvelopeCodecTest.stripPrefix_underLength_throwsIae documented the
+    // current (buggy) IAE behavior — that test will need to be updated to match the
+    // harmonized IOException contract. This is an intentional contract correction.
+    @Test
+    void test_stripPrefix_underLengthEnvelope_throwsIOException_consistentWithParseVersion()
+            throws IOException {
+        // Sibling-method symmetry — both entry points reject under-length input
+        // with the same exception type, so a caller's catch block does not need
+        // to know which sibling was invoked.
+        final byte[] underLength = new byte[]{ 1, 2, 3 };
+        assertThrows(IOException.class, () -> EnvelopeCodec.parseVersion(underLength),
+                "parseVersion must reject under-length envelope with IOException (control)");
+        assertThrows(IOException.class, () -> EnvelopeCodec.stripPrefix(underLength),
+                "stripPrefix must reject under-length envelope with IOException to match "
+                        + "parseVersion's contract — identical on-disk corruption shape "
+                        + "must surface as identical exception type across siblings");
+
+        // Empty envelope — same shape, same exception type.
+        assertThrows(IOException.class, () -> EnvelopeCodec.stripPrefix(new byte[0]),
+                "stripPrefix(empty) must throw IOException to match parseVersion's contract");
+
+        // The NPE-on-null contract is unchanged — null is a caller-side bug, not
+        // an on-disk corruption, so it stays an unchecked exception.
+        assertThrows(NullPointerException.class, () -> EnvelopeCodec.stripPrefix(null),
+                "stripPrefix(null) must continue to throw NPE — null is a caller bug, "
+                        + "not on-disk corruption");
+    }
+
     // Malicious CipherSpi used by F-R1.contract_boundaries.4.4. Public + public no-arg
     // ctor so Provider.put("Cipher.AES/GCM/NoPadding", classname) can instantiate it
     // via reflection. engineInit throws InvalidKeyException — a GSE subclass that is
