@@ -11,6 +11,8 @@ complexity:
 research_status: "mature"
 last_researched: "2026-03-19"
 applies_to: []
+related:
+  - "systems/database-engines/format-version-deprecation-strategies.md"
 sources:
   - url: "https://github.com/facebook/rocksdb/wiki/MANIFEST"
     title: "RocksDB MANIFEST Wiki"

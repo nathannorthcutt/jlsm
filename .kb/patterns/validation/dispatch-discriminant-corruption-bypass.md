@@ -12,6 +12,7 @@ applies_to:
 related:
   - "version-discovery-self-only-no-external-cross-check"
   - "silent-fallthrough-integrity-defense-coupled-to-flag"
+  - "systems/database-engines/format-version-deprecation-strategies"
 decision_refs: []
 source_audit: "implement-sstable-enhancements--wd-03"
 sources: []

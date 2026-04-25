@@ -19,18 +19,20 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| Pre-GA Format-Version Deprecation Policy | pre-ga-format-deprecation-policy | 2026-04-24 | Full mechanism set — Prefer-current-version rule + bounded low-priority sweep + format inventory + per-collection watermark + operator-triggered targeted upgrade; pre-GA window=zero; post-GA ≥1 major; writable past-window=inline rewrite, read-only past-window=hard error; first exercise SSTable v1–v4 collapse |
 | Table-Handle Scope Exposure | table-handle-scope-exposure | 2026-04-24 | Extend `TableMetadata` with `Optional<EncryptionMetadata>` sub-record; `TableScope(TenantId, DomainId, TableId)` composes WD-01 identity records; new `Engine.createEncryptedTable` + `Engine.enableEncryption`; encryption is one-way (in-place disable deferred) |
 | SSTable Footer Scope Format | sstable-footer-scope-format | 2026-04-24 | v5→v6 format bump with fixed-position scope section `[tenantId][domainId][tableId][dek-version-set]`; CRC32C-covered via existing v5 section-checksum scheme; fast-fail cross-scope comparison before DEK lookup (R22b/R23a); per-block AES-GCM transition explicitly deferred |
 | AAD Canonical Encoding for Context-Bound Ciphertext Wrapping | aad-canonical-encoding | 2026-04-23 | Length-prefixed TLV — `[4B BE Purpose.code() \| 4B BE attr-count \| sorted (4B BE key-len \| UTF-8 key \| 4B BE val-len \| UTF-8 val) pairs]`; zero-dep; mirrors R11 HKDF info pattern; amends `kms-integration-model` |
 | KMS Integration Model | kms-integration-model | 2026-04-21 | KmsClient SPI (wrap/unwrap/isUsable + transient/permanent exceptions); 30min cache TTL; 3-retry exp-backoff (100ms→400ms→1.6s, ±25% jitter); 10s call timeout; encryption context carries tenantId+domainId+purpose |
-| DEK Scoping Granularity | dek-scoping-granularity | 2026-04-21 | Per-(tenant, domain, table) DEK with version; domain groups tables; HKDF field derivation from tableDek with length-prefixed info (tenantId, domainId, tableName, fieldName, dekVersion) |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
-<!-- 46 items (was 43; +3 from WD-02 ADRs + spec-author Pass 2 on 2026-04-24). Grouped by parent ADR for readability. -->
+<!-- 48 items (was 46; +2 from pre-ga-format-deprecation-policy on 2026-04-24). Grouped by parent ADR for readability. -->
 
 | Problem | Slug | Deferred | Parent ADR |
 |---------|------|----------|------------|
+| Cluster Format-Version Coexistence | cluster-format-version-coexistence | 2026-04-24 | pre-ga-format-deprecation-policy |
+| jlsm Release Cadence | jlsm-release-cadence | 2026-04-24 | pre-ga-format-deprecation-policy |
 | SSTable Active Tamper Defence | sstable-active-tamper-defence | 2026-04-24 | sstable.footer-encryption-scope (spec) |
 | Encryption Disable Policy | encryption-disable-policy | 2026-04-24 | table-handle-scope-exposure |
 | Encryption Granularity: Per-Field vs Per-Block | encryption-granularity-per-field-vs-per-block | 2026-04-24 | sstable-footer-scope-format |
