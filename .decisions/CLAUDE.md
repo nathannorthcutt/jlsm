@@ -19,11 +19,11 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| Module-DAG Sealed-Type Public-Factory Carve-Out | module-dag-sealed-type-public-factory-carve-out | 2026-04-25 | Public static factory + non-exported package + package-private ctor; `module-info.java` exports boundary is the load-bearing trust mechanism; factory is 1:1 delegation to ctor; spec authors use module-graph-aware phrasing instead of literal "non-public constructor" |
 | Pre-GA Format-Version Deprecation Policy | pre-ga-format-deprecation-policy | 2026-04-24 | Full mechanism set — Prefer-current-version rule + bounded low-priority sweep + format inventory + per-collection watermark + operator-triggered targeted upgrade; pre-GA window=zero; post-GA ≥1 major; writable past-window=inline rewrite, read-only past-window=hard error; first exercise SSTable v1–v4 collapse |
 | Table-Handle Scope Exposure | table-handle-scope-exposure | 2026-04-24 | Extend `TableMetadata` with `Optional<EncryptionMetadata>` sub-record; `TableScope(TenantId, DomainId, TableId)` composes WD-01 identity records; new `Engine.createEncryptedTable` + `Engine.enableEncryption`; encryption is one-way (in-place disable deferred) |
 | SSTable Footer Scope Format | sstable-footer-scope-format | 2026-04-24 | v5→v6 format bump with fixed-position scope section `[tenantId][domainId][tableId][dek-version-set]`; CRC32C-covered via existing v5 section-checksum scheme; fast-fail cross-scope comparison before DEK lookup (R22b/R23a); per-block AES-GCM transition explicitly deferred |
 | AAD Canonical Encoding for Context-Bound Ciphertext Wrapping | aad-canonical-encoding | 2026-04-23 | Length-prefixed TLV — `[4B BE Purpose.code() \| 4B BE attr-count \| sorted (4B BE key-len \| UTF-8 key \| 4B BE val-len \| UTF-8 val) pairs]`; zero-dep; mirrors R11 HKDF info pattern; amends `kms-integration-model` |
-| KMS Integration Model | kms-integration-model | 2026-04-21 | KmsClient SPI (wrap/unwrap/isUsable + transient/permanent exceptions); 30min cache TTL; 3-retry exp-backoff (100ms→400ms→1.6s, ±25% jitter); 10s call timeout; encryption context carries tenantId+domainId+purpose |
 
 ## Deferred
 <!-- Topics recorded but not yet evaluated. Resume with /architect "<problem>" -->
@@ -101,4 +101,4 @@
 | Pre-Encrypted Flag Persistence | pre-encrypted-flag-persistence | 2026-04-14 | Non-issue — write-side flag is intentionally ephemeral; per-field markers belong in client-side-encryption-sdk |
 
 ## Archived
-42 accepted decisions older than the 5 most recent: [history.md](history.md)
+43 accepted decisions older than the 5 most recent: [history.md](history.md)

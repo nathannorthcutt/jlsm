@@ -18,6 +18,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import jlsm.encryption.EncryptionSpec;
+import jlsm.encryption.EnvelopeCodec;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.table.internal.FieldIndex;
 import jlsm.table.internal.IndexRegistry;
 import jlsm.table.internal.QueryExecutor;
@@ -857,6 +860,53 @@ class DispatchRoutingAdversarialTest {
         // Correct: should throw IllegalStateException because the combiner is missing.
         assertThrows(IllegalStateException.class, () -> query.where("b").eq(2),
                 "Adding a second predicate without and()/or() should throw, not silently overwrite");
+    }
+
+    // Finding: F-R1.dispatch_routing.2.1
+    // Bug: legacy decryptor wrapper in applyEnvelopeWrap routes a registry-miss (resolver
+    // returns false) to UncheckedIOException(IOException) instead of IllegalStateException.
+    // Correct behavior: per spec encryption.ciphertext-envelope.R2b (and primitives-lifecycle
+    // R24), a "valid-but-not-found" version must throw IllegalStateException naming the missing
+    // version + scope. Callers cannot otherwise distinguish a malformed-envelope IOException
+    // (R2 — under-length / non-positive parsed) from a registry-miss state error because both
+    // surface as UncheckedIOException(IOException) on this path.
+    // Fix location: FieldEncryptionDispatch.java:359-363 — the registry-miss throw site
+    // Regression watch: ensure parseVersion's IOException (under-length / non-positive) still
+    // surfaces as UncheckedIOException, only the registry-miss case changes class.
+    @Test
+    void test_FieldEncryptionDispatch_legacyDecryptor_registryMiss_throwsIllegalStateNotIOException() {
+        // Build a 32-byte key holder; schema with one Opaque (AES-GCM) field.
+        final byte[] key = new byte[32];
+        for (int i = 0; i < key.length; i++) {
+            key[i] = (byte) (i + 1);
+        }
+        final OffHeapKeyMaterial holder = OffHeapKeyMaterial.of(key);
+        final JlsmSchema schema = JlsmSchema.builder("test", 1)
+                .field("blob", FieldType.string(), EncryptionSpec.opaque()).build();
+
+        // currentDekVersion=1; resolver only accepts version 1. A presented envelope stamped
+        // with version 42 is a registry-miss (R2b) — valid 4B BE positive int that the
+        // resolver rejects.
+        final FieldEncryptionDispatch dispatch = new FieldEncryptionDispatch(schema, holder, 1,
+                v -> v == 1);
+        final FieldEncryptionDispatch.FieldDecryptor dec = dispatch.decryptorFor(0);
+        assertNotNull(dec, "decryptor for opaque field must be installed");
+
+        // Craft an envelope with version=42 and an arbitrary (non-empty) variant body. The
+        // body never gets decrypted because the resolver gate fires first.
+        final byte[] envelope = EnvelopeCodec.prefixVersion(42, new byte[]{ 0x00 });
+
+        // Per R2b: must throw IllegalStateException (state error — registry mis-wired or
+        // the SSTable's DEK version was deleted before read), not an I/O exception.
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> dec.decrypt(envelope),
+                "Registry-miss must surface as IllegalStateException per R2b, not "
+                        + "UncheckedIOException — callers cannot otherwise distinguish a "
+                        + "malformed-envelope IOException from a registry mis-wiring.");
+        // R12 — the message must name the missing version, but never key bytes.
+        assertTrue(ex.getMessage().contains("42"),
+                "IllegalStateException message must name the missing version (42); got: "
+                        + ex.getMessage());
     }
 
 }

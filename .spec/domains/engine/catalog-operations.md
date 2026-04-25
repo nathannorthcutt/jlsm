@@ -1,7 +1,7 @@
 ---
 {
   "id": "engine.catalog-operations",
-  "version": 2,
+  "version": 3,
   "status": "ACTIVE",
   "state": "APPROVED",
   "domains": [
@@ -23,7 +23,9 @@
     "systems/database-engines/catalog-persistence-patterns",
     "distributed-systems/replication/catalog-replication-strategies"
   ],
-  "open_obligations": [],
+  "open_obligations": [
+    "OB-catalog-lock-extraction-01: Extract engine.catalog-lock-lifecycle as a dedicated spec covering the file-lock handle protocol currently captured as the composite R78 in this spec. Findings F-R1.resource_lifecycle.2.1 / 2.2 / 2.3 / 2.4 / 2.5 / 2.6 from audit run-001 all live on the FileBasedCatalogLock construct, which has no dedicated spec. The composite R78 captures the protocol short-term; a follow-up extraction is appropriate when cross-engine handle semantics expand (e.g., a remote-backend lease lock for object-storage backends)."
+  ],
   "_migrated_from": [
     "F37"
   ]
@@ -247,6 +249,56 @@ R68. Internal catalog Raft group implementation, WAL-based batch recovery, and e
 
 R69. The ATOMIC_DDL and CATALOG_EPOCH operation codes (R55, R58) must be registered in the F36 operation type registry.
 
+### Local-mode catalog mutation discipline (single-JVM and cross-process)
+
+The requirements in this section govern catalog mutation discipline at the local (single-node, possibly multi-JVM-on-shared-storage) layer. They complement the Raft-replicated DDL discipline (R12–R34 above) and apply equally whether the engine runs in single-node mode (no Raft group) or in clustered mode (where they constrain each node's local catalog state machine inside the Raft-applied flow).
+
+R75. **Paired-mutation rollback discipline.** When a catalog mutation requires two durable-state writes (for example, "write `table.meta`" followed by "update the catalog index high-water"), and the second write fails after the first has succeeded, the catalog must roll back the first write to restore on-disk consistency with both the in-memory view and any auxiliary index view (R75 applies to `enableEncryption`, schema updates, partition-map mutations, and any future paired-mutation flow). Rollback that itself fails must NOT silence the original failure — the original `IOException` must propagate to the caller with the rollback failure attached via `Throwable.addSuppressed`. The implementation must structure the second-write failure path as: (a) catch the failure, (b) attempt rollback under a try/catch, (c) if rollback fails, call `addSuppressed(rollbackFailure)` on the original exception, (d) rethrow the original exception. R75 sits adjacent to R5 (atomic-batch rollback for `DdlBatch`) but applies to non-batch paired mutations that are not packaged as a `DdlBatch` — typically lifecycle mutations like `enableEncryption` whose two writes are described as "5 steps under one lock" by `sstable.footer-encryption-scope` R7b but whose rollback discipline was previously not specified.
+
+R76. **Stage-then-publish discipline for table registration.** A catalog table-registration operation must NOT publish the in-memory table entry as `READY` before the on-disk artifacts (table directory, `table.meta`, catalog-index high-water) are durable. The implementation must:
+
+1. Stage a placeholder (e.g., a `LOADING`-state entry that claims the table name) before any I/O begins. The placeholder reserves the name against TOCTOU race losses by concurrent registers.
+2. Perform all I/O — directory creation, `table.meta` write, catalog-index high-water update — while the placeholder is still in `LOADING` state.
+3. Transition the placeholder to `READY` via a compare-and-set operation only after every required on-disk artifact is durable.
+4. On I/O failure during steps 2–3, perform a conditional-remove that targets the staged placeholder specifically (matching its identity, not just the table name) — never an unconditional name-keyed remove that could discard a competing register's `READY` entry.
+
+Concurrent readers observing the entry during the I/O window must see the `LOADING` placeholder, never a `READY` entry whose disk state does not yet exist. R76 closes the publish-after-durable invariant gap that allowed in-memory reads to observe a `READY` entry whose disk artifacts had not yet been written.
+
+R76a. **Stage-then-publish discipline for catalog index mutations.** A catalog-index mutation (for example, `setHighwater`, partition-map update, or any other write to the global catalog-index file) must use the same stage-then-publish discipline as R76, applied at the catalog-index granularity:
+
+1. Encode the proposed value to bytes in memory.
+2. Persist the encoded bytes via atomic rename (write-to-temp, fsync, atomic-rename) — this is the same pattern that `table-catalog-persistence` already mandates for `table.meta`.
+3. Promote the in-memory live reference (the value readers consume on subsequent operations) only AFTER the atomic rename has completed durably.
+
+A failure between step 1 and step 2 must leave both the in-memory live reference and the on-disk file unchanged. A failure between step 2 and step 3 must leave the on-disk file updated but the in-memory live reference stale; on next-startup recovery, the on-disk file is the source of truth and the in-memory reference is rebuilt from it. R76 and R76a apply to different state structures (per-table metadata vs. the global catalog index) and may diverge in implementation, so they are stated separately. Readers that observe the in-memory live reference must never see a value whose disk-side persistence has not yet completed.
+
+R77. **Cross-process register-during-open race resolution.** The catalog `open()` scan must close the cross-process register-during-open race window that opens when two JVMs share the catalog storage (for example, a single-engine restart concurrent with another JVM's `register`, or two engines on shared object storage). The required protocol is:
+
+1. While iterating table-name directories on disk, any directory whose in-memory catalog-index lookup misses must be DEFERRED — recorded into a per-`open()` deferred list, not skipped immediately.
+2. After the directory iteration completes, the catalog must re-read the on-disk catalog-index file ONCE (to observe any peer JVM's `setHighwater` that completed during step 1).
+3. Each deferred directory must be re-checked against the freshly-read catalog-index. Tables that become visible only via the fresh index must be loaded normally; tables still absent on the fresh re-read must be treated as cold-start orphans (handled per the existing R9b nonexistent-table contract — orphan files do not retroactively materialise tables without a corresponding catalog-index entry).
+4. The two-phase scan (initial iteration + deferred re-check) must execute under the same catalog-level lock that protects against same-JVM concurrent registers, so the fresh re-read observes any peer JVM's `setHighwater` that completed during the first iteration. The lock is the catalog file-lock from R78 (below).
+
+R77 closes the gap where a peer JVM's `register` completing during this JVM's `open()` would leave the registered table as an orphan in this JVM's catalog cache. The fix is the deferred-rescan pattern; a heavyweight cross-process catalog mutex is not required because the file-lock already serialises mutation, and the deferred rescan only needs to close the window between "directory observed missing from index" and "register completes on peer JVM".
+
+### Catalog file-lock handle resource discipline
+
+R78. **The catalog file-lock handle must satisfy the following six-part resource-lifecycle invariants.** A "catalog file-lock handle" is the construct (typically backed by a `FileChannel.tryLock`/`lock` call against a sentinel `.lock` file in the catalog directory) that protects single-writer-at-a-time semantics for catalog mutations. The invariants are stated as a single composite requirement because they collectively define one resource-lifecycle protocol; six separate requirements would fragment the contract.
+
+(a) **Close ordering — release before cleanup, never delete.** `close()` must release the OS-level file lock before any cleanup of auxiliary state (in-process locks, holder PID record, listener invocation). `close()` must NOT delete the lock file as part of the release sequence: deletion creates a TOCTOU window in which an awaiting JVM can grab the file lock on the recreated file while this JVM still holds the OS-level lock pointer. The lock file must persist across release/acquire cycles; only its lock state changes.
+
+(b) **Re-entrancy via in-process lock — no second OS-level acquire.** `acquire()` invoked on the same JVM with re-entrant intent (the same logical operation re-entering the lock from a deeper call) must short-circuit via the in-process lock (e.g., a `ReentrantLock` keyed by the same lock-file path) before any second OS-level lock attempt. An attempt to acquire the lock twice from the same thread must throw `IllegalStateException` (with a message indicating the re-entrant attempt against a non-re-entrant logical lock) rather than surfacing a JDK `OverlappingFileLockException`. The `IllegalStateException` is the canonical signal that the caller has a logic bug; `OverlappingFileLockException` would be a leaked implementation detail.
+
+(c) **Monotonic-time bounded reclaim window.** The bounded reclaim/wait window for stale-holder reclamation (used when a recorded holder PID is found to be dead per (d) below) must use monotonic time — `System.nanoTime` with overflow-safe comparison — and never wall-clock time (`System.currentTimeMillis`, `Instant.now`, or any clock subject to NTP adjustment, leap seconds, or operator clock-set). Wall-clock skew during the wait window can cause a JVM to either give up too early (clock jumps forward) or wait forever (clock jumps backward). The overflow-safe comparison must be `(deadlineNanos - System.nanoTime()) > 0` rather than `System.nanoTime() < deadlineNanos`, because `nanoTime` returns a value that can wrap.
+
+(d) **Platform-portable holder liveness probe.** Liveness probes for a recorded holder PID (used to determine whether a stale lock can be reclaimed) must use platform-portable mechanisms — `ProcessHandle.of(pid).isPresent()` is the canonical Java 9+ API. Platform-specific shortcuts must NOT be used as a primary signal: reading `/proc/<pid>` on Linux fails in chroots, distroless containers, and minimal `pid=host` configurations; checking `kill -0 <pid>` exit code on Unix fails on Windows; PID re-use during host process cycling can cause false-positive liveness on any platform. `ProcessHandle.of` correctly signals "no process exists with this PID" on every supported platform without requiring additional capabilities. R78(d) does NOT prohibit a fallback to `/proc` or other platform-specific mechanisms as a secondary signal when `ProcessHandle.of` is unavailable; it prohibits using them as the primary signal.
+
+(e) **Holder-thread guard on close.** `close()` must reject calls from a thread that does not currently hold the JVM-level (in-process) lock with `IllegalStateException`, before any OS-level release operation. A non-holder thread releasing the OS-level lock while the JVM-level lock remains held would cross-thread the protection: the JVM-level lock would still appear held to its true holder, while the OS-level lock would have been released, creating a window in which a peer JVM could acquire the OS-level lock while this JVM's true holder still believes it has exclusive access. The check is the canonical "owner-thread on release" pattern from `ReentrantLock.unlock()` semantics, lifted to the composite handle.
+
+(f) **Bounded per-table-name lock map.** The per-table-name JVM-level lock map (the `Map<TableName, ReentrantLock>` or equivalent that supplies (b) above) must be bounded: entries must be reference-counted on `acquire()` and atomically removed when the count reaches zero on `close()`. Distinct table names must NOT leak permanent map entries — a long-lived JVM that creates and drops 10 million tables must not retain 10 million `ReentrantLock` instances forever. The reference-count mutation must be atomic with the lock-state mutation (using a single compound `compute`/`computeIfAbsent` pattern) so that a concurrent `acquire()` from a peer thread cannot observe the count reaching zero in a moment when the lock would be discarded but the peer expects to use it. The bounded-map invariant matches the wider memory-discipline rule in `coding-guidelines.md` (every map that grows with input must have a configured capacity or eviction policy).
+
+R78 lives in this spec as a composite requirement because the catalog file-lock handle has no dedicated spec; see open obligation `OB-catalog-lock-extraction-01` for the extraction tracking.
+
 ---
 
 ## Design Narrative
@@ -325,3 +377,29 @@ F33 R34-R38 describe catalog metadata updates during partition migration but wer
 - Schema versioning with time-travel queries (monotonic epoch enables this but the query interface is not defined here)
 - Catalog group leader placement policy (which nodes serve in the catalog group)
 - DDL rate limiting or quota management
+
+## Verification Notes
+
+### Verified: v3 — 2026-04-25 (state: APPROVED — audit reconciliation amendment, source change required)
+
+Audit reconciliation work (audit run `implement-encryption-lifecycle--wd-02/audit/run-001`) surfaced six gaps in the local-mode catalog mutation discipline that the previous spec did not cover. v3 adds five new requirements (R75–R78) under a new "Local-mode catalog mutation discipline" section, plus opens one obligation tracking a future spec extraction:
+
+- **R75 (new) — paired-mutation rollback discipline.** When a non-batch catalog mutation requires two durable writes and the second fails, rollback must restore the first; rollback failure must propagate the original failure with the rollback failure attached via `addSuppressed`. Source: F-R1.shared_state.1.1 (`TableCatalog.updateEncryption` had no rollback when `setHighwater` failed after `writeMetadata` succeeded).
+
+- **R76 (new) — stage-then-publish for table registration.** Register must stage a `LOADING` placeholder before any I/O, transition to `READY` via CAS only after disk durable, and use conditional-remove (not unconditional) on rollback. Source: F-R1.shared_state.1.2 (`TableCatalog.registerInternal` published in-memory entry before disk state existed).
+
+- **R76a (new) — stage-then-publish for catalog index mutations.** Catalog-index mutations must encode-then-rename-then-publish, never publish-then-persist. Source: F-R1.shared_state.1.3 (`CatalogIndex.setHighwater` published new value to in-memory readers before durability).
+
+- **R77 (new) — cross-process register-during-open race resolution.** The catalog `open()` scan must defer index-miss directories during iteration and re-check them against a fresh catalog-index re-read after iteration completes, all under the catalog file-lock. Source: F-R1.shared_state.1.4 (`TableCatalog.open` did not acquire any catalog-level mutex against concurrent registers from other JVMs).
+
+- **R78 (new — composite, six parts) — catalog file-lock handle resource discipline.** Six distinct latent bugs on the same `FileBasedCatalogLock` construct, captured as one composite requirement: (a) close ordering — release before cleanup, never delete; (b) re-entrancy via in-process lock; (c) monotonic-time bounded reclaim; (d) platform-portable holder liveness probe (`ProcessHandle.of`); (e) holder-thread guard on close; (f) bounded per-table-name lock map. Source: F-R1.resource_lifecycle.2.1 / 2.2 / 2.3 / 2.4 / 2.5 / 2.6.
+
+- **`OB-catalog-lock-extraction-01` (new open obligation) — extract `engine.catalog-lock-lifecycle` as a dedicated spec.** Captured in the front-matter `open_obligations` list. The composite R78 captures the protocol short-term; the file-lock handle deserves its own spec when cross-engine handle semantics expand (e.g., a remote-backend lease lock for object-storage backends). The audit reconciliation flagged this as a "coverage gap" — the construct surfaced six confirmed bugs but had no dedicated spec.
+
+**Verification impact:**
+
+- All six additions are tightening (gap closure), not scope changes. R75–R78 are additive to the existing R-numbering family (which extends to R74); no existing requirement is invalidated.
+- R75 sits adjacent to R5 (atomic-batch rollback for `DdlBatch`) but applies to non-batch paired mutations. R76 / R76a / R77 / R78 cover terrain not previously addressed by the spec.
+- Implementation impact: existing `TableCatalog`, `CatalogIndex`, and `FileBasedCatalogLock` source already incorporates the audit fixes (audit run-001 is complete on the code side). v3 captures the contract invariants those fixes enforce so future audit passes can detect drift.
+
+**Overall: APPROVED — amendment with source changes already applied.** Audit run-001 fixed each of the six bugs in source; v3 captures the contract invariants those fixes enforce. The open obligation `OB-catalog-lock-extraction-01` is non-blocking — it tracks a future spec extraction, not a current contract gap.

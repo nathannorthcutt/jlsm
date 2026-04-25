@@ -202,7 +202,28 @@ For each pending domain:
    pass through silently to the test phase where the spec analyst pre-pass
    (Step 1c of /feature-test) will read and apply them.
 5. Read `.decisions/CLAUDE.md` — check for relevant ADR
-6. **Work group context:** If `.work/` exists, run:
+6. **Group envelope (AUTHORITATIVE).** If `brief.md` has a `## Group Envelope`
+   section, it lists group-level specs/ADRs/KB entries that the enclosing work
+   group settled during `/work-decompose` Phase B. Read each one's content:
+   - For a `spec <domain>/<name>` entry: open `.spec/domains/<domain>/<name>.md`
+     (or resolve via `.spec/registry/manifest.json`) and read the requirement
+     statements.
+   - For an `adr <slug>` entry: open `.decisions/<slug>/adr.md` and read the
+     decision.
+
+   Then check if the envelope item covers the current domain's decision. If yes,
+   classify the domain as `resolved` with source `group envelope: <ref>` — no
+   `/architect` dispatch. Envelope hits take precedence over Step 5's
+   `.decisions/CLAUDE.md` scan (same classification, explicit source).
+
+   **Contradiction escalation.** If WD-local analysis would reach a decision that
+   contradicts an envelope spec or ADR (different data shape, incompatible
+   assumption, overlapping scope with divergent intent), do NOT override locally.
+   Classify the domain as `escalate-decompose` with a note describing the
+   contradiction. The user must revisit `/work-decompose` to surface the
+   cross-WD decision that was missed in Phase B. See "Classification rules"
+   below.
+7. **Work group context (redundancy hint).** If `.work/` exists, run:
    ```bash
    bash .claude/scripts/work-context.sh --domains "<current domain>"
    ```
@@ -211,7 +232,10 @@ For each pending domain:
    this domain — its domain results may be reusable." This avoids commissioning
    redundant research across related work definitions. Do not display the full
    work context — just note the overlap for the Domain Scout's classification.
-7. Classify using the rules below
+   This is distinct from Step 6's group envelope check — envelope items are
+   AUTHORITATIVE (skip decision entirely); redundancy hints are ADVISORY (reuse
+   prior analysis if relevant).
+8. Classify using the rules below
 
 ### Classification rules
 
@@ -242,6 +266,21 @@ checks for existing coverage — it does not make architectural decisions.
 
 **`pending-research`** — KB gap exists and research is needed before a decision
 can be made (or the domain is purely informational with no decision component).
+
+**`escalate-decompose`** — WD-local analysis would contradict a group-level
+spec or ADR listed in the brief's `## Group Envelope` section. The
+decomposition assumed a shared shape or decision that doesn't actually fit
+this WD, so the contradiction is a cross-WD concern that Phase B missed.
+Stop domain analysis for this feature and tell the user:
+```
+  ⚠ ESCALATE  <domain> — contradicts group envelope item <ref>
+              <one-line description of the contradiction>
+
+  This surfaces a cross-WD decision Phase B missed. Revisit with:
+    /work-decompose "<group-slug>"
+```
+Do NOT self-resolve. Do NOT override the envelope. Decomposition must settle
+this before planning can continue.
 
 **`skipped`** — user explicitly confirmed proceeding without coverage.
 
@@ -276,8 +315,39 @@ Display:
 
 ## Step 3 — Resolve missing work (pending domains only)
 
-Process each pending domain in order. For each one, resolve it before moving
-to the next — don't batch commissions and leave them for the user.
+### Escalation check (always first)
+
+If any domain was classified `escalate-decompose` during Step 2, do NOT
+proceed with resolution. Phase B of `/work-decompose` missed a cross-WD
+coordination surface that WD-local analysis has now surfaced. Display:
+
+```
+───────────────────────────────────────────────
+🚨 ESCALATE to /work-decompose · <slug>
+───────────────────────────────────────────────
+Domain(s) contradict the group envelope:
+  - <domain A> — contradicts <envelope ref>: <short reason>
+  - <domain B> — contradicts <envelope ref>: <short reason>
+
+Group-level decomposition missed these cross-WD decisions. Fix at the
+group level, not locally — overriding the envelope here would leave
+sibling WDs planning against stale assumptions.
+
+Next:
+  /work-decompose "<group-slug>"
+
+Domain analysis will resume after the new envelope is settled.
+───────────────────────────────────────────────
+```
+
+Set status.md: stage Domains → `escalated`, substage → `envelope-contradiction`.
+Append `domains-escalated-decompose` to cycle-log.md. Stop.
+
+### Resolve per-domain
+
+Process each remaining pending domain in order. For each one, resolve it
+before moving to the next — don't batch commissions and leave them for the
+user.
 
 ### If research is missing
 

@@ -7,7 +7,7 @@
 
 | Group | Goal | Status | Created | WDs |
 |-------|------|--------|---------|-----|
-| implement-encryption-lifecycle | Implement encryption.primitives-lifecycle — key hierarchy, ciphertext format, DEK/KEK lifecycle, compaction migration, runtime concerns | active | 2026-04-21 | 5 (1 complete, 1 ready, 3 blocked) |
+| implement-encryption-lifecycle | Implement encryption.primitives-lifecycle — key hierarchy, ciphertext format, DEK/KEK lifecycle, compaction migration, runtime concerns | active | 2026-04-21 | 5 (2 complete, 1 ready, 2 blocked) |
 | implement-transport | Implement three transport.* DRAFT specs as a new jlsm-cluster module (framing, priority, scatter-gather) | active | 2026-04-21 | 3 (1 ready, 2 blocked) |
 | implement-membership | Implement two membership.* DRAFT specs (rediscovery, health/recovery); blocked on implement-transport | active | 2026-04-21 | 2 (1 ready, 1 blocked) |
 

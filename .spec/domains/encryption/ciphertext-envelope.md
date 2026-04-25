@@ -1,7 +1,7 @@
 ---
 {
   "id": "encryption.ciphertext-envelope",
-  "version": 1,
+  "version": 2,
   "status": "ACTIVE",
   "state": "APPROVED",
   "domains": [
@@ -60,6 +60,10 @@ R2b. A ciphertext whose 4-byte version tag is valid (positive integer) but whose
 R3. Downstream specs that consume this envelope (notably `serialization.encrypted-field-serialization`, `sstable.*`, `wal.encryption`) must reference R1 and R2 normatively and must not redefine any byte position or variant-total-length independently. If a consumer needs additional per-record framing (e.g., field length prefix in a document envelope), that framing sits outside the encrypted envelope's 4B-version-tag-prefixed bytes.
 
 R3a. Pre-encrypted field values supplied by callers (per `encryption.primitives-lifecycle` R5–R5c) must conform to R1 at the byte level: the caller writes R1's exact layout, with the caller-generated DEK version in the 4-byte prefix. The library verifies the version tag against the registry (R5c) but does not re-check the internal layout beyond the version position.
+
+### Sibling parser error-type symmetry
+
+R5. **Sibling parser methods must throw consistent checked-exception types on identical input failure shapes.** Sibling parser entry points operating on the same byte input — for example, a `parseVersion(byte[])` method that returns the parsed DEK version and a `stripPrefix(byte[])` method that returns the variant-payload remainder — must throw the same checked exception type for the same shape of failure. Specifically: if one entry point throws `IOException` for an under-length envelope (fewer than 4 bytes available, so the version tag cannot be read), the sibling must also throw `IOException`; the two must not diverge between `IOException` and `IllegalArgumentException` for inputs that fail at the same byte position. The discipline applies symmetrically across the public envelope parser surface so that callers can write a single catch clause for the same logical failure rather than maintaining two catch clauses for the same shape of malformed input. Validation must be a runtime conditional, not a Java `assert`.
 
 ### Scope of this spec
 
@@ -128,3 +132,13 @@ Annotations: 35 (up from 11). Impl+test coverage now spans R1, R1a, R1b, R1c, R3
 - `OB-ciphertext-envelope-03`: add hex-literal byte-pattern test for R1c pinning DCPE seed + float-lane BE encoding against a known vector.
 
 State unchanged: spec remains APPROVED v1. Obligations track the implementation gap, not a spec defect.
+
+### Verified: v2 — 2026-04-25 (state: APPROVED — amendment, source change required)
+
+Audit reconciliation work (audit run `implement-encryption-lifecycle--wd-02/audit/run-001`, finding F-R1.contract_boundaries.3.3) surfaced an asymmetric error-type contract on sibling parser entry points: `EnvelopeCodec.parseVersion(byte[])` threw `IOException` for an under-length input (fewer than 4 bytes), but the sibling `EnvelopeCodec.stripPrefix(byte[])` threw `IllegalArgumentException` for the same input shape. The audit captured this as a "two catch clauses for the same logical failure" defect that complicated call-site code and invited drift as new sibling methods were added. v2 adds R5 to pin the contract:
+
+- **R5 (new):** sibling parser methods on the same byte input must throw the same checked-exception type for the same input failure shape. The implementation must align both `parseVersion` and `stripPrefix` (and any future sibling) on `IOException` for the under-length case.
+
+**Implementation impact (the source change required):** the existing `EnvelopeCodec.stripPrefix` `IllegalArgumentException` path must be migrated to `IOException` to match `parseVersion`. Callers that previously caught `IllegalArgumentException` from `stripPrefix` must update to catch `IOException` (or to a common supertype if the codebase introduces one).
+
+**Overall: APPROVED — amendment with source change required.** R5 closes the contract gap surfaced by the audit; no behavior change to the wire format itself.

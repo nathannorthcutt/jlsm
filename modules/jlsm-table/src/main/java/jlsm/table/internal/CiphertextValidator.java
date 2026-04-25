@@ -119,5 +119,21 @@ public final class CiphertextValidator {
                 }
             }
         }
+
+        // @spec encryption.ciphertext-envelope.R1c,R2 — symmetric writer-side guard for the
+        // 4-byte BE DEK version prefix. Per-variant length checks above guarantee at least
+        // VERSION_PREFIX_LENGTH (4) bytes are present for every encrypted variant; decode the
+        // prefix and reject 0 / negative versions before the bytes are persisted, mirroring
+        // EnvelopeCodec.prefixVersion's writer-side guard and EnvelopeCodec.parseVersion's
+        // reader-side guard. Without this check, a corrupt pre-encrypted envelope would be
+        // admitted at write time and surface only at read time as an UncheckedIOException —
+        // a write-side spec violation that produces poisoned-on-disk entries.
+        final int dekVersion = ((ciphertext[0] & 0xFF) << 24) | ((ciphertext[1] & 0xFF) << 16)
+                | ((ciphertext[2] & 0xFF) << 8) | (ciphertext[3] & 0xFF);
+        if (dekVersion <= 0) {
+            throw new IllegalArgumentException("Field '" + fieldName
+                    + "': ciphertext DEK version prefix must be a positive integer, got "
+                    + dekVersion + " (corrupt envelope)");
+        }
     }
 }

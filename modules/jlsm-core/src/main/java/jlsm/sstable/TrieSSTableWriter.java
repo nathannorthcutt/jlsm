@@ -432,6 +432,17 @@ public final class TrieSSTableWriter implements SSTableWriter {
             long sizeBytes = writePosition;
 
             // Atomic commit: partial path → final path.
+            // R23 / F-R1.resource_lifecycle.1.5 — on non-FileChannel outputs (S3/GCS/custom NIO
+            // providers), the post-magic forceOrSkip is a no-op and channel.close() does not
+            // imply a kernel-buffer flush. The engine needs an explicit signal at the close-
+            // then-move boundary so it can wire a backend-specific durability call (e.g. S3
+            // PUT verification) between channel close and atomic rename. Invoke the listener
+            // here BEFORE close so channel.getClass() still reflects the live channel type;
+            // FileChannel outputs skip this path because their fsync sites already made the
+            // commit durable.
+            if (!(channel instanceof FileChannel)) {
+                invokeFsyncSkipListener("close-before-move");
+            }
             closeChannelQuietly();
             commitFromPartial();
 
@@ -447,6 +458,16 @@ public final class TrieSSTableWriter implements SSTableWriter {
         } catch (IOException e) {
             state = State.FAILED;
             throw e;
+        } catch (RuntimeException e) {
+            // @spec sstable.footer-encryption-scope.R10b — once entered, FAILED must refuse all
+            // subsequent operations. A RuntimeException escaping from the WriterCommitHook SPI
+            // (e.g. a non-conformant Lease.freshScope() returning null and triggering NPE, or
+            // acquire() throwing an undeclared unchecked exception) must still transition the
+            // writer to FAILED so close() cleans up the partial and subsequent finish() calls
+            // are rejected. Surface as IOException with the original cause preserved.
+            state = State.FAILED;
+            throw new IOException(
+                    "writer transitioned to FAILED on RuntimeException during finish (R10b)", e);
         }
     }
 

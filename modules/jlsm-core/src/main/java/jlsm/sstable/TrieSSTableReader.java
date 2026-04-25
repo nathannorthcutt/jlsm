@@ -3,6 +3,7 @@ package jlsm.sstable;
 import jlsm.core.bloom.BloomFilter;
 import jlsm.core.cache.BlockCache;
 import jlsm.core.compression.CompressionCodec;
+import jlsm.core.io.MemorySerializer;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
@@ -755,6 +756,45 @@ public final class TrieSSTableReader implements SSTableReader {
         } finally {
             releaseReaderSlot();
         }
+    }
+
+    /**
+     * Typed get that bridges the SSTable read path to a {@link MemorySerializer}, threading this
+     * reader's {@link #readContext()} into the serializer's
+     * {@code deserialize(MemorySegment, ReadContext)} overload. Returns {@link Optional#empty()}
+     * when the key is missing or the entry is a tombstone.
+     *
+     * <p>
+     * This is the producer side of the R3e dispatch gate: the reader materialises the v6 footer's
+     * DEK-version set into a {@link ReadContext} at open time, and this overload makes that context
+     * reachable from the consumer-side encryption dispatch in
+     * {@code MemorySerializer.deserialize(seg, ctx)}. Without this overload, callers that fall back
+     * to the single-arg {@link #get(MemorySegment)} drop the context — making the footer-stamped
+     * DEK-version set documentation-only.
+     *
+     * @param <V> the value type produced by {@code serializer}
+     * @param key the lookup key; must not be null
+     * @param serializer the serializer to deserialise the value bytes; must not be null
+     * @return the deserialised value, or {@link Optional#empty()} if the key is absent or the entry
+     *         is a tombstone
+     * @throws IOException if the underlying SSTable read fails
+     * @spec sstable.footer-encryption-scope.R3e
+     * @spec sstable.footer-encryption-scope.R3f
+     */
+    public <V> Optional<V> get(MemorySegment key, MemorySerializer<V> serializer)
+            throws IOException {
+        Objects.requireNonNull(key, "key must not be null");
+        Objects.requireNonNull(serializer, "serializer must not be null");
+        Optional<Entry> entry = get(key);
+        if (entry.isEmpty()) {
+            return Optional.empty();
+        }
+        Entry e = entry.get();
+        if (e instanceof Entry.Put put) {
+            return Optional.of(serializer.deserialize(put.value(), readContext));
+        }
+        // Tombstone — no value to deserialise.
+        return Optional.empty();
     }
 
     /**

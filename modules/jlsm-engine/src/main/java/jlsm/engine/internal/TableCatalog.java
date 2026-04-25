@@ -101,6 +101,16 @@ final class TableCatalog implements Closeable {
         // every load decision can consult the high-water.
         this.catalogIndex = new CatalogIndex(rootDir);
 
+        // Track directories whose table.meta exists but whose in-memory catalog-index entry
+        // is absent. These are deferred for a single re-read of the on-disk catalog-index
+        // after the scan completes — closes the cross-process register-during-open race
+        // (a peer JVM that persisted a setHighwater between this JVM's CatalogIndex
+        // construction at line 102 and the directory scan would otherwise be silently
+        // skipped). The R9a-mono cold-start defence is preserved: any directory whose entry
+        // is still absent on the fresh re-read is still treated as "table does not exist".
+        // @spec sstable.footer-encryption-scope.R9a-mono — cross-JVM race-resolution defence
+        final List<Path> deferredUnindexed = new ArrayList<>();
+
         try (final DirectoryStream<Path> stream = Files.newDirectoryStream(rootDir)) {
             for (final Path entry : stream) {
                 if (!Files.isDirectory(entry)) {
@@ -124,29 +134,58 @@ final class TableCatalog implements Closeable {
                 // older table.meta into a fresh-looking root after the index file was deleted).
                 final Optional<Integer> indexVersion = catalogIndex.highwater(tableName);
                 if (indexVersion.isEmpty()) {
-                    continue; // table.meta on disk but unknown to the index → not-existent
+                    // Defer until after the scan — re-read the on-disk index once and re-check
+                    // before treating as "not-existent". Cross-process register-during-open
+                    // race: a peer JVM may have persisted this entry between line 102 and now.
+                    deferredUnindexed.add(entry);
+                    continue;
                 }
 
-                try {
-                    final TableMetadata metadata = readMetadata(tableName, metadataPath,
-                            indexVersion.get());
-                    tables.put(tableName, metadata);
-                } catch (IOException e) {
-                    // Corrupt or unreadable metadata — preserve data, mark as ERROR
-                    final JlsmSchema errorSchema = JlsmSchema.builder(tableName, 0).build();
-                    final TableMetadata errorMetadata = new TableMetadata(tableName, errorSchema,
-                            Instant.EPOCH, TableMetadata.TableState.ERROR);
-                    tables.put(tableName, errorMetadata);
-                }
+                loadEntry(entry, tableName, metadataPath, indexVersion.get());
+            }
+        }
 
-                // R10e — restart cleanup: any *.partial.<writerId> SSTable tmp file in this
-                // table's directory belongs to a writer that crashed mid-finish; deleting them
-                // is mandatory before any reader touches the directory.
-                cleanupPartialSstFiles(entry);
+        if (!deferredUnindexed.isEmpty()) {
+            // Cross-process race-resolution: re-read on-disk catalog-index ONCE and re-check
+            // each deferred directory. If a peer JVM's setHighwater committed during this
+            // JVM's open(), the entry is now present and the table is loaded normally.
+            // R9a-mono cold-start defence is preserved: an unindexed-on-fresh-read directory
+            // is still treated as "table does not exist".
+            this.catalogIndex = new CatalogIndex(rootDir);
+            for (final Path entry : deferredUnindexed) {
+                final String tableName = entry.getFileName().toString();
+                final Path metadataPath = entry.resolve(METADATA_FILE);
+                final Optional<Integer> indexVersion = catalogIndex.highwater(tableName);
+                if (indexVersion.isEmpty()) {
+                    continue; // still not in the index after fresh read → not-existent
+                }
+                loadEntry(entry, tableName, metadataPath, indexVersion.get());
             }
         }
 
         loading = false;
+    }
+
+    /**
+     * Reads a table's metadata and publishes it into the {@code tables} map. Corrupt or unreadable
+     * metadata is recorded as an ERROR-state entry rather than aborting the catalog open. Also runs
+     * R10e partial-SSTable cleanup on the directory.
+     */
+    private void loadEntry(Path entry, String tableName, Path metadataPath, int indexVersion) {
+        try {
+            final TableMetadata metadata = readMetadata(tableName, metadataPath, indexVersion);
+            tables.put(tableName, metadata);
+        } catch (IOException e) {
+            // Corrupt or unreadable metadata — preserve data, mark as ERROR
+            final JlsmSchema errorSchema = JlsmSchema.builder(tableName, 0).build();
+            final TableMetadata errorMetadata = new TableMetadata(tableName, errorSchema,
+                    Instant.EPOCH, TableMetadata.TableState.ERROR);
+            tables.put(tableName, errorMetadata);
+        }
+        // R10e — restart cleanup: any *.partial.<writerId> SSTable tmp file in this
+        // table's directory belongs to a writer that crashed mid-finish; deleting them
+        // is mandatory before any reader touches the directory.
+        cleanupPartialSstFiles(entry);
     }
 
     /**
@@ -231,13 +270,20 @@ final class TableCatalog implements Closeable {
         }
 
         final Instant createdAt = Instant.now();
-        final TableMetadata metadata = new TableMetadata(name, schema, createdAt,
+        // Stage a LOADING placeholder to atomically claim the name (TOCTOU defence) without
+        // exposing a fully-published READY entry whose on-disk state has not yet been written.
+        // Concurrent readers may observe LOADING (and treat the table as not-yet-usable);
+        // they must not observe READY before the directory and table.meta are durable on disk.
+        // @spec engine.in-process-database-engine.R56,R57 — registered tables are fully formed
+        final TableMetadata loadingMetadata = new TableMetadata(name, schema, createdAt,
+                TableMetadata.TableState.LOADING, encryption);
+        final TableMetadata readyMetadata = new TableMetadata(name, schema, createdAt,
                 TableMetadata.TableState.READY, encryption);
 
         // Atomically claim the name before any I/O — prevents TOCTOU race where
         // two threads both pass a containsKey check, both create directories,
         // and the loser's cleanup deletes the winner's directory.
-        final TableMetadata previous = tables.putIfAbsent(name, metadata);
+        final TableMetadata previous = tables.putIfAbsent(name, loadingMetadata);
         if (previous != null) {
             throw new IOException("Table already exists: " + name);
         }
@@ -247,12 +293,17 @@ final class TableCatalog implements Closeable {
         try {
             final Path tableDir = rootDir.resolve(name);
             Files.createDirectories(tableDir);
-            writeMetadata(tableDir.resolve(METADATA_FILE), metadata, targetVersion);
+            writeMetadata(tableDir.resolve(METADATA_FILE), readyMetadata, targetVersion);
             // R9a-mono — bump the high-water atomically with the metadata write completing.
             catalogIndex.setHighwater(name, targetVersion);
+            // Publish the READY entry only after disk state is durable. tables.replace ensures
+            // we do not clobber any concurrent rollback-driven removal (CAS on the LOADING
+            // placeholder we ourselves staged).
+            final boolean published = tables.replace(name, loadingMetadata, readyMetadata);
+            assert published : "LOADING placeholder for " + name + " was unexpectedly replaced";
         } catch (IOException e) {
             // Roll back the map entry on I/O failure
-            tables.remove(name, metadata);
+            tables.remove(name, loadingMetadata);
             // Clean up the orphan directory created by Files.createDirectories()
             try {
                 final Path tableDir = rootDir.resolve(name);
@@ -269,7 +320,7 @@ final class TableCatalog implements Closeable {
             throw e;
         }
 
-        return metadata;
+        return readyMetadata;
     }
 
     /**
@@ -298,7 +349,24 @@ final class TableCatalog implements Closeable {
         final Path metaPath = rootDir.resolve(name).resolve(METADATA_FILE);
         // R11a — write-temp + rename is atomic; readers see either the prior or the new metadata.
         writeMetadata(metaPath, next, FORMAT_ENCRYPTION_AWARE);
-        catalogIndex.setHighwater(name, FORMAT_ENCRYPTION_AWARE);
+        // R7b atomicity — if the catalog-index high-water bump fails after the metadata file
+        // has been atomically replaced on disk, the on-disk state would diverge from the
+        // in-memory and catalog-index views. Restore the prior on-disk metadata so memory
+        // and disk stay in sync; surface any rewrite failure as a suppressed exception on
+        // the original IOException.
+        try {
+            catalogIndex.setHighwater(name, FORMAT_ENCRYPTION_AWARE);
+        } catch (IOException | RuntimeException e) {
+            final int priorFormatVersion = existing.encryption().isPresent()
+                    ? FORMAT_ENCRYPTION_AWARE
+                    : FORMAT_PRE_ENCRYPTION;
+            try {
+                writeMetadata(metaPath, existing, priorFormatVersion);
+            } catch (IOException | RuntimeException rollbackFailure) {
+                e.addSuppressed(rollbackFailure);
+            }
+            throw e;
+        }
         tables.put(name, next);
     }
 
@@ -617,7 +685,8 @@ final class TableCatalog implements Closeable {
             formatVersion = FORMAT_ENCRYPTION_AWARE;
             payloadOffset = 1;
         } else {
-            throw new IOException("Unknown metadata format version: " + firstByte);
+            // R12 — do NOT include the offending byte value in the message.
+            throw new IOException("unknown metadata format version (R12)");
         }
         // R9a-mono — reject any persisted format below the catalog index's high-water.
         if (formatVersion < indexHighwater) {

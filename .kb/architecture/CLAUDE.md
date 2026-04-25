@@ -5,4 +5,6 @@
 
 | Category | Path | Files | Last Updated |
 |----------|------|-------|--------------|
-| feature-footprints | [feature-footprints/](feature-footprints/CLAUDE.md) | 5 | 2026-04-23 |
+| exercised-policies | [exercised-policies/](exercised-policies/CLAUDE.md) | 1 | 2026-04-25 |
+| feature-footprints | [feature-footprints/](feature-footprints/CLAUDE.md) | 6 | 2026-04-25 |
+| jpms | [jpms/](jpms/CLAUDE.md) | 1 | 2026-04-25 |

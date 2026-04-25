@@ -8,6 +8,21 @@ import org.junit.jupiter.api.Test;
 
 class CiphertextValidatorTest {
 
+    /**
+     * Writes a positive 4-byte BE DEK version prefix (value=1) into the buffer head so the R2 / R1c
+     * writer-side positivity guard accepts the envelope. Pre-WU-4 tests used all-zero buffers as
+     * placeholders for length-only acceptance; under WU-4 every valid envelope must carry a
+     * positive version prefix per encryption.ciphertext-envelope.R1c.
+     */
+    private static byte[] withPositiveVersionPrefix(int totalLength) {
+        byte[] buf = new byte[totalLength];
+        buf[0] = 0;
+        buf[1] = 0;
+        buf[2] = 0;
+        buf[3] = 1;
+        return buf;
+    }
+
     // ── AES-SIV (Deterministic): accept >= 20 bytes (4B prefix + 16B SIV) ───
 
     // @spec encryption.ciphertext-envelope.R1,R1b,R3a — Deterministic envelope = [4B BE DEK
@@ -16,7 +31,7 @@ class CiphertextValidatorTest {
     void deterministic_accepts20Bytes() {
         FieldDefinition field = new FieldDefinition("email", FieldType.string(),
                 EncryptionSpec.deterministic());
-        byte[] ciphertext = new byte[20];
+        byte[] ciphertext = withPositiveVersionPrefix(20);
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
@@ -24,7 +39,7 @@ class CiphertextValidatorTest {
     void deterministic_acceptsLargerThan20Bytes() {
         FieldDefinition field = new FieldDefinition("email", FieldType.string(),
                 EncryptionSpec.deterministic());
-        byte[] ciphertext = new byte[64];
+        byte[] ciphertext = withPositiveVersionPrefix(64);
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
@@ -49,7 +64,7 @@ class CiphertextValidatorTest {
     void opaque_accepts32Bytes() {
         FieldDefinition field = new FieldDefinition("secret", FieldType.string(),
                 EncryptionSpec.opaque());
-        byte[] ciphertext = new byte[32];
+        byte[] ciphertext = withPositiveVersionPrefix(32);
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
@@ -57,7 +72,7 @@ class CiphertextValidatorTest {
     void opaque_acceptsLargerThan32Bytes() {
         FieldDefinition field = new FieldDefinition("secret", FieldType.string(),
                 EncryptionSpec.opaque());
-        byte[] ciphertext = new byte[100];
+        byte[] ciphertext = withPositiveVersionPrefix(100);
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
@@ -82,7 +97,7 @@ class CiphertextValidatorTest {
     void orderPreserving_acceptsExactly29Bytes() {
         FieldDefinition field = new FieldDefinition("rank", FieldType.int32(),
                 EncryptionSpec.orderPreserving());
-        byte[] ciphertext = new byte[29];
+        byte[] ciphertext = withPositiveVersionPrefix(29);
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 
@@ -131,7 +146,7 @@ class CiphertextValidatorTest {
         FieldDefinition field = new FieldDefinition("embedding",
                 FieldType.vector(FieldType.Primitive.FLOAT32, dimensions),
                 EncryptionSpec.distancePreserving());
-        byte[] ciphertext = new byte[12 + dimensions * 4 + 16]; // 540 bytes
+        byte[] ciphertext = withPositiveVersionPrefix(12 + dimensions * 4 + 16); // 540 bytes
         assertDoesNotThrow(() -> CiphertextValidator.validate(field, ciphertext));
     }
 

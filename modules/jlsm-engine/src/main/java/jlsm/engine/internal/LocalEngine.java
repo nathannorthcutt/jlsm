@@ -15,6 +15,7 @@ import jlsm.engine.TableMetadata;
 import jlsm.memtable.ConcurrentSkipListMemTable;
 import jlsm.sstable.TrieSSTableReader;
 import jlsm.sstable.TrieSSTableWriter;
+import jlsm.sstable.WriterCommitHook;
 import jlsm.table.DocumentSerializer;
 import jlsm.table.JlsmDocument;
 import jlsm.table.JlsmSchema;
@@ -445,8 +446,17 @@ public final class LocalEngine implements Engine {
             // MemTable factory
             final Supplier<MemTable> memTableFactory = ConcurrentSkipListMemTable::new;
 
-            // SSTable writer/reader factories
-            final SSTableWriterFactory writerFactory = TrieSSTableWriter::new;
+            // SSTable writer/reader factories.
+            // @spec sstable.footer-encryption-scope.R10c — every writer constructed by the engine
+            // must be wired with a WriterCommitHook + tableNameForLock so that finish() acquires
+            // the per-table catalog lock and re-reads the encryption scope under the held lease
+            // (TOCTOU defence). Without these the writer's finish() would commit using a stale
+            // construction-time view and could persist a plaintext SSTable into an encrypted
+            // table that flipped mid-write.
+            final WriterCommitHook commitHook = new EngineWriterCommitHook(catalogLock, catalog);
+            final SSTableWriterFactory writerFactory = (id, level, path) -> TrieSSTableWriter
+                    .builder().id(id).level(level).path(path).commitHook(commitHook)
+                    .tableNameForLock(tableName).build();
             final SSTableReaderFactory readerFactory = path -> TrieSSTableReader.open(path,
                     BlockedBloomFilter.deserializer());
 

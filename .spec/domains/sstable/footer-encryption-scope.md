@@ -1,7 +1,7 @@
 ---
 {
   "id": "sstable.footer-encryption-scope",
-  "version": 5,
+  "version": 9,
   "status": "ACTIVE",
   "state": "APPROVED",
   "domains": [
@@ -94,6 +94,8 @@ R2e. Identifier UTF-8 bytes must be well-formed UTF-8. Identifiers must not cont
 
 R3. The `dek-version-count` field must be a non-negative 16-bit big-endian integer. Writers must reject emitting more than 65535 DEK versions with `IllegalStateException`; this is a structural ceiling. The practical ceiling during rotation-straddle is 16; exceeding it suggests unbounded rotation accumulation and is a caller error.
 
+R2g. **Writer-side defensive snapshot of caller-supplied DEK-version array.** The writer of the v6 footer scope section must take a defensive snapshot (e.g. `Arrays.copyOf` or equivalent immutable copy) of any caller-supplied DEK-version array (or `int[]` / `Set<Integer>` / equivalent collection passed to the encode entry point) at method entry, before any subsequent length validation, body-length arithmetic, encode loop iteration, or CRC32C computation. All subsequent validation, arithmetic, and emission must operate exclusively on the snapshot, not on the caller-supplied original. Caller-side mutation of the original between method entry and footer emission must be observably impossible — the encoded bytes must reflect the caller's input as observed at method entry, not as observed at any later point inside the encode method. The snapshot discipline applies symmetrically to every public encode entry point that accepts a mutable collection (array or `Set<Integer>`); a writer that aliases the caller's collection and re-reads it during the encode loop is a spec violation. Validation that the snapshot is internally consistent (R3a ascending, R3b positive, R3 ≤ 65535) must run against the snapshot.
+
 R3a. DEK versions must appear in strictly ascending order. A writer emits them sorted. A reader encountering a descending or equal pair must throw `IOException` indicating corrupt footer.
 
 R3b. Each DEK version must be a positive 32-bit big-endian integer (`version ≥ 1`). A writer must reject version `0` or negative values with `IllegalArgumentException`; a reader encountering version `0` or negative must throw `IOException` indicating corrupt footer. The check applies uniformly to every version in the list. Enforcement must be a runtime conditional, not a Java `assert`.
@@ -106,11 +108,32 @@ R3e. **Reader-side DEK-set pre-resolution check.** The reader must materialise t
 
 R3f. **Empty-DEK-set invariant.** A v6 SSTable with `dek-version-count = 0` must contain no entries whose per-field envelope carries a DEK-version field. The reader must assert this structurally during entry iteration — encountering any envelope-header DEK-version field in a file whose footer declared `dek-version-count = 0` must throw `IOException` indicating corrupt footer (not a DEK-mismatch error, because the attack shape differs: the writer violated R3d, producing a footer that under-reports). The error message must distinguish "empty-set file contained encrypted entries" from R3e's "version not in declared set" to aid diagnosis.
 
+R3g. **ReadContext construction-time discrimination of empty-set semantics.** The construct that materialises the R3e dispatch gate (the per-read context value carrying the in-memory `Set<Integer>` of allowed DEK versions) must distinguish three semantically distinct construction-time states at its public construction surface, rather than collapsing them into a single empty-set sentinel:
+
+- **State A — "scoped read, non-empty DEK set":** the R3e gate is active and admits exactly the declared versions. Construction must accept a non-null, non-empty `Set<Integer>` and reject any null element, any non-positive version, and an empty set with `IllegalArgumentException`.
+- **State B — "scoped read, footer-declared zero DEK versions":** corresponds to a v6 SSTable whose footer declared `dek-version-count = 0` per R3c. The R3e gate must deny every version (any DEK-version field in any envelope is a footer/data inconsistency caught by R3f). This state is legitimate only as the consumer of a v6 footer with `dek-version-count = 0`.
+- **State C — "unscoped read, no v6 footer present":** corresponds to opening a v5 SSTable (no scope section, no R3e gate semantics applicable). The R3e gate is structurally inert because the read path has no envelope DEK-version fields to compare against.
+
+The general-purpose construction surface (the canonical record constructor accepting `Set<Integer>`) must be reserved for State A and must reject the empty set with `IllegalArgumentException` whose message identifies the silent-deny-all attack and references R3g. Loud-fail at the point of misuse closes the silent-construction gap that the prior contract permitted. Validation must be a runtime conditional (explicit `if`/`throw`), not a Java `assert`.
+
+States B and C must be expressible only through explicitly named static factory methods (or the structural equivalent — for example, sealed-record-instance constants — chosen by the implementation). The implementation is free to choose names; the spec mandates that the names communicate the legitimate-empty-state contract at the call site (e.g. `forZeroDekFooter()` for State B and `forUnscopedRead()` for State C, or single-argument variants whose Javadoc states the contract). A reviewer reading any caller of these factories must, without leaving the call site, understand which of B / C the caller intends. Defaulting an empty set into the canonical constructor must not be an available production path.
+
+R3h. **Caller-site discipline for the empty-set factories.** The factory methods introduced by R3g must be invoked only by:
+1. **The v6 footer parse path** when the parsed `dek-version-set` has zero elements (State B). The parse path must select State B's factory at the same dispatch point that produces the populated-set `ReadContext` — branching on `Set.isEmpty()` at footer-parse time, before the value is propagated into the read pipeline. The footer parse path must NOT pass an empty set into the canonical constructor as a substitute for the State B factory.
+2. **The v5 (no-scope) reader open path** as the structurally-inert R3e gate carrier (State C). The v5 path uses State C's factory at construction; downstream consumers may not assume State C's gate carries any meaningful version set.
+3. **Unit tests of the factory methods themselves**, which are the legitimate construction sites for State B / State C in test code. Tests of State A's behaviour must use the canonical constructor with a non-empty set.
+
+Engine-layer integration code (every reader site in `jlsm-engine` that opens an SSTable in an encrypted table) must consume the `ReadContext` produced by the reader's footer parse path. Engine-layer code must not construct a `ReadContext` directly — neither via the canonical constructor nor via R3g's factories. The audit boundary is: any non-test code outside the SSTable reader's footer-parse path that constructs a `ReadContext` is a spec violation.
+
+R3h shares its trust-boundary disclosure shape with R10g (the byte-layer-test opt-out for scoped writers), R13b (storage substrate), and R8j (`--add-exports` flag): the library does not enforce caller-site discipline at runtime — the boundary is code review and the audit pipeline. The structural defence is R3g's loud-fail-at-canonical-constructor; R3h's purpose is to specify which call sites legitimately reach the empty-state factories so future audit passes have an unambiguous boundary against drift.
+
 ### Reader scope validation protocol
 
 R4. A reader opening a `v6` SSTable must, after magic verify and footer CRC32C verify (R2f), parse the scope section per R2a. Parsing must happen before any DEK resolution, block decryption, entry read, bloom-filter probe, or key-index scan that would touch envelope-header DEK-version bytes.
 
 R5. The reader must materialise the **expected scope** from the caller's `Table` handle via `table.metadata().encryption().orElseThrow(IllegalStateException::new)`. The `IllegalStateException` message must identify the Table by name and state "attempt to decrypt SSTable belonging to a Table without encryption metadata" without revealing key material.
+
+R5a. **Parsed v6 footer DEK-version set must be an unmodifiable view independent of its source.** The parsed footer record made available to consumers (the value materialised by the v6 footer parse path that R3e and R4 reference) must expose the `dek-version-set` as an unmodifiable view that is independent of any source from which the parser materialised it (caller-supplied `Set`, internal builder collection, or transient parse buffer). A consumer that mutates (or attempts to mutate) the returned set must observe either no effect or `UnsupportedOperationException`; the parsed record's internal state must remain unchanged regardless of the consumer's actions. The publication discipline must be a defensive copy (`Set.copyOf` or equivalent) — wrapping the caller's source via `Collections.unmodifiableSet` that aliases the source is a spec violation, because mutation of the underlying source would propagate into the wrapper. The contract applies uniformly to every public accessor that returns the DEK-version set on the parsed footer record. R5a closes the immutability hazard surfaced when the parser accepted any `Set` without copy: aliasing the caller's collection lets caller-side mutation reach the parsed record's "immutable" view.
 
 R6. The reader must compare the expected scope (from R5) against the SSTable's declared scope (from R2a) by component-wise equality on `(tenantId, domainId, tableId)`. A mismatch on any component must cause the reader to throw `IllegalStateException` before any DEK lookup or block decryption. The error message must identify both the expected and declared scopes but must not reveal any DEK, key material, or bytes beyond the scope identifiers.
 
@@ -187,7 +210,21 @@ R8f. **Runtime defence for the sealed Table**. The discipline applies uniformly 
 - The `module-info.java` of the `jlsm-engine` module must NOT `opens` or `exports` the `jlsm.engine.internal` package OR the `jlsm.engine.cluster.internal` package to any external module in production builds. Test builds may `opens` either internal package to test modules via a test-only `module-info.java` or a `--add-opens` flag scoped to test tasks.
 - Reflection-based instantiation (via `--add-opens ... = ALL-UNNAMED`, `MethodHandles.privateLookupIn`, or `sun.misc.Unsafe`) is outside the language-level trust boundary. If an attacker has reflection access to internal packages, they are already inside the module boundary — the cryptographic defence (R6b HKDF binding) remains the final barrier, but R8e/R8f's defence-in-depth raises the attack bar meaningfully.
 
-R8g. Test code requiring a mock Table must use a test-only factory constructed within `jlsm-engine`'s test module boundary. The production module descriptor must not expose any mechanism for external modules to construct `CatalogTable` or `CatalogClusteredTable`. Existing test stubs that previously declared `implements Table` (e.g., cluster test helpers `RecordingTable`, `StubTable`, `StubTableImpl`, `PermissiveStubTable`) must migrate to the test-only factory pattern as part of this requirement.
+R8g. **(amended v5→v6)** Test code requiring a mock Table either (a) uses a test-only factory constructed within `jlsm-engine`'s test module boundary, or (b) extends one of the two permitted internal subtypes (`CatalogTable`, `CatalogClusteredTable`) under the trusted-export carve-out declared by R8h. Both patterns are permitted; the choice is a test-engineering convenience, not a trust-boundary decision. The production module descriptor must not expose any mechanism for external modules (callers without `--add-exports` to the relevant internal package) to construct or subclass `CatalogTable` or `CatalogClusteredTable`. Existing cluster test helpers (`RecordingTable`, `MetadataOnlyStub`, `PermissiveStub`, the `ClusteredTableLocalShortCircuitTest` `RecordingTable`, and the `ResourceLifecycleAdversarialTest` anonymous null-metadata subclass) extend `CatalogClusteredTable` directly under R8h's carve-out and remain compliant with this requirement; ~~existing test stubs that previously declared `implements Table` must migrate to the test-only factory pattern as part of this requirement~~ (struck through: superseded by R8h's explicit carve-out which permits subclass-extension under the trusted export). Test stubs that previously implemented `Table` directly (i.e., before sealing) must migrate to one of the two permitted patterns; mock libraries that fabricate `Table` instances reflectively are out-of-scope per R8f bullet 4.
+
+R8h. **Trusted-export threat-model carve-out.** The trust boundary that R8e (sealed `Table`) and R8f (runtime defences) enforce is the JPMS `exports` declaration in `module-info.java` — which intentionally does NOT export `jlsm.engine.internal` or `jlsm.engine.cluster.internal`. Callers who add `--add-exports jlsm.engine/jlsm.engine.internal=...` or `--add-exports jlsm.engine/jlsm.engine.cluster.internal=...` to the JVM at startup are explicitly out of the threat model: they have build-system / startup-flag access equivalent to the reflection access already declared out-of-scope by R8f bullet 4. The library's test build sets these exports for `ALL-UNNAMED` (see `modules/jlsm-engine/build.gradle`) so that in-tree test code can subclass the permitted internal subtypes; this is a trusted in-tree convention, not a sanctioned external API. Under this carve-out the following attack vectors are accepted as out-of-model:
+
+- Subclass override of any non-`final` method on `CatalogTable` or `CatalogClusteredTable` (including `metadata()`, the CRUD methods, and lifecycle methods) to forge return values.
+- Direct construction of `CatalogTable` or `CatalogClusteredTable` instances via package-private constructors (which are reachable through the `--add-exports` flag because Java's package-private access is package-name based, not module-derived).
+- Bypass of the catalog-mediated factory methods (`Engine.getTable`, `createTable`, `createEncryptedTable`; the `ClusteredEngine` analogues).
+
+The cryptographic defence against the metadata-forgery vector is the HKDF scope binding from `encryption.primitives-lifecycle` R11 (cross-referenced at R6b). The HKDF binding makes wrong-scope decryption cryptographically impossible — an attacker who forges `metadata()` to return scope X cannot recover plaintext from an SSTable bound to scope Y. The HKDF binding does NOT prevent an attacker who has both `--add-exports` access AND legitimate read access to scope X from routing scope-X bytes through a Table handle whose `metadata()` reports scope Y (the resulting plaintext is scope-X plaintext, which the attacker is already authorised to read; the spec gap closed here is "the read appears in scope Y's audit trail rather than scope X's"). Operators relying on per-table audit-trail attribution must treat the trusted-export carve-out as a deployment-time invariant — see R8j.
+
+R8i. **`CatalogClusteredTable.metadata()` and `CatalogTable.metadata()` are non-`final` by design.** The non-final declaration is a deliberate consequence of R8h: it permits in-tree test stubs to override `metadata()` for adversarial scenarios that the test-only factory pattern of R8g(a) cannot cover (e.g., returning `null` to drive rollback-NPE paths, returning a deliberately-mismatched scope to exercise R6's component-wise comparison, or returning a `TableMetadata` whose `encryption` flips between calls to exercise R10c's TOCTOU re-check). Authoring `metadata()` as `final` would block these tests; the cryptographic defence (R6b HKDF binding) renders the type-system finality contribution null in any case once the attacker has the `--add-exports` flag (R8h). 
+
+This non-finality is scoped to `metadata()` specifically as the encryption-check entry point identified by R5. Implementations of the two permitted Table subtypes MUST NOT add internal logic — anywhere in the catalog or encryption read path — that depends on `metadata()` being non-overridable as a defence (e.g., a `getClass() == CatalogClusteredTable.class` check, or a `Table` reference comparison used as a "this is the real thing" assertion). Any internal logic that needs the construction-bound `TableMetadata` must read the private final `tableMetadata` field directly (or route through a `private final` helper that does so), not through a virtual call to `metadata()`. This rule applies equally to future code added to either permitted subtype.
+
+R8j. **Production deployment guidance for the `--add-exports` flag.** Library packagers and integrators must not set `--add-exports jlsm.engine/jlsm.engine.internal=...` or `--add-exports jlsm.engine/jlsm.engine.cluster.internal=...` in production deployments. The library does not enforce this at runtime — the trust boundary is the build/deploy configuration, identical in shape to R13b's "deploying jlsm encryption on storage where write access to SSTable bytes is not authenticated is unsupported" pattern. This is a documentation item: jlsm's deployment guide must state explicitly that production builds run with the standard JPMS exports only (no `--add-exports` to internal packages); test builds may set the flag scoped to the `test` task. Setting the flag in production is unsupported and voids the threat-model coverage of R8e/R8f for the affected internal package.
 
 ### Catalog persistence
 
@@ -210,6 +247,8 @@ R10 must also hold for compaction writers, repair writers, and any other writer 
 R10a. A writer must record the DEK version(s) it used to encrypt fields within the SSTable and include them in the scope section's DEK version set at `finish` time. A writer must not emit a `dek-version-count` that disagrees with the actual versions written.
 
 R10b. A writer that fails mid-write (IOException during any section emit including the scope section) must transition to `FAILED` state and refuse all subsequent operations, consistent with `sstable.end-to-end-integrity` R3/R22 close-atomicity. Partially-written footer bytes must not be committed — the magic-as-commit-marker invariant is preserved.
+
+R10b-bis. **Writer's `finish()` must trap RuntimeException from the commit-hook re-resolve step.** A scoped writer's `finish()` method must catch any `RuntimeException` that escapes from the commit-hook re-resolve step (R10c step 3 — fresh catalog read or re-resolved scope materialisation), transition the writer to the `FAILED` state per R10a, and propagate the original `RuntimeException` to the caller wrapped in `IOException` (with the original as the cause via `IOException(message, cause)`). Specifically: a commit hook that returns `null` (causing `NullPointerException` on the next field access), throws `IllegalStateException`, throws any other unchecked exception, or otherwise fails to produce a valid fresh scope must NOT leave the writer in `OPEN` state. The required catch chain in the `finish()` method must cover at minimum `IOException`, `ClosedByInterruptException`, and `RuntimeException` — narrower catches that miss `RuntimeException` are a spec violation because they leave the writer eligible for a retry that would re-run the same broken hook with the same broken result. The fault-containment discipline aligns with R10a's `FAILED`-state invariant and R10b's one-shot-after-failure invariant: any irrecoverable error during R10c steps 3–6, regardless of exception type, must terminate the writer in `FAILED` state.
 
 R10c. **Writer-finish-time metadata re-check against fresh catalog read.** At `finish()`, the writer must partition its work so that the exclusive catalog lock (R7b step 1) is held for the minimum time necessary — specifically, the lock covers only the fresh-catalog-read, the encryption-state compare, and the footer-commit. Bulk data-section emission and fsync must complete **before** the lock is acquired.
 
@@ -242,7 +281,28 @@ R10d. **v6 footer emit order with double-fsync commit barrier.** The writer must
 
 The `magic` write must be the final byte-emit before the post-magic fsync. The pre-magic fsync is mandatory: byte-emit order does not imply reach-disk order on all substrates, and without the pre-magic fsync, an out-of-order writeback could produce a file that has durable magic but non-durable scope / footerChecksum bytes. A partial write that has emitted `footerChecksum` but not `magic` must be classified as incomplete per `sstable.end-to-end-integrity` R40. This pins the magic-as-commit-marker invariant and guarantees that a file with durable magic has all prior footer bytes also durable.
 
+R10d-bis. **Non-FileChannel writers must invoke the application-level fsync-listener at the close-before-move boundary.** When the writer's underlying output is not a `FileChannel` — for example, the remote `SeekableByteChannel` pattern that `io-internals` mandates for S3/GCS-compatible code paths — the application-level fsync-listener invocation that R10d implies at the close→rename boundary must still fire, with a documented `reason` value of `"close-before-move"`. The listener-symmetry contract is: every writer commit produces a single application-level fsync-listener event observable to subscribers (backup hooks, progress trackers, integrity-check schedulers, audit pipelines), regardless of whether the underlying substrate is a local `FileChannel` (where R10d's double-fsync orchestration produces the event) or a remote `SeekableByteChannel` (where the substrate has no `force()` operation and the listener fires from the close-before-move path). A non-`FileChannel` writer that closes its channel and renames its file without invoking the listener has skipped the listener-symmetry contract and is a spec violation. The contract is structural: observers see the same lifecycle event shape across local and remote backends, so cross-backend test fixtures and operational dashboards remain semantically uniform.
+
 R10e. **Writers are not restart-resumable.** On process restart, any SSTable tmp file lacking committed magic (see `sstable.end-to-end-integrity` R40) must be deleted during recovery, not resumed. A writer's decision about `v5` vs `v6` emit is made at `open` time (and re-checked at `finish` per R10c) within a single process lifetime. No mechanism may rehydrate a partially-written SSTable from a prior process's state. This closes the attack where a pre-crash writer's `v5`-emit intent could survive a restart after `enableEncryption` committed.
+
+R10f. **Scoped writers must be paired with a commit hook at construction.** A writer construction path that accepts a non-null `TableScope` must also accept a non-null commit-hook reference (the SPI defined for R10c steps 2–7) AND a non-null logical table name for the lock. If any of these three values are present without the other two, writer construction must fail with `IllegalStateException` at the construction-time validation site (i.e. at the public builder's `build()` call, before any output file is opened). The error message must identify which of the three values is missing and must reference R10c without revealing scope identifiers (R12).
+
+This requirement closes the silent-bypass attack in which a scoped writer constructed without a hook would emit a v6 footer using construction-time scope and skip the R10c fresh-catalog re-read entirely — re-introducing the TOCTOU window that R10c exists to defend. The fail-fast belongs in the construction code path, not in a comment or in convention. R10f operates at the same trust-boundary level as R8e's sealed `Table` and R9a-mono's catalog-index downgrade defence: a structural rather than soft enforcement of the protocol.
+
+R10f applies to every public construction path the writer exposes — every builder, factory, or constructor visible from outside the writer's owning package. Internal package-private constructors used only for byte-layer test harnesses are subject to R10g's narrow opt-out, not R10f.
+
+R10g. **Narrow byte-layer test opt-out.** A separate construction path may permit a scoped writer without a commit hook **only** under all of the following conditions, none of which may be relaxed:
+
+1. The path is exposed via an explicitly named opt-out method on the public builder (or an equivalent named API surface) — for example `commitHookOmittedForTesting()` — whose name communicates that the call site has knowingly opted out of the R10c TOCTOU defence. The opt-out must NOT be the default. A scoped writer that has not invoked the opt-out and has not supplied a commit hook must fail per R10f.
+2. Once invoked, the opt-out flag is sticky for the lifetime of the builder; a subsequent `commitHook(...)` call on the same builder must reject the combination with `IllegalStateException` rather than silently un-opt-out. This prevents drive-by re-introduction of a hook without removing the opt-out marker, which would obscure the bypass intent.
+3. Every writer constructed via the opt-out path must, at `finish()`-time, take the legacy `else if (scope != null)` branch (i.e. emit the v6 scope section with construction-time scope, no fresh re-read). The opt-out must NOT compose with the commit-hook protocol — it is a strict alternative, not a layered defence.
+4. The opt-out is not a sanctioned engine-integration path. Engine integration code (every writer site in jlsm-engine that produces a committed SSTable in an encrypted table — flush, compaction, repair) MUST supply a commit hook and MUST NOT invoke the opt-out method. The audit boundary is: any production-path code calling the opt-out method is a spec violation.
+5. Test code invoking the opt-out path accepts that the resulting writer does not enforce R10c. Tests may exercise the byte-layer footer emit, scope section encoding, and v5/v6 dispatch in this mode, but tests of the R10c protocol itself must use the commit-hook path.
+6. The opt-out method's documentation must state explicitly that it bypasses R10c, must reference this requirement (R10g), and must state that it is intended only for byte-layer / unit-test harnesses.
+
+The opt-out is the named test-engineering carve-out; it is not a "documented escape hatch in production." Its existence trades a structural fail-fast for a visible call-site signal — every site that opts out of R10c is grep-able by method name. Without the opt-out, the byte-layer unit tests for the v6 footer emit path could not be authored without standing up the engine layer's catalog and commit-hook implementation, which would couple jlsm-core unit tests to jlsm-engine. The carve-out preserves the layering boundary while keeping the bypass visible.
+
+R10g shares its trust-boundary disclosure shape with R13b (storage substrate) and R8j (`--add-exports` flag): the library does not enforce that production code refrains from the opt-out at runtime. Code review and the audit pipeline are the enforcement mechanism. A production code site that invokes the opt-out is a spec violation surfaced by the next audit pass.
 
 ### Concurrency contract
 
@@ -267,6 +327,8 @@ The error message may include:
 - The format version encountered
 
 This discipline matches the error-messaging conventions in `encryption.primitives-lifecycle` R22b/R24.
+
+R12a. **Format-version byte values must be redacted from exception messages.** When loading or reading any catalog file (`table.meta`, catalog index) or SSTable file, an error caused by an unknown format-version byte must NOT include the offending byte's numeric value (decimal, hexadecimal, character escape, or any other encoding) in the exception message. The message must state that an unknown format version was encountered (e.g., "unknown format version in <file-identity>") and may identify the file by name or path, but the byte value itself must be omitted. R12a generalises R12's "no DEK / no key material" discipline to the format-discriminant byte, on the principle that file-structure bytes are part of the same redaction class as DEK material — leaking the byte value to a caller (or to a log forwarded out of the trust boundary) gives an attacker a positive signal that distinguishes "valid version" from "invalid version" by inspection of an error message produced by an unauthenticated probe. The R12a redaction applies uniformly to every catalog and SSTable file format-version byte, including future format versions added by amendments to `table-catalog-persistence`, `sstable.end-to-end-integrity`, or this spec. Validation must be a runtime conditional (explicit `if`/`throw`), not a Java `assert`.
 
 ---
 
@@ -308,6 +370,22 @@ restarts.
   [`sstable-active-tamper-defence`](../../.decisions/sstable-active-tamper-defence/adr.md)
   evaluates manifest MAC, per-block AEAD, or other cryptographic
   file-integrity options if jlsm commits to that threat model.
+
+**Out of scope** (delegated to the trusted-export carve-out per R8h):
+- Subclass override of `metadata()` (or any other non-`final` method)
+  on `CatalogTable` / `CatalogClusteredTable` by callers with
+  `--add-exports jlsm.engine/jlsm.engine.{internal,cluster.internal}=...`
+  access. This is treated identically to R8f bullet 4's reflection
+  carve-out: callers with build-system / startup-flag access are
+  in-tree trusted, equivalent to having reflection access. The HKDF
+  scope binding (R11 of `encryption.primitives-lifecycle`) remains
+  the cryptographic defence against wrong-scope plaintext recovery;
+  the carve-out closes the audit-trail attribution gap (an attacker
+  with both `--add-exports` and legitimate scope-X read access can
+  route scope-X bytes through a forged scope-Y handle, but cannot
+  recover plaintext they were not already authorised to read).
+  Production deployments must not set the `--add-exports` flag —
+  see R8j.
 
 ### Why this approach
 
@@ -383,3 +461,547 @@ provide the type-level + runtime + fast-fail clear-error behaviour.
   defeated the re-check. v3 (this spec) requires fresh catalog read
   through the `AtomicReference<TableMetadata>` publication that
   R7b step 5 establishes.
+
+- **Soft "documented escape hatch" for scope-without-hook writer
+  construction** — rejected. The audit run-001 finding
+  F-R1.resource_lifecycle.1.2 demonstrated that the legacy `else if
+  (scope != null)` branch in the writer's `finish()` produces a
+  silent R10c bypass: a scoped writer without a hook emits a v6
+  footer using construction-time scope, skipping the fresh-catalog
+  re-read. Two resolutions were considered:
+  - **Loud-fail with no carve-out** — every scoped writer must have
+    a hook. Rejected because the byte-layer unit tests for v6 footer
+    emit, scope-section encoding, and v5/v6 dispatch (in `jlsm-core`)
+    cannot reasonably stand up the engine-layer catalog and commit-hook
+    implementation without coupling the layering boundary.
+  - **Documented escape hatch** — the legacy branch is permitted with
+    a comment explaining R10c-bypass semantics. Rejected because this
+    is exactly the
+    `silent-fallthrough-integrity-defense-coupled-to-flag` pattern
+    already in this spec's `kb_refs` — a "documented" bypass is
+    indistinguishable from an undocumented bypass once the
+    documentation drifts from the call sites.
+  v7 (this amendment) adopts a third resolution: **structural fail-fast
+  (R10f) plus a narrowly-named test opt-out (R10g)**. Production code
+  paths cannot construct a scoped writer without a hook; test code
+  paths must invoke an explicitly named opt-out method, making every
+  bypass site grep-able. This trades a hard structural defence for a
+  visible call-site signal — same trust-boundary shape as R13b
+  (storage substrate) and R8j (`--add-exports` flag). The
+  enforcement-against-production-misuse is code review and the audit
+  pipeline, not runtime check; the structural defence is the
+  fail-fast that catches the unintentional case (a developer forgetting
+  the hook), and the named opt-out catches the intentional case (a test
+  knowingly bypassing).
+
+- **Forcing `metadata()` final on `CatalogTable` / `CatalogClusteredTable`** —
+  rejected because the type-system finality contributes nothing to
+  the threat model once the attacker has the project's `--add-exports`
+  flag (R8h's carve-out). The cryptographic defence (R6b HKDF
+  binding) remains the residual barrier against wrong-scope plaintext
+  recovery, regardless of whether `metadata()` is final or virtual.
+  Authoring `metadata()` as final would block five in-tree test
+  stubs that depend on overriding it for adversarial scenarios
+  (deliberate-null metadata to drive rollback-NPE paths,
+  scope-mismatch to exercise R6, encryption-state flip to exercise
+  R10c's TOCTOU re-check). v6 of the spec (this amendment) adopts
+  R8i as the explicit non-finality declaration and R8h as the
+  named threat-model carve-out, replacing the implicit "boundary
+  observation" in v5 that the audit pipeline (run-001) flagged
+  as a structural gap (F-R1.dispatch_routing.3.1, FIX_IMPOSSIBLE).
+
+- **Single canonical constructor accepting any `Set<Integer>` (including
+  empty)** — rejected. The audit run-001 finding F-R1.resource_lifecycle.4.10
+  demonstrated that allowing the canonical constructor to accept an empty
+  set silently constructs a "deny-all" R3e dispatch gate, separating the
+  point of misuse (caller passes `Set.of()` by mistake or after a footer-parse
+  bug) from the point of failure (R3f loud-fails on the next envelope, far
+  from the cause). Two resolutions were considered:
+  - **Reject empty at canonical constructor with no carve-out** — would
+    correctly close the silent-deny-all gap but would simultaneously prevent
+    the legitimate v5 (no-scope) reader path and the legitimate v6
+    zero-DEK-footer reader path from constructing the read-context value
+    at all. Both paths exist in the SSTable reader (`TrieSSTableReader`
+    open paths) and both are valid R3c/R3e consumers. A pure loud-fail
+    would force one of these legitimate paths into a contortion (e.g.,
+    constructing with `Set.of(0)` and then post-filtering, which itself
+    is a worse silent failure).
+  - **Single named factory `forZeroDekFooter()` only** — addresses State B
+    (v6 with `dek-version-count = 0`) but conflates State C (v5 reader
+    with no scope section) with either State A (forcing v5 callers to
+    invent a synthetic non-empty set) or State B (mis-signalling that
+    a v5 reader has a "zero-DEK footer" when it has no footer scope at
+    all). Naming State B without naming State C produces a less truthful
+    contract than three explicit states.
+  v8 (this amendment) adopts a third resolution: **canonical constructor
+  loud-fails on empty (R3g), and TWO named factories — one each for
+  State B and State C — express the legitimate empty-state contracts
+  (R3g + R3h)**. The implementation chooses the names; the spec mandates
+  that they communicate the legitimate-empty-state contract at the call
+  site so a reviewer reading any production caller sees the intent.
+  Caller-site discipline (R3h) is enforced by code review + audit pipeline,
+  same trust-boundary disclosure shape as R10g (byte-layer-test opt-out),
+  R13b (storage substrate), and R8j (`--add-exports` flag). The structural
+  fail-fast catches the unintentional case (a developer passing an empty
+  set into the canonical constructor); the named factories catch the
+  intentional case (a footer-parse path or v5 path knowingly producing
+  an empty-state read context).
+
+---
+
+## Verification Notes
+
+### Verified: v9 — 2026-04-25 (state: APPROVED — audit reconciliation amendment, source change required)
+
+Audit reconciliation work (audit run `implement-encryption-lifecycle--wd-02/audit/run-001`) surfaced five spec gaps where audit fixes addressed bugs the existing requirements did not cover. v9 adds five tightening requirements:
+
+- **R2g (new):** writer-side defensive snapshot of caller-supplied DEK-version array at encode-method entry. Closes the TOCTOU between length validation and encode-loop emission. Source: F-R1.contract_boundaries.1.001 (`V6Footer.encodeScopeSection` trusted caller's `int[]`).
+- **R5a (new):** parsed v6 footer record must expose `dek-version-set` as an unmodifiable view independent of any source. Closes the immutability hazard where the parser accepted any `Set` without copy. Source: F-R1.contract_boundaries.1.002 (`V6Footer.Parsed` accepted any `Set` without copy).
+- **R10b-bis (new):** writer's `finish()` must trap `RuntimeException` from the commit-hook re-resolve step (R10c step 3), transition to `FAILED`, and propagate wrapped in `IOException`. Closes the silent-stay-OPEN bug when commit hook returned null / threw NPE / threw any other unchecked exception. Source: F-R1.resource_lifecycle.1.3 (`finishUnderCommitHook` with null `freshScope` NPE'd through writer with state==`OPEN`).
+- **R10d-bis (new):** non-`FileChannel` writers must invoke the application-level fsync-listener with `reason="close-before-move"`. Closes the listener-symmetry gap on remote `SeekableByteChannel` writers where R10d's `FileChannel`-based double-fsync orchestration cannot fire. Source: F-R1.resource_lifecycle.1.5 (`closeChannelQuietly` ran before commit; remote writers never invoked listener).
+- **R12a (new):** format-version byte values must be redacted from exception messages on unknown format versions, generalising R12's no-key-material discipline to file-structure bytes. Source: F-R1.contract_boundaries.2.3 (`TableCatalog.readMetadata` leaked offending byte value).
+
+**Verification impact:**
+
+- All five additions are tightening (gap closure), not scope changes. No existing requirement is invalidated.
+- R2g pairs with R3/R3a/R3b on the writer side. R5a pairs with R3e/R4 on the reader side. R10b-bis tightens R10a/R10b's failure-state contract. R10d-bis closes the listener-symmetry gap that R10d's `FileChannel`-only ordering implicitly assumed away. R12a generalises R12's redaction class.
+- Implementation impact: writer encode entry points adopt `Arrays.copyOf` / equivalent at method entry; parser materialises `Set.copyOf` of the parsed DEK versions; `finish()` adds `catch (RuntimeException)` to the commit-hook handler; non-`FileChannel` writers invoke the listener at the close-before-move boundary; catalog/SSTable readers omit the byte value from unknown-version exception messages.
+
+**Overall: APPROVED — amendment with source changes required.** Audit run-001 already fixed each of the five bugs in source; v9 captures the contract invariants those fixes enforce.
+
+### Verified: v8 — 2026-04-25 (state: APPROVED — amendment, source change required)
+
+Audit relaxation work (audit run `implement-encryption-lifecycle--wd-02/audit/run-001`,
+finding F-R1.resource_lifecycle.4.10) closed the silent-deny-all attack on the
+`ReadContext` canonical constructor. The prove-fix protocol reached FIX_IMPOSSIBLE
+because the existing TDD test
+`ReadContextTest.constructor_acceptsEmptySet_forEmptyDekSetSstable` (lines 36-45
+of `ReadContextTest.java`) encoded the bug as the contract: "`ReadContext` must
+accept `Set.of()` and produce a record whose `allowedDekVersions()` is empty."
+That test must change as part of resolving this finding (RELAX-5 escalation). v8
+adds two new requirements to R3's tightening cluster:
+
+- **R3g (new):** the public construction surface for the R3e dispatch gate must
+  distinguish three states — State A (scoped read, non-empty DEK set; canonical
+  constructor), State B (scoped read, footer-declared zero DEK versions; named
+  factory), State C (unscoped read, no v6 footer present; named factory). The
+  canonical constructor must reject the empty set with `IllegalArgumentException`.
+  Loud-fail at construction belongs at the point of misuse, not deferred to R3f's
+  iteration-time check; R3f remains as defence-in-depth.
+- **R3h (new):** caller-site discipline. The named factories may be invoked only
+  by the v6 footer parse path (State B), the v5 reader open path (State C), and
+  unit tests of the factories themselves. Engine-layer reader sites must not
+  construct `ReadContext` directly. Same trust-boundary disclosure shape as
+  R10g, R13b, R8j: enforcement is code review + audit pipeline, not runtime.
+
+**Implementation impact (the source change required):**
+
+- `ReadContext` (`modules/jlsm-core/src/main/java/jlsm/encryption/ReadContext.java`)
+  canonical constructor adds a guard: `if (allowedDekVersions.isEmpty()) throw
+  new IllegalArgumentException(...)` whose message identifies the silent-deny-all
+  attack and references R3g.
+- `ReadContext` adds two static factories — names chosen by the implementation
+  (e.g., `forZeroDekFooter()` for State B and `forUnscopedRead()` for State C, or
+  semantically equivalent named factories that communicate the empty-state contract
+  at the call site). Each factory's Javadoc cites R3g and identifies the
+  legitimate caller path (v6 footer parse with `dek-version-count = 0` for State
+  B; v5 reader open path for State C).
+- `TrieSSTableReader` (existing call sites at lines 194, 366, 371) is updated:
+  - Line 194 (legacy v1 reader path / pre-v6 default): switches to the State C
+    factory; this site is structurally inert under R3e.
+  - Line 366 (v6 path with parsed DEK-version set): branches on
+    `parsed.dekVersionSet().isEmpty()` at this dispatch site — selecting the
+    State B factory if empty, the canonical constructor if non-empty. The
+    branch must occur at this call site, not be deferred into the constructor
+    (R3h's "footer parse path must NOT pass an empty set into the canonical
+    constructor as a substitute for the State B factory").
+  - Line 371 (v5 path, no scope): switches to the State C factory.
+- `ReadContextTest.constructor_acceptsEmptySet_forEmptyDekSetSstable` is replaced
+  by three tests (this is the test contract change RELAX-5 explicitly authorises):
+  - `constructor_rejectsEmptySet_R3g` — `assertThrows(IllegalArgumentException.class,
+    () -> new ReadContext(Set.of()))`. Becomes the negative test for R3g.
+  - `forZeroDekFooter_producesEmptyAllowedVersions_R3g_StateB` — exercises the
+    State B factory: produces a `ReadContext` whose `allowedDekVersions().isEmpty()`
+    is true, suitable for the v6 footer-declared-zero-DEK case.
+  - `forUnscopedRead_producesEmptyAllowedVersions_R3g_StateC` — exercises the
+    State C factory: produces a `ReadContext` whose `allowedDekVersions().isEmpty()`
+    is true, suitable for the v5 reader open path.
+- The hot-path same-instance-across-accessor invariant (Lens B finding asserted by
+  `ReadContextTest.recordComponent_returnsSameInstanceAcrossAccessors`) must hold
+  for both factory-produced instances — the empty unmodifiable set must be the
+  same identity across `allowedDekVersions()` calls on a given factory-produced
+  instance (and may legitimately be the same across all State B / State C
+  instances if the implementation caches `Set.of()` as a singleton).
+
+**Overall: APPROVED — amendment with source change required.** The current
+`ReadContext` canonical constructor (lines 51-57 of `ReadContext.java`) silently
+constructs a deny-all R3e dispatch gate when the empty set is passed; v8 requires
+the canonical constructor to loud-fail and the legitimate empty-state cases to
+flow through named factories. The blocking test at `ReadContextTest.java:36-45`
+is replaced per the test contract change documented above.
+
+#### Authoring log (autonomous decisions made under non-interactive subagent invocation)
+
+This spec amendment was authored under a non-interactive subagent invocation
+from the audit pipeline's spec-author dispatcher (RELAX-5). The protocol
+normally prompts the user between Pass 1 and Pass 2 and during arbitration;
+under the non-interactive constraint the author made the following best-judgment
+decisions and recorded them here for review:
+
+1. **Amendment vs new spec:** chose to amend `sstable.footer-encryption-scope`
+   (bump v7 → v8) rather than author a separate `encryption.read-context-construction`
+   spec. Rationale: R3c/R3e/R3f already live here as the DEK-set / R3e-gate
+   cluster; R3g/R3h are tightening of the same protocol. Fragmenting the
+   construction-time contract across a separate spec would split the threat-model
+   boundary documentation. Aligns with project memory `feedback_spec_inplace_amendment`
+   (in-place amendment over spec split) and matches RELAX-1's R8h–R8j choice
+   (metadata-finality carve-out) and RELAX-4's R10f/R10g choice (scoped writer
+   without commit hook).
+
+2. **Two-state vs three-state factory model:** the brief offered two resolutions
+   — (a) reject empty at construction, or (b) introduce a single
+   `forZeroDekFooter()` factory. The author chose a third (three-state model).
+   Rationale: the `ReadContext` empty-set case has THREE distinct production
+   call sites in the existing source — `TrieSSTableReader` lines 194 (v1 legacy),
+   366 (v6 with parsed empty set), and 371 (v5 no-scope). These collapse into
+   the single `Set.of()` value today, but they correspond to two different
+   contracts (State B = v6 with declared zero DEKs; State C = v5 with no scope
+   section at all). A single factory would conflate them and force one of the
+   call sites into a misleading factory name. Three-state separation makes each
+   call site grep-able for its intent — same enforceability shape as R10g's
+   named opt-out for scoped writers without a commit hook. This matches
+   project memory `feedback_exercise_processes_pre_ga` (theoretical "soft"
+   policies are worse than enforced ones; named factories are enforceable
+   call-site signals, defaulting an empty set into the canonical constructor
+   is not).
+
+3. **Loud-fail at canonical constructor + R3f as defence-in-depth:** chose to
+   keep R3f's iteration-time loud-fail unchanged, even though R3g now closes
+   the silent-construction gap that R3f was the only line of defence against.
+   Rationale: R3g and R3f defend against different attack shapes. R3g defends
+   against caller misuse at the construction site (the silent-deny-all
+   mistake). R3f defends against writer/footer corruption — a v6 SSTable whose
+   footer declared `dek-version-count = 0` but whose entries carry envelope
+   DEK-version fields (a writer-side R3d violation). A construction-time
+   guard cannot catch the writer-side violation because the construction
+   happens with the parsed-empty set; only iteration over actual entries
+   reveals the inconsistency. R3f remains essential, layered as
+   defence-in-depth behind R3g.
+
+4. **Caller-site discipline (R3h) as audit-boundary, not runtime defence:**
+   chose to specify R3h as a code-review/audit-pipeline boundary rather than
+   add a runtime check (e.g., a stack-trace inspection or caller-class check
+   in the factory methods). Rationale: jlsm's spec corpus consistently uses
+   the trust-boundary disclosure pattern for this shape of contract (R10g,
+   R13b, R8j) — the library does not enforce caller-site discipline at
+   runtime; the boundary is the build/deploy/code-review configuration.
+   Adding a runtime check at the factory would be a false-confidence defence
+   (the engine-layer caller could trivially construct a `ReadContext` via
+   the canonical constructor with a non-empty placeholder set and then
+   never use it). The structural defence is R3g's loud-fail-at-canonical-constructor;
+   R3h's purpose is to specify the legitimate boundary so future audit
+   passes can detect drift.
+
+5. **Test contract change:** chose to authorise the test rewrite (replacing
+   `constructor_acceptsEmptySet_forEmptyDekSetSstable` with three new tests)
+   as part of this amendment. Rationale: the prove-fix protocol reached
+   FIX_IMPOSSIBLE precisely because the test encoded the bug as the contract;
+   the spec is the source of truth for behaviour. The test was authored under
+   the prior contract that conflated all three empty-set states into a single
+   constructor call — once the spec distinguishes them, the test must follow.
+
+6. **No prerequisite stubs needed:** R3g and R3h reference R3c, R3e, R3f, R10g,
+   R13b, R8j — all are existing APPROVED requirements in the spec corpus. R3g
+   does not name the factory methods (it mandates "explicitly named static
+   factory methods or the structural equivalent"); the implementation is free
+   to choose the exact names.
+
+7. **Adversarial passes (Pass 2 + Pass 3) run autonomously:**
+   - **Boundary validation probe (Pass 2):** asked whether R3g's
+     `IllegalArgumentException` could be bypassed by caller construction
+     of a single-element-then-clear pattern (e.g.,
+     `new ReadContext(new HashSet<>(List.of(1))).allowedDekVersions().clear()`).
+     Answer: no — the existing R3e contract (and the existing
+     `recordComponent_returnsSameInstanceAcrossAccessors` test) requires
+     `Set.copyOf` to produce an unmodifiable view; clear() on the returned
+     set throws `UnsupportedOperationException`. The construction-time
+     non-empty guard combined with the unmodifiable accessor view is
+     sufficient.
+   - **Cross-construct atomicity probe (Pass 2):** asked whether R3g
+     interacts with R3e's "before invoking any DEK resolver" timing
+     requirement. Answer: no — R3g is a construction-time check; R3e is
+     a runtime dispatch check. They operate at different points in the
+     read pipeline and are independent.
+   - **Concurrency contract probe (Pass 2):** asked whether the new
+     factories have thread-safety implications. Answer: no — `ReadContext`
+     remains an immutable record (per existing R11 thread-safety
+     declaration), and the factories produce immutable record instances.
+     A factory may legitimately cache its empty-state instance as a
+     singleton (no allocation per call) without thread-safety concern,
+     since the instance is structurally immutable.
+   - **Trust boundary probe (Pass 3):** asked whether R3h's "engine-layer
+     code must not construct `ReadContext` directly" disclosure has the
+     same enforceability problems as R8j and R10g. Answer: yes, identical.
+     Added the explicit cross-reference in R3h's final paragraph so the
+     trust-boundary shape is consistent across R3h, R8j, R10g, R13b.
+   - **Identity and equality probe (Pass 3):** asked whether two
+     `ReadContext` instances produced by State B and State C factories
+     must be `equals()` to each other (both have empty allowed-versions
+     sets). Answer: under the existing `equality_isComponentWise` test
+     contract, yes — both produce records whose single component is
+     equal (the empty unmodifiable set). The spec does not need a new
+     requirement here because R3g distinguishes the states at the
+     construction site, not at the equality / value level. Two
+     factory-produced instances being structurally equal is acceptable;
+     the call-site discipline (R3h) is what carries the semantic
+     distinction. If a future spec needs to distinguish State B from
+     State C at the value level (e.g., for distinct error messages from
+     R3f), it would require a discriminator field — but the current
+     R3f contract does not need this; R3f's distinction is between
+     "footer declared zero versions" (State B's failure mode) and
+     "version not in declared set" (State A's failure mode), and v5
+     readers (State C) never reach R3f because v5 entries have no
+     envelope DEK-version field at all.
+   - **Error propagation probe (Pass 3):** asked whether R3g's
+     `IllegalArgumentException` discloses information that R12 forbids
+     (DEK bytes, footer offsets, control-codepoint values). Answer: no
+     — R3g's exception identifies the silent-deny-all attack pattern
+     and references R3g; it does not reveal any DEK material, footer
+     bytes, or scope identifiers. The implementation message must remain
+     within R12's discipline (the construction site has no scope or
+     DEK context to leak).
+
+### Verified: v7 — 2026-04-25 (state: APPROVED — amendment, source change required)
+
+Audit relaxation work (audit run `implement-encryption-lifecycle--wd-02/audit/run-001`,
+finding F-R1.resource_lifecycle.1.2) closed the silent R10c-bypass attack on the
+public Builder path. The prove-fix protocol reached FIX_IMPOSSIBLE because the
+existing test
+`TrieSSTableWriterR10cTest.scopedWriter_withoutHook_finishStillSucceeds_butWarnsOrCommitsOptionally`
+encoded the bug as the contract: "scoped writer without a hook builds and finishes
+successfully." That test must change as part of resolving this finding (RELAX-4
+escalation). v7 adds two new requirements to R10's tightening cluster:
+
+- **R10f (new):** scoped writers must be paired with a commit hook at construction.
+  Public construction paths must fail-fast with `IllegalStateException` if
+  `scope` is supplied without `commitHook` and `tableNameForLock`. The fail-fast
+  belongs in production code, not in a comment or in test convention. Operates
+  at the same trust-boundary level as R8e's sealed `Table` (compile-time
+  structural defence) and R9a-mono's catalog-index downgrade prevention.
+- **R10g (new):** narrow byte-layer test opt-out. A separate, explicitly named
+  builder method (e.g. `commitHookOmittedForTesting()`) permits a scoped writer
+  without a hook for byte-layer unit tests. The opt-out is sticky (cannot
+  un-opt-out by adding a hook later), is incompatible with the commit-hook
+  protocol (strict alternative, not layered), and is not a sanctioned engine path.
+  Trust-boundary disclosure shape matches R13b (storage substrate) and R8j
+  (`--add-exports` flag): code review + audit pipeline are the enforcement
+  mechanism for production-path misuse.
+
+**Implementation impact (the source change required):**
+
+- `TrieSSTableWriter.Builder.build()` adds a guard that throws
+  `IllegalStateException` when `scope != null` and `commitHook == null` (and
+  the opt-out flag has not been set), referencing R10f.
+- `TrieSSTableWriter.Builder` adds a `commitHookOmittedForTesting()` method
+  that sets a sticky bypass flag, referencing R10g. The method's javadoc
+  references R10g and states the call site has knowingly opted out of R10c.
+- `TrieSSTableWriter.Builder.commitHook(...)` adds a guard that throws
+  `IllegalStateException` if invoked after `commitHookOmittedForTesting()`,
+  per R10g bullet 2.
+- `TrieSSTableWriterR10cTest.scopedWriter_withoutHook_finishStillSucceeds_butWarnsOrCommitsOptionally`
+  is replaced by two tests (this is the test contract change RELAX-4 explicitly
+  authorises):
+  - `scopedWriter_withoutHook_failsAtBuild_R10f` — `assertThrows(IllegalStateException.class, () -> ...)`
+    against the public Builder path with `.scope(...).dekVersions(...).build()`
+    and no hook. Becomes the negative test for R10f.
+  - `scopedWriter_withOptOut_finishStillSucceeds_R10g` — exercises the
+    opt-out path: `.scope(...).dekVersions(...).commitHookOmittedForTesting().build()`,
+    appends, finishes, asserts non-null `SSTableMetadata`, asserts the
+    legacy `else if (scope != null)` branch was taken (no fresh re-read).
+- Additional test asserting R10g bullet 2 (sticky opt-out): `.commitHookOmittedForTesting().commitHook(hook).build()`
+  must throw `IllegalStateException`.
+
+**Overall: APPROVED — amendment with source change required.** The current
+writer source (lines 423-430 of `TrieSSTableWriter.java`) silently bypasses R10c
+when scope is set without a commit hook; v7 requires the fail-fast guard at
+`Builder.build()` plus the named opt-out method. The blocking test at
+`TrieSSTableWriterR10cTest.java:165-181` is replaced per the test contract
+change documented above.
+
+#### Authoring log (autonomous decisions made under non-interactive subagent invocation)
+
+This spec amendment was authored under a non-interactive subagent invocation
+from the audit pipeline's spec-author dispatcher (RELAX-4). The protocol
+normally prompts the user between Pass 1 and Pass 2 and during arbitration;
+under the non-interactive constraint the author made the following best-judgment
+decisions and recorded them here for review:
+
+1. **Amendment vs new spec:** chose to amend `sstable.footer-encryption-scope`
+   (bump v6 → v7) rather than author a separate `sstable.writer-construction-validation`
+   spec. Rationale: R10c lives here and R10f/R10g are tightening of the same
+   protocol — fragmenting the requirement set across a separate spec would
+   create cross-reference drift and split the threat-model documentation.
+   Aligns with project memory `feedback_spec_inplace_amendment` (in-place
+   amendment over spec split) and matches RELAX-1's prior choice for the
+   `metadata()` finality carve-out (R8h–R8j).
+
+2. **Loud-fail vs documented escape hatch vs structural-fail-plus-named-opt-out:**
+   the brief offered two resolutions; the author chose a third (R10f + R10g
+   pair). Rationale: pure loud-fail breaks the byte-layer unit tests in
+   `jlsm-core` that exercise v6 footer emit without an engine; pure
+   documented-escape-hatch is the very `silent-fallthrough-integrity-defense-coupled-to-flag`
+   pattern already in this spec's `kb_refs` and reproduces the bug class.
+   The named-opt-out approach (R10g) preserves byte-layer testing while
+   making every bypass site grep-able by method name — same trust-boundary
+   shape as R13b's "deploying jlsm encryption on storage where write access
+   to SSTable bytes is not authenticated is unsupported" and R8j's
+   `--add-exports` flag carve-out. Project memory
+   `feedback_exercise_processes_pre_ga` reinforces this: theoretical "soft"
+   policies are worse than enforced ones; a named opt-out is enforceable
+   (grep + audit), a comment-documented bypass is not.
+
+3. **Sticky opt-out (R10g bullet 2):** chose to make the opt-out flag
+   sticky — once invoked, a subsequent `commitHook(...)` call fails rather
+   than silently rehydrating into the protocol path. Rationale: the
+   alternative (last-call-wins composition) would let a reviewer miss the
+   opt-out marker. A sticky flag forces the developer who wants to add a
+   hook to first remove the opt-out call, which makes the intent change
+   visible in the diff.
+
+4. **Test contract change:** chose to authorise the test rewrite (replacing
+   `scopedWriter_withoutHook_finishStillSucceeds_butWarnsOrCommitsOptionally`
+   with the two new tests) as part of this amendment. Rationale: the
+   prove-fix protocol reached FIX_IMPOSSIBLE precisely because the test
+   encoded the bug as the contract; the spec is the source of truth for
+   behaviour, not the test, and the test was authored as a lens-B
+   "defensive" test with self-described weakness ("we assert the writer at
+   minimum does not crash"). The test was a correctness-by-omission — it
+   accepted whatever the writer did because the expected behaviour was
+   under-specified at the time. v7 specifies the behaviour and the test
+   must follow.
+
+5. **No prerequisite stubs needed:** R10f and R10g reference R10c, R7b,
+   R12, R13b, R8j, R8e, R9a-mono — all are existing APPROVED requirements
+   in the spec corpus. R10g introduces a builder method by behavioural
+   description, not by name (the spec mandates "an explicitly named opt-out
+   method, e.g. `commitHookOmittedForTesting()`"); the implementation is
+   free to choose the exact name.
+
+6. **Adversarial passes (Pass 2 + Pass 3) run autonomously:**
+   - **Boundary validation probe (Pass 2):** asked whether R10f could be
+     bypassed by `--add-exports` access to the writer's package-private
+     constructor. Answer: yes, but the package-private constructor is
+     part of the same trust-boundary as R8h's `--add-exports` carve-out
+     — production code must not use it, and the audit pipeline catches
+     misuse. Recorded R10f's scoping ("Internal package-private
+     constructors used only for byte-layer test harnesses are subject
+     to R10g's narrow opt-out, not R10f").
+   - **Cross-construct atomicity probe (Pass 2):** asked whether the
+     opt-out interacts with R10b (FAILED state on RuntimeException).
+     Answer: no — the opt-out is a construction-time decision; once the
+     writer is constructed, R10b's failure handling is unchanged.
+   - **Concurrency contract probe (Pass 2):** asked whether the sticky
+     opt-out flag has thread-safety implications. Answer: no — Builder
+     instances are not shared across threads (matches the wider
+     non-thread-safe Builder contract in `jlsm-core`), so the sticky
+     flag is a simple field with no synchronisation requirement.
+   - **Trust boundary probe (Pass 3):** asked whether R10g's "production
+     code must not invoke the opt-out" disclosure has the same
+     enforceability problems as R8j. Answer: yes, identical — added
+     the explicit cross-reference in R10g's final paragraph so the
+     trust-boundary shape is consistent across R8j, R10g, and R13b.
+   - **Error propagation probe (Pass 3):** asked whether R10f's
+     `IllegalStateException` discloses scope identifiers in violation
+     of R12. Answer: addressed in R10f's text by requiring the error
+     message to identify which of the three values (scope, commitHook,
+     tableNameForLock) is missing without revealing scope identifiers.
+
+### Verified: v6 — 2026-04-25 (state: APPROVED — amendment, no new code required)
+
+Audit relaxation work (audit run `implement-encryption-lifecycle--wd-02/audit/run-001`,
+finding F-R1.dispatch_routing.3.1) closed the implicit boundary observation around
+`CatalogClusteredTable.metadata()` non-finality. The prove-fix protocol attempted to
+add `final` to `metadata()` and was blocked by five in-tree test sites that depend
+on the override path (RELAX-1 escalation). v6 adds three new requirements (R8h, R8i,
+R8j) that name the carve-out explicitly:
+
+- **R8g (amended):** test stubs may use either the test-only factory pattern OR
+  subclass-extension under R8h; both patterns are now permitted. The earlier
+  "must migrate to test-only factory" language is struck through (partial
+  displacement per project memory `feedback_spec_inplace_amendment`).
+- **R8h (new):** trusted-export threat-model carve-out. Names the
+  `--add-exports jlsm.engine/jlsm.engine.{internal,cluster.internal}=...` flag
+  as the explicit boundary, equivalent in trust class to R8f bullet 4's
+  reflection carve-out. Documents the residual cryptographic defence (R6b HKDF
+  binding) and the audit-trail attribution gap that remains under the carve-out.
+- **R8i (new):** declares `metadata()` non-final by design as a deliberate
+  consequence of R8h. Constrains future code: implementations MUST NOT add
+  internal logic that depends on `metadata()` being non-overridable as a
+  defence; any internal need for the construction-bound metadata must read
+  the private field directly.
+- **R8j (new):** production deployment guidance. The library does not enforce
+  the absence of the `--add-exports` flag at runtime; the trust boundary is
+  the build/deploy configuration. Identical in shape to R13b's storage-substrate
+  unauthenticated-write disclosure.
+
+**Overall: APPROVED** — amendment-only; no implementation change required.
+The current `CatalogClusteredTable.metadata()` implementation (line 668,
+`@Override public TableMetadata metadata() { return tableMetadata; }`) and
+the five test stub overrides (`TestTableStubs.MetadataOnlyStub`,
+`TestTableStubs.PermissiveStub`, `TestTableStubs.RecordingTable`,
+`ClusteredTableLocalShortCircuitTest.RecordingTable`, the
+`ResourceLifecycleAdversarialTest` anonymous null-metadata subclass) are
+all compliant with v6. The audit finding F-R1.dispatch_routing.3.1 is
+resolved as ACCEPTED (carve-out documented), not FIXED.
+
+#### Authoring log (autonomous decisions made under non-interactive subagent invocation)
+
+This spec amendment was authored under a non-interactive subagent invocation
+from the audit pipeline's spec-author dispatcher (RELAX-1). The protocol
+normally prompts the user between Pass 1 and Pass 2 and during arbitration;
+under the non-interactive constraint the author made the following best-judgment
+decisions and recorded them here for review:
+
+1. **Amendment vs new spec:** chose to amend `sstable.footer-encryption-scope`
+   (bump v5 → v6) rather than author a separate `engine.cluster.clustered-table-construction`
+   spec. Rationale: R8e/R8f/R8g already live here; fragmenting the threat-model
+   carve-out across a separate spec would create cross-reference drift. Aligns
+   with project memory `feedback_spec_inplace_amendment` (in-place amendment
+   over spec split).
+
+2. **Permanent non-finality vs deferred migration:** chose to declare
+   `metadata()` permanently non-final (R8i) rather than deferring to a future
+   migration that finalises it. Rationale: the test-only factory pattern of
+   R8g(a) cannot inject deliberate-null metadata or per-call-mutating metadata
+   without subclass extension or reflection — both of which are R8h-carved-out
+   patterns. The "migration target" framing in v5's R8g was aspirational and
+   not achievable without losing test-engineering capability that the
+   audit-pipeline's adversarial tests rely on.
+
+3. **Trust-boundary scope of R8h:** chose to scope R8h to BOTH internal
+   packages (`jlsm.engine.internal` and `jlsm.engine.cluster.internal`)
+   uniformly, even though the immediate finding F-R1.dispatch_routing.3.1
+   touched only the cluster-internal package. Rationale: `CatalogTable` and
+   `CatalogClusteredTable` are co-permits of the sealed `Table`; treating them
+   asymmetrically would create a follow-up audit risk for the single-node
+   path.
+
+4. **Audit-trail attribution disclosure in R8h:** chose to spell out the
+   residual gap that the cryptographic defence does NOT close (an attacker
+   with `--add-exports` AND legitimate scope-X access can route scope-X bytes
+   through a forged scope-Y handle, exposing only the per-table audit-trail
+   attribution). Rationale: R6b's HKDF binding does NOT prevent this attack
+   (the attacker has the scope-X DEK material legitimately); not disclosing
+   the gap would violate the spec's threat-model honesty discipline.
+
+5. **No prerequisite stubs needed:** R8h and R8i reference R6b, R8e, R8f,
+   R10c, R11 (encryption.primitives-lifecycle), R13b — all are existing
+   APPROVED requirements in the spec corpus. No new prerequisite stubs
+   were introduced.
+
+Adversarial passes (Pass 2 + Pass 3) were run autonomously by reasoning
+about each new requirement against the falsification lenses in
+`SKILL.md` (boundary validation, trust boundary, error propagation,
+cross-construct atomicity, concurrency contract). The findings that
+shaped the final wording are summarised in the "What was ruled out" entry
+above for `metadata()`-final.

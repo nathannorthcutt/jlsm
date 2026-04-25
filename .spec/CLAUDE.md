@@ -28,7 +28,8 @@
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
-| 2026-04-24 | sstable.footer-encryption-scope | sstable | SSTable Footer Encryption Scope Metadata (v4 APPROVED, hardened through 4 adversarial passes) |
+| 2026-04-25 | engine.clustered-table-construction | engine | Clustered Table Construction Contract (v1 APPROVED — RELAX-2 names dispatch-time fail-fast for null `localEngine` local-owner case; amends engine.clustering R60) |
+| 2026-04-25 | sstable.footer-encryption-scope | sstable | SSTable Footer Encryption Scope Metadata (v8 APPROVED — RELAX-5 amendment adds R3g three-state ReadContext construction + R3h caller-site discipline; canonical constructor loud-fails on empty set, named factories carry State B / State C contracts) |
 | 2026-04-22 | sstable.end-to-end-integrity | sstable | SSTable End-to-End Integrity (v4 APPROVED) |
 | 2026-04-22 | sstable.pool-aware-block-size | sstable | Pool-Aware Block Size Configuration (v4 APPROVED) |
 | 2026-04-15 | F48 | partitioning, storage | Corruption Repair and Recovery |

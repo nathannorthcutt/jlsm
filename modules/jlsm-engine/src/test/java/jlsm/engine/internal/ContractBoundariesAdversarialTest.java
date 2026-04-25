@@ -1,7 +1,12 @@
 package jlsm.engine.internal;
 
+import jlsm.encryption.DomainId;
+import jlsm.encryption.TableId;
+import jlsm.encryption.TableScope;
+import jlsm.encryption.TenantId;
 import jlsm.engine.AllocationTracking;
 import jlsm.engine.HandleEvictedException;
+import jlsm.engine.Table;
 import jlsm.engine.TableMetadata;
 import jlsm.table.FieldType;
 import jlsm.table.JlsmDocument;
@@ -348,6 +353,115 @@ class ContractBoundariesAdversarialTest {
                 () -> new HandleEvictedException("table", "src", -1, null,
                         HandleEvictedException.Reason.EVICTION),
                 "HandleEvictedException should reject negative handleCountAtEviction");
+    }
+
+    // Finding: F-R1.contract_boundaries.2.1
+    // Bug: LocalEngine wires SSTableWriterFactory as the bare TrieSSTableWriter::new 3-arg
+    // constructor reference at line 449 — no WriterCommitHook and no tableNameForLock are
+    // threaded through. The R10c writer-finish protocol (acquire per-table catalog lock,
+    // re-read fresh encryption scope under the held lease, abort if scope changed mid-write)
+    // is therefore structurally absent. A flush triggered after enableEncryption commits a
+    // plaintext v5 SSTable into a now-encrypted table directory.
+    // Correct behavior: the writer's finish() must consult the freshly-read catalog scope
+    // under the per-table catalog lock and refuse to commit when encryption transitioned
+    // between writer construction and finish (R10c step 5 IOException). End-to-end, this
+    // means: insert() that triggers a flush after enableEncryption() must fail with
+    // IOException — never silently commit a plaintext SSTable.
+    // Fix location: LocalEngine.createJlsmTable line 449 — wrap the TrieSSTableWriter
+    // construction in a factory that supplies a WriterCommitHook backed by catalogLock +
+    // catalog and the table name for the lock.
+    // Regression watch: tables that never call enableEncryption must still flush normally;
+    // the commit hook must only refuse the commit when scope actually transitioned.
+    // @spec sstable.footer-encryption-scope.R10c
+    @Test
+    @Timeout(30)
+    void test_LocalEngine_writerFactory_lacksR10cCommitHookWiring(@TempDir Path tempDir)
+            throws IOException {
+        // Use a tiny flush threshold so the very first insert after enableEncryption forces
+        // a flush — that flush goes through the engine's wired SSTableWriterFactory.
+        try (LocalEngine engine = LocalEngine.builder().rootDirectory(tempDir)
+                .memTableFlushThresholdBytes(1L).build()) {
+
+            final JlsmSchema schema = JlsmSchema.builder("racy", 1)
+                    .field("id", FieldType.Primitive.STRING)
+                    .field("value", FieldType.Primitive.STRING).build();
+            final Table table = engine.createTable("racy", schema);
+
+            // Flip the table to encrypted AFTER the table (and its writer factory) was
+            // constructed. The factory captured null scope at build time; the catalog now
+            // says the table is encrypted. The R10c protocol requires the writer's finish()
+            // to detect this mid-write transition under the per-table catalog lock and
+            // refuse to commit — even though no v5 SSTable is yet on disk.
+            final TableScope scope = new TableScope(new TenantId("tenant-A"),
+                    new DomainId("domain-X"), new TableId("racy"));
+            engine.enableEncryption("racy", scope);
+
+            // Insert a single document. With memTableFlushThresholdBytes=1, this triggers
+            // a flush; the writer factory wired into the engine now constructs a writer
+            // and finish() runs. With the bug, finish() commits a v5 plaintext SSTable
+            // and insert() returns normally. With the fix, the writer's commit-hook
+            // detects the mid-write transition and throws IOException (R10c step 5).
+            final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
+            assertThrows(IOException.class, () -> table.insert(doc),
+                    "After enableEncryption, a flush triggered by insert() must throw "
+                            + "IOException — the writer's R10c commit-hook must refuse "
+                            + "to commit a plaintext SSTable into a now-encrypted table");
+        }
+    }
+
+    // Finding: F-R1.contract_boundaries.2.3
+    // Bug: TableCatalog.readMetadata throws `IOException("Unknown metadata format version: " +
+    // firstByte)` at line 620, embedding the offending raw byte value in the error message.
+    // R12 forbids leaking offending byte values in catalog persistence error messages.
+    // Correct behavior: the IOException for an unknown leading format-version byte must NOT
+    // contain the offending byte value (decimal, hex, or any other rendering of the byte).
+    // The message may identify *that* the format version is unknown but must not reveal *which*
+    // byte was on disk.
+    // Fix location: TableCatalog.readMetadata line 620 — strip the byte value from the message.
+    // Regression watch: known format-version paths (0x4A pre-encryption, 0x02 encryption-aware)
+    // must still load normally; only the rejection message changes.
+    // @spec sstable.footer-encryption-scope.R12
+    @Test
+    void test_TableCatalog_readMetadata_unknownFormatVersionLeaksByteValueInR12Message(
+            @TempDir Path tempDir) throws Exception {
+        // Build a minimal table.meta with an unrecognised leading byte (0xCC). Anything past
+        // the first byte is unreachable because the format-version branch throws immediately.
+        // Pad to >= 4 bytes so the "metadata file is too short" guard is bypassed and the
+        // format-version branch is the one that fires.
+        final Path metaPath = tempDir.resolve("table.meta");
+        final byte[] tampered = new byte[]{ (byte) 0xCC, 0x00, 0x00, 0x00 };
+        java.nio.file.Files.write(metaPath, tampered);
+
+        // Invoke the private static readMetadata via reflection — same package access pattern
+        // used by the sibling jlsm.engine.ContractBoundariesAdversarialTest.
+        final Class<?> catalogClass = Class.forName("jlsm.engine.internal.TableCatalog");
+        final var readMetadataMethod = catalogClass.getDeclaredMethod("readMetadata", String.class,
+                Path.class, int.class);
+        readMetadataMethod.setAccessible(true);
+
+        // The reflective invoke wraps the IOException in InvocationTargetException.
+        final var ite = assertThrows(java.lang.reflect.InvocationTargetException.class,
+                () -> readMetadataMethod.invoke(null, "victim", metaPath, 0));
+        final Throwable cause = ite.getCause();
+        assertNotNull(cause, "InvocationTargetException must wrap the underlying IOException");
+        assertTrue(cause instanceof IOException,
+                "underlying cause must be IOException, got " + cause.getClass().getName());
+
+        final String msg = cause.getMessage();
+        assertNotNull(msg, "IOException must carry a message");
+
+        // R12: the offending byte (0xCC == 204 decimal == "cc" hex) must NOT appear in any
+        // form in the message. Check the raw byte value, both common renderings, and the
+        // signed-byte rendering.
+        assertFalse(msg.contains("204"),
+                "R12: error message must not contain the offending byte value (decimal '204'); "
+                        + "got: " + msg);
+        assertFalse(msg.toLowerCase().contains("cc"),
+                "R12: error message must not contain the offending byte value (hex 'cc'); "
+                        + "got: " + msg);
+        assertFalse(msg.contains("-52"),
+                "R12: error message must not contain the offending byte value as signed byte "
+                        + "('-52'); got: " + msg);
     }
 
     // ---- Stub for JlsmTable.StringKeyed ----

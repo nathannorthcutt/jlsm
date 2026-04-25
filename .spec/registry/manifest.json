@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-04-24T23:30:00Z",
-  "spec_count": 77,
+  "generated_at": "2026-04-25T00:00:00Z",
+  "spec_count": 78,
   "specs": [
     {
       "id": "compression.codec-contract",
@@ -230,7 +230,7 @@
       "id": "encryption.ciphertext-envelope",
       "path": ".spec/domains/encryption/ciphertext-envelope.md",
       "state": "APPROVED",
-      "version": 1,
+      "version": 2,
       "domains": [
         "encryption"
       ],
@@ -257,8 +257,8 @@
     {
       "id": "encryption.primitives-lifecycle",
       "path": ".spec/domains/encryption/primitives-lifecycle.md",
-      "state": "APPROVED",
-      "version": 8,
+      "state": "DRAFT",
+      "version": 10,
       "domains": [
         "encryption"
       ],
@@ -315,7 +315,7 @@
       "id": "engine.catalog-operations",
       "path": ".spec/domains/engine/catalog-operations.md",
       "state": "APPROVED",
-      "version": 2,
+      "version": 3,
       "domains": [
         "engine"
       ],
@@ -332,6 +332,9 @@
       "kb_refs": [
         "systems/database-engines/catalog-persistence-patterns",
         "distributed-systems/replication/catalog-replication-strategies"
+      ],
+      "open_obligations": [
+        "OB-catalog-lock-extraction-01: Extract engine.catalog-lock-lifecycle as a dedicated spec covering the file-lock handle protocol currently captured as the composite R78 in this spec."
       ]
     },
     {
@@ -1551,7 +1554,7 @@
       "id": "sstable.footer-encryption-scope",
       "path": ".spec/domains/sstable/footer-encryption-scope.md",
       "state": "APPROVED",
-      "version": 5,
+      "version": 9,
       "domains": [
         "sstable",
         "engine",
@@ -1565,6 +1568,15 @@
       ],
       "invalidates": [],
       "open_obligations": null
+    },
+    {
+      "id": "engine.clustered-table-construction",
+      "path": ".spec/domains/engine/clustered-table-construction.md",
+      "state": "APPROVED",
+      "version": 1,
+      "domains": [
+        "engine"
+      ]
     }
   ]
 }

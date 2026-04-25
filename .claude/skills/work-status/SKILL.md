@@ -32,14 +32,50 @@ If `--all` flag is set:
 📊 WORK STATUS · all groups
 ───────────────────────────────────────────────
 
-| Group | WDs | Ready | Specifying | Specified | Implementing | Complete |
-|-------|-----|-------|------------|-----------|--------------|----------|
-| <slug> | <n> | <n> | <n> | <n> | <n> | <n> |
+| Group | WDs | Ready | Blocked | Specifying | Specified | Implementing | Complete |
+|-------|-----|-------|---------|------------|-----------|--------------|----------|
+| <slug> | <n> | <n> | <n> | <n> | <n> | <n> | <n> |
 ...
+```
 
-Ready to work on:
-  /work-plan "<slug>" next    — specify the first ready WD (produce specs/ADRs)
-  /work-start "<slug>" next   — implement a fully specified WD
+**Next-step commands must route by state — not suggest both commands for
+the same WD.** `/work-start` rejects READY/BLOCKED WDs with "needs
+planning first"; `/work-plan` rejects SPECIFIED WDs with "already
+specified." Mixing them in suggestions creates a round-trip where the
+user runs the wrong one, gets bounced, and guesses again.
+
+Build the suggestion block by scanning the status of WDs across all groups:
+
+- **If any group has READY WDs** → show `/work-plan "<slug>" next` for
+  those groups. These WDs need planning before implementation can start,
+  even when "Ready" sounds like "ready to work."
+- **If any group has SPECIFIED WDs** → show `/work-start "<slug>" next`
+  for those groups. These are planned and ready to implement.
+- **If any group has SPECIFYING or IMPLEMENTING WDs** → show
+  `/feature-resume "<group>--<wd-slug>"` for those specific in-progress
+  units.
+- **If all remaining WDs in a group are BLOCKED** → do not suggest either
+  `/work-plan` or `/work-start` for that group; instead, route to the
+  specific unblock command (`/spec-author`, `/architect`, `/research`, or
+  upstream WD).
+
+Present suggestions grouped by action type, not jumbled together:
+
+```
+Ready to specify:
+  /work-plan "<group-a>" next    — <N> READY WD(s) need planning
+  /work-plan "<group-b>" next    — <N> READY WD(s) need planning
+
+Ready to implement:
+  /work-start "<group-c>" next   — <N> SPECIFIED WD(s) planned and ready
+
+Resume in progress:
+  /feature-resume "<group-d>--wd-02"   — SPECIFYING
+  /feature-resume "<group-e>--wd-01"   — IMPLEMENTING
+
+Blocked (unblock to proceed):
+  /spec-author "<id>" "<title>"   — for group-f (missing spec)
+  /architect "<problem>"          — for group-g (missing ADR)
 ```
 
 If no work groups exist:
@@ -124,15 +160,29 @@ From the resolver's `## Scope Signal` section, if present.
 
 ## Step 4 — Actionable next steps
 
-Based on the readiness state, present specific next actions:
+Based on the readiness state, present specific next actions. **Route
+suggestions strictly by state.** `/work-start` rejects READY/BLOCKED WDs
+with "needs planning first"; `/work-plan` rejects SPECIFIED WDs with
+"already specified." Never list both commands as options for the same
+WD — it creates a wrong-command round-trip.
 
-### If READY WDs exist:
+### If READY WDs exist (planning not yet run):
 ```
-Ready to work on:
-  /work-plan "<group-slug>" WD-<nn>    — specify a WD (produce specs/ADRs)
-  /work-plan "<group-slug>" next       — specify the highest-value ready WD
+Ready to plan:
+  /work-plan "<group-slug>" WD-<nn>    — plan a specific WD
+  /work-plan "<group-slug>" next       — plan the highest-unblocking WD
+```
+
+Do NOT list `/work-start` here — READY means DRAFT with deps met, and
+`/work-start` requires SPECIFIED. `/work-plan` is mandatory before
+`/work-start`, even when planning has nothing to add (no-op planning
+still transitions DRAFT → SPECIFIED).
+
+### If SPECIFIED WDs exist (planning done, ready to implement):
+```
+Ready to implement:
   /work-start "<group-slug>" WD-<nn>   — implement a specific WD
-  /work-start "<group-slug>" next      — implement the highest-value ready WD
+  /work-start "<group-slug>" next      — implement the highest-unblocking WD
 ```
 
 ### If all remaining WDs are BLOCKED:
@@ -158,12 +208,6 @@ Consider running a retrospective on the overall effort:
 Active:
   WD-<nn> (<title>) — SPECIFYING — resume with /feature-resume "<group>--<wd-slug>"
   WD-<nn> (<title>) — IMPLEMENTING — resume with /feature-resume "<group>--<wd-slug>"
-```
-
-### If WDs are SPECIFIED:
-```
-Ready for implementation:
-  /work-start "<group-slug>" WD-<nn>   — implement a specified WD
 ```
 
 Stop.

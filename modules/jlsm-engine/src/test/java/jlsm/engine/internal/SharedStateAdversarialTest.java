@@ -1,5 +1,10 @@
 package jlsm.engine.internal;
 
+import jlsm.encryption.DomainId;
+import jlsm.encryption.TableId;
+import jlsm.encryption.TableScope;
+import jlsm.encryption.TenantId;
+import jlsm.engine.EncryptionMetadata;
 import jlsm.engine.Table;
 import jlsm.table.FieldType;
 import jlsm.table.JlsmSchema;
@@ -361,6 +366,386 @@ class SharedStateAdversarialTest {
             for (final Table t : tables) {
                 t.close();
             }
+        }
+    }
+
+    // Finding: F-R1.shared_state.1.1
+    // Bug: TableCatalog.updateEncryption writes the new encryption-aware table.meta to disk
+    // before bumping the catalog-index high-water. If catalogIndex.setHighwater fails after
+    // writeMetadata succeeded, the on-disk table.meta has been atomically replaced with the
+    // encryption-aware format but the in-memory map and catalog-index entry are not updated —
+    // memory and disk diverge indefinitely.
+    // Correct behavior: updateEncryption is atomic from the caller's perspective. On any
+    // failure of setHighwater after writeMetadata, the on-disk table.meta must be restored
+    // to its prior plaintext state so memory and disk remain in sync.
+    // Fix location: TableCatalog.updateEncryption lines 296-303 — wrap setHighwater in a
+    // try/catch that rewrites the prior metadata on failure.
+    // Regression watch: rewriting must use the original (existing) metadata and pre-encryption
+    // format; any rewrite failure must be added as a suppressed exception.
+    @Test
+    @Timeout(10)
+    void test_TableCatalog_sharedState_updateEncryptionRollbackOnSetHighwaterFailure()
+            throws Exception {
+        final TableCatalog catalog = new TableCatalog(tempDir);
+        catalog.open();
+        catalog.register("plain", testSchema());
+
+        final Path metaPath = tempDir.resolve("plain").resolve("table.meta");
+        final byte[] originalMeta = Files.readAllBytes(metaPath);
+        assertTrue(originalMeta.length > 0, "table.meta must be non-empty after register");
+
+        // Inject a failure for catalog-index persist by replacing the catalog-index.bin file
+        // with a non-empty directory of the same name. CatalogIndex.persistAtomically performs
+        // Files.move(temp, indexPath, ATOMIC_MOVE, REPLACE_EXISTING) — that move cannot replace
+        // a non-empty directory, so it surfaces an IOException AFTER writeMetadata succeeded.
+        final Path indexPath = tempDir.resolve("catalog-index.bin");
+        Files.deleteIfExists(indexPath);
+        Files.createDirectory(indexPath);
+        Files.writeString(indexPath.resolve("blocker"), "x");
+
+        final TableScope scope = new TableScope(new TenantId("tenant-A"), new DomainId("domain-X"),
+                new TableId("table-Z"));
+        final EncryptionMetadata encryption = new EncryptionMetadata(scope);
+
+        // updateEncryption must fail because setHighwater cannot persist the bumped version.
+        assertThrows(IOException.class, () -> catalog.updateEncryption("plain", encryption),
+                "updateEncryption must fail when catalog-index persist fails");
+
+        // Critical invariant: if updateEncryption surfaced a failure to the caller, the
+        // on-disk table.meta must NOT have been left in the partially-committed
+        // encryption-aware state. Either the rewrite restored the original bytes, or the
+        // implementation deferred the writeMetadata until after setHighwater. In both cases
+        // the bytes on disk must equal the original plaintext metadata, keeping disk and
+        // memory in sync.
+        final byte[] postFailureMeta = Files.readAllBytes(metaPath);
+        assertArrayEquals(originalMeta, postFailureMeta,
+                "on-disk table.meta must be unchanged after a failed updateEncryption — "
+                        + "memory and disk must stay in sync (R7b/R11a atomicity)");
+
+        // Clean up the directory blocker so close() can proceed.
+        Files.delete(indexPath.resolve("blocker"));
+        Files.delete(indexPath);
+        catalog.close();
+    }
+
+    // Finding: F-R1.shared_state.1.3
+    // Bug: CatalogIndex.setHighwater publishes the new version to in-memory readers via
+    // entries.put(...) BEFORE persistAtomically() runs. If persist fails, the value is
+    // rolled back, but a concurrent highwater() reader between the put and the rollback
+    // observes a transient, not-yet-durable value. The card guarantee "memory and disk
+    // stay in sync" is true after rollback but false during the persist window.
+    // Correct behavior: setHighwater must not publish a value to in-memory readers until
+    // its on-disk persist has succeeded. After a failed setHighwater, no concurrent reader
+    // may have observed the failed value (memory == disk transiently as well as after).
+    // Fix location: CatalogIndex.setHighwater lines 156-167 — defer entries.put(...) until
+    // persistAtomically() returns successfully (or use stage-then-publish).
+    // Regression watch: monotonicity check (R9a-mono) must still occur prior to any persist;
+    // persistLock must continue to serialise; rollback path becomes a no-op once publish is
+    // ordered after persist.
+    @Test
+    @Timeout(30)
+    void test_CatalogIndex_sharedState_setHighwaterPublishesBeforePersistDurable()
+            throws Exception {
+        // Construct the index against an empty rootDir, then block catalog-index
+        // persistence by creating a non-empty directory at the index file path.
+        // CatalogIndex.persistAtomically performs
+        // Files.move(temp, indexPath, ATOMIC_MOVE, REPLACE_EXISTING) which cannot replace
+        // a non-empty directory — every setHighwater attempt will fail in persistAtomically
+        // AFTER (with the bug) entries.put has already published.
+        final CatalogIndex index = new CatalogIndex(tempDir);
+        final Path indexPath = tempDir.resolve("catalog-index.bin");
+        Files.deleteIfExists(indexPath);
+        Files.createDirectory(indexPath);
+        Files.writeString(indexPath.resolve("blocker"), "x");
+        try {
+            final String tableName = "t1";
+            final int newVersion = 5;
+
+            // Race a reader against the failing writer. With publish-before-persist (bug),
+            // the reader will, across many iterations, observe newVersion at least once.
+            // With publish-after-persist (fix), the reader can never observe newVersion
+            // because persist always fails before publication.
+            final int iterations = 500;
+            final java.util.concurrent.atomic.AtomicBoolean transientObserved = new java.util.concurrent.atomic.AtomicBoolean(
+                    false);
+
+            for (int i = 0; i < iterations && !transientObserved.get(); i++) {
+                final CyclicBarrier barrier = new CyclicBarrier(2);
+                final ExecutorService executor = Executors.newFixedThreadPool(2);
+                final java.util.concurrent.atomic.AtomicBoolean writerDone = new java.util.concurrent.atomic.AtomicBoolean(
+                        false);
+                try {
+                    final Future<?> readerFuture = executor.submit(() -> {
+                        barrier.await(5, TimeUnit.SECONDS);
+                        // Spin reading highwater until the writer is done. If the bug exists,
+                        // some iteration's spin will catch the transient newVersion publication.
+                        while (!writerDone.get()) {
+                            final var observed = index.highwater(tableName);
+                            if (observed.isPresent() && observed.get() == newVersion) {
+                                transientObserved.set(true);
+                                return null;
+                            }
+                            Thread.onSpinWait();
+                        }
+                        // One final read after the writer completed and rolled back.
+                        final var finalObserved = index.highwater(tableName);
+                        if (finalObserved.isPresent() && finalObserved.get() == newVersion) {
+                            transientObserved.set(true);
+                        }
+                        return null;
+                    });
+
+                    final Future<?> writerFuture = executor.submit(() -> {
+                        barrier.await(5, TimeUnit.SECONDS);
+                        // Expected to fail with IOException in persistAtomically.
+                        try {
+                            index.setHighwater(tableName, newVersion);
+                            // If this somehow succeeded the test setup is broken.
+                            throw new AssertionError("setHighwater unexpectedly succeeded");
+                        } catch (IOException expected) {
+                            // expected
+                        } finally {
+                            writerDone.set(true);
+                        }
+                        return null;
+                    });
+
+                    writerFuture.get(10, TimeUnit.SECONDS);
+                    readerFuture.get(10, TimeUnit.SECONDS);
+                } finally {
+                    executor.shutdownNow();
+                    executor.awaitTermination(5, TimeUnit.SECONDS);
+                }
+            }
+
+            assertFalse(transientObserved.get(),
+                    "Concurrent highwater() reader observed the not-yet-durable version "
+                            + newVersion
+                            + " during a failing setHighwater — entries.put publishes before "
+                            + "persistAtomically completes (transient publish-before-persist).");
+        } finally {
+            // Clean up the blocker directory so @TempDir teardown doesn't fail.
+            try {
+                Files.deleteIfExists(indexPath.resolve("blocker"));
+            } catch (IOException ignored) {
+            }
+            try {
+                Files.deleteIfExists(indexPath);
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    // Finding: F-R1.shared_state.1.2
+    // Bug: TableCatalog.registerInternal calls tables.putIfAbsent (publishing a READY entry)
+    // BEFORE Files.createDirectories and writeMetadata. A concurrent reader observing the entry
+    // via catalog.get(name) sees a READY TableMetadata while the on-disk directory and table.meta
+    // do not yet exist — a published-before-fully-formed window.
+    // Correct behavior: Any TableMetadata observed via get(name) with state=READY must have its
+    // on-disk directory and table.meta file fully formed. The publish-of-READY must follow disk
+    // state being durable (or the entry must be staged as LOADING and only transitioned to READY
+    // after I/O completes).
+    // Fix location: TableCatalog.registerInternal lines 233-252 — sequence the publish after the
+    // I/O steps (or use a LOADING placeholder during I/O).
+    // Regression watch: TOCTOU name-claim defence must remain — two concurrent registers of the
+    // same name must still produce one winner; readers during the I/O window must not observe a
+    // bogus READY entry pointing at non-existent disk state.
+    @Test
+    @Timeout(30)
+    void test_TableCatalog_sharedState_registerPublishesBeforeDiskStateExists() throws Exception {
+        // Run many independent register+get races. Each iteration uses a fresh catalog and a
+        // unique table name so iterations do not interfere. The race window is small (between
+        // putIfAbsent at line 240 and Files.createDirectories at line 249), so we use many
+        // iterations and a tight reader spin to catch the bug at least once.
+        final int iterations = 200;
+        boolean violationObserved = false;
+        String violationDetail = null;
+
+        for (int i = 0; i < iterations && !violationObserved; i++) {
+            final int iter = i;
+            final Path iterDir = tempDir.resolve("iter-" + iter);
+            Files.createDirectories(iterDir);
+            final TableCatalog catalog = new TableCatalog(iterDir);
+            catalog.open();
+            final String tableName = "t" + iter;
+            final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(
+                    false);
+            final java.util.concurrent.atomic.AtomicReference<String> violationRef = new java.util.concurrent.atomic.AtomicReference<>();
+            final CyclicBarrier barrier = new CyclicBarrier(2);
+            final ExecutorService executor = Executors.newFixedThreadPool(2);
+            try {
+                // Reader: spin on get(name) and check the invariant — any READY entry must have
+                // its on-disk directory AND table.meta file present. Record the first violation.
+                final Future<?> readerFuture = executor.submit(() -> {
+                    barrier.await(5, TimeUnit.SECONDS);
+                    final Path tableDir = iterDir.resolve(tableName);
+                    final Path metaFile = tableDir.resolve("table.meta");
+                    while (!done.get()) {
+                        final var maybe = catalog.get(tableName);
+                        if (maybe.isPresent() && maybe.get()
+                                .state() == jlsm.engine.TableMetadata.TableState.READY) {
+                            // Invariant: directory and metadata file must already exist.
+                            final boolean dirExists = Files.exists(tableDir);
+                            final boolean metaExists = Files.exists(metaFile);
+                            if (!dirExists || !metaExists) {
+                                violationRef.compareAndSet(null,
+                                        "iter=" + iter + " READY observed but dirExists="
+                                                + dirExists + " metaExists=" + metaExists);
+                                return null;
+                            }
+                            // Once we've successfully observed a fully-formed READY entry, stop.
+                            return null;
+                        }
+                        Thread.onSpinWait();
+                    }
+                    return null;
+                });
+
+                // Writer: call register; this publishes the entry and then performs I/O.
+                final Future<?> writerFuture = executor.submit(() -> {
+                    barrier.await(5, TimeUnit.SECONDS);
+                    catalog.register(tableName, testSchema());
+                    return null;
+                });
+
+                writerFuture.get(10, TimeUnit.SECONDS);
+                done.set(true);
+                readerFuture.get(10, TimeUnit.SECONDS);
+
+                final String violation = violationRef.get();
+                if (violation != null) {
+                    violationObserved = true;
+                    violationDetail = violation;
+                }
+            } finally {
+                executor.shutdownNow();
+                executor.awaitTermination(5, TimeUnit.SECONDS);
+                catalog.close();
+            }
+        }
+
+        assertFalse(violationObserved,
+                "Concurrent reader observed a READY TableMetadata before its on-disk state was "
+                        + "fully formed (publish-before-disk-state race in registerInternal): "
+                        + violationDetail);
+    }
+
+    // Finding: F-R1.shared_state.1.4
+    // Bug: TableCatalog.open() loads catalogIndex once at line 102, then scans the directory
+    // at line 104. If a concurrent JVM (B) atomically updates catalog-index.bin between
+    // those two steps — adding entry "t1" at the moment A's directory scan finds "t1/" —
+    // A's *in-memory* CatalogIndex is stale (it does not know about "t1"), so the lookup
+    // at line 125 returns Optional.empty() and the directory is silently skipped at line
+    // 127. The legitimately-registered table is invisible to A's API surface for the
+    // lifetime of A's process.
+    // Correct behavior: when open() finds a directory whose table.meta exists but whose
+    // in-memory catalog-index entry is missing, it must re-read the on-disk catalog-index
+    // before silently skipping. If the on-disk index now has the entry (because a peer
+    // JVM persisted concurrently), the table must be loaded. R9a-mono cold-start defence
+    // is preserved: the table only loads when an authoritative catalog-index entry exists.
+    // Fix location: TableCatalog.open() lines 102-128 — collect skipped directories,
+    // re-read the on-disk catalog-index after the scan completes, and re-check skipped
+    // directories against the fresh index.
+    // Regression watch: the cold-start downgrade defence must remain intact — a directory
+    // with no on-disk catalog-index entry must still be skipped after re-read.
+    @Test
+    @Timeout(30)
+    void test_TableCatalog_sharedState_openSkipsTableRegisteredByPeerJvmDuringOpenScan()
+            throws Exception {
+        // Pre-stage the disk state that exists at the race window:
+        // - <root>/t-target/table.meta exists and is valid (peer JVM B has written it)
+        // - <root>/catalog-index.bin starts empty (peer JVM B has not yet persisted the
+        // index entry)
+        // Then ensure peer's setHighwater persist completes BETWEEN A's CatalogIndex
+        // construction (line 102) and A's deferred re-read (line 154). The fix path
+        // re-reads the on-disk catalog-index after the scan and finds the now-present
+        // entry; without the fix, the in-memory cache is stale and the directory is
+        // silently skipped.
+        //
+        // To deterministically satisfy "peer's persist completes mid-open()", we create
+        // many decoy directories so A's scan loop runs long enough for peer's atomic-move
+        // to land. Peer also gets a head start via a barrier so it begins as soon as
+        // possible.
+        final Path iterDir = tempDir.resolve("race");
+        Files.createDirectories(iterDir);
+
+        // Create the target table directory + valid table.meta. Use seed catalog then
+        // delete catalog-index.bin so the on-disk state is "B has written meta but
+        // not yet persisted the index entry".
+        try (final TableCatalog seed = new TableCatalog(iterDir)) {
+            seed.open();
+            seed.register("t-target", testSchema());
+            // Add many decoy tables so the scan loop is long enough that peer's
+            // setHighwater has time to complete persistAtomically (which includes a
+            // force(true) fsync). The decoys remain indexed and load normally.
+            for (int j = 0; j < 200; j++) {
+                seed.register("decoy-" + j, testSchema());
+            }
+        }
+        Files.deleteIfExists(iterDir.resolve("catalog-index.bin"));
+        // Re-create catalog-index.bin with ONLY the decoy entries so the decoys still
+        // load normally — but t-target is missing from the index. This represents
+        // peer JVM B's mid-flight state: meta written for all tables, but index
+        // entry for t-target not yet persisted.
+        try (final TableCatalog reseed = new TableCatalog(iterDir)) {
+            reseed.open();
+            // open() with no catalog-index sees an empty index; per R9a-mono cold-start
+            // defence, all directories with table.meta but no index entry are skipped.
+            // We need to rebuild the catalog-index without using register() (which
+            // would re-write table.meta). Instead, we use a fresh CatalogIndex helper
+            // and only set decoy entries.
+        }
+        // Manually populate catalog-index.bin with decoy entries only (no t-target).
+        // FORMAT_PRE_ENCRYPTION = 0.
+        final CatalogIndex helper = new CatalogIndex(iterDir);
+        for (int j = 0; j < 200; j++) {
+            helper.setHighwater("decoy-" + j, 0);
+        }
+        // Verify pre-stage: t-target meta exists, catalog-index has decoys only.
+        assertTrue(Files.exists(iterDir.resolve("t-target").resolve("table.meta")),
+                "Pre-stage: t-target/table.meta must exist");
+        assertTrue(Files.exists(iterDir.resolve("catalog-index.bin")),
+                "Pre-stage: catalog-index.bin must exist (with decoy entries)");
+        assertTrue(new CatalogIndex(iterDir).highwater("t-target").isEmpty(),
+                "Pre-stage: catalog-index must NOT yet contain t-target");
+
+        // Step 2: race a fresh open() against a concurrent setHighwater("t-target").
+        final TableCatalog catalogA = new TableCatalog(iterDir);
+        final CyclicBarrier barrier = new CyclicBarrier(2);
+        final ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            final Future<?> openFuture = executor.submit(() -> {
+                barrier.await(5, TimeUnit.SECONDS);
+                catalogA.open();
+                return null;
+            });
+            final Future<?> peerFuture = executor.submit(() -> {
+                barrier.await(5, TimeUnit.SECONDS);
+                // Simulate JVM B's late-arriving setHighwater. We construct a separate
+                // CatalogIndex against the same root and persist t-target's entry.
+                // catalogA's open() is iterating ~200 decoy directories, so this
+                // setHighwater (one open+write+fsync+rename) lands during the scan.
+                final CatalogIndex peerIndex = new CatalogIndex(iterDir);
+                peerIndex.setHighwater("t-target", 0);
+                return null;
+            });
+            openFuture.get(15, TimeUnit.SECONDS);
+            peerFuture.get(15, TimeUnit.SECONDS);
+
+            // After both complete, t-target has a valid table.meta AND catalog-index.bin
+            // has its entry. A correct implementation must surface t-target via get():
+            // either it loaded it on the first pass (peer's persist happened before
+            // catalogA's CatalogIndex construction) OR it re-read the on-disk index
+            // after the scan and recovered.
+            assertTrue(catalogA.get("t-target").isPresent(),
+                    "TableCatalog.open() silently skipped t-target whose catalog-index entry "
+                            + "was persisted by a concurrent peer during A's open(). "
+                            + "open() must re-read the on-disk catalog-index before treating "
+                            + "an unindexed directory as 'not-existent'.");
+        } finally {
+            executor.shutdownNow();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+            catalogA.close();
         }
     }
 

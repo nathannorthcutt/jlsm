@@ -1,7 +1,7 @@
 ---
 {
   "id": "encryption.primitives-lifecycle",
-  "version": 9,
+  "version": 10,
   "status": "ACTIVE",
   "state": "DRAFT",
   "domains": [
@@ -139,6 +139,8 @@ R22. Every encrypted field value persisted to MemTable, WAL, or SSTable must con
 R22a. The 4-byte DEK version tag validity rules (positive-integer-only; IOException on 0 or negative values; constant-time failure path sharing the R64 wait-free lookup path) are canonically specified in `encryption.ciphertext-envelope` R2 and R2a. Version-not-found semantics (IllegalStateException identifying the `(tenantId, domainId, tableId)` scope without revealing key material) are canonically specified in `encryption.ciphertext-envelope` R2b and are also asserted locally as R24.
 
 R22b. The reader must resolve the DEK by the tuple `(tenantId, domainId, tableId, dekVersion)` where the first three components are derived from the SSTable's footer metadata (R23a) and the fourth from the ciphertext's version tag. The reader's **expected scope** must be materialised from the caller's `Table` handle obtained via catalog lookup — not inferred from the same SSTable footer it is validating (which would be tautological). If the SSTable's declared `(tenantId, domainId, tableId)` does not match the `Table` handle's scope (i.e., the SSTable was mis-routed to a different tenant's or domain's read path), decryption must throw IllegalStateException before any DEK lookup. This enforces per-tenant isolation at the read boundary.
+
+R22c. **SSTable read path must thread the `ReadContext` to deserialize.** The serializer interface invoked from the SSTable read path must accept the reader's `ReadContext` (the per-read DEK-version dispatch gate, `sstable.footer-encryption-scope` R3e) as a parameter on `deserialize`. The SSTable reader's typed-get path must thread its own `ReadContext` into the deserialize call so that the R3e dispatch gate is invoked structurally on every read; the `ReadContext` must not be held by the reader and silently dropped before the deserializer runs. Serializer implementations that do not require the dispatch gate (non-encrypted schemas, or implementations that delegate the membership check to a downstream component) must accept the parameter and ignore it — no behavior change is mandated for non-encrypted paths. The threading discipline operates at the API surface where envelope DEK-version fields first become reachable from disk bytes; bypassing this surface (e.g., reading bytes through a separate path that constructs no `ReadContext`) is a spec violation under R22b. Validation must be a runtime conditional, not a Java `assert`.
 
 R23. The 4-byte version tag must be readable without decryption. No part of the version tag may be encrypted.
 
@@ -545,6 +547,22 @@ The 4-byte DEK version tag added to every encrypted field value is a wire format
 ---
 
 ## Verification Notes
+
+### Amended: v10 — 2026-04-25 — audit reconciliation (R22c added: SSTable read path threads ReadContext)
+
+Audit reconciliation work (audit run `implement-encryption-lifecycle--wd-02/audit/run-001`, findings F-R1.contract_boundaries.3.1 and F-R1.contract_boundaries.3.5) surfaced a structural gap in the SSTable read path: the reader held a populated `ReadContext` but never threaded it into the deserializer, so the `sstable.footer-encryption-scope` R3e dispatch gate was effectively bypassed at the read boundary even though all the necessary state existed. The audit captured this as "spec silent on the plumbing path" — R3e mandates the membership check before any DEK touch, but no requirement specified how the reader delivers its `ReadContext` to the deserializer.
+
+**Changes:**
+
+- **R22c added (new):** the serializer interface invoked from the SSTable read path must accept the reader's `ReadContext` as a parameter on `deserialize`; the SSTable reader's typed-get path must thread its own `ReadContext` to the deserialize call so that the R3e gate is invoked structurally on every read. Serializer implementations that do not require the gate must accept and ignore the parameter (no behavior change for non-encrypted schemas).
+
+**Verification impact:**
+
+- No existing requirement is invalidated. R22c is additive to R22, R22a, R22b — naming the threading contract that R3e of `sstable.footer-encryption-scope` and R22b of this spec rely on but never specified.
+- No existing `@spec` annotation is broken. R22 / R22a / R22b retain their identities; R22c sits adjacent in the same numbering family.
+- Implementation impact: `Serializer` (or equivalent) interface signatures gain the `ReadContext` parameter on `deserialize`. `TrieSSTableReader` typed-get sites are updated to pass the per-read `ReadContext`. Non-encrypted deserializers gain a one-line ignore of the parameter.
+
+**Post-fix disposition:** State remains DRAFT (continues v9's promotion pending). R22c is a tightening (gap closure), not a scope change; the WD-02 audit reconciliation surface is the first verification venue.
 
 ### Amended: v9 — 2026-04-23 — audit-driven Pass 6 amendments (promoted APPROVED → DRAFT)
 

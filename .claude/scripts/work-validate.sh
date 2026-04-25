@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 # work-validate.sh — structural validation for work definition files
 # Usage: work-validate.sh <wd-file>
-#        work-validate.sh --group <group-slug>   (validates all WDs + circular dep check)
+#        work-validate.sh --group <group-slug>              (structural + circular dep check)
+#        work-validate.sh --group <group-slug> --decompose  (structural + decompose invariant)
 # Exit 0 = PASS | Exit 1 = FAIL (prints all errors before exiting)
+#
+# The --decompose flag adds the Phase C invariant check: every artifact_dep
+# reference must resolve to either (a) an existing artifact in the repo,
+# (b) an artifact listed in another WD's produces:, or (c) an artifact
+# explicitly declared out-of-scope in work.md's frontmatter. This is what
+# prevents parallel /work-plan runs from diverging — if decompose hasn't
+# settled every cross-WD coordination surface, this invariant fails.
 
 set -euo pipefail
 
@@ -17,16 +25,23 @@ work_require_deps
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
 GROUP_MODE=false
+DECOMPOSE_MODE=false
 GROUP_SLUG=""
 FILE=""
 
+# First pass: identify --group + slug, or <wd-file>. --decompose can appear
+# anywhere after --group.
 if [[ "${1:-}" == "--group" ]]; then
   GROUP_MODE=true
   GROUP_SLUG="${2:-}"
-  [[ -z "$GROUP_SLUG" ]] && { echo "Usage: work-validate.sh --group <group-slug>" >&2; exit 1; }
+  [[ -z "$GROUP_SLUG" ]] && { echo "Usage: work-validate.sh --group <group-slug> [--decompose]" >&2; exit 1; }
+  shift 2
+  for arg in "$@"; do
+    [[ "$arg" == "--decompose" ]] && DECOMPOSE_MODE=true
+  done
 else
   FILE="${1:-}"
-  [[ -z "$FILE" ]] && { echo "Usage: work-validate.sh <wd-file>" >&2; exit 1; }
+  [[ -z "$FILE" ]] && { echo "Usage: work-validate.sh <wd-file> | --group <group-slug> [--decompose]" >&2; exit 1; }
   [[ ! -f "$FILE" ]] && { echo "ERROR: File not found: $FILE" >&2; exit 1; }
 fi
 
@@ -100,18 +115,27 @@ validate_wd_file() {
             local manifest="$project_root/.spec/registry/manifest.json"
             if [[ ! -f "$manifest" ]]; then
               echo "  WARN: cannot verify spec '$dep_ref' — no .spec/registry/manifest.json" >&2
-            elif ! declare -f spec_file_for_id >/dev/null; then
-              echo "  WARN: cannot verify spec '$dep_ref' — spec-lib.sh not loaded" >&2
             else
-              local target
-              target="$(spec_file_for_id "$manifest" "$dep_ref")"
-              if [[ -z "$target" || ! -f "$target" ]]; then
-                errors+=("artifact_deps: spec '$dep_ref' not found in registry (dead reference)")
-              elif [[ -n "$dep_req_state" ]]; then
-                local actual
-                actual="$(fm "$target" '.state // ""')"
-                if [[ -n "$actual" && "$actual" != "$dep_req_state" ]]; then
-                  errors+=("artifact_deps: spec '$dep_ref' has state '$actual', required_state is '$dep_req_state'")
+              # Delegate to work_check_spec_dep so validate and resolve agree
+              # on what counts as a resolvable reference. Accepts both spec ID
+              # (period-style) and slash-path forms.
+              local spec_reason
+              spec_reason="$(work_check_spec_dep "$project_root" "$dep_ref" "$dep_req_state")" || true
+              if [[ -n "$spec_reason" ]]; then
+                if [[ "$spec_reason" == "spec not found"* ]]; then
+                  errors+=("artifact_deps: spec '$dep_ref' not found in registry (dead reference)")
+                elif [[ "$spec_reason" == *"need "* ]]; then
+                  # Re-format as "has state 'X', required_state is 'Y'" for the
+                  # established test contract.
+                  local actual_state
+                  actual_state="$(echo "$spec_reason" | sed -n "s/^spec [^ ]* is \(.*\) (need .*)$/\1/p")"
+                  if [[ -n "$actual_state" ]]; then
+                    errors+=("artifact_deps: spec '$dep_ref' has state '$actual_state', required_state is '$dep_req_state'")
+                  else
+                    errors+=("artifact_deps: spec '$dep_ref' state mismatch: $spec_reason")
+                  fi
+                else
+                  errors+=("artifact_deps: spec '$dep_ref': $spec_reason")
                 fi
               fi
             fi
@@ -126,9 +150,23 @@ validate_wd_file() {
             # check deferred until ADR schema is revisited.
             ;;
           wd)
+            # wd: deps are scoped to the WD's own group. Cross-group
+            # coordination belongs in work.md's external_deps:. A wd: ref
+            # to another group validates OK today but is unreachable at
+            # runtime (scripts/work-resolve.sh populates its WD table from
+            # the current group only), so catch the mismatch here.
+            #
+            # State mismatch (target WD's current status != required_state) is
+            # NOT a validation FAIL. wd: deps describe the eventual ordering;
+            # at any moment, some siblings are upstream and some are downstream
+            # of one another. scripts/work-resolve.sh surfaces this as BLOCKED
+            # with a clear reason. Double-reporting it as FAIL here was noisy
+            # for active groups and blocked legitimate fresh decompositions.
             if [[ ! -d "$project_root/.work" ]]; then
               echo "  WARN: cannot verify wd '$dep_ref' — no .work/ directory" >&2
             else
+              local current_group_dir
+              current_group_dir="$(dirname "$file")"
               local wd_found=0
               local wd_f
               while IFS= read -r wd_f; do
@@ -137,18 +175,26 @@ validate_wd_file() {
                 wd_id="$(work_fm "$wd_f" "id")"
                 if [[ "$wd_id" == "$dep_ref" ]]; then
                   wd_found=1
-                  if [[ -n "$dep_req_state" ]]; then
-                    local wd_status
-                    wd_status="$(work_fm "$wd_f" "status")"
-                    if [[ -n "$wd_status" && "$wd_status" != "$dep_req_state" ]]; then
-                      errors+=("artifact_deps: wd '$dep_ref' has status '$wd_status', required_status is '$dep_req_state'")
-                    fi
-                  fi
                   break
                 fi
-              done < <(find "$project_root/.work" -name "WD-*.md" 2>/dev/null)
+              done < <(find "$current_group_dir" -maxdepth 1 -name "WD-*.md" 2>/dev/null)
               if [[ $wd_found -eq 0 ]]; then
-                errors+=("artifact_deps: wd '$dep_ref' not found in .work/")
+                local cross_group=0
+                local other_f
+                while IFS= read -r other_f; do
+                  [[ -z "$other_f" ]] && continue
+                  local other_id
+                  other_id="$(work_fm "$other_f" "id" 2>/dev/null)"
+                  if [[ "$other_id" == "$dep_ref" ]]; then
+                    cross_group=1
+                    break
+                  fi
+                done < <(find "$project_root/.work" -name "WD-*.md" 2>/dev/null)
+                if (( cross_group == 1 )); then
+                  errors+=("artifact_deps: wd '$dep_ref' is in a different group — use external_deps: on work.md for cross-group coordination")
+                else
+                  errors+=("artifact_deps: wd '$dep_ref' not found in group")
+                fi
               fi
             fi
             ;;
@@ -289,6 +335,187 @@ check_circular_deps() {
   return $cycles_found
 }
 
+# ── External deps: group-level cross-group coordination gate ────────────────
+#
+# work.md may declare external_deps: — a list of references to sibling work
+# groups that must reach a required_state before this group's WDs are ready.
+# Validates shape and that referenced groups exist. Only type=group with
+# required_state=COMPLETE is currently supported; scripts/work-lib.sh's
+# work_check_group_dep enforces the same restriction at runtime.
+
+validate_external_deps() {
+  local group_dir="$1"
+  local work_md="$group_dir/work.md"
+
+  # work.md is optional — some groups predate it. Nothing to validate.
+  [[ ! -f "$work_md" ]] && return 0
+
+  local work_dir
+  work_dir="$(dirname "$group_dir")"
+
+  local errors=()
+  local ent_count=0
+  local ext_type ext_ref ext_req_state
+  while IFS='|' read -r ext_type ext_ref ext_req_state; do
+    [[ -z "$ext_type" ]] && continue
+    ((ent_count++)) || true
+
+    if [[ "$ext_type" != "group" ]]; then
+      errors+=("external_deps: invalid type '$ext_type' (only 'group' supported)")
+      continue
+    fi
+
+    if [[ -z "$ext_ref" ]]; then
+      errors+=("external_deps: missing ref for group entry")
+      continue
+    fi
+
+    if [[ -z "$ext_req_state" ]]; then
+      errors+=("external_deps: group:$ext_ref missing required_state")
+      continue
+    fi
+
+    if [[ "$ext_req_state" != "COMPLETE" ]]; then
+      errors+=("external_deps: group:$ext_ref required_state '$ext_req_state' unsupported (only COMPLETE)")
+      continue
+    fi
+
+    if [[ ! -d "$work_dir/$ext_ref" ]]; then
+      errors+=("external_deps: referenced group '$ext_ref' does not exist")
+    fi
+
+    local self_slug
+    self_slug="$(basename "$group_dir")"
+    if [[ "$ext_ref" == "$self_slug" ]]; then
+      errors+=("external_deps: group '$ext_ref' references itself")
+    fi
+  done < <(work_fm_external_deps "$work_md")
+
+  if (( ${#errors[@]} > 0 )); then
+    echo "  FAIL  external_deps in $work_md"
+    for err in "${errors[@]}"; do
+      echo "    $err"
+    done
+    return 1
+  fi
+
+  if (( ent_count > 0 )); then
+    echo "  PASS  $ent_count external_deps entry(ies) valid"
+  else
+    echo "  PASS  no external_deps declared"
+  fi
+  return 0
+}
+
+# ── Decompose invariant: every cross-WD reference has a group-level artifact ─
+#
+# For each artifact_deps entry across all WDs in the group, the referenced
+# artifact must resolve via one of:
+#   (a) exists in the repo (spec in .spec/registry, ADR in .decisions/, KB file)
+#   (b) listed in another WD's produces: array (i.e. produced within this group)
+#   (c) declared explicitly out_of_scope in work.md frontmatter
+#
+# wd: deps are always internal-only and don't require a backing artifact.
+
+check_decompose_invariant() {
+  local group_dir="$1"
+  local project_root
+  project_root="$(dirname "$(work_find_root)")"
+
+  local work_md="$group_dir/work.md"
+  local unsettled=()
+  local settled_count=0
+
+  # Build the union of all produces: entries across all WDs in the group.
+  # Format in the set: "<type>:<ref>" (e.g. "spec:encryption/primitives").
+  local -A PRODUCED
+  while IFS= read -r wd_file; do
+    [[ -z "$wd_file" ]] && continue
+    while IFS='|' read -r p_type p_ref _; do
+      [[ -z "$p_type" ]] && continue
+      PRODUCED["$p_type:$p_ref"]=1
+    done < <(work_fm_produces "$wd_file" 2>/dev/null)
+  done < <(work_list_wds "$group_dir")
+
+  # Read out_of_scope list from work.md (optional).
+  # Format in frontmatter: out_of_scope: ["spec:foo/bar", "adr:some-slug"]
+  local -A OUT_OF_SCOPE
+  if [[ -f "$work_md" ]]; then
+    while IFS= read -r entry; do
+      [[ -z "$entry" ]] && continue
+      OUT_OF_SCOPE["$entry"]=1
+    done < <(work_fm_array "$work_md" "out_of_scope" 2>/dev/null)
+  fi
+
+  # Walk each WD's artifact_deps and classify each reference.
+  while IFS= read -r wd_file; do
+    [[ -z "$wd_file" ]] && continue
+    local wd_id
+    wd_id=$(work_fm "$wd_file" "id")
+
+    while IFS='|' read -r dep_type dep_ref dep_req_state _; do
+      [[ -z "$dep_type" ]] && continue
+
+      # wd: deps are internal and don't require a backing artifact.
+      [[ "$dep_type" == "wd" ]] && continue
+
+      local key="$dep_type:$dep_ref"
+      local reason=""
+
+      case "$dep_type" in
+        spec)
+          reason=$(work_check_spec_dep "$project_root" "$dep_ref" "$dep_req_state") || true
+          ;;
+        adr)
+          reason=$(work_check_adr_dep "$project_root" "$dep_ref" "$dep_req_state") || true
+          ;;
+        kb)
+          reason=$(work_check_kb_dep "$project_root" "$dep_ref") || true
+          ;;
+      esac
+
+      # Settled if the dep resolves cleanly (exists + in required state).
+      if [[ -z "$reason" ]]; then
+        ((settled_count++)) || true
+        continue
+      fi
+
+      # Unsettled in repo — check if produced by another WD in the group.
+      if [[ -n "${PRODUCED[$key]:-}" ]]; then
+        ((settled_count++)) || true
+        continue
+      fi
+
+      # Unsettled + not produced — check if declared out of scope.
+      if [[ -n "${OUT_OF_SCOPE[$key]:-}" ]]; then
+        ((settled_count++)) || true
+        continue
+      fi
+
+      # Unsettled reference.
+      unsettled+=("$wd_id → $dep_type:$dep_ref ($reason)")
+    done < <(work_fm_artifact_deps "$wd_file")
+  done < <(work_list_wds "$group_dir")
+
+  if [[ ${#unsettled[@]} -eq 0 ]]; then
+    echo "  PASS  $settled_count cross-WD reference(s), all settled"
+    return 0
+  fi
+
+  echo "  FAIL  ${#unsettled[@]} unsettled cross-WD reference(s):"
+  for entry in "${unsettled[@]}"; do
+    echo "    $entry"
+  done
+  echo ""
+  echo "  Resolve by either:"
+  echo "    - Authoring the artifact in Phase B (/architect or /spec-author), OR"
+  echo "    - Adding it to another WD's produces: if a WD in this group will"
+  echo "      author it during implementation, OR"
+  echo "    - Declaring it explicitly out-of-scope in work.md's"
+  echo "      out_of_scope: [\"spec:foo/bar\", ...] frontmatter list."
+  return 1
+}
+
 # ── Execution ────────────────────────────────────────────────────────────────
 
 if [[ "$GROUP_MODE" == "true" ]]; then
@@ -320,6 +547,22 @@ if [[ "$GROUP_MODE" == "true" ]]; then
   else
     echo "  FAIL  Circular dependencies detected"
     ((total_errors++)) || true
+  fi
+
+  # Check external_deps shape + referenced group existence
+  echo ""
+  echo "── External deps check"
+  if ! validate_external_deps "$GROUP_DIR"; then
+    ((total_errors++)) || true
+  fi
+
+  # Phase C decompose invariant (--decompose flag only).
+  if [[ "$DECOMPOSE_MODE" == "true" ]]; then
+    echo ""
+    echo "── Decompose invariant: every cross-WD reference settled"
+    if ! check_decompose_invariant "$GROUP_DIR"; then
+      ((total_errors++)) || true
+    fi
   fi
 
   echo ""
