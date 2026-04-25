@@ -30,12 +30,12 @@
 | Fault Tolerance and Smart Rebalancing (F04 R41-43+R47-50+R63) | f04-obligation-resolution--wd-05 | 2026-04-20 | planning complete | 8 stubs; 2-unit balanced split {WU-1, WU-2} |
 | Implement sstable.pool-aware-block-size | implement-sstable-enhancements--wd-02 | 2026-04-22 | refactor complete | Feature shipped + audit found 5 pre-existing bugs on ArenaBufferPool/Builder, all fixed; spec v4→v5 with R0b-R0e+R11b; 2 KB updates + 3 new KB entries |
 | Implement encryption key hierarchy (WD-01) | implement-encryption-lifecycle--wd-01 | 2026-04-21 | PR drafted | 581 tests (323 TDD + ~260 adversarial); /audit 52 fixes + spec v9 amendments + 3 KB patterns; jlsm-core + jlsm-table check green |
-| Ciphertext format + signalling (WD-02) | implement-encryption-lifecycle--wd-02 | 2026-04-24 | planning complete | work-plan.md written, 7 stubs created |
 
 ## Completed / Archived
 
 | Feature | Slug | Completed | Archive |
 |---------|------|-----------|---------|
+| Ciphertext format + signalling (WD-02) | implement-encryption-lifecycle--wd-02 | 2026-04-25 | .feature/_archive/implement-encryption-lifecycle--wd-02/ |
 | ZSTD dictionary compression + per-level codec policy | zstd-dictionary-compression-per-level-codec-policy | 2026-04-12 | .feature/_archive/zstd-dictionary-compression-per-level-codec-policy/ |
 | WAL compression + MemorySegment codec API | wal-compression-codec-api | 2026-04-12 | .feature/_archive/wal-compression-codec-api/ |
 | Field-level in-memory encryption | encrypt-memory-data | 2026-03-19 | .feature/_archive/encrypt-memory-data/ |
