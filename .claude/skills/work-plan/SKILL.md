@@ -168,8 +168,26 @@ Read the WD file (`.work/<group-slug>/WD-<nn>.md`). Build `brief.md` from:
 ## Constraints
 <WD Implementation Notes section content>
 
-## Artifact Dependencies (from work group)
-<List each artifact_dep with its current state>
+## Group Envelope (AUTHORITATIVE — from work group Phase B)
+
+Group-level artifacts settled during `/work-decompose` Phase B. **These are
+authoritative for WD-local analysis** — domain analysis must defer to them
+rather than re-deciding. If WD-local work would contradict an envelope item,
+that's an escalation back to `/work-decompose`, not a local override.
+
+For each artifact in the WD's `artifact_deps:`, write one entry:
+- **spec `<domain>/<name>`** — state: APPROVED — <title from spec frontmatter>
+  <one-sentence summary of what the spec settles>
+- **adr `<slug>`** — status: accepted — <title from adr.md H1>
+  <one-sentence summary of the decision>
+- **kb `<path>`** — <title from entry frontmatter>
+
+Also list explicit scope declarations from `work.md`:
+- **out_of_scope:** <items from work.md's out_of_scope frontmatter, if any>
+- **external_deps:** <entries from work.md's external_deps frontmatter, if any>
+
+If the WD has no artifact_deps and no group-level scope declarations, write:
+"No group envelope — this WD operates standalone within the work group."
 
 ## Produced Artifacts (expected outputs)
 <List each produces entry>
@@ -234,8 +252,20 @@ WHAT the system must do as a result. Without specs, the adversarial
 hardening and audit pipeline have nothing to falsify. Do not skip or
 bypass spec authoring for any WD type.
 
-Read `domains.md` to identify the specs that need to be authored. For
-each spec to produce, **in sequence**:
+Read `domains.md` to identify the specs that need to be authored.
+
+**Dedupe against the group envelope first.** Read the WD file's
+`artifact_deps:` from `.work/<group-slug>/WD-<nn>.md`. For any spec in
+`domains.md` whose identity matches an `artifact_deps` spec entry in
+APPROVED state, do NOT author it — the group already owns that spec and
+WD-local re-authoring would create divergent copies. Log the skip:
+
+```
+  ⊘ <spec-id> — deferred to group-level spec <ref> (APPROVED)
+```
+
+Authoring proceeds only for specs not already covered by the envelope.
+For each remaining spec to produce, **in sequence**:
 
 1. Invoke `/spec-author "<feature-id>" "<title>"` as a separate subagent.
    Each invocation gets a clean context but reads previously registered
@@ -255,6 +285,10 @@ Spec authoring: <completed>/<total>
   ✓ F24 — Pool-Aware Block Size Configuration (APPROVED)
   → F25 — Byte-Budget Block Cache (authoring...)
 ```
+
+If every spec in `domains.md` is covered by the envelope, Step 5b emits a
+no-op log line and Step 6 proceeds to finalize the WD — this is legitimate
+when Phase B settled the full spec surface for this WD.
 
 ---
 

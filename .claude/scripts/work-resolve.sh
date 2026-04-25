@@ -38,6 +38,33 @@ GROUP_DIR="$WORK_DIR/$GROUP_SLUG"
   exit 1
 }
 
+# ── Cross-group dependencies (external_deps on work.md) ─────────────────────
+# Any unmet external dep becomes a uniform blocker applied to all DRAFT and
+# SPECIFIED WDs in this group. IMPLEMENTING, SPECIFYING, and COMPLETE WDs
+# are left alone — already-in-flight or finished work is not retroactively
+# un-done by a later external_deps declaration.
+
+EXTERNAL_BLOCKER=""
+GROUP_WORK_MD="$GROUP_DIR/work.md"
+if [[ -f "$GROUP_WORK_MD" ]]; then
+  work_dir_abs="$WORK_DIR"
+  while IFS='|' read -r ext_type ext_ref ext_req_state; do
+    [[ -z "$ext_type" ]] && continue
+    ext_reason=""
+    case "$ext_type" in
+      group)
+        ext_reason=$(work_check_group_dep "$work_dir_abs" "$ext_ref" "$ext_req_state") || true
+        ;;
+      *)
+        ext_reason="unknown external_deps type: $ext_type"
+        ;;
+    esac
+    if [[ -n "$ext_reason" ]]; then
+      EXTERNAL_BLOCKER+="external $ext_type:$ext_ref — $ext_reason"$'\n'
+    fi
+  done < <(work_fm_external_deps "$GROUP_WORK_MD")
+fi
+
 # ── Collect all work definitions ─────────────────────────────────────────────
 
 declare -A WD_STATUS    # id -> status
@@ -106,6 +133,8 @@ while IFS= read -r wd_file; do
       fi
     done < <(work_fm_artifact_deps "$wd_file")
     WD_DEP_COUNT["$wd_id"]=$spec_dep_count
+    # Apply any group-level external_deps gate.
+    [[ -n "$EXTERNAL_BLOCKER" ]] && spec_blockers+="$EXTERNAL_BLOCKER"
     if [[ -z "$spec_blockers" ]]; then
       WD_STATUS["$wd_id"]="SPECIFIED"
       ((SPECIFIED_COUNT++)) || true
@@ -153,6 +182,9 @@ while IFS= read -r wd_file; do
   done < <(work_fm_artifact_deps "$wd_file")
 
   WD_DEP_COUNT["$wd_id"]=$dep_count
+
+  # Apply any group-level external_deps gate.
+  [[ -n "$EXTERNAL_BLOCKER" ]] && blockers+="$EXTERNAL_BLOCKER"
 
   if [[ -z "$blockers" ]]; then
     WD_STATUS["$wd_id"]="READY"

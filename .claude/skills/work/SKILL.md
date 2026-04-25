@@ -88,6 +88,33 @@ Read the goal and privately identify unknowns across:
 - After each answer, update your internal model — skip questions the answer
   already covers
 
+### Lead with tradeoff analysis when the choice is non-obvious
+
+`AskUserQuestion` presents options with short labels and one-sentence
+descriptions. That works when the user can pick from labels alone. It
+does NOT work when the choice has implications the user can't see in a
+sentence — they'll either pick the wrong option or come back asking
+"what's the tradeoff?", forcing a retrofit.
+
+Default rule: **before any AskUserQuestion whose options have non-trivial
+consequences (architecture, scope boundary, dependency model), present
+the tradeoff analysis FIRST as prose, then call AskUserQuestion.**
+
+Concretely, the message preceding the AskUserQuestion should:
+- Name each option's blast radius and reversibility
+- Surface non-obvious second-order effects (e.g., "option B touches
+  shared types; option A doesn't")
+- Note industry precedent if relevant
+- Make a recommendation if you have a defensible one, but frame it as
+  the *user's call*, not yours
+
+This is more text than a bare AskUserQuestion. That's intentional. A
+user who picks an option without understanding the tradeoff is worse
+off than a user who reads two paragraphs and chooses correctly.
+
+Skip the tradeoff prelude only when the choice is genuinely simple
+(e.g., "kebab-case slug okay?" — yes/no, no second-order effects).
+
 ---
 
 ## Step 3 — Confirm work group scope
@@ -135,6 +162,12 @@ group: <group-slug>
 goal: <one sentence goal>
 status: active
 created: <YYYY-MM-DD>
+# Optional — declare cross-group blockers. Every WD in this group is
+# reported BLOCKED by scripts/work-resolve.sh until every listed group
+# reaches required_state=COMPLETE. Add only if seam analysis surfaces
+# a cross-group dependency; leave out otherwise.
+# external_deps:
+#   - { type: group, ref: "<other-group-slug>", required_state: COMPLETE }
 ---
 
 ## Goal
