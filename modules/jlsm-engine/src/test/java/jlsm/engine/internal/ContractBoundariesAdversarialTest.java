@@ -68,9 +68,9 @@ class ContractBoundariesAdversarialTest {
     }
 
     // Finding: F-R1.cb.1.2
-    // Bug: LocalTable.checkValid() passes hardcoded 0 for handleCountAtEviction
+    // Bug: CatalogTable.checkValid() passes hardcoded 0 for handleCountAtEviction
     // Correct behavior: handleCountAtEviction should reflect the actual number of open handles
-    // Fix location: LocalTable.checkValid() — should query tracker for the real handle count
+    // Fix location: CatalogTable.checkValid() — should query tracker for the real handle count
     // Regression watch: handle count must be queried at eviction-check time, not cached
     @Test
     void test_LocalTable_checkValid_hardcodesZeroHandleCountAtEviction() throws IOException {
@@ -92,9 +92,9 @@ class ContractBoundariesAdversarialTest {
             // Invalidate reg1 to simulate eviction
             reg1.invalidate(HandleEvictedException.Reason.EVICTION);
 
-            // Create a LocalTable with the invalidated registration
+            // Create a CatalogTable with the invalidated registration
             final var stub = new StubStringKeyedTable();
-            final LocalTable table = new LocalTable(stub, reg1, tracker, metadata);
+            final CatalogTable table = new CatalogTable(stub, reg1, tracker, metadata);
 
             // Calling get() triggers checkValid() which should throw HandleEvictedException
             final HandleEvictedException ex = assertThrows(HandleEvictedException.class,
@@ -289,12 +289,12 @@ class ContractBoundariesAdversarialTest {
     }
 
     // Finding: F-R1.cb.1.6
-    // Bug: LocalTable.insert() uses assert-only guard for schema.fields() emptiness —
+    // Bug: CatalogTable.insert() uses assert-only guard for schema.fields() emptiness —
     // with assertions disabled, getFirst() throws NoSuchElementException instead of
     // a meaningful IllegalStateException
     // Correct behavior: A runtime check should throw IllegalStateException with a clear
     // message about the schema missing a primary key field
-    // Fix location: LocalTable.insert() line 90 — replace assert with runtime if/throw
+    // Fix location: CatalogTable.insert() line 90 — replace assert with runtime if/throw
     // Regression watch: Normal schemas with fields must still work; the exception type
     // must be IllegalStateException (not IllegalArgumentException — the schema is valid
     // per JlsmSchema's contract, but the engine requires at least one field)
@@ -311,7 +311,7 @@ class ContractBoundariesAdversarialTest {
 
             final HandleRegistration reg = tracker.register("empty_table", "test-src");
             final var stub = new StubStringKeyedTable();
-            final LocalTable table = new LocalTable(stub, reg, tracker, metadata);
+            final CatalogTable table = new CatalogTable(stub, reg, tracker, metadata);
 
             // Build a doc using a separate schema that has fields — the table's schema is empty
             final JlsmSchema docSchema = JlsmSchema.builder("doc", 1)

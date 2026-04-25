@@ -21,10 +21,11 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for {@link LocalTable} — verifies delegation, handle validity checks, and null validation.
+ * Tests for {@link CatalogTable} — verifies delegation, handle validity checks, and null
+ * validation.
  *
  * <p>
- * Uses a stub {@link JlsmTable.StringKeyed} to isolate LocalTable logic from the real LSM stack.
+ * Uses a stub {@link JlsmTable.StringKeyed} to isolate CatalogTable logic from the real LSM stack.
  */
 class LocalTableTest {
 
@@ -43,9 +44,9 @@ class LocalTableTest {
         stubDelegate = new StubStringKeyedTable();
     }
 
-    private LocalTable createTable() {
+    private CatalogTable createTable() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
-        return new LocalTable(stubDelegate, reg, tracker, metadata);
+        return new CatalogTable(stubDelegate, reg, tracker, metadata);
     }
 
     // ---- Constructor null checks ----
@@ -54,27 +55,27 @@ class LocalTableTest {
     void constructorRejectsNullDelegate() {
         final HandleRegistration reg = tracker.register("t", "s");
         assertThrows(NullPointerException.class,
-                () -> new LocalTable(null, reg, tracker, metadata));
+                () -> new CatalogTable(null, reg, tracker, metadata));
     }
 
     @Test
     void constructorRejectsNullRegistration() {
         assertThrows(NullPointerException.class,
-                () -> new LocalTable(stubDelegate, null, tracker, metadata));
+                () -> new CatalogTable(stubDelegate, null, tracker, metadata));
     }
 
     @Test
     void constructorRejectsNullTracker() {
         final HandleRegistration reg = tracker.register("t", "s");
         assertThrows(NullPointerException.class,
-                () -> new LocalTable(stubDelegate, reg, null, metadata));
+                () -> new CatalogTable(stubDelegate, reg, null, metadata));
     }
 
     @Test
     void constructorRejectsNullMetadata() {
         final HandleRegistration reg = tracker.register("t", "s");
         assertThrows(NullPointerException.class,
-                () -> new LocalTable(stubDelegate, reg, tracker, null));
+                () -> new CatalogTable(stubDelegate, reg, tracker, null));
     }
 
     // ---- create delegates ----
@@ -83,7 +84,7 @@ class LocalTableTest {
     // implementation
     @Test
     void createDelegatesToStub() throws IOException {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
             table.create("k1", doc);
             assertTrue(stubDelegate.createCalled, "create should have been called on delegate");
@@ -92,7 +93,7 @@ class LocalTableTest {
 
     @Test
     void createRejectsNullKey() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
             assertThrows(NullPointerException.class, () -> table.create(null, doc));
         }
@@ -100,7 +101,7 @@ class LocalTableTest {
 
     @Test
     void createRejectsNullDoc() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             assertThrows(NullPointerException.class, () -> table.create("k1", null));
         }
     }
@@ -111,7 +112,7 @@ class LocalTableTest {
     // implementation
     @Test
     void getDelegatesToStub() throws IOException {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             final Optional<JlsmDocument> result = table.get("k1");
             assertTrue(stubDelegate.getCalled, "get should have been called on delegate");
             assertTrue(result.isEmpty());
@@ -120,7 +121,7 @@ class LocalTableTest {
 
     @Test
     void getRejectsNullKey() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             assertThrows(NullPointerException.class, () -> table.get(null));
         }
     }
@@ -131,7 +132,7 @@ class LocalTableTest {
     // implementation
     @Test
     void updateDelegatesToStub() throws IOException {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
             table.update("k1", doc, UpdateMode.REPLACE);
             assertTrue(stubDelegate.updateCalled, "update should have been called on delegate");
@@ -140,7 +141,7 @@ class LocalTableTest {
 
     @Test
     void updateRejectsNullKey() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
             assertThrows(NullPointerException.class,
                     () -> table.update(null, doc, UpdateMode.REPLACE));
@@ -149,7 +150,7 @@ class LocalTableTest {
 
     @Test
     void updateRejectsNullDoc() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             assertThrows(NullPointerException.class,
                     () -> table.update("k1", null, UpdateMode.REPLACE));
         }
@@ -157,7 +158,7 @@ class LocalTableTest {
 
     @Test
     void updateRejectsNullMode() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
             assertThrows(NullPointerException.class, () -> table.update("k1", doc, null));
         }
@@ -169,7 +170,7 @@ class LocalTableTest {
     // implementation
     @Test
     void deleteDelegatesToStub() throws IOException {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             table.delete("k1");
             assertTrue(stubDelegate.deleteCalled, "delete should have been called on delegate");
         }
@@ -177,7 +178,7 @@ class LocalTableTest {
 
     @Test
     void deleteRejectsNullKey() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             assertThrows(NullPointerException.class, () -> table.delete(null));
         }
     }
@@ -186,7 +187,7 @@ class LocalTableTest {
 
     @Test
     void insertExtractsPrimaryKeyAndDelegates() throws IOException {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             final JlsmDocument doc = JlsmDocument.of(schema, "id", "pk1", "value", "v1");
             table.insert(doc);
             assertTrue(stubDelegate.createCalled, "create should have been called via insert");
@@ -197,7 +198,7 @@ class LocalTableTest {
 
     @Test
     void insertRejectsNullDoc() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             assertThrows(NullPointerException.class, () -> table.insert(null));
         }
     }
@@ -210,7 +211,7 @@ class LocalTableTest {
     // returns the interface default — an unbound TableQuery whose execute() throws UOE.
     @Test
     void queryReturnsUnboundTableQueryFromStub() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             jlsm.table.TableQuery<String> q = table.query();
             assertNotNull(q, "query() must return a non-null TableQuery");
             q.where("name").eq("Alice");
@@ -225,7 +226,7 @@ class LocalTableTest {
     // checks validity
     @Test
     void scanDelegatesToStub() throws IOException {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             final Iterator<TableEntry<String>> iter = table.scan("a", "z");
             assertTrue(stubDelegate.scanCalled, "scan should have been called on delegate");
             assertNotNull(iter);
@@ -234,14 +235,14 @@ class LocalTableTest {
 
     @Test
     void scanRejectsNullFromKey() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             assertThrows(NullPointerException.class, () -> table.scan(null, "z"));
         }
     }
 
     @Test
     void scanRejectsNullToKey() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             assertThrows(NullPointerException.class, () -> table.scan("a", null));
         }
     }
@@ -250,7 +251,7 @@ class LocalTableTest {
 
     @Test
     void metadataReturnsCorrectValue() {
-        try (final LocalTable table = createTable()) {
+        try (final CatalogTable table = createTable()) {
             assertSame(metadata, table.metadata());
         }
     }
@@ -262,7 +263,7 @@ class LocalTableTest {
     @Test
     void closeReleasesRegistration() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         // Before close, tracker should have the handle
         assertEquals(1, tracker.snapshot().totalOpenHandles());
         table.close();
@@ -276,7 +277,7 @@ class LocalTableTest {
     void evictedHandleThrowsOnCreate() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
         assertThrows(HandleEvictedException.class, () -> table.create("k1", doc));
     }
@@ -287,7 +288,7 @@ class LocalTableTest {
     void evictedHandleThrowsOnGet() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         assertThrows(HandleEvictedException.class, () -> table.get("k1"));
     }
 
@@ -295,7 +296,7 @@ class LocalTableTest {
     void evictedHandleThrowsOnUpdate() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
         assertThrows(HandleEvictedException.class,
                 () -> table.update("k1", doc, UpdateMode.REPLACE));
@@ -305,7 +306,7 @@ class LocalTableTest {
     void evictedHandleThrowsOnDelete() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         assertThrows(HandleEvictedException.class, () -> table.delete("k1"));
     }
 
@@ -313,7 +314,7 @@ class LocalTableTest {
     void evictedHandleThrowsOnInsert() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         final JlsmDocument doc = JlsmDocument.of(schema, "id", "k1", "value", "v1");
         assertThrows(HandleEvictedException.class, () -> table.insert(doc));
     }
@@ -322,7 +323,7 @@ class LocalTableTest {
     void evictedHandleThrowsOnQuery() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         assertThrows(HandleEvictedException.class, table::query);
     }
 
@@ -330,7 +331,7 @@ class LocalTableTest {
     void evictedHandleThrowsOnScan() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         assertThrows(HandleEvictedException.class, () -> table.scan("a", "z"));
     }
 
@@ -340,7 +341,7 @@ class LocalTableTest {
     void metadataThrowsOnEvictedHandle() {
         final HandleRegistration reg = tracker.register("test_table", "test-source");
         reg.invalidate();
-        final LocalTable table = new LocalTable(stubDelegate, reg, tracker, metadata);
+        final CatalogTable table = new CatalogTable(stubDelegate, reg, tracker, metadata);
         assertThrows(HandleEvictedException.class, table::metadata);
     }
 

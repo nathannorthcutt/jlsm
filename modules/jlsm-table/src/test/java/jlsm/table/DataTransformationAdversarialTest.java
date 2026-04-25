@@ -199,20 +199,26 @@ class DataTransformationAdversarialTest {
         final FieldEncryptionDispatch.FieldDecryptor decryptor = dispatch.decryptorFor(0);
         assertNotNull(decryptor, "OPE field must have a decryptor");
 
-        // A 5-byte ciphertext — wrong length (must be exactly 9 bytes).
-        // With assertions disabled, this would cause ArrayIndexOutOfBoundsException
-        // instead of a descriptive error.
-        final byte[] shortCiphertext = new byte[]{ 0x01, 0x02, 0x03, 0x04, 0x05 };
+        // After WU-4: dispatch envelope = [4B BE DEK version | 25B OPE inner]. Provide a
+        // short buffer that DOES pass parseVersion (version=1, dispatch's permissive default)
+        // but is under-length for the OPE inner — this still trips IllegalArgumentException
+        // from the underlying OPE decryptor (length != 25), now via the envelope wrapper.
+        // 4B prefix (version=1) + 5B body = 9-byte envelope → after stripPrefix the body is
+        // 5 bytes, which the underlying decryptor rejects with IAE.
+        final byte[] shortCiphertext = new byte[]{ 0x00, 0x00, 0x00, 0x01, // version 1
+                0x01, 0x02, 0x03, 0x04, 0x05 };
 
         // The decryptor must reject wrong-length ciphertext with IllegalArgumentException
+        // (the envelope wrapper passes it through to the OPE inner).
         assertThrows(IllegalArgumentException.class, () -> decryptor.decrypt(shortCiphertext),
                 "OPE decrypt must reject ciphertext of wrong length with IllegalArgumentException, "
                         + "not ArrayIndexOutOfBoundsException");
 
-        // Also verify null ciphertext is rejected with IllegalArgumentException
-        assertThrows(IllegalArgumentException.class, () -> decryptor.decrypt(null),
-                "OPE decrypt must reject null ciphertext with IllegalArgumentException, "
-                        + "not NullPointerException");
+        // Also verify null ciphertext is rejected with NullPointerException (parseVersion
+        // performs eager Objects.requireNonNull on the envelope bytes).
+        assertThrows(NullPointerException.class, () -> decryptor.decrypt(null),
+                "OPE decrypt must reject null ciphertext with NullPointerException via "
+                        + "parseVersion's null check");
 
         // Cleanup
         keyHolder.close();

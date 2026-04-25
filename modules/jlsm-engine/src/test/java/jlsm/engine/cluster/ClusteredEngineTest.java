@@ -92,7 +92,7 @@ final class ClusteredEngineTest {
                         .localAddress(NODE_A).discovery(new InJvmDiscoveryProvider()).build());
     }
 
-    // @spec engine.clustering.R56, F04.R79 — discovery is a mandatory builder parameter
+    // @spec engine.clustering.R56 — discovery is a mandatory builder parameter
     @Test
     void builder_missingDiscovery_throwsNPE() {
         assertThrows(NullPointerException.class,
@@ -311,7 +311,7 @@ final class ClusteredEngineTest {
                     TableMetadata.TableState.READY);
             tables.put(name, meta);
             createdTables.add(name);
-            return new StubTable(meta);
+            return jlsm.engine.cluster.internal.TestTableStubs.forMetadata(meta);
         }
 
         @Override
@@ -320,7 +320,7 @@ final class ClusteredEngineTest {
             if (meta == null) {
                 throw new IOException("Table does not exist: " + name);
             }
-            return new StubTable(meta);
+            return jlsm.engine.cluster.internal.TestTableStubs.forMetadata(meta);
         }
 
         @Override
@@ -352,54 +352,6 @@ final class ClusteredEngineTest {
         }
     }
 
-    /**
-     * Minimal stub table for testing engine delegation.
-     */
-    private static final class StubTable implements Table {
-        private final TableMetadata metadata;
-
-        StubTable(TableMetadata metadata) {
-            this.metadata = metadata;
-        }
-
-        @Override
-        public void create(String key, jlsm.table.JlsmDocument doc) {
-        }
-
-        @Override
-        public java.util.Optional<jlsm.table.JlsmDocument> get(String key) {
-            return java.util.Optional.empty();
-        }
-
-        @Override
-        public void update(String key, jlsm.table.JlsmDocument doc, jlsm.table.UpdateMode mode) {
-        }
-
-        @Override
-        public void delete(String key) {
-        }
-
-        @Override
-        public void insert(jlsm.table.JlsmDocument doc) {
-        }
-
-        @Override
-        public jlsm.table.TableQuery<String> query() {
-            throw new UnsupportedOperationException("Not implemented");
-        }
-
-        @Override
-        public java.util.Iterator<jlsm.table.TableEntry<String>> scan(String from, String to) {
-            return java.util.Collections.emptyIterator();
-        }
-
-        @Override
-        public TableMetadata metadata() {
-            return metadata;
-        }
-
-        @Override
-        public void close() {
-        }
-    }
+    // R8g migration: StubTable previously declared `implements Table` — replaced with the
+    // shared {@code TestTableStubs.forMetadata(...)} factory.
 }

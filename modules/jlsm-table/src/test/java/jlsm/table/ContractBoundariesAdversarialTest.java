@@ -474,9 +474,12 @@ class ContractBoundariesAdversarialTest {
             final float[] plaintext = { 1.25f, -0.5f, 3.75f };
             final byte[] fieldAd = "vec".getBytes(java.nio.charset.StandardCharsets.UTF_8);
             final var ev = dcpe.encrypt(plaintext, fieldAd);
-            final byte[] preEncryptedBlob = jlsm.encryption.DcpeSapEncryptor.toBlob(ev);
-            assertEquals(8 + 3 * 4 + 16, preEncryptedBlob.length,
-                    "pre-encrypted DCPE blob must be 8+4N+16 bytes");
+            // @spec encryption.ciphertext-envelope.R1, R1c — pre-encrypted DCPE callers wrap
+            // the variant body with the 4B BE DEK version prefix; total envelope is 12+4N+16.
+            final byte[] preEncryptedBlob = jlsm.encryption.EnvelopeCodec.prefixVersion(1,
+                    jlsm.encryption.DcpeSapEncryptor.toBlob(ev));
+            assertEquals(12 + 3 * 4 + 16, preEncryptedBlob.length,
+                    "pre-encrypted DCPE envelope must be 12+4N+16 bytes (4B prefix + 8B seed + 4N + 16B MAC)");
 
             final Object[] values = new Object[]{ "test-vector", preEncryptedBlob };
             final JlsmDocument preEncDoc = new JlsmDocument(schema, values, true);

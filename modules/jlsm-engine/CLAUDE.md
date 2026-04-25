@@ -12,9 +12,10 @@ concurrent callers.
 
 ## Exported Packages
 
-- `jlsm.engine` — public API: `Engine`, `Table`, `TableMetadata`, `EngineMetrics`,
-  `AllocationTracking`, `HandleEvictedException`
-- `jlsm.engine.cluster` — clustering API: `ClusteredEngine`, `ClusteredTable`,
+- `jlsm.engine` — public API: `Engine`, `Table`, `TableMetadata`,
+  `EncryptionMetadata`, `EngineMetrics`, `AllocationTracking`,
+  `HandleEvictedException`
+- `jlsm.engine.cluster` — clustering API: `ClusteredEngine`,
   `ClusterOperationalMode`, `QuorumLostException`,
   `PartitionKeySpace`, `SinglePartitionKeySpace`, `LexicographicPartitionKeySpace`,
   `NodeAddress`, `ClusterConfig`, `Message`, `MessageType`, `Member`, `MemberState`,
@@ -25,9 +26,16 @@ concurrent callers.
 
 Not exported in `module-info.java` and must not be made public:
 
-- `jlsm.engine.internal` — `LocalEngine`, `LocalTable`, `HandleTracker`,
-  `HandleRegistration`, `TableCatalog`
-- `jlsm.engine.cluster.internal` — `InJvmTransport`, `InJvmDiscoveryProvider`,
+- `jlsm.engine.internal` — `LocalEngine`, `CatalogTable` (was `LocalTable` —
+  renamed by WD-02 WU-1 to one of two permits of sealed `Table`),
+  `HandleTracker`, `HandleRegistration`, `TableCatalog`, `CatalogIndex`
+  (R9a-mono format-version high-water), `CatalogLock` SPI +
+  `FileBasedCatalogLock` + `CatalogLockFactory` (per-table exclusive lock
+  shared by `Engine.enableEncryption` R7b step 1 and `TrieSSTableWriter`
+  R10c step 2)
+- `jlsm.engine.cluster.internal` — `CatalogClusteredTable` (was public
+  `ClusteredTable` — relocated + renamed by WD-02 WU-1 to one of two permits
+  of sealed `Table`), `InJvmTransport`, `InJvmDiscoveryProvider`,
   `PhiAccrualFailureDetector`, `RapidMembership`, `RendezvousOwnership`,
   `GracePeriodManager`, `RemotePartitionClient`,
   `ViewReconciler`, `SeedRetryTask`, `GraceGatedRebalancer`
@@ -49,7 +57,7 @@ Not exported in `module-info.java` and must not be made public:
 
 ## Known Gaps
 
-- `ClusteredTable.query()` and `insert(JlsmDocument)` throw
+- `CatalogClusteredTable.query()` and `insert(JlsmDocument)` throw
   `UnsupportedOperationException` in clustered mode.
 - `RemotePartitionClient.doQuery(...)` returns an empty list — scored-entry
   response framing over the cluster transport is not yet wired.

@@ -1,10 +1,19 @@
-package jlsm.engine.cluster;
+package jlsm.engine.cluster.internal;
 
 import jlsm.engine.Engine;
 import jlsm.engine.Table;
 import jlsm.engine.TableMetadata;
-import jlsm.engine.cluster.internal.RemotePartitionClient;
-import jlsm.engine.cluster.internal.RendezvousOwnership;
+import jlsm.engine.cluster.ClusterOperationalMode;
+import jlsm.engine.cluster.ClusterTransport;
+import jlsm.engine.cluster.Member;
+import jlsm.engine.cluster.MemberState;
+import jlsm.engine.cluster.MembershipProtocol;
+import jlsm.engine.cluster.MembershipView;
+import jlsm.engine.cluster.NodeAddress;
+import jlsm.engine.cluster.PartialResultMetadata;
+import jlsm.engine.cluster.PartitionKeySpace;
+import jlsm.engine.cluster.QuorumLostException;
+import jlsm.engine.cluster.SinglePartitionKeySpace;
 import jlsm.table.JlsmDocument;
 import jlsm.table.PartitionDescriptor;
 import jlsm.table.TableEntry;
@@ -66,14 +75,24 @@ import java.util.function.Supplier;
  * @spec engine.clustering.R113 — ordered merge fails explicitly on malformed per-partition iterator
  *       elements
  */
-public final class ClusteredTable implements Table {
+public non-sealed class CatalogClusteredTable implements Table {
+    // Note: class kept `public` so public callers within the cluster package can reach it via
+    // the sealed `Table` permit declaration; constructors are package-private so only
+    // {@link jlsm.engine.cluster.ClusteredEngine} (and {@link #forEngine} factory) can
+    // instantiate. This preserves R8f's runtime defence: external code cannot reach a
+    // constructor without a project-controlled --add-exports flag, and cannot subclass
+    // without the same flag (constructor is package-private). The class is `non-sealed`
+    // (rather than `final`) so that test code reachable via the project's
+    // `--add-exports jlsm.engine/jlsm.engine.cluster.internal=ALL-UNNAMED` flag can extend
+    // it as a test stub (R8g migration target).
 
     /**
      * Logger for recording client-close failures from the scatter whenComplete stage — assertions
      * are disabled under -da (the default JVM mode), so the previous {@code assert} tautology was a
      * silent no-op. Logging via {@link System.Logger} ensures diagnostics survive production runs.
      */
-    private static final System.Logger LOGGER = System.getLogger(ClusteredTable.class.getName());
+    private static final System.Logger LOGGER = System
+            .getLogger(CatalogClusteredTable.class.getName());
 
     /** Placeholder low key (lexicographic minimum) for scatter-gather partition descriptors. */
     private static final java.lang.foreign.MemorySegment PLACEHOLDER_LOW = java.lang.foreign.MemorySegment
@@ -140,6 +159,72 @@ public final class ClusteredTable implements Table {
     private final Set<CompletableFuture<?>> inFlightScatter = ConcurrentHashMap.newKeySet();
 
     /**
+     * Tracks every RemotePartitionClient created during scan() so close() can guarantee each one is
+     * closed even if the per-future {@code whenComplete} cleanup races with cancellation in a way
+     * that leaves the callback un-fired. RemotePartitionClient.close() is idempotent (compareAndSet
+     * on a closed flag), so double-close from both the {@code whenComplete} path and the explicit
+     * close() sweep is safe and the openInstances counter decrements at most once per client.
+     */
+    private final Set<RemotePartitionClient> liveClients = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Static factory method exposed to {@link jlsm.engine.cluster.ClusteredEngine} (a sibling
+     * package within the same module) for instantiation without making the canonical ctor public.
+     * Constructors are kept package-private (R8f); this factory is the single public surface within
+     * the cluster path. External modules cannot reach this method without a project-controlled
+     * {@code --add-exports jlsm.engine/jlsm.engine.cluster.internal=...} flag — the non-exported
+     * package is the actual runtime trust boundary.
+     *
+     * @spec sstable.footer-encryption-scope.R8f
+     */
+    public static CatalogClusteredTable forEngine(TableMetadata tableMetadata,
+            ClusterTransport transport, MembershipProtocol membership, NodeAddress localAddress,
+            RendezvousOwnership ownership, Engine localEngine) {
+        return new CatalogClusteredTable(tableMetadata, transport, membership, localAddress,
+                ownership, localEngine);
+    }
+
+    /** 4-arg factory — no shared ownership, no local-engine short-circuit. */
+    public static CatalogClusteredTable forEngine(TableMetadata tableMetadata,
+            ClusterTransport transport, MembershipProtocol membership, NodeAddress localAddress) {
+        return new CatalogClusteredTable(tableMetadata, transport, membership, localAddress);
+    }
+
+    /** 5-arg factory — shared ownership, no local-engine short-circuit. */
+    public static CatalogClusteredTable forEngine(TableMetadata tableMetadata,
+            ClusterTransport transport, MembershipProtocol membership, NodeAddress localAddress,
+            RendezvousOwnership ownership) {
+        return new CatalogClusteredTable(tableMetadata, transport, membership, localAddress,
+                ownership);
+    }
+
+    /** 7-arg factory — explicit partition keyspace overload. */
+    public static CatalogClusteredTable forEngine(TableMetadata tableMetadata,
+            ClusterTransport transport, MembershipProtocol membership, NodeAddress localAddress,
+            RendezvousOwnership ownership, Engine localEngine, PartitionKeySpace keySpace) {
+        return new CatalogClusteredTable(tableMetadata, transport, membership, localAddress,
+                ownership, localEngine, keySpace);
+    }
+
+    /** 7-arg factory — operational-mode supplier overload (sibling shape to keyspace). */
+    public static CatalogClusteredTable forEngine(TableMetadata tableMetadata,
+            ClusterTransport transport, MembershipProtocol membership, NodeAddress localAddress,
+            RendezvousOwnership ownership, Engine localEngine,
+            Supplier<ClusterOperationalMode> operationalModeSupplier) {
+        return new CatalogClusteredTable(tableMetadata, transport, membership, localAddress,
+                ownership, localEngine, operationalModeSupplier);
+    }
+
+    /** 8-arg factory — full surface (keyspace + mode supplier). */
+    public static CatalogClusteredTable forEngine(TableMetadata tableMetadata,
+            ClusterTransport transport, MembershipProtocol membership, NodeAddress localAddress,
+            RendezvousOwnership ownership, Engine localEngine, PartitionKeySpace keySpace,
+            Supplier<ClusterOperationalMode> modeSupplier) {
+        return new CatalogClusteredTable(tableMetadata, transport, membership, localAddress,
+                ownership, localEngine, keySpace, modeSupplier);
+    }
+
+    /**
      * Creates a new clustered table proxy with a shared ownership instance and a local engine for
      * in-process short-circuit routing.
      *
@@ -160,7 +245,7 @@ public final class ClusteredTable implements Table {
      * @param localEngine the local engine used to short-circuit locally-owned operations; may be
      *            null to disable short-circuit routing (backward-compat behavior).
      */
-    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+    CatalogClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
             Engine localEngine) {
         this(tableMetadata, transport, membership, localAddress, ownership, localEngine,
@@ -187,7 +272,7 @@ public final class ClusteredTable implements Table {
      *            keyspace must use the sibling overload that takes
      *            {@code Supplier<ClusterOperationalMode>} at the same arity.
      */
-    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+    CatalogClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
             Engine localEngine, PartitionKeySpace keySpace) {
         this(tableMetadata, transport, membership, localAddress, ownership, localEngine, keySpace,
@@ -212,7 +297,7 @@ public final class ClusteredTable implements Table {
      *            {@code delete}/{@code insert} throw {@link QuorumLostException} (@spec
      *            engine.clustering.R41).
      */
-    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+    CatalogClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
             Engine localEngine, PartitionKeySpace keySpace,
             Supplier<ClusterOperationalMode> modeSupplier) {
@@ -243,7 +328,7 @@ public final class ClusteredTable implements Table {
      *            null to disable short-circuit routing
      * @param operationalModeSupplier supplier of the engine's operational mode; must not be null
      */
-    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+    CatalogClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress, RendezvousOwnership ownership,
             Engine localEngine, Supplier<ClusterOperationalMode> operationalModeSupplier) {
         this(tableMetadata, transport, membership, localAddress, ownership, localEngine,
@@ -260,7 +345,7 @@ public final class ClusteredTable implements Table {
      * @param localAddress the address of the local node; must not be null
      * @param ownership the shared ownership resolver; must not be null
      */
-    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+    CatalogClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress,
             RendezvousOwnership ownership) {
         this(tableMetadata, transport, membership, localAddress, ownership, null);
@@ -279,7 +364,7 @@ public final class ClusteredTable implements Table {
      * @param membership the membership protocol for resolving partition owners; must not be null
      * @param localAddress the address of the local node; must not be null
      */
-    public ClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
+    CatalogClusteredTable(TableMetadata tableMetadata, ClusterTransport transport,
             MembershipProtocol membership, NodeAddress localAddress) {
         this(tableMetadata, transport, membership, localAddress, new RendezvousOwnership(), null);
     }
@@ -466,6 +551,11 @@ public final class ClusteredTable implements Table {
                         "Failed to instantiate client for " + node, creationFailure))));
                 continue;
             }
+            // Register the client immediately so close() can guarantee cleanup even if the
+            // whenComplete cleanup path below fails to fire under racing close() + cancel.
+            // close() iterates liveClients and closes every entry; idempotent close() means
+            // the whenComplete-driven path can also close without double-decrementing.
+            liveClients.add(client);
             // Track the vthread that runs the supplyAsync supplier so cancellation of the
             // outer future (via inFlightScatter.cancel(true) in close()) can propagate an
             // interrupt to it. Without this, a transport whose request(...) call blocks
@@ -500,6 +590,9 @@ public final class ClusteredTable implements Table {
                                     () -> "RemotePartitionClient.close() failed for node " + node
                                             + " on table " + tableMetadata.name(),
                                     closeFailure);
+                        } finally {
+                            // Best-effort de-registration; close()'s sweep is the safety net.
+                            liveClients.remove(client);
                         }
                     });
             // Track the fanout future so close() can cancel in-flight scatters (H-CC-2).
@@ -609,11 +702,28 @@ public final class ClusteredTable implements Table {
         // past its orTimeout boundary keeps the virtual thread parked until the transport
         // completes, which may never happen. The static SCATTER_EXECUTOR intentionally remains
         // JVM-lifetime (virtual threads are cheap; shutting it down would break other
-        // ClusteredTable instances that share this executor).
+        // CatalogClusteredTable instances that share this executor).
         for (final CompletableFuture<?> inFlight : inFlightScatter) {
             inFlight.cancel(true);
         }
         inFlightScatter.clear();
+        // Safety-net cleanup: close every client registered during scan() that the per-future
+        // whenComplete callback has not already closed. The race is real — under contention,
+        // the whenComplete cleanup can lag (or, under cancellation propagation gaps, miss)
+        // for a small fraction of clients. RemotePartitionClient.close() is idempotent
+        // (compareAndSet on a closed flag), so double-closing alongside the whenComplete
+        // path decrements OPEN_INSTANCES exactly once per client.
+        for (final RemotePartitionClient client : liveClients) {
+            try {
+                client.close();
+            } catch (Throwable closeFailure) {
+                LOGGER.log(System.Logger.Level.WARNING,
+                        () -> "RemotePartitionClient.close() failed during table close on "
+                                + tableMetadata.name(),
+                        closeFailure);
+            }
+        }
+        liveClients.clear();
     }
 
     // ---- Private helpers ----
@@ -627,7 +737,7 @@ public final class ClusteredTable implements Table {
         final MembershipView view = membership.currentView();
 
         // Evict stale ownership cache entries for epochs older than the current view.
-        // Without this, old epoch entries accumulate without bound because ClusteredTable's
+        // Without this, old epoch entries accumulate without bound because CatalogClusteredTable's
         // private RendezvousOwnership is not notified of view changes by ClusteredEngine.
         ownership.evictBefore(view.epoch());
 
@@ -830,13 +940,13 @@ public final class ClusteredTable implements Table {
 
     private void checkNotClosed() throws IOException {
         if (closed) {
-            throw new IOException("ClusteredTable is closed");
+            throw new IOException("CatalogClusteredTable is closed");
         }
     }
 
     private void checkNotClosedUnchecked() {
         if (closed) {
-            throw new IllegalStateException("ClusteredTable is closed");
+            throw new IllegalStateException("CatalogClusteredTable is closed");
         }
     }
 

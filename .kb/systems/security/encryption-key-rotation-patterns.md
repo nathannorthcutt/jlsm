@@ -18,6 +18,7 @@ related:
   - "systems/security/sstable-block-level-ciphertext-envelope.md"
   - "systems/security/dek-revocation-vs-rotation.md"
   - "algorithms/encryption/searchable-encryption-schemes.md"
+  - "systems/database-engines/format-version-deprecation-strategies.md"
 decision_refs: ["encryption-key-rotation", "per-field-key-binding"]
 sources:
   - url: "https://github.com/cockroachdb/cockroach/blob/master/docs/RFCS/20171220_encryption_at_rest.md"

@@ -66,8 +66,6 @@ public interface CompressionCodec {
      *             {@code dst.byteSize() < maxCompressedLength(src.byteSize())}
      * @throws java.io.UncheckedIOException if compression fails
      */
-    // (formerly @spec F02.R2 — dropped during migration) — stateless compression (note: byte[] API
-    // removed per F17.R3)
     // @spec compression.codec-contract.R5 — compress with caller-provided destination
     MemorySegment compress(MemorySegment src, MemorySegment dst);
 
@@ -88,7 +86,6 @@ public interface CompressionCodec {
      * @throws java.io.UncheckedIOException if decompression fails or output size does not match
      *             {@code uncompressedLength}
      */
-    // (formerly @spec F02.R3 — dropped during migration) — returns exact expected length or throws
     // @spec compression.codec-contract.R6 — decompress to expected length, throws on mismatch
     MemorySegment decompress(MemorySegment src, MemorySegment dst, int uncompressedLength);
 

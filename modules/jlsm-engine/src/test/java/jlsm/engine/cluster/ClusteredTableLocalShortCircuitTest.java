@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.Engine;
 import jlsm.engine.EngineMetrics;
 import jlsm.engine.Table;
@@ -36,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the {@link ClusteredTable} local short-circuit routing (F04.R60).
+ * Tests for the {@link CatalogClusteredTable} local short-circuit routing (F04.R60).
  *
  * <p>
  * Operations targeting locally-owned partitions must invoke the local {@link Engine}'s table
@@ -85,7 +87,7 @@ final class ClusteredTableLocalShortCircuitTest {
         final RecordingTable recording = new RecordingTable(TABLE_META);
         final RecordingEngine localEngine = new RecordingEngine(Map.of("users", recording));
         membership.view = singleNodeView(LOCAL);
-        final ClusteredTable table = newTable(localEngine);
+        final CatalogClusteredTable table = newTable(localEngine);
 
         try {
             final JlsmDocument doc = JlsmDocument.of(SCHEMA, "id", "k1", "value", "v1");
@@ -111,7 +113,7 @@ final class ClusteredTableLocalShortCircuitTest {
         recording.storedDocs.put("k1", stored);
         final RecordingEngine localEngine = new RecordingEngine(Map.of("users", recording));
         membership.view = singleNodeView(LOCAL);
-        final ClusteredTable table = newTable(localEngine);
+        final CatalogClusteredTable table = newTable(localEngine);
 
         try {
             final Optional<JlsmDocument> got = table.get("k1");
@@ -130,7 +132,7 @@ final class ClusteredTableLocalShortCircuitTest {
         final RecordingTable recording = new RecordingTable(TABLE_META);
         final RecordingEngine localEngine = new RecordingEngine(Map.of("users", recording));
         membership.view = singleNodeView(LOCAL);
-        final ClusteredTable table = newTable(localEngine);
+        final CatalogClusteredTable table = newTable(localEngine);
 
         try {
             final JlsmDocument doc = JlsmDocument.of(SCHEMA, "id", "k1", "value", "updated");
@@ -150,7 +152,7 @@ final class ClusteredTableLocalShortCircuitTest {
         final RecordingTable recording = new RecordingTable(TABLE_META);
         final RecordingEngine localEngine = new RecordingEngine(Map.of("users", recording));
         membership.view = singleNodeView(LOCAL);
-        final ClusteredTable table = newTable(localEngine);
+        final CatalogClusteredTable table = newTable(localEngine);
 
         try {
             table.delete("k1");
@@ -170,7 +172,7 @@ final class ClusteredTableLocalShortCircuitTest {
         recording.storedDocs.put("b-key", JlsmDocument.of(SCHEMA, "id", "b-key", "value", "b"));
         final RecordingEngine localEngine = new RecordingEngine(Map.of("users", recording));
         membership.view = singleNodeView(LOCAL);
-        final ClusteredTable table = newTable(localEngine);
+        final CatalogClusteredTable table = newTable(localEngine);
 
         try {
             final Iterator<TableEntry<String>> it = table.scan("a", "z");
@@ -213,7 +215,7 @@ final class ClusteredTableLocalShortCircuitTest {
         final RecordingEngine localEngine = new RecordingEngine(Map.of("users", recording));
         membership.view = new MembershipView(1, Set.of(new Member(LOCAL, MemberState.ALIVE, 0),
                 new Member(REMOTE, MemberState.ALIVE, 0)), NOW);
-        final ClusteredTable table = newTable(localEngine);
+        final CatalogClusteredTable table = newTable(localEngine);
 
         try {
             final Iterator<TableEntry<String>> it = table.scan("a", "z");
@@ -243,7 +245,7 @@ final class ClusteredTableLocalShortCircuitTest {
         recording.scanThrows = new IOException("local scan failed");
         final RecordingEngine localEngine = new RecordingEngine(Map.of("users", recording));
         membership.view = singleNodeView(LOCAL);
-        final ClusteredTable table = newTable(localEngine);
+        final CatalogClusteredTable table = newTable(localEngine);
 
         try {
             table.scan("a", "z");
@@ -275,7 +277,7 @@ final class ClusteredTableLocalShortCircuitTest {
         final RecordingEngine localEngine = new RecordingEngine(Map.of("users", recording));
         // The view contains ONLY the remote node, so rendezvous resolves owner == REMOTE.
         membership.view = singleNodeView(REMOTE);
-        final ClusteredTable table = newTable(localEngine);
+        final CatalogClusteredTable table = newTable(localEngine);
 
         try {
             final JlsmDocument doc = JlsmDocument.of(SCHEMA, "id", "k1", "value", "v1");
@@ -295,13 +297,14 @@ final class ClusteredTableLocalShortCircuitTest {
     @Test
     @Timeout(10)
     void null_localEngine_fallsBackToRemoteForAllOwners() throws IOException {
-        // Build a ClusteredTable via the existing 5-arg constructor — no local engine supplied.
+        // Build a CatalogClusteredTable via the existing 5-arg constructor — no local engine
+        // supplied.
         // Even though LOCAL owns the partition (single-node view), the table must still route via
         // transport since it has no local short-circuit path.
         membership.view = singleNodeView(LOCAL);
 
-        final ClusteredTable table = new ClusteredTable(TABLE_META, localTransport, membership,
-                LOCAL, new RendezvousOwnership());
+        final CatalogClusteredTable table = CatalogClusteredTable.forEngine(TABLE_META,
+                localTransport, membership, LOCAL, new RendezvousOwnership());
 
         // Register a handler on the local transport so the self-addressed request completes.
         localTransport
@@ -323,8 +326,8 @@ final class ClusteredTableLocalShortCircuitTest {
 
     // --- Helpers ---
 
-    private ClusteredTable newTable(Engine localEngine) {
-        return new ClusteredTable(TABLE_META, localTransport, membership, LOCAL,
+    private CatalogClusteredTable newTable(Engine localEngine) {
+        return CatalogClusteredTable.forEngine(TABLE_META, localTransport, membership, LOCAL,
                 new RendezvousOwnership(), localEngine);
     }
 
@@ -459,8 +462,13 @@ final class ClusteredTableLocalShortCircuitTest {
 
     /**
      * Table test double that records every CRUD/scan call and optionally throws from scan.
+     *
+     * <p>
+     * R8g migration: Table is sealed — extends {@code TestTableStubs.MetadataOnlyStub} (a
+     * non-sealed CatalogClusteredTable subtype) so this class is a permitted Table impl.
      */
-    private static final class RecordingTable implements Table {
+    private static final class RecordingTable
+            extends jlsm.engine.cluster.internal.TestTableStubs.MetadataOnlyStub {
         record CreateCall(String key, JlsmDocument doc) {
         }
 
@@ -486,6 +494,7 @@ final class ClusteredTableLocalShortCircuitTest {
         volatile IOException scanThrows;
 
         RecordingTable(TableMetadata metadata) {
+            super(metadata);
             this.metadata = metadata;
         }
 

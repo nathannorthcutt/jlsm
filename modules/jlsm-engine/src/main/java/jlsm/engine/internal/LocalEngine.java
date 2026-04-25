@@ -5,6 +5,7 @@ import jlsm.core.io.MemorySerializer;
 import jlsm.core.memtable.MemTable;
 import jlsm.core.model.Level;
 import jlsm.core.tree.TypedLsmTree;
+import jlsm.encryption.TableScope;
 import jlsm.engine.AllocationTracking;
 import jlsm.engine.Engine;
 import jlsm.engine.EngineMetrics;
@@ -75,6 +76,8 @@ public final class LocalEngine implements Engine {
     /** Idempotent close guard. */
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
+    private final CatalogLock catalogLock;
+
     private LocalEngine(Builder builder) throws IOException {
         this.rootDirectory = Objects.requireNonNull(builder.rootDirectory,
                 "rootDirectory must not be null");
@@ -82,6 +85,8 @@ public final class LocalEngine implements Engine {
 
         this.catalog = new TableCatalog(rootDirectory);
         this.catalog.open();
+        // Per-table catalog lock used by both R7b enableEncryption and R10c writer finish.
+        this.catalogLock = CatalogLockFactory.fileBased(rootDirectory);
 
         this.handleTracker = HandleTracker.builder()
                 .maxHandlesPerSourcePerTable(builder.maxHandlesPerSourcePerTable)
@@ -172,7 +177,7 @@ public final class LocalEngine implements Engine {
             throw e;
         }
 
-        return new LocalTable(jlsmTable, registration, handleTracker, metadata);
+        return new CatalogTable(jlsmTable, registration, handleTracker, metadata);
     }
 
     @Override
@@ -220,7 +225,7 @@ public final class LocalEngine implements Engine {
         final String sourceId = String.valueOf(Thread.currentThread().threadId());
         final HandleRegistration registration = handleTracker.register(name, sourceId);
 
-        return new LocalTable(jlsmTable, registration, handleTracker, metadata);
+        return new CatalogTable(jlsmTable, registration, handleTracker, metadata);
     }
 
     @Override
@@ -251,6 +256,98 @@ public final class LocalEngine implements Engine {
 
         // Clean up ID counter
         idCounters.remove(name);
+    }
+
+    @Override
+    // @spec sstable.footer-encryption-scope.R7 — createEncryptedTable persists encryption
+    // metadata at registration time and bumps the catalog index high-water atomically.
+    public Table createEncryptedTable(String name, JlsmSchema schema, TableScope scope)
+            throws IOException {
+        ensureOpen();
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(schema, "schema must not be null");
+        Objects.requireNonNull(scope, "scope must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+
+        // Register in catalog under the per-table exclusive lock so a concurrent
+        // enableEncryption on the same name cannot race with creation.
+        try (final var lease = catalogLock.acquire(name)) {
+            final var encryption = new jlsm.engine.EncryptionMetadata(scope);
+            final TableMetadata metadata = catalog.registerEncrypted(name, schema, encryption);
+
+            final JlsmTable.StringKeyed jlsmTable;
+            try {
+                jlsmTable = liveTables.computeIfAbsent(name, tableName -> {
+                    try {
+                        return createJlsmTable(tableName, schema);
+                    } catch (IOException e) {
+                        throw new java.io.UncheckedIOException(e);
+                    }
+                });
+            } catch (java.io.UncheckedIOException e) {
+                try {
+                    catalog.unregister(name);
+                } catch (Exception suppressed) {
+                    e.addSuppressed(suppressed);
+                }
+                throw e.getCause();
+            }
+
+            final String sourceId = String.valueOf(Thread.currentThread().threadId());
+            final HandleRegistration registration;
+            try {
+                registration = handleTracker.register(name, sourceId);
+            } catch (Exception e) {
+                liveTables.remove(name);
+                try {
+                    jlsmTable.close();
+                } catch (Exception suppressed) {
+                    e.addSuppressed(suppressed);
+                }
+                try {
+                    catalog.unregister(name);
+                } catch (Exception suppressed) {
+                    e.addSuppressed(suppressed);
+                }
+                throw e;
+            }
+            return new CatalogTable(jlsmTable, registration, handleTracker, metadata);
+        }
+    }
+
+    @Override
+    // @spec sstable.footer-encryption-scope.R7b — 5-step enableEncryption protocol under a
+    // single held exclusive lock; cache invalidation via catalog.updateEncryption's atomic put.
+    public void enableEncryption(String name, TableScope scope) throws IOException {
+        ensureOpen();
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(scope, "scope must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+
+        // R7b step 1 — acquire the exclusive per-table catalog lock.
+        try (final var lease = catalogLock.acquire(name)) {
+            // R7b step 2 — fresh catalog read.
+            final var existing = catalog.get(name)
+                    .orElseThrow(() -> new IOException("Table does not exist: " + name));
+            // R7b step 3 — already encrypted → throw IllegalStateException; R12 — message must
+            // not reveal existing scope identifiers.
+            if (existing.encryption().isPresent()) {
+                throw new IllegalStateException(
+                        "table is already encrypted; encryption is one-way (R7b)");
+            }
+            // R7b step 4 — atomic write-temp + rename; the catalog method also bumps the index
+            // high-water atomically.
+            catalog.updateEncryption(name, new jlsm.engine.EncryptionMetadata(scope));
+            // R7b step 5 — publication: catalog.updateEncryption installs the new metadata into
+            // the underlying ConcurrentHashMap whose subsequent reads observe it (happens-before
+            // edge via the map's volatile semantics). Live JlsmTable handles obtained before the
+            // transition continue to operate; subsequent metadata() calls on a fresh handle
+            // observe the new state via TableCatalog.get.
+        }
     }
 
     @Override

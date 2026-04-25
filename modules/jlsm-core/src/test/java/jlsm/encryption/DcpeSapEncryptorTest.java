@@ -238,9 +238,9 @@ class DcpeSapEncryptorTest {
 
     // ── Blob encoding ──────────────────────────────────────────────────────
 
-    // @spec serialization.encrypted-field-serialization.R4, encryption.ciphertext-envelope.R1 —
-    // blob round-trips through
-    // toBlob/fromBlob
+    // @spec serialization.encrypted-field-serialization.R4,
+    // encryption.ciphertext-envelope.R1,R1b,R1c — blob round-trips through toBlob/fromBlob with
+    // exact byte count (8 + dims*4 + 16) and big-endian encoding of seed + float lanes
     @Test
     void blob_roundTrip() {
         final DcpeSapEncryptor encryptor = new DcpeSapEncryptor(keyHolder, DIMS);
@@ -258,7 +258,8 @@ class DcpeSapEncryptorTest {
         assertArrayEquals(original, recovered, 1e-4f);
     }
 
-    // @spec encryption.primitives-variants.R49 — blob with wrong length rejected
+    // @spec encryption.primitives-variants.R49, encryption.ciphertext-envelope.R1b — reader
+    // rejects blobs whose byte count is inconsistent with variant formula
     @Test
     void blob_wrongLengthRejected() {
         assertThrows(IllegalArgumentException.class,
@@ -294,5 +295,63 @@ class DcpeSapEncryptorTest {
     @Test
     void constructor_rejectsNegativeDimensions() {
         assertThrows(IllegalArgumentException.class, () -> new DcpeSapEncryptor(keyHolder, -1));
+    }
+
+    // ── R1c BE encoding pin (OB-ciphertext-envelope-03) ──────────────────────
+
+    /**
+     * Pins the big-endian encoding of
+     * {@link DcpeSapEncryptor#toBlob(DcpeSapEncryptor.EncryptedVector)} against an explicit hex
+     * literal.
+     *
+     * <p>
+     * The blob layout is {@code [8B BE seed | 4N BE encrypted-float lanes | 16B tag]}. With a seed
+     * of {@code 0x0102030405060708L} and three encrypted-float lanes whose IEEE-754 bit patterns
+     * are {@code 0x3F800000} (1.0f), {@code 0xC0000000} (-2.0f), and {@code 0x40400000} (3.0f), the
+     * first 8 + 12 = 20 bytes must be exactly:
+     *
+     * <pre>
+     *   01 02 03 04 05 06 07 08   (seed, 8B BE)
+     *   3F 80 00 00               (1.0f)
+     *   C0 00 00 00               (-2.0f)
+     *   40 40 00 00               (3.0f)
+     * </pre>
+     *
+     * Followed by 16 bytes of tag (we don't pin the tag value — it depends on the random key
+     * material; the spec only requires lanes-and-seed BE).
+     *
+     * @spec encryption.ciphertext-envelope.R1c
+     */
+    @Test
+    void toBlob_seedAndLanesEncodedBigEndian_pinnedToHexLiteral() {
+        final long knownSeed = 0x0102030405060708L;
+        final float[] knownLanes = new float[]{ 1.0f, -2.0f, 3.0f };
+        final byte[] knownTag = new byte[DcpeSapEncryptor.MAC_TAG_BYTES];
+        // Use a recognisable pattern in the tag region so pinning the prefix is unambiguous.
+        Arrays.fill(knownTag, (byte) 0x5A);
+
+        final DcpeSapEncryptor.EncryptedVector ev = new DcpeSapEncryptor.EncryptedVector(knownSeed,
+                knownLanes, knownTag);
+        final byte[] blob = DcpeSapEncryptor.toBlob(ev);
+
+        // Expected blob layout: [seed BE | lane0 BE | lane1 BE | lane2 BE | tag]
+        final byte[] expected = new byte[]{
+                // 8B big-endian seed
+                (byte) 0x01, (byte) 0x02, (byte) 0x03, (byte) 0x04, (byte) 0x05, (byte) 0x06,
+                (byte) 0x07, (byte) 0x08,
+                // 4B BE for 1.0f = 0x3F800000
+                (byte) 0x3F, (byte) 0x80, (byte) 0x00, (byte) 0x00,
+                // 4B BE for -2.0f = 0xC0000000
+                (byte) 0xC0, (byte) 0x00, (byte) 0x00, (byte) 0x00,
+                // 4B BE for 3.0f = 0x40400000
+                (byte) 0x40, (byte) 0x40, (byte) 0x00, (byte) 0x00,
+                // 16B tag
+                (byte) 0x5A, (byte) 0x5A, (byte) 0x5A, (byte) 0x5A, (byte) 0x5A, (byte) 0x5A,
+                (byte) 0x5A, (byte) 0x5A, (byte) 0x5A, (byte) 0x5A, (byte) 0x5A, (byte) 0x5A,
+                (byte) 0x5A, (byte) 0x5A, (byte) 0x5A, (byte) 0x5A };
+
+        assertEquals(expected.length, blob.length, "blob length must equal seed + lanes + tag");
+        assertArrayEquals(expected, blob,
+                "DCPE blob must encode 8B seed and 4B lanes big-endian (R1c)");
     }
 }

@@ -33,6 +33,9 @@ class DocumentSerializerPreEncryptedTest {
 
     // ── Pre-encrypted round-trip: valid ciphertext → correct plaintext ──
 
+    // @spec encryption.ciphertext-envelope.R1a,R3a — caller-supplied pre-encrypted Deterministic
+    // blob flows byte-identically through the serializer and survives MemTable / SSTable-shaped
+    // serialize→deserialize round-trip
     @Test
     void preEncrypted_roundTrip_deterministicField() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -55,7 +58,11 @@ class DocumentSerializerPreEncryptedTest {
         serializedPlain[0] = (byte) plainBytes.length;
         System.arraycopy(plainBytes, 0, serializedPlain, 1, plainBytes.length);
         byte[] associatedData = "name".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] ciphertext = siv.encrypt(serializedPlain, associatedData);
+        byte[] variantBody = siv.encrypt(serializedPlain, associatedData);
+        // @spec encryption.ciphertext-envelope.R1, R1c — pre-encrypted callers must wrap variant
+        // body bytes with the 4B BE DEK version prefix; the dispatch's permissive 2-arg
+        // resolver accepts version=1 (DekVersion.FIRST).
+        byte[] ciphertext = jlsm.encryption.EnvelopeCodec.prefixVersion(1, variantBody);
 
         sivKeyHolder.close();
 
@@ -72,6 +79,8 @@ class DocumentSerializerPreEncryptedTest {
 
     // ── Pre-encrypted with invalid ciphertext length → throws ───────────
 
+    // @spec encryption.ciphertext-envelope.R1b,R3a — writer rejects caller-supplied blob whose
+    // byte count is inconsistent with the variant formula
     @Test
     void preEncrypted_invalidCiphertextLength_throws() {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -124,7 +133,9 @@ class DocumentSerializerPreEncryptedTest {
         serializedPlain[0] = (byte) plainBytes.length;
         System.arraycopy(plainBytes, 0, serializedPlain, 1, plainBytes.length);
         byte[] associatedData = "email".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] ciphertext = siv.encrypt(serializedPlain, associatedData);
+        byte[] variantBody = siv.encrypt(serializedPlain, associatedData);
+        // @spec encryption.ciphertext-envelope.R1, R1c — wrap variant body with 4B BE DEK version
+        byte[] ciphertext = jlsm.encryption.EnvelopeCodec.prefixVersion(1, variantBody);
 
         sivKeyHolder.close();
 
@@ -164,6 +175,8 @@ class DocumentSerializerPreEncryptedTest {
     // Updated by audit F-R1.data_transform.1.2: GCM key derivation was plain truncation
     // (first 32 bytes of 64-byte key), making the GCM key identical to the SIV CMAC
     // sub-key. Now correctly derived via HMAC-SHA256 with domain-separated info string.
+    // @spec encryption.ciphertext-envelope.R1a,R3a — caller-supplied pre-encrypted Opaque blob
+    // flows byte-identically through the serializer, surviving the serialize→deserialize round-trip
     @Test
     void preEncrypted_roundTrip_opaqueField() throws Exception {
         JlsmSchema schema = JlsmSchema.builder("test", 1)
@@ -181,7 +194,9 @@ class DocumentSerializerPreEncryptedTest {
         byte[] serializedPlain = new byte[1 + plainBytes.length];
         serializedPlain[0] = (byte) plainBytes.length;
         System.arraycopy(plainBytes, 0, serializedPlain, 1, plainBytes.length);
-        byte[] ciphertext = gcm.encrypt(serializedPlain);
+        byte[] variantBody = gcm.encrypt(serializedPlain);
+        // @spec encryption.ciphertext-envelope.R1, R1c — wrap variant body with 4B BE DEK version
+        byte[] ciphertext = jlsm.encryption.EnvelopeCodec.prefixVersion(1, variantBody);
 
         gcmKeyHolder.close();
 

@@ -130,6 +130,8 @@ class AesSivEncryptorTest {
 
     // ── Ciphertext expansion ────────────────────────────────────────────────
 
+    // @spec encryption.ciphertext-envelope.R1b — writer produces exact byte count for
+    // Deterministic variant (16B synthetic IV + ciphertext = +16 overhead)
     @Test
     void encrypt_ciphertextIs16BytesLongerThanPlaintext() {
         final AesSivEncryptor encryptor = new AesSivEncryptor(keyHolder);
@@ -181,6 +183,7 @@ class AesSivEncryptorTest {
         assertThrows(NullPointerException.class, () -> encryptor.decrypt(null, null));
     }
 
+    // @spec encryption.ciphertext-envelope.R1b — reader rejects blobs with inconsistent byte count
     @Test
     void decrypt_ciphertextTooShort_throwsIllegalArgumentException() {
         final AesSivEncryptor encryptor = new AesSivEncryptor(keyHolder);

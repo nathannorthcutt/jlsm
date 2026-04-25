@@ -2,8 +2,9 @@ package jlsm.table;
 
 import jlsm.core.io.MemorySerializer;
 import jlsm.encryption.DcpeSapEncryptor;
-import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.encryption.EncryptionSpec;
+import jlsm.encryption.EnvelopeCodec;
+import jlsm.encryption.internal.OffHeapKeyMaterial;
 import jlsm.table.internal.CiphertextValidator;
 import jdk.incubator.vector.ByteVector;
 import jdk.incubator.vector.DoubleVector;
@@ -266,7 +267,10 @@ public final class DocumentSerializer {
                     }
                     final byte[] ad = encryptionDispatch.dcpeAssociatedDataFor(i);
                     final DcpeSapEncryptor.EncryptedVector ev = dcpe.encrypt((float[]) val, ad);
-                    encryptedPayloads[i] = DcpeSapEncryptor.toBlob(ev);
+                    // @spec encryption.ciphertext-envelope.R1, R1c — wrap DCPE blob with the
+                    // 4B BE DEK version prefix so DCPE matches the other 3 variants on the wire.
+                    encryptedPayloads[i] = EnvelopeCodec.prefixVersion(
+                            encryptionDispatch.currentDekVersion(), DcpeSapEncryptor.toBlob(ev));
                     hasEncryptedFields = true;
                 } else if (!(fd.encryption() instanceof EncryptionSpec.None)) {
                     // @spec serialization.encrypted-field-serialization.R6 — schema declares
@@ -469,10 +473,21 @@ public final class DocumentSerializer {
                         // [seed | values | MAC]
                         // @spec encryption.primitives-variants.R55 — DCPE blob: [seed | values |
                         // MAC]
+                        // @spec encryption.ciphertext-envelope.R1, R2 — DCPE envelope on the wire
+                        // includes a leading 4B BE DEK version prefix; strip it before fromBlob.
                         final int blobLen = readVarInt(buf, cursor);
-                        final byte[] blob = new byte[blobLen];
-                        System.arraycopy(buf, cursor.pos, blob, 0, blobLen);
+                        final byte[] envelope = new byte[blobLen];
+                        System.arraycopy(buf, cursor.pos, envelope, 0, blobLen);
                         cursor.pos += blobLen;
+                        // R2 — parseVersion (rejects 0/negative; would surface IOException-as
+                        // -UncheckedIOException on corrupt prefix). The decrypted DCPE blob is
+                        // the bytes after the 4B prefix.
+                        try {
+                            EnvelopeCodec.parseVersion(envelope);
+                        } catch (java.io.IOException e) {
+                            throw new java.io.UncheckedIOException(e);
+                        }
+                        final byte[] blob = EnvelopeCodec.stripPrefix(envelope);
                         final int dims = ((FieldType.VectorType) schema.fields().get(i).type())
                                 .dimensions();
                         final DcpeSapEncryptor.EncryptedVector ev = DcpeSapEncryptor.fromBlob(blob,

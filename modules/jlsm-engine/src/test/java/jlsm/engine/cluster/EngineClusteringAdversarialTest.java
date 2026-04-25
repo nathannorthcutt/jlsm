@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.Engine;
 import jlsm.engine.EngineMetrics;
 import jlsm.engine.Table;
@@ -11,9 +13,7 @@ import jlsm.engine.cluster.internal.PhiAccrualFailureDetector;
 import jlsm.engine.cluster.internal.RapidMembership;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
 import jlsm.table.FieldType;
-import jlsm.table.JlsmDocument;
 import jlsm.table.JlsmSchema;
-import jlsm.table.UpdateMode;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,11 +23,8 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -220,12 +217,12 @@ final class EngineClusteringAdversarialTest {
     }
 
     // ================================================================
-    // IMPL-RISK-8: ClusteredTable.findLocalAddress() returns wrong node
+    // IMPL-RISK-8: CatalogClusteredTable.findLocalAddress() returns wrong node
     // ================================================================
 
     /**
-     * ClusteredTable must use the actual local node address for outgoing messages, not an arbitrary
-     * live node. Verifies the constructor now requires a localAddress parameter.
+     * CatalogClusteredTable must use the actual local node address for outgoing messages, not an
+     * arbitrary live node. Verifies the constructor now requires a localAddress parameter.
      */
     @Test
     void clusteredTable_requiresLocalAddress() {
@@ -235,8 +232,8 @@ final class EngineClusteringAdversarialTest {
 
         // localAddress must not be null
         assertThrows(NullPointerException.class,
-                () -> new ClusteredTable(meta, transport, membership, null),
-                "ClusteredTable must reject null localAddress");
+                () -> CatalogClusteredTable.forEngine(meta, transport, membership, null),
+                "CatalogClusteredTable must reject null localAddress");
 
         transport.close();
     }
@@ -380,7 +377,7 @@ final class EngineClusteringAdversarialTest {
             final TableMetadata meta = new TableMetadata(name, schema, NOW,
                     TableMetadata.TableState.READY);
             tables.put(name, meta);
-            return new StubTable(meta);
+            return jlsm.engine.cluster.internal.TestTableStubs.forMetadata(meta);
         }
 
         @Override
@@ -389,7 +386,7 @@ final class EngineClusteringAdversarialTest {
             if (meta == null) {
                 throw new IOException("Table not found: " + name);
             }
-            return new StubTable(meta);
+            return jlsm.engine.cluster.internal.TestTableStubs.forMetadata(meta);
         }
 
         @Override
@@ -417,53 +414,7 @@ final class EngineClusteringAdversarialTest {
         }
     }
 
-    /** Minimal stub table. */
-    private static final class StubTable implements Table {
-
-        private final TableMetadata metadata;
-
-        StubTable(TableMetadata metadata) {
-            this.metadata = metadata;
-        }
-
-        @Override
-        public void create(String key, JlsmDocument doc) {
-        }
-
-        @Override
-        public Optional<JlsmDocument> get(String key) {
-            return Optional.empty();
-        }
-
-        @Override
-        public void update(String key, JlsmDocument doc, UpdateMode mode) {
-        }
-
-        @Override
-        public void delete(String key) {
-        }
-
-        @Override
-        public void insert(JlsmDocument doc) {
-        }
-
-        @Override
-        public jlsm.table.TableQuery<String> query() {
-            throw new UnsupportedOperationException("Not implemented");
-        }
-
-        @Override
-        public Iterator<jlsm.table.TableEntry<String>> scan(String from, String to) {
-            return Collections.emptyIterator();
-        }
-
-        @Override
-        public TableMetadata metadata() {
-            return metadata;
-        }
-
-        @Override
-        public void close() {
-        }
-    }
+    // R8g migration: StubTable previously declared `implements Table` — replaced with the
+    // shared {@code TestTableStubs.forMetadata(...)} factory that returns a real
+    // {@link jlsm.engine.cluster.internal.CatalogClusteredTable} subtype with no-op CRUD.
 }

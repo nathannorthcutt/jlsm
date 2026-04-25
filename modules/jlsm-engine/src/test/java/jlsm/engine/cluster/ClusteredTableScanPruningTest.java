@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
@@ -26,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for F04.R63 — partition-key-driven scan pruning in
- * {@link ClusteredTable#scan(String, String)}.
+ * {@link CatalogClusteredTable#scan(String, String)}.
  *
  * <p>
  * The test uses an {@link InJvmTransport} per remote node and counts {@code QUERY_REQUEST} messages
@@ -93,8 +95,8 @@ final class ClusteredTableScanPruningTest {
         // partition, so the scan must fan out to every live member — preserving the pre-R63
         // behavior for un-partitioned tables (F04.R62).
         final RendezvousOwnership ownership = new RendezvousOwnership();
-        final ClusteredTable table = new ClusteredTable(TABLE_META, localTransport, membership,
-                LOCAL, ownership);
+        final CatalogClusteredTable table = CatalogClusteredTable.forEngine(TABLE_META,
+                localTransport, membership, LOCAL, ownership);
         try {
             final Iterator<TableEntry<String>> iter = table.scan("a", "z");
             drain(iter);
@@ -117,7 +119,7 @@ final class ClusteredTableScanPruningTest {
         final LexicographicPartitionKeySpace keyspace = new LexicographicPartitionKeySpace(
                 List.of("m", "s"), List.of("p0", "p1", "p2"));
         final RendezvousOwnership ownership = new RendezvousOwnership();
-        final ClusteredTable table = newPartitionedTable(ownership, keyspace);
+        final CatalogClusteredTable table = newPartitionedTable(ownership, keyspace);
 
         try {
             // Scan range [a, c) overlaps only p0 — only one owner should be contacted.
@@ -155,7 +157,7 @@ final class ClusteredTableScanPruningTest {
         final LexicographicPartitionKeySpace keyspace = new LexicographicPartitionKeySpace(
                 List.of("m", "s"), List.of("p0", "p1", "p2"));
         final RendezvousOwnership ownership = new RendezvousOwnership();
-        final ClusteredTable table = newPartitionedTable(ownership, keyspace);
+        final CatalogClusteredTable table = newPartitionedTable(ownership, keyspace);
 
         try {
             final Iterator<TableEntry<String>> iter = table.scan("", "\uFFFF");
@@ -193,7 +195,7 @@ final class ClusteredTableScanPruningTest {
         final LexicographicPartitionKeySpace keyspace = new LexicographicPartitionKeySpace(
                 List.of("m", "s"), List.of("p0", "p1", "p2"));
         final RendezvousOwnership ownership = new RendezvousOwnership();
-        final ClusteredTable table = newPartitionedTable(ownership, keyspace);
+        final CatalogClusteredTable table = newPartitionedTable(ownership, keyspace);
 
         try {
             // Empty range — no partition overlaps, so no scatter request must be sent.
@@ -211,10 +213,10 @@ final class ClusteredTableScanPruningTest {
 
     // --- Helpers ---
 
-    private ClusteredTable newPartitionedTable(RendezvousOwnership ownership,
+    private CatalogClusteredTable newPartitionedTable(RendezvousOwnership ownership,
             PartitionKeySpace keyspace) {
-        return new ClusteredTable(TABLE_META, localTransport, membership, LOCAL, ownership, null,
-                keyspace);
+        return CatalogClusteredTable.forEngine(TABLE_META, localTransport, membership, LOCAL,
+                ownership, null, keyspace);
     }
 
     private static void drain(Iterator<TableEntry<String>> iter) {

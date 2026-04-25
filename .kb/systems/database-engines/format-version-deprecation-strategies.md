@@ -1,0 +1,288 @@
+---
+title: "Format-Version Deprecation Strategies in Production Database Systems"
+aliases: ["format-version policy", "on-disk format deprecation", "version compatibility matrix"]
+topic: "systems"
+category: "database-engines"
+tags: ["format-version", "compatibility", "deprecation", "migration", "upgrade", "cluster-version-gate", "fcv", "format-version-byte", "out-of-band-utility", "version-negotiation"]
+research_status: "active"
+confidence: "high"
+last_researched: "2026-04-24"
+applies_to:
+  - "modules/jlsm-core/src/main/java/jlsm/sstable/internal/SSTableFormat.java"
+  - "modules/jlsm-core/src/main/java/jlsm/sstable/TrieSSTableReader.java"
+  - "modules/jlsm-core/src/main/java/jlsm/sstable/TrieSSTableWriter.java"
+  - ".spec/domains/sstable/v3-format-upgrade.md"
+  - ".spec/domains/sstable/end-to-end-integrity.md"
+  - ".spec/domains/sstable/footer-encryption-scope.md"
+related:
+  - "systems/security/encryption-key-rotation-patterns"
+  - "systems/database-engines/catalog-persistence-patterns"
+  - "patterns/validation/dispatch-discriminant-corruption-bypass"
+  - "patterns/validation/version-discovery-self-only-no-external-cross-check"
+decision_refs:
+  - "pre-ga-format-deprecation-policy"
+sources:
+  - url: "https://www.postgresql.org/docs/current/pgupgrade.html"
+    title: "PostgreSQL Documentation 18: pg_upgrade"
+    accessed: "2026-04-24"
+    type: "docs"
+  - url: "https://www.cockroachlabs.com/docs/stable/upgrade-cockroach-version"
+    title: "Upgrade CockroachDB self-hosted"
+    accessed: "2026-04-24"
+    type: "docs"
+  - url: "https://github.com/facebook/rocksdb/wiki/RocksDB-Compatibility-Between-Different-Releases"
+    title: "RocksDB Compatibility Between Different Releases"
+    accessed: "2026-04-24"
+    type: "docs"
+  - url: "https://rocksdb.org/blog/2019/03/08/format-version-4.html"
+    title: "RocksDB format_version 4"
+    accessed: "2026-04-24"
+    type: "blog"
+  - url: "https://www.mongodb.com/docs/manual/reference/command/setfeaturecompatibilityversion/"
+    title: "setFeatureCompatibilityVersion (MongoDB Database Manual)"
+    accessed: "2026-04-24"
+    type: "docs"
+  - url: "https://sqlite.org/formatchng.html"
+    title: "File Format Changes in SQLite"
+    accessed: "2026-04-24"
+    type: "docs"
+  - url: "https://github.com/cockroachdb/cockroach/blob/master/docs/RFCS/20180411_finalize_cluster_upgrade_automatically.md"
+    title: "CockroachDB RFC: Finalize Cluster Upgrade Automatically"
+    accessed: "2026-04-24"
+    type: "docs"
+---
+
+# Format-Version Deprecation Strategies in Production Database Systems
+
+## summary
+
+Production database systems carry on-disk and on-wire format versions for years
+and must retire old versions without losing user data. Five distinct strategies
+dominate: avoid-format-change (SQLite, mostly-PostgreSQL), declarative compat
+matrix (RocksDB `format_version`), cluster-version-gate (CockroachDB), operator-
+controlled feature compatibility version (MongoDB FCV), and out-of-band upgrade
+utility (PostgreSQL `pg_upgrade`, MySQL `mysql_upgrade`). Each balances backward
+compatibility against feature evolution differently. For an LSM-tree library
+like jlsm — where the rewrite vector (compaction) is already in the data path —
+the declarative-compat-matrix + compaction-driven-rewrite combination is the
+strongest fit, with operator-triggered bulk upgrades as the escape hatch.
+
+## strategies-by-system
+
+### postgresql
+
+PostgreSQL's primary strategy is **avoid-format-change**: "Major PostgreSQL
+releases regularly add new features that often change the layout of the system
+tables, but the internal data storage format rarely changes." `pg_upgrade` is
+an **out-of-band utility** that rebuilds system tables and reuses the existing
+user data files; it supports upgrades from PostgreSQL 9.2 (~2012) to current.
+The documentation is explicit about the strategy's limit: "If a future major
+release ever changes the data storage format in a way that makes the old data
+format unreadable, pg_upgrade will not be usable for such upgrades." When the
+strategy fails, the fallback is dump/restore.
+
+### cockroachdb
+
+CockroachDB uses **cluster-version-gate**: features are gated on a cluster-wide
+version variable, separate from the binary version. Operators perform a
+two-phase upgrade — roll new binaries across all nodes, then *finalize* the
+cluster version. Auto-finalize is on by default for self-hosted, with a
+configurable disable for rollback windows. Once finalized, the cluster cannot
+be rolled back to the prior major version. The 72-hour finalization window in
+CockroachDB Cloud Advanced/Standard is the operator's safety net for
+discovering regressions before features that change on-disk shape activate.
+
+### rocksdb
+
+RocksDB exposes a **declarative compat matrix** through
+`BlockBasedTableOptions::format_version`. The default lags behind the latest
+(currently default 7, supported since 10.4). Backward compatibility is
+absolute: "newer version of RocksDB should be able to open DBs generated by
+all previous releases for normal configuration." Forward compatibility is
+explicit but soft: "an older release of RocksDB should be able to open DB
+generated by releases at least several minor versions higher, if no new
+features are explicitly enabled" — typically holds for over a year. The
+*caveat*: option-file compat broke when newer versions added fields older
+versions couldn't parse; 5.6 added a `skip unidentified options` parameter as
+the fix.
+
+### mongodb
+
+MongoDB's **`setFeatureCompatibilityVersion` (FCV)** is an operator-set version
+floor on the admin database. Binary version and FCV are decoupled: a new
+binary can run with an old FCV (features remain gated). Operator advances FCV
+to enable new features. The asymmetry is sharp: "After you upgrade or downgrade
+your cluster's FCV, you cannot downgrade the binary version without support
+assistance." Backward-incompatible features must be explicitly removed before
+FCV downgrade. FCV mismatch (e.g., FCV ahead of binary) blocks startup —
+documented as a real operational footgun.
+
+### mysql
+
+MySQL's `mysql_upgrade` is structurally similar to `pg_upgrade` — an
+**out-of-band utility** invoked after binary upgrade to reconcile catalog
+schema and stored procedures with the new server version. Versioned
+configuration variables (e.g., `default_authentication_plugin`,
+`sql_mode` defaults) provide finer-grained gating than the binary version
+alone. Modern MySQL (8.0+) reduced the role of `mysql_upgrade` by performing
+catalog upgrades automatically on first startup of the new binary.
+*(General-knowledge content; not directly verified in this research pass.)*
+
+### sqlite
+
+SQLite's strategy is the strongest possible **avoid-format-change**: "fully
+backwards compatible all the way back to v3.0.0" (2004). The on-disk format
+has not changed in over 20 years. Apps embed `application_id` (offset 68) and
+`user_version` (offset 60) bytes in the database header for app-specific
+identification and versioning; SQLite itself ignores them. The lesson: when
+the format never changes, backward compatibility is free and forward
+compatibility is automatic — but feature evolution is constrained to
+additive-only changes within the existing format.
+
+## comparison-matrix
+
+| Axis | PostgreSQL | CockroachDB | RocksDB | MongoDB FCV | SQLite |
+|------|------------|-------------|---------|-------------|--------|
+| **Window length** | very long (10+ yrs via avoid-change) | 1 major (rollback gated by finalize) | several minor / ~1+ year | indefinite (operator-driven) | forever (since v3.0) |
+| **Migration mechanism** | out-of-band utility | inline finalize | format_version + auto-rewrite | operator FCV command | none needed |
+| **Inventory / observability** | server logs; manual | `SHOW CLUSTER SETTING version` | per-SST file metadata | `db.adminCommand('getParameter')` | `PRAGMA user_version` |
+| **Downgrade-attack defence** | not addressed (trusted storage) | not addressed | not addressed | not addressed | not addressed |
+| **Cluster coordination** | n/a (single node) | cluster-version-gate | n/a (single process) | FCV propagation across replica set | n/a (single process) |
+| **Read-only deployments** | bound to binary version compat window | bound to finalize state | bound to format_version of files | binary cannot be older than FCV | always works |
+| **Crash safety of upgrade** | atomic per-relation in pg_upgrade | transactional finalize | atomic per-file write | atomic FCV doc update | n/a |
+| **Failure mode** | partial pg_upgrade hang | failed finalize | `skip unidentified options` quirk | FCV/binary mismatch blocks startup | n/a |
+
+## patterns
+
+Five cross-cutting patterns emerge:
+
+1. **Avoid-format-change** (SQLite, mostly-PostgreSQL). Strongest backward
+   compat at the cost of feature-evolution flexibility. Works when the
+   format is well-designed initially or the system can absorb feature
+   constraints to preserve compat.
+2. **Declarative compat matrix** (RocksDB `format_version`). Explicit
+   readable/writable version field on each artefact; documented support
+   matrix; users opt into newer formats via configuration. Forward compat
+   is best-effort, backward compat is absolute.
+3. **Cluster-version-gate** (CockroachDB). Two-phase upgrade with explicit
+   finalize step provides a rollback window. Features gated on cluster
+   version. Naturally fits cluster systems where coordination is cheap.
+4. **Operator-controlled feature compatibility version** (MongoDB FCV).
+   Operator-set version floor decoupled from binary version. Allows
+   gradual feature activation, supports rollback to prior FCV before
+   binary downgrade. Easy to misuse (FCV/binary mismatch).
+5. **Out-of-band upgrade utility** (PostgreSQL pg_upgrade, MySQL
+   mysql_upgrade, RocksDB migration tool). Separate utility handles
+   formats older than the live binary supports. Manages catalog
+   reconciliation, partial migration recovery, dump/restore fallback.
+
+## anti-patterns
+
+- **Format change without an upgrade path** — forces users into
+  dump/restore; PostgreSQL explicitly preserves format to avoid this.
+- **Asymmetric upgrade gates blocking startup** — MongoDB's FCV/binary
+  mismatch (FCV ahead of binary) is documented to block startup, surprising
+  operators who downgrade binaries without first downgrading FCV.
+- **Option-file compatibility break without skip flag** — RocksDB's
+  pre-5.6 inability to parse newer option files broke older readers
+  even when on-disk data was compatible; required the
+  `skip_unidentified_options` workaround.
+- **Self-only version dispatch with no external cross-check** — see
+  [`patterns/validation/version-discovery-self-only-no-external-cross-check`](../../patterns/validation/version-discovery-self-only-no-external-cross-check.md).
+  None of the surveyed production systems address downgrade-tamper
+  attacks; they trust the storage substrate.
+- **Single-bit magic flip bypassing per-version integrity** — see
+  [`patterns/validation/dispatch-discriminant-corruption-bypass`](../../patterns/validation/dispatch-discriminant-corruption-bypass.md).
+  Production systems sidestep this by trusting authenticated storage; jlsm's
+  encryption-scope spec (R13) makes the same delegation explicit.
+
+## tradeoffs
+
+| Pattern | Strengths | Weaknesses |
+|---------|-----------|------------|
+| Avoid-format-change | Trivial backward compat; no migration code | Constrains feature evolution; eventually breaks anyway |
+| Declarative compat matrix | Explicit support contract; per-artefact granularity | Forward compat is soft (option-file footgun); no inventory mechanism |
+| Cluster-version-gate | Rollback window; clean two-phase upgrade | Cluster coordination overhead; not applicable to single-node |
+| Operator FCV | Decouples binary from features; supports gradual activation | Easy to misuse; binary/FCV mismatch surprises operators |
+| Out-of-band utility | Handles formats older than live binary | Requires running separate tool; partial migration risk |
+
+## practical-usage
+
+### when-to-use
+
+- **For LSM-tree library like jlsm** — combine declarative compat matrix
+  (`format_version`-style per-artefact field) with compaction-driven
+  rewrite (the existing rewrite vector, per `unencrypted-to-encrypted-migration`
+  ADR). RocksDB's pattern is the closest direct fit.
+- **Operator-triggered bulk upgrade** as escape hatch for files that
+  natural compaction never reaches (cold L6 data) — analogous to
+  Cockroach's `SET CLUSTER SETTING version = ...` but scoped to
+  per-table or per-collection upgrade.
+- **Per-collection format watermark** in catalog metadata — an inventory
+  mechanism that no surveyed system has, but is naturally supported by
+  jlsm's existing catalog (`R9a-mono` from `sstable.footer-encryption-scope`).
+
+### when-not-to-use
+
+- **Avoid out-of-band utility for jlsm** — adds binary surface area to
+  maintain; jlsm has compaction as a natural rewrite vector that
+  Postgres/MySQL lack.
+- **Avoid pure cluster-version-gate** — jlsm is a library, not a
+  cluster product; cluster-version coordination requires a control
+  plane that's out of scope for the library layer.
+- **Avoid operator-only mode** — the constraint profile requires
+  automatic forward migration; operator-driven FCV-style is too
+  hands-on for a library that should "just work."
+
+## reference-implementations
+
+| System | Mechanism | Source |
+|--------|-----------|--------|
+| RocksDB | `BlockBasedTableOptions::format_version` | [github.com/facebook/rocksdb](https://github.com/facebook/rocksdb) |
+| CockroachDB | cluster-version setting + finalize RFC | [cockroachdb/cockroach docs/RFCS](https://github.com/cockroachdb/cockroach/blob/master/docs/RFCS/20180411_finalize_cluster_upgrade_automatically.md) |
+| PostgreSQL | `pg_upgrade` utility | [postgresql.org/docs/current/pgupgrade](https://www.postgresql.org/docs/current/pgupgrade.html) |
+| MongoDB | `setFeatureCompatibilityVersion` | [mongodb.com/docs](https://www.mongodb.com/docs/manual/reference/command/setfeaturecompatibilityversion/) |
+
+## code-skeleton
+
+```pseudocode
+class FormatVersionPolicy:
+    current: int
+    minRead: int       # oldest version still readable
+    minWrite: int      # oldest version we still write (= current; we always emit current)
+    deprecationWindow: ReleaseCount  # e.g. 1 major
+
+    def dispatchRead(file) -> Reader:
+        v = readMagic(file)
+        if v < minRead: raise UnsupportedFormat(v, minRead)
+        if v < current and storage.writable(): scheduleInlineRewrite(file)
+        if v < current and !storage.writable(): emitDeprecationWarning(v)
+        return readerFor(v)
+
+    def emit(file) -> Writer:
+        return writerFor(current)  # always current; prefer-current rule
+
+    def inventory() -> Map[int, count]:
+        return scanFiles().groupBy(magic).count()
+
+    def operatorUpgrade(scope) -> Job:
+        files = scanFiles(scope).filter(v < current)
+        return scheduleRewrite(files, priority=normal)
+
+    def backgroundSweep() -> Job:
+        files = scanFiles().filter(v < current)
+        return scheduleRewrite(files, priority=low, bounded=true)
+```
+
+## sources
+
+1. [PostgreSQL pg_upgrade docs](https://www.postgresql.org/docs/current/pgupgrade.html) — primary source on the avoid-format-change strategy and pg_upgrade limitations.
+2. [CockroachDB upgrade docs](https://www.cockroachlabs.com/docs/stable/upgrade-cockroach-version) — cluster-version-gate operator workflow.
+3. [CockroachDB RFC: Finalize Cluster Upgrade Automatically](https://github.com/cockroachdb/cockroach/blob/master/docs/RFCS/20180411_finalize_cluster_upgrade_automatically.md) — internal design rationale for the two-phase upgrade.
+4. [RocksDB compatibility wiki](https://github.com/facebook/rocksdb/wiki/RocksDB-Compatibility-Between-Different-Releases) — backward/forward compat policy + option-file caveat.
+5. [RocksDB format_version 4 blog](https://rocksdb.org/blog/2019/03/08/format-version-4.html) — example of how a format_version bump rolls out.
+6. [MongoDB setFeatureCompatibilityVersion docs](https://www.mongodb.com/docs/manual/reference/command/setfeaturecompatibilityversion/) — FCV semantics + binary downgrade asymmetry.
+7. [SQLite File Format Changes](https://sqlite.org/formatchng.html) — backward-compat-since-3.0.0 commitment.
+
+---
+*Researched: 2026-04-24 | Next review: 2026-10-24*

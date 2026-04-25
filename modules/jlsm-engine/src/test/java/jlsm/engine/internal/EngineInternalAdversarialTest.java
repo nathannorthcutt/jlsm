@@ -59,7 +59,7 @@ class EngineInternalAdversarialTest {
                 + "mutation should not affect registration");
     }
 
-    // ---- F4: LocalTable.checkValid() hardcodes EVICTION reason ----
+    // ---- F4: CatalogTable.checkValid() hardcodes EVICTION reason ----
 
     /**
      * F4 — When handle is invalidated due to TABLE_DROPPED, the exception still reports EVICTION
@@ -76,7 +76,7 @@ class EngineInternalAdversarialTest {
         final var stub = new StubStringKeyedTable();
 
         final HandleRegistration reg = tracker.register("test_table", "test-source");
-        final var table = new LocalTable(stub, reg, tracker, metadata);
+        final var table = new CatalogTable(stub, reg, tracker, metadata);
 
         // Invalidate via TABLE_DROPPED
         tracker.invalidateTable("test_table", HandleEvictedException.Reason.TABLE_DROPPED);
@@ -102,7 +102,7 @@ class EngineInternalAdversarialTest {
         final var stub = new StubStringKeyedTable();
 
         final HandleRegistration reg = tracker.register("test_table", "test-source");
-        final var table = new LocalTable(stub, reg, tracker, metadata);
+        final var table = new CatalogTable(stub, reg, tracker, metadata);
 
         // Invalidate via ENGINE_SHUTDOWN
         tracker.invalidateAll(HandleEvictedException.Reason.ENGINE_SHUTDOWN);

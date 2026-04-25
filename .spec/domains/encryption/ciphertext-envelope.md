@@ -102,3 +102,29 @@ That spec governs **how** the document serializer applies the format (when to en
 ### Version history
 
 **v1 — 2026-04-23 — initial extraction.** Created to satisfy WD-02's "Interface-contract spec published for cross-domain consumption" acceptance criterion within the `implement-encryption-lifecycle` work group. Content is a 1:1 relocation of `encryption.primitives-lifecycle` R22 and R22a byte-format and version-tag-validity text, with the cross-scope and footer-metadata clauses left in primitives-lifecycle as lifecycle concerns.
+
+### Verified: v1 — 2026-04-24 (WD-02 annotation pass)
+
+| Req | Verdict | Evidence |
+|-----|---------|----------|
+| R1 | **PARTIAL** | Variant body bytes produced by `AesGcmEncryptor`, `AesSivEncryptor`, `BoldyrevaOpeEncryptor` (via `FieldEncryptionDispatch`), `DcpeSapEncryptor`. **The 4-byte plaintext DEK version tag prefix is NOT yet produced** — current encryptors emit variant-specific bytes only. Spec R1's full envelope (`[4B DEK version | variant bytes]`) is not realised on the wire. |
+| R1a | PARTIAL (emergent) | No explicit enforcement site — property emerges from caller byte-identity; `DocumentSerializerPreEncryptedTest` pre-encrypted round-trips exercise indirectly. No cross-tier (MemTable→WAL→SSTable) integration test pins byte identity. |
+| R1b | SATISFIED | Writer byte-count + reader length-check enforced in `AesGcmEncryptor`, `AesSivEncryptor`, `DcpeSapEncryptor.fromBlob`, `FieldEncryptionDispatch.opeDecryptTyped`, `CiphertextValidator.validate`. Tests: `AesGcmEncryptorTest`, `AesSivEncryptorTest`, `DcpeSapEncryptorTest::blob_wrongLengthRejected`, `CiphertextValidatorTest`. |
+| R1c | SATISFIED (partial scope) | Big-endian explicit in DCPE seed+float-lane writes (`DcpeSapEncryptor.toBlob`/`fromBlob`), OPE 8B long BE in `FieldEncryptionDispatch.opeEncryptTyped`. **The 4B DEK version tag is not yet written** because it is not implemented. Test gap: no hex-literal byte-pattern test pins BE encoding. |
+| R2  | **VIOLATED / NOT IMPLEMENTED** | No envelope reader parses a 4-byte DEK version tag; no IOException is thrown for 0/negative version because the prefix does not exist on the wire. |
+| R2a | **VIOLATED / NOT IMPLEMENTED** | No wait-free R64 immutable-map lookup on version is wired to envelope read path. |
+| R2b | **VIOLATED / NOT IMPLEMENTED** | `EncryptionKeyHolder.resolveDek` throws `DekNotFoundException` but is not invoked from an envelope read site. |
+| R3  | UNTESTABLE | Cross-spec documentation requirement (consumer specs must reference normatively). |
+| R3a | SATISFIED | `CiphertextValidator.validate` runs at pre-encrypted ingress; tests in `CiphertextValidatorTest` (6 methods) + `DocumentSerializerPreEncryptedTest` (3 methods). |
+| R4  | UNTESTABLE | Scope exclusion declaration (pure documentation). |
+
+**Overall: PASS_WITH_NOTES** — the spec content is correct and the existing per-field envelope body layer is mostly implemented (R1b, R1c for variant bodies, R3a). The **4-byte DEK version tag prefix is unimplemented**, rendering R1 PARTIAL and R2/R2a/R2b VIOLATED. This is a wire-format change owned by WD-02's implementation stage (`/work-start`) — the current annotation pass verified the spec text against existing code without modifying the wire format.
+
+Annotations: 35 (up from 11). Impl+test coverage now spans R1, R1a, R1b, R1c, R3a.
+
+**Obligations opened:**
+- `OB-ciphertext-envelope-01`: implement the 4-byte big-endian DEK version tag prefix in every variant's writer output (R1). Reader path must parse it (R2), apply wait-free R64-compatible lookup (R2a), and throw `IllegalStateException` with scope-identifying message on registry miss (R2b). This is WD-02 implementation-stage work — the encryptor pipeline's byte format changes + `CiphertextValidator` length formulas update (OPE 25→29, etc.).
+- `OB-ciphertext-envelope-02`: add cross-tier byte-identity integration test for R1a (MemTable entry bytes === WAL record bytes === SSTable persisted bytes).
+- `OB-ciphertext-envelope-03`: add hex-literal byte-pattern test for R1c pinning DCPE seed + float-lane BE encoding against a known vector.
+
+State unchanged: spec remains APPROVED v1. Obligations track the implementation gap, not a spec defect.

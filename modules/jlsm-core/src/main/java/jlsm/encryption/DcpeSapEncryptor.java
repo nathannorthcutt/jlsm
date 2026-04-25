@@ -88,7 +88,7 @@ public final class DcpeSapEncryptor implements AutoCloseable {
             dcpeMacKey = hmacSha256(keyBytes, "dcpe-mac-key");
             this.macKeySpec = new SecretKeySpec(dcpeMacKey, "HmacSHA256");
         } finally {
-            // @spec encryption.primitives-key-holder.R8, F41.R16 — zero intermediates in finally,
+            // @spec encryption.primitives-key-holder.R8 — zero intermediates in finally,
             // even on exception
             Arrays.fill(keyBytes, (byte) 0);
             if (dcpeMacKey != null) {
@@ -339,17 +339,22 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * Encodes an encrypted vector as the on-wire blob format
      * {@code [8B BE seed | 4N BE floats | 16B tag]}.
      */
-    // @spec serialization.encrypted-field-serialization.R4, encryption.ciphertext-envelope.R1 —
-    // serialized DCPE blob layout
+    // @spec serialization.encrypted-field-serialization.R4,
+    // encryption.ciphertext-envelope.R1,R1b,R1c
+    // — serialized DCPE blob layout; writer produces exact byte count (8 + 4N + 16);
+    // 8B seed and 4-byte encrypted-float lanes encoded big-endian
     public static byte[] toBlob(EncryptedVector ev) {
         Objects.requireNonNull(ev, "ev must not be null");
         final float[] values = ev.values();
         final byte[] blob = new byte[SEED_BYTES + values.length * BYTES_PER_FLOAT + MAC_TAG_BYTES];
         final long seed = ev.seed();
+        // @spec encryption.ciphertext-envelope.R1c — 8B seed written big-endian (MSB first)
         for (int i = 0; i < SEED_BYTES; i++) {
             blob[i] = (byte) (seed >>> (56 - i * 8));
         }
         int off = SEED_BYTES;
+        // @spec encryption.ciphertext-envelope.R1c — each 4B encrypted-float lane written
+        // big-endian
         for (final float v : values) {
             final int bits = Float.floatToRawIntBits(v);
             blob[off] = (byte) (bits >>> 24);
@@ -369,14 +374,18 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      *
      * @throws IllegalArgumentException if blob length does not match {@code 8 + dims*4 + 16}
      */
-    // @spec serialization.encrypted-field-serialization.R4, encryption.ciphertext-envelope.R1 —
-    // decode serialized DCPE blob
+    // @spec serialization.encrypted-field-serialization.R4,
+    // encryption.ciphertext-envelope.R1,R1b,R1c
+    // — decode serialized DCPE blob; reader rejects blobs whose byte count is inconsistent with
+    // the variant formula (8 + 4*dims + 16); 8B seed and 4-byte lanes decoded big-endian
     public static EncryptedVector fromBlob(byte[] blob, int dims) {
         Objects.requireNonNull(blob, "blob must not be null");
         if (dims <= 0) {
             throw new IllegalArgumentException("dims must be positive, got " + dims);
         }
         final int expected = SEED_BYTES + dims * BYTES_PER_FLOAT + MAC_TAG_BYTES;
+        // @spec encryption.ciphertext-envelope.R1b — reader rejects length mismatch with variant
+        // formula (DCPE fixed-width given dimension)
         if (blob.length != expected) {
             throw new IllegalArgumentException("blob length must be " + expected + " (8+4*" + dims
                     + "+16), got " + blob.length);

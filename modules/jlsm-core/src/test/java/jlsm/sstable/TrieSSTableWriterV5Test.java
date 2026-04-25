@@ -2,7 +2,6 @@ package jlsm.sstable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -153,15 +152,17 @@ class TrieSSTableWriterV5Test {
 
     // @spec sstable.end-to-end-integrity.R36
     @Test
-    void writerWithoutCodecDoesNotProduceV5Magic(@TempDir Path dir) throws IOException {
-        Path out = dir.resolve("r36-pre-v5.sst");
+    void writerWithoutCodecAlsoEmitsV5Magic(@TempDir Path dir) throws IOException {
+        Path out = dir.resolve("r36-no-codec.sst");
         try (TrieSSTableWriter w = preV5Builder(out).build()) {
             w.append(put("a", "1", 1));
             w.finish();
         }
         long magic = trailingMagic(out);
-        assertNotEquals(SSTableFormat.MAGIC_V5, magic,
-                "R36: no-codec writer must not emit v5 magic");
+        // Post v1-v4 collapse: no-codec writers emit v5 (NoneCodec is normalised in the
+        // constructor) so every writer follows the same on-disk layout.
+        assertEquals(SSTableFormat.MAGIC_V5, magic,
+                "post-collapse: no-codec writer must emit v5 magic");
     }
 
     // =========================================================================

@@ -46,6 +46,7 @@ class SharedStateAdversarialTest {
     // Integer.MAX_VALUE
     // Fix location: TrieSSTableWriter.writeKeyIndexV1 (~lines 328-345)
     // Regression watch: Ensure normal-sized key indexes still work correctly
+    @org.junit.jupiter.api.Disabled("writeKeyIndexV1 was removed by the SSTable v1-v4 collapse; v5 uses buildKeyIndexV2 only")
     @Test
     void test_writeKeyIndexV1_indexSize_overflow_throws_IOException() throws Exception {
         Path file = tempDir.resolve("overflow.sst");
@@ -159,15 +160,16 @@ class SharedStateAdversarialTest {
             indexOffsetsField.setAccessible(true);
             indexOffsetsField.set(writer, fakeOffsets);
 
-            // Invoke private writeKeyIndexV2() via reflection
-            Method writeKeyIndexV2 = TrieSSTableWriter.class.getDeclaredMethod("writeKeyIndexV2");
-            writeKeyIndexV2.setAccessible(true);
+            // Invoke private buildKeyIndexV2() via reflection (the v5 successor of
+            // writeKeyIndexV2; same overflow surface).
+            Method buildKeyIndexV2 = TrieSSTableWriter.class.getDeclaredMethod("buildKeyIndexV2");
+            buildKeyIndexV2.setAccessible(true);
 
             // The bug: indexSize overflows int, producing a negative value,
             // which causes NegativeArraySizeException (unchecked) instead of IOException.
             // Correct behavior: detect the overflow and throw IOException.
             InvocationTargetException ex = assertThrows(InvocationTargetException.class,
-                    () -> writeKeyIndexV2.invoke(writer));
+                    () -> buildKeyIndexV2.invoke(writer));
 
             Throwable cause = ex.getCause();
             assertInstanceOf(IOException.class, cause,
@@ -795,6 +797,7 @@ class SharedStateAdversarialTest {
     // and only mutate `this.bloomFactory` on the successful path (or not at all).
     // Regression watch: Ensure a successful build() still installs the default
     // bloomFactory into the constructed writer when none was provided.
+    @org.junit.jupiter.api.Disabled("the non-default-blockSize-without-codec gate the test depended on was removed post v1-v4 collapse (every writer is v5 with stored blockSize). The atomicity invariant the test asserted is preserved structurally: build() resolves effectiveBloomFactory into a local without mutating the Builder field.")
     @Test
     void test_TrieSSTableWriterBuilder_failedBuild_doesNotMutateBloomFactory() throws Exception {
         Path path = tempDir.resolve("failed-build.sst");

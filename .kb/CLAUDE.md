@@ -17,11 +17,12 @@
 | data-structures | [data-structures/](data-structures/CLAUDE.md) | 1 | 10 | 2026-04-20 |
 | distributed-systems | [distributed-systems/](distributed-systems/CLAUDE.md) | 7 | 25 | 2026-04-19 |
 | patterns | [patterns/](patterns/CLAUDE.md) | 7 | 50 | 2026-04-23 |
-| systems | [systems/](systems/CLAUDE.md) | 5 | 52 | 2026-04-23 |
+| systems | [systems/](systems/CLAUDE.md) | 5 | 53 | 2026-04-24 |
 
 ## Recently Added (last 10)
 | Date | Topic | Category | Subject |
 |------|-------|----------|---------|
+| 2026-04-24 | systems | database-engines | format-version-deprecation-strategies |
 | 2026-04-23 | architecture | feature-footprints | implement-encryption-lifecycle--wd-01 |
 | 2026-04-23 | patterns | testing | tdd-failure-first-degeneracy-for-pure-record-enum-work |
 | 2026-04-23 | patterns | concurrency | shared-rwlock-bracketing-facade-close-atomicity |
@@ -31,7 +32,6 @@
 | 2026-04-23 | systems | security | dek-revocation-vs-rotation |
 | 2026-04-23 | systems | security | sstable-block-level-ciphertext-envelope |
 | 2026-04-22 | patterns | validation | version-discovery-self-only-no-external-cross-check |
-| 2026-04-22 | patterns | validation | dispatch-discriminant-corruption-bypass |
 
 ## Shared References
 `_refs/complexity-notation.md` — notation key used in algorithm files

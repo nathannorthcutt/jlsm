@@ -152,8 +152,6 @@ class JlsmDocumentTest {
         }
     }
 
-    // (formerly @spec F14.R48,R49 — dropped during migration) — no toYaml/fromYaml methods (YAML
-    // support removed per F15.R1)
     @Test
     void structural_noYamlMethods() {
         for (Method m : JlsmDocument.class.getDeclaredMethods()) {

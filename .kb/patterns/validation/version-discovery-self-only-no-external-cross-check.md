@@ -11,6 +11,7 @@ applies_to:
   - "modules/jlsm-core/src/main/java/jlsm/sstable/internal/TrieSSTableReader.java"
 related:
   - "dispatch-discriminant-corruption-bypass"
+  - "systems/database-engines/format-version-deprecation-strategies"
 decision_refs: []
 source_audit: "implement-sstable-enhancements--wd-03"
 sources: []

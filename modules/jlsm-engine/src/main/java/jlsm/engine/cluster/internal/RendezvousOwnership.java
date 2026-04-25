@@ -313,8 +313,9 @@ public class RendezvousOwnership {
      * distinct set of owners. A range that overlaps no partition yields an empty set.
      *
      * <p>
-     * Delivers: F04.R63 — enables {@link jlsm.engine.cluster.ClusteredTable#scan(String, String)}
-     * to skip non-overlapping partition owners.
+     * Delivers: F04.R63 — enables
+     * {@link jlsm.engine.cluster.internal.CatalogClusteredTable#scan(String, String)} to skip
+     * non-overlapping partition owners.
      *
      * @param tableName the table name used as the HRW partition-id prefix; must not be null or
      *            empty

@@ -1,6 +1,6 @@
 # database-engines — Category Index
 *Topic: systems*
-*Tags: catalog, wal, recovery, handle-lifecycle, blob-store, block-size, arena, buffer-pool, alignment, slab, fragmentation, panama-ffm, cross-table-transaction, schema*
+*Tags: catalog, wal, recovery, handle-lifecycle, blob-store, block-size, arena, buffer-pool, alignment, slab, fragmentation, panama-ffm, cross-table-transaction, schema, format-version, deprecation, migration, upgrade, compatibility-matrix, fcv, cluster-version-gate*
 
 Persistence patterns, metadata management, and recovery strategies for database
 engines. Covers catalog persistence, table lifecycle, and startup recovery.
@@ -21,6 +21,7 @@ engines. Covers catalog persistence, table lifecycle, and startup recovery.
 | [cross-table-transaction-patterns.md](cross-table-transaction-patterns.md) | Cross-Table Transaction Patterns (Single-Node) | active | Shared WAL or WriteBatch | Multi-table atomicity without distributed coordination |
 | [blob-store-patterns.md](blob-store-patterns.md) | Blob Store Patterns for LSM-Tree Storage | active | LSM-backed + content-addressed | Large object storage, chunking, GC, dual-write |
 | [pool-aware-sstable-block-sizing.md](pool-aware-sstable-block-sizing.md) | Pool-Aware and Arena-Aware SSTable Block Size Selection | active | block_size = pool.slotSize aligned to page + cache-line | Choosing SSTable block size for Arena-backed pools |
+| [format-version-deprecation-strategies.md](format-version-deprecation-strategies.md) | Format-Version Deprecation Strategies in Production Database Systems | active | 5 strategies × 8 axes comparison matrix | Designing on-disk / on-wire format deprecation policy for a versioned-artefact corpus |
 
 ## Comparison Summary
 <!-- Narrative comparison — write once 2+ subjects exist -->
@@ -33,7 +34,7 @@ engines. Covers catalog persistence, table lifecycle, and startup recovery.
 ## Research Gaps
 - Table lifecycle management (open/close/compaction coordination)
 - Multi-tenant resource isolation patterns
-- Catalog migration and schema evolution strategies
+- Catalog migration and schema evolution strategies *(partially addressed by format-version-deprecation-strategies; cross-system patterns documented there)*
 
 ## Shared References Used
 @../../_refs/complexity-notation.md

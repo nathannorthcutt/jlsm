@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.cluster.internal.GracePeriodManager;
 import jlsm.engine.cluster.internal.InJvmDiscoveryProvider;
 import jlsm.engine.cluster.internal.InJvmTransport;
@@ -659,11 +661,11 @@ final class ResourceLifecycleAdversarialTest {
     }
 
     // Finding: F-R1.resource_lifecycle.2.2
-    // Bug: ClusteredTable.scan() leaks RemotePartitionClient instances — clients are created
+    // Bug: CatalogClusteredTable.scan() leaks RemotePartitionClient instances — clients are created
     // via createClientForNode() for each live node but never closed after getRange() returns
     // Correct behavior: scan() must close each RemotePartitionClient in a finally block after
     // getRange() completes, since getRange() eagerly fetches data via sendRequestAndAwait()
-    // Fix location: ClusteredTable.scan (ClusteredTable.java:170-179)
+    // Fix location: CatalogClusteredTable.scan (CatalogClusteredTable.java:170-179)
     // Regression watch: ensure CRUD methods (which already use try/finally) are unaffected
     @Test
     @Timeout(10)
@@ -729,7 +731,8 @@ final class ResourceLifecycleAdversarialTest {
         final var schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
                 .build();
         final var meta = new TableMetadata("users", schema, now, TableMetadata.TableState.READY);
-        final var table = new ClusteredTable(meta, dummyTransport, stubMembership, NODE_A);
+        final var table = CatalogClusteredTable.forEngine(meta, dummyTransport, stubMembership,
+                NODE_A);
 
         // Reset the open-instance counter before our scan
         RemotePartitionClient.resetOpenInstanceCounter();
@@ -770,14 +773,15 @@ final class ResourceLifecycleAdversarialTest {
     }
 
     // Finding: F-R1.resource_lifecycle.2.6
-    // Bug: ClusteredEngine.createTable() does not roll back localEngine on ClusteredTable
+    // Bug: ClusteredEngine.createTable() does not roll back localEngine on CatalogClusteredTable
     // construction failure
-    // Correct behavior: If ClusteredTable constructor throws after localEngine.createTable()
+    // Correct behavior: If CatalogClusteredTable constructor throws after localEngine.createTable()
     // succeeds,
     // the local table must be dropped (rolled back) to avoid an orphaned local table with no
     // clustered proxy
     // Fix location: ClusteredEngine.createTable (ClusteredEngine.java:89-97)
-    // Regression watch: ensure normal createTable() still works when ClusteredTable constructor
+    // Regression watch: ensure normal createTable() still works when CatalogClusteredTable
+    // constructor
     // succeeds
     @Test
     @Timeout(10)
@@ -786,48 +790,20 @@ final class ResourceLifecycleAdversarialTest {
         final var dropCalled = new AtomicBoolean(false);
         final var droppedTableName = new AtomicReference<String>();
 
-        // Stub Table whose metadata() returns null — triggers NullPointerException
-        // in ClusteredTable constructor (Objects.requireNonNull(tableMetadata))
-        jlsm.engine.Table nullMetadataTable = new jlsm.engine.Table() {
-            @Override
-            public void create(String key, jlsm.table.JlsmDocument doc) {
-            }
-
-            @Override
-            public java.util.Optional<jlsm.table.JlsmDocument> get(String key) {
-                return java.util.Optional.empty();
-            }
-
-            @Override
-            public void update(String key, jlsm.table.JlsmDocument doc,
-                    jlsm.table.UpdateMode mode) {
-            }
-
-            @Override
-            public void delete(String key) {
-            }
-
-            @Override
-            public void insert(jlsm.table.JlsmDocument doc) {
-            }
-
-            @Override
-            public jlsm.table.TableQuery<String> query() {
-                return null;
-            }
-
-            @Override
-            public Iterator<TableEntry<String>> scan(String fromKey, String toKey) {
-                return java.util.Collections.emptyIterator();
-            }
+        // R8g migration: Table is sealed — anonymous impls are no longer permitted. The
+        // stub now extends TestTableStubs.MetadataOnlyStub (a non-sealed CatalogClusteredTable
+        // subtype) and overrides metadata() to return null, preserving the original
+        // adversarial scenario (CatalogClusteredTable.forEngine(...) NPE on null tableMetadata
+        // during the rollback path).
+        final var dummyMeta = new TableMetadata("placeholder",
+                JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING).build(),
+                java.time.Instant.EPOCH, TableMetadata.TableState.READY);
+        jlsm.engine.Table nullMetadataTable = new jlsm.engine.cluster.internal.TestTableStubs.MetadataOnlyStub(
+                dummyMeta) {
 
             @Override
             public TableMetadata metadata() {
-                return null;
-            } // triggers NPE in ClusteredTable ctor
-
-            @Override
-            public void close() {
+                return null; // triggers NPE in CatalogClusteredTable.forEngine downstream
             }
         };
 
@@ -927,13 +903,14 @@ final class ResourceLifecycleAdversarialTest {
         final var schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
                 .build();
 
-        // createTable should propagate the NullPointerException from ClusteredTable constructor
+        // createTable should propagate the NullPointerException from CatalogClusteredTable
+        // constructor
         assertThrows(NullPointerException.class, () -> engine.createTable("users", schema));
 
         // BUG: Without rollback, the local table persists but no clustered proxy was registered.
         // The engine is in an inconsistent state with an orphaned local table.
         assertTrue(dropCalled.get(),
-                "createTable() must roll back localEngine.createTable() when ClusteredTable "
+                "createTable() must roll back localEngine.createTable() when CatalogClusteredTable "
                         + "construction fails — orphaned local table with no clustered proxy");
         assertEquals("users", droppedTableName.get(),
                 "dropTable must be called with the same table name that was created");
@@ -942,10 +919,11 @@ final class ResourceLifecycleAdversarialTest {
     }
 
     // Finding: F-R1.resource_lifecycle.2.7
-    // Bug: ClusteredTable creates a private RendezvousOwnership that is never cleaned up on close()
+    // Bug: CatalogClusteredTable creates a private RendezvousOwnership that is never cleaned up on
+    // close()
     // Correct behavior: close() must clear the RendezvousOwnership cache so cached assignments
     // do not persist after the table is closed, preventing memory leaks in long-lived JVMs
-    // Fix location: ClusteredTable.close (ClusteredTable.java:204-207)
+    // Fix location: CatalogClusteredTable.close (CatalogClusteredTable.java:204-207)
     // Regression watch: ensure ownership still works for operations before close()
     @Test
     @Timeout(10)
@@ -1007,7 +985,8 @@ final class ResourceLifecycleAdversarialTest {
         final var schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
                 .build();
         final var meta = new TableMetadata("users", schema, now, TableMetadata.TableState.READY);
-        final var table = new ClusteredTable(meta, dummyTransport, stubMembership, NODE_A);
+        final var table = CatalogClusteredTable.forEngine(meta, dummyTransport, stubMembership,
+                NODE_A);
 
         // Trigger ownership cache population by calling get() which invokes resolveOwner()
         try {
@@ -1017,7 +996,7 @@ final class ResourceLifecycleAdversarialTest {
         }
 
         // Access the private ownership field, then its internal cache
-        final var ownershipField = ClusteredTable.class.getDeclaredField("ownership");
+        final var ownershipField = CatalogClusteredTable.class.getDeclaredField("ownership");
         ownershipField.setAccessible(true);
         final var ownership = ownershipField.get(table);
 
@@ -1197,13 +1176,15 @@ final class ResourceLifecycleAdversarialTest {
 
     // Finding: F-R1.resource_lifecycle.2.2
     // Bug: SCATTER_EXECUTOR is a static `Executors.newVirtualThreadPerTaskExecutor()` that is
-    // never shut down; ClusteredTable.close() does not cancel in-flight fanout tasks, so tasks
+    // never shut down; CatalogClusteredTable.close() does not cancel in-flight fanout tasks, so
+    // tasks
     // parked on a stalled transport remain parked for JVM lifetime — no operator recourse.
     // Correct behavior: either (a) close() must cancel in-flight scatter futures, or (b) the
     // executor must be scoped to per-table lifecycle and close()d, or (c) a JVM shutdown hook
     // must register to close the executor cleanly on termination.
-    // Fix location: ClusteredTable.close (ClusteredTable.java:434-437) and SCATTER_EXECUTOR
-    // declaration (ClusteredTable.java:73).
+    // Fix location: CatalogClusteredTable.close (CatalogClusteredTable.java:434-437) and
+    // SCATTER_EXECUTOR
+    // declaration (CatalogClusteredTable.java:73).
     // Regression watch: ensure live tables' scatter executor remains usable when one table
     // closes; ensure the in-flight future does not complete normally after close().
     @Test
@@ -1267,7 +1248,8 @@ final class ResourceLifecycleAdversarialTest {
         final var schema = JlsmSchema.builder("test", 1).field("name", FieldType.Primitive.STRING)
                 .build();
         final var meta = new TableMetadata("users", schema, now, TableMetadata.TableState.READY);
-        final var table = new ClusteredTable(meta, stalledTransport, stubMembership, NODE_A);
+        final var table = CatalogClusteredTable.forEngine(meta, stalledTransport, stubMembership,
+                NODE_A);
 
         // Start a scatter scan in a separate thread — it will park on allOf().get() awaiting
         // the stalled request future.

@@ -645,15 +645,20 @@ class TrieSSTableWriterPoolAwareBlockSizeTest {
     @Nested
     class F16CompatibilityInheritance {
 
-        // @spec sstable.pool-aware-block-size.R15 (via F16.R16)
+        // @spec sstable.pool-aware-block-size.R15
+        // Post v1-v4 collapse: every writer is v5 with stored blockSize, so the historical
+        // "non-default blockSize requires a codec" gate has been removed. A no-codec writer
+        // with a pool-derived non-default block size is now a valid v5 configuration (NoneCodec
+        // entries in the compression map), so build() succeeds rather than throwing IAE.
         @Test
-        void build_throwsIAE_whenPoolDerivedNonDefaultBlockSize_andNoCodec(@TempDir Path dir) {
+        void build_succeeds_whenPoolDerivedNonDefaultBlockSize_andNoCodec(@TempDir Path dir)
+                throws IOException {
             Path out = dir.resolve("r15-nocodec.sst");
             try (var p = pool(8192)) {
-                // No codec + pool-derived non-default block size → F16.R16 fires at build().
-                TrieSSTableWriter.Builder b = baseBuilder(out).pool(p);
-                assertThrows(IllegalArgumentException.class, b::build,
-                        "R15: pool-derived non-default block size without codec must throw IAE at build() (F16.R16)");
+                try (TrieSSTableWriter w = baseBuilder(out).pool(p).build()) {
+                    w.append(put("k", "v", 1));
+                    w.finish();
+                }
             }
         }
 

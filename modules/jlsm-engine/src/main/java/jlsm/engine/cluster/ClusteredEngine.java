@@ -1,9 +1,11 @@
 package jlsm.engine.cluster;
 
+import jlsm.encryption.TableScope;
 import jlsm.engine.Engine;
 import jlsm.engine.EngineMetrics;
 import jlsm.engine.Table;
 import jlsm.engine.TableMetadata;
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
 import jlsm.engine.cluster.internal.GracePeriodManager;
 import jlsm.engine.cluster.internal.QueryRequestHandler;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
@@ -25,13 +27,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>
  * Contract: Wraps a local {@link Engine} instance and adds cluster membership, ownership
  * assignment, and distributed query routing. On {@link #createTable}, creates the table locally and
- * announces it to the cluster. On {@link #getTable}, returns a {@link ClusteredTable} proxy for
- * partitioned tables or delegates to the local engine for locally-owned tables. Listens for
+ * announces it to the cluster. On {@link #getTable}, returns a {@link CatalogClusteredTable} proxy
+ * for partitioned tables or delegates to the local engine for locally-owned tables. Listens for
  * membership changes to trigger rebalancing of table and partition ownership.
  *
  * <p>
  * Side effects: Starts membership protocol on build. Modifies ownership assignments on membership
- * changes. Creates and manages {@link ClusteredTable} proxies.
+ * changes. Creates and manages {@link CatalogClusteredTable} proxies.
  *
  * <p>
  * Governed by: {@code .decisions/cluster-membership-protocol/adr.md},
@@ -47,7 +49,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *       transport) accumulates errors then surfaces after all resources released
  * @spec engine.clustering.R98 — createTable closes previous proxy with same name; on failure local
  *       table rolled back
- * @spec engine.clustering.R99 — ownership instance shared with ClusteredTable (not per-table copy)
+ * @spec engine.clustering.R99 — ownership instance shared with CatalogClusteredTable (not per-table
+ *       copy)
  * @spec engine.clustering.R102 — final fields assigned before any listener/handler registration
  *       (safe publication)
  * @spec engine.clustering.R103 — constructor unwinds registration steps if a later step throws
@@ -66,12 +69,12 @@ public final class ClusteredEngine implements Engine {
     private final NodeAddress localAddress;
     private final DiscoveryProvider discovery;
     private final QueryRequestHandler queryHandler;
-    private final ConcurrentHashMap<String, ClusteredTable> clusteredTables = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CatalogClusteredTable> clusteredTables = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     /**
      * Engine-level operational mode (@spec engine.clustering.R41). Transitions between NORMAL and
      * READ_ONLY on membership-view changes based on quorum. Exposed via {@link #operationalMode()}
-     * and consumed by {@link ClusteredTable} to gate mutating operations.
+     * and consumed by {@link CatalogClusteredTable} to gate mutating operations.
      */
     private volatile ClusterOperationalMode operationalMode = ClusterOperationalMode.NORMAL;
 
@@ -153,15 +156,15 @@ public final class ClusteredEngine implements Engine {
         assert localTable != null : "localEngine.createTable must return non-null";
 
         // Create a clustered proxy for distributed access — roll back local table on failure
-        final ClusteredTable clustered;
+        final CatalogClusteredTable clustered;
         try {
             final TableMetadata metadata = localTable.metadata();
-            // @spec engine.clustering.R60 — supply the local engine so ClusteredTable can
+            // @spec engine.clustering.R60 — supply the local engine so CatalogClusteredTable can
             // short-circuit
             // locally-owned partitions.
-            clustered = new ClusteredTable(metadata, transport, membership, localAddress, ownership,
-                    localEngine);
-            final ClusteredTable previous = clusteredTables.put(name, clustered);
+            clustered = CatalogClusteredTable.forEngine(metadata, transport, membership,
+                    localAddress, ownership, localEngine);
+            final CatalogClusteredTable previous = clusteredTables.put(name, clustered);
             if (previous != null) {
                 previous.close();
             }
@@ -171,7 +174,7 @@ public final class ClusteredEngine implements Engine {
             // close() iterated/cleared the map — it would be orphaned. Re-check
             // and clean up if the engine was closed concurrently.
             if (closed.get()) {
-                final ClusteredTable orphan = clusteredTables.remove(name);
+                final CatalogClusteredTable orphan = clusteredTables.remove(name);
                 if (orphan != null) {
                     orphan.close();
                 }
@@ -218,13 +221,45 @@ public final class ClusteredEngine implements Engine {
         checkNotClosed();
 
         // Remove clustered proxy
-        final ClusteredTable removed = clusteredTables.remove(name);
+        final CatalogClusteredTable removed = clusteredTables.remove(name);
         if (removed != null) {
             removed.close();
         }
 
         // Delegate to local engine
         localEngine.dropTable(name);
+    }
+
+    @Override
+    // @spec sstable.footer-encryption-scope.R7 — cluster-mode createEncryptedTable. Per WU-3
+    // cycle-log, the chosen ordering protocol is delegate-to-local-engine on the originating
+    // node; cross-node propagation occurs on each peer's catalog refresh on next view change.
+    // Quorum-based broadcast/ack is deferred to WD-05 when the cluster control plane has a
+    // stable RPC primitive for catalog broadcasts.
+    public Table createEncryptedTable(String name, JlsmSchema schema, TableScope scope)
+            throws IOException {
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(schema, "schema must not be null");
+        Objects.requireNonNull(scope, "scope must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+        checkNotClosed();
+        return localEngine.createEncryptedTable(name, schema, scope);
+    }
+
+    @Override
+    // @spec sstable.footer-encryption-scope.R7b — cluster-mode enableEncryption delegates to
+    // the local engine's R7b 5-step protocol; cross-node propagation deferred (see comment on
+    // createEncryptedTable above).
+    public void enableEncryption(String name, TableScope scope) throws IOException {
+        Objects.requireNonNull(name, "name must not be null");
+        Objects.requireNonNull(scope, "scope must not be null");
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("name must not be empty");
+        }
+        checkNotClosed();
+        localEngine.enableEncryption(name, scope);
     }
 
     @Override
@@ -306,7 +341,7 @@ public final class ClusteredEngine implements Engine {
      * The mode is {@link ClusterOperationalMode#NORMAL} while the most recent membership view
      * reports quorum (via {@link MembershipView#hasQuorum(int)} at
      * {@link ClusterConfig#consensusQuorumPercent()}), and {@link ClusterOperationalMode#READ_ONLY}
-     * otherwise. In READ_ONLY mode, {@link ClusteredTable} write operations throw
+     * otherwise. In READ_ONLY mode, {@link CatalogClusteredTable} write operations throw
      * {@link QuorumLostException}.
      *
      * @return the current operational mode; never null
@@ -324,7 +359,7 @@ public final class ClusteredEngine implements Engine {
         final List<IOException> errors = new ArrayList<>();
 
         // Close all clustered table proxies (deferred exception collection)
-        for (final ClusteredTable ct : clusteredTables.values()) {
+        for (final CatalogClusteredTable ct : clusteredTables.values()) {
             try {
                 ct.close();
             } catch (Exception e) {

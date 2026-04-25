@@ -28,6 +28,7 @@
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-24 | sstable.footer-encryption-scope | sstable | SSTable Footer Encryption Scope Metadata (v4 APPROVED, hardened through 4 adversarial passes) |
 | 2026-04-22 | sstable.end-to-end-integrity | sstable | SSTable End-to-End Integrity (v4 APPROVED) |
 | 2026-04-22 | sstable.pool-aware-block-size | sstable | Pool-Aware Block Size Configuration (v4 APPROVED) |
 | 2026-04-15 | F48 | partitioning, storage | Corruption Repair and Recovery |
@@ -71,6 +72,16 @@
 | 2026-04-02 | F08 | serialization | Streaming Block Decompression |
 | 2026-04-02 | F07 | query | SQL Query Support |
 | 2026-04-02 | F05 | engine | In-Process Database Engine |
+
+## Archived
+
+Specs that have been superseded and whose APPROVED state is preserved for
+reference only — they no longer drive implementation behaviour.
+
+| Date Archived | ID | Superseded By | Reason |
+|---------------|-----|---------------|--------|
+| 2026-04-24 | sstable.format-v2 | sstable.end-to-end-integrity | Pre-GA SSTable v1-v4 collapse per `pre-ga-format-deprecation-policy` |
+| 2026-04-24 | sstable.v3-format-upgrade | sstable.end-to-end-integrity | Pre-GA SSTable v1-v4 collapse per `pre-ga-format-deprecation-policy` |
 
 ## Spec File Format Reference
 

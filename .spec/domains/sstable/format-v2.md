@@ -1,16 +1,19 @@
 ---
 {
   "id": "sstable.format-v2",
-  "version": 1,
-  "status": "ACTIVE",
+  "version": 2,
+  "status": "DEPRECATED",
   "state": "APPROVED",
+  "superseded_by": "sstable.end-to-end-integrity",
+  "deprecated_at": "2026-04-24",
+  "deprecation_reason": "Pre-GA SSTable v1-v4 collapse per pre-ga-format-deprecation-policy. v5 (sstable.end-to-end-integrity) is the only supported on-disk format.",
   "domains": [
     "sstable"
   ],
   "requires": [],
   "invalidates": [],
   "amends": null,
-  "amended_by": null,
+  "amended_by": "sstable.end-to-end-integrity",
   "decision_refs": [
     "sstable-block-compression-format",
     "compression-codec-api-design",

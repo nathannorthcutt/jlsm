@@ -20,9 +20,25 @@ import java.util.Optional;
  * throw {@link HandleEvictedException}.
  *
  * <p>
- * Governed by: {@code .decisions/engine-api-surface-design/adr.md}
+ * <b>Sealed type hierarchy.</b> The two permitted implementations
+ * ({@code jlsm.engine.internal.CatalogTable} for single-node and
+ * {@code jlsm.engine.cluster.internal.CatalogClusteredTable} for clustered) both live in
+ * non-exported internal packages and are constructed exclusively by their respective engine
+ * factories. External consumers of {@code jlsm-engine} cannot implement {@code Table} — the Java
+ * compiler rejects any non-permitted subtype. This enforces at compile time that any handle
+ * reaching the encryption read path is catalog-mediated and that its {@link #metadata()} encryption
+ * value is authoritative — not an attacker-constructed Table whose {@code metadata()} returns
+ * forged scope.
+ *
+ * <p>
+ * Governed by: {@code .decisions/engine-api-surface-design/adr.md},
+ * {@code .decisions/table-handle-scope-exposure/adr.md} v2.
+ *
+ * @spec sstable.footer-encryption-scope.R8e
+ * @spec sstable.footer-encryption-scope.R6c
  */
-public interface Table extends AutoCloseable {
+public sealed interface Table extends AutoCloseable permits jlsm.engine.internal.CatalogTable,
+        jlsm.engine.cluster.internal.CatalogClusteredTable {
 
     /**
      * Creates a new entry with the given key and document.

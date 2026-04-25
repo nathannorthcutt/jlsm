@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.Engine;
 import jlsm.engine.EngineMetrics;
 import jlsm.engine.Table;
@@ -13,12 +15,9 @@ import jlsm.engine.cluster.internal.RapidMembership;
 import jlsm.engine.cluster.internal.RemotePartitionClient;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
 import jlsm.table.FieldType;
-import jlsm.table.JlsmDocument;
 import jlsm.table.JlsmSchema;
 import jlsm.table.PartitionDescriptor;
 import jlsm.table.TableEntry;
-import jlsm.table.TableQuery;
-import jlsm.table.UpdateMode;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,11 +30,9 @@ import java.lang.reflect.Modifier;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -937,9 +934,9 @@ final class ConcurrencyAdversarialTest {
 
     // Finding: F-R1.concurrency.3.2
     // Bug: createTable passes checkNotClosed(), then close() runs (iterates/clears
-    // clusteredTables), then createTable puts a new ClusteredTable into the map —
+    // clusteredTables), then createTable puts a new CatalogClusteredTable into the map —
     // that table is never closed (resource leak / handle to closed engine).
-    // Correct behavior: After close() completes, no new ClusteredTable should remain
+    // Correct behavior: After close() completes, no new CatalogClusteredTable should remain
     // in the map unclosed. Either createTable must fail after close, or close must
     // clean up any table added concurrently.
     // Fix location: ClusteredEngine.createTable / close (ClusteredEngine.java:88-100, 168-188)
@@ -956,8 +953,8 @@ final class ConcurrencyAdversarialTest {
         // stub's createTable which blocks.
         // 2. Main thread: engine.close() — sets closed, iterates clusteredTables (empty),
         // clears map, closes membership, localEngine.
-        // 3. Release the latch — Thread A resumes, creates ClusteredTable, puts it in map.
-        // 4. Assert: the orphaned ClusteredTable exists in the map but was never closed.
+        // 3. Release the latch — Thread A resumes, creates CatalogClusteredTable, puts it in map.
+        // 4. Assert: the orphaned CatalogClusteredTable exists in the map but was never closed.
 
         final var blockInCreate = new CountDownLatch(1);
         final var releaseCreate = new CountDownLatch(1);
@@ -982,12 +979,12 @@ final class ConcurrencyAdversarialTest {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
-                return new StubTableImpl(meta);
+                return jlsm.engine.cluster.internal.TestTableStubs.forMetadata(meta);
             }
 
             @Override
             public Table getTable(String name) throws IOException {
-                return new StubTableImpl(tables.get(name));
+                return jlsm.engine.cluster.internal.TestTableStubs.forMetadata(tables.get(name));
             }
 
             @Override
@@ -1045,7 +1042,7 @@ final class ConcurrencyAdversarialTest {
         // Main thread: close the engine while createTable is blocked
         engine.close();
 
-        // Release the block so createTable resumes — it will put ClusteredTable into the map
+        // Release the block so createTable resumes — it will put CatalogClusteredTable into the map
         releaseCreate.countDown();
         createThread.join(5_000);
 
@@ -1063,14 +1060,14 @@ final class ConcurrencyAdversarialTest {
                     "If createTable threw on close, clusteredTables should be empty");
         } else {
             // The bug: createTable succeeded after close() finished — an orphaned
-            // ClusteredTable is in the map. Verify it was properly closed.
+            // CatalogClusteredTable is in the map. Verify it was properly closed.
             // If the map is non-empty, the entry was never closed by close() (which
             // already ran), so it is an orphan.
             assertNull(createError.get(),
                     "createTable should either succeed or throw IOException, not: "
                             + createError.get());
             assertTrue(clusteredTables.isEmpty(),
-                    "After close() completes, no ClusteredTable should remain in the map — "
+                    "After close() completes, no CatalogClusteredTable should remain in the map — "
                             + "found " + clusteredTables.size() + " orphaned entry/entries that "
                             + "will never be closed (resource leak). createTable must either fail "
                             + "with IOException after close, or close must clean up late arrivals.");
@@ -1257,53 +1254,8 @@ final class ConcurrencyAdversarialTest {
         }
     }
 
-    private static final class StubTableImpl implements Table {
-        private final TableMetadata metadata;
-
-        StubTableImpl(TableMetadata metadata) {
-            this.metadata = metadata;
-        }
-
-        @Override
-        public void create(String key, JlsmDocument doc) {
-        }
-
-        @Override
-        public Optional<JlsmDocument> get(String key) {
-            return Optional.empty();
-        }
-
-        @Override
-        public void update(String key, JlsmDocument doc, UpdateMode mode) {
-        }
-
-        @Override
-        public void delete(String key) {
-        }
-
-        @Override
-        public void insert(JlsmDocument doc) {
-        }
-
-        @Override
-        public TableQuery<String> query() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Iterator<TableEntry<String>> scan(String from, String to) {
-            return Collections.emptyIterator();
-        }
-
-        @Override
-        public TableMetadata metadata() {
-            return metadata;
-        }
-
-        @Override
-        public void close() {
-        }
-    }
+    // R8g migration: StubTableImpl previously declared `implements Table` — replaced with the
+    // shared {@code TestTableStubs.forMetadata(...)} factory.
 
     // Finding: F-R1.concurrency.1.1
     // Bug: RemotePartitionClient.close() uses volatile check-then-set (if (!closed) { closed =
@@ -1439,7 +1391,7 @@ final class ConcurrencyAdversarialTest {
     }
 
     // Finding: F-R1.concurrency.1.4
-    // Bug: In ClusteredTable.scan scatter whenComplete (lines 312-319), the catch block
+    // Bug: In CatalogClusteredTable.scan scatter whenComplete (lines 312-319), the catch block
     // only catches IOException and swallows it via `assert closeFailure != null` — a
     // tautology that is a no-op under -da (the default JVM mode). Additionally, if
     // client.close() were to throw a non-IOException (e.g., RuntimeException from a future
@@ -1451,7 +1403,7 @@ final class ConcurrencyAdversarialTest {
     // silently discarded. The catch should cover any Throwable from close(), not only
     // IOException, and the handler must record the failure via a real logging mechanism
     // (not an assert tautology that is a no-op under -da).
-    // Fix location: ClusteredTable.scan whenComplete (ClusteredTable.java:312-319)
+    // Fix location: CatalogClusteredTable.scan whenComplete (CatalogClusteredTable.java:312-319)
     // Regression watch: the successful close path must remain side-effect-free; the scatter
     // future must still complete normally; assertions must not be the sole observability
     // mechanism.
@@ -1459,7 +1411,7 @@ final class ConcurrencyAdversarialTest {
     @Timeout(10)
     void test_ClusteredTable_scanWhenComplete_closeFailureIsNotSilentlySwallowed()
             throws Exception {
-        // Structural proof: scan the ClusteredTable.java source for the whenComplete block
+        // Structural proof: scan the CatalogClusteredTable.java source for the whenComplete block
         // and verify that (a) the catch is NOT restricted to IOException only, AND (b) the
         // handler body does NOT rely exclusively on `assert` for observability.
         //
@@ -1480,14 +1432,14 @@ final class ConcurrencyAdversarialTest {
         // private and directly instantiates RemotePartitionClient (not injected), so a
         // throwing client cannot be substituted at runtime without modifying the construct.
         java.nio.file.Path source = java.nio.file.Paths
-                .get("src/main/java/jlsm/engine/cluster/ClusteredTable.java");
+                .get("src/main/java/jlsm/engine/cluster/internal/CatalogClusteredTable.java");
         if (!java.nio.file.Files.exists(source)) {
             // When running under Gradle, the working directory differs by submodule.
             source = java.nio.file.Paths.get(
-                    "modules/jlsm-engine/src/main/java/jlsm/engine/cluster/ClusteredTable.java");
+                    "modules/jlsm-engine/src/main/java/jlsm/engine/cluster/internal/CatalogClusteredTable.java");
         }
         assertTrue(java.nio.file.Files.exists(source),
-                "ClusteredTable.java source must exist at " + source.toAbsolutePath());
+                "CatalogClusteredTable.java source must exist at " + source.toAbsolutePath());
         final String src = java.nio.file.Files.readString(source);
 
         // Locate the whenComplete block by the marker comment for @spec engine.clustering.R100 /
@@ -1507,7 +1459,7 @@ final class ConcurrencyAdversarialTest {
                 && !window.contains("catch (Exception") && !window.contains("catch (Throwable")
                 && !window.contains("catch (RuntimeException");
         assertFalse(onlyIoException,
-                "ClusteredTable.scan whenComplete close handler must catch non-IOException "
+                "CatalogClusteredTable.scan whenComplete close handler must catch non-IOException "
                         + "throwables (Exception, Throwable, or RuntimeException) — otherwise a "
                         + "RuntimeException from client.close() escapes the catch, fails the "
                         + "whenComplete stage, and is then silently swallowed by the "
@@ -1523,7 +1475,7 @@ final class ConcurrencyAdversarialTest {
         final boolean hasAssertOnly = window.contains("assert closeFailure")
                 && !window.contains("Logger") && !window.contains("LOGGER");
         assertFalse(hasAssertOnly,
-                "ClusteredTable.scan whenComplete close handler must record failures via a "
+                "CatalogClusteredTable.scan whenComplete close handler must record failures via a "
                         + "real logging mechanism (System.Logger) — an `assert closeFailure != null` "
                         + "tautology is a no-op under -da (default JVM) and does not log even when "
                         + "assertions are enabled. This violates F04.R100/H-RL-6 by making close() "
@@ -1532,7 +1484,7 @@ final class ConcurrencyAdversarialTest {
 
     // Finding: F-R1.concurrency.1.7
     // Bug: `lastPartialResult` is a single volatile field shared across all callers. Two
-    // concurrent scans on the same ClusteredTable both write this field, so a caller who
+    // concurrent scans on the same CatalogClusteredTable both write this field, so a caller who
     // invokes scan() and then reads lastPartialResultMetadata() can observe metadata that
     // belongs to a different caller's scan (last-writer-wins). The call-to-result
     // association is not preserved — a caller may believe its scan was complete when in
@@ -1540,8 +1492,9 @@ final class ConcurrencyAdversarialTest {
     // Correct behavior: lastPartialResultMetadata() called after a scan on the same thread
     // must return the metadata produced by THAT scan, regardless of other concurrent scans
     // on other threads.
-    // Fix location: ClusteredTable.lastPartialResult + scan + lastPartialResultMetadata
-    // (modules/jlsm-engine/src/main/java/jlsm/engine/cluster/ClusteredTable.java:82, 285, 369, 395)
+    // Fix location: CatalogClusteredTable.lastPartialResult + scan + lastPartialResultMetadata
+    // (modules/jlsm-engine/src/main/java/jlsm/engine/cluster/CatalogClusteredTable.java:82, 285,
+    // 369, 395)
     // Regression watch: single-threaded scan followed by metadata read must still return
     // the scan's own metadata. Existing tests in ClusteredTableScanParallelTest,
     // ClusteredTableLocalShortCircuitTest, and ClusteredTableTest must continue to pass.
@@ -1582,8 +1535,8 @@ final class ConcurrencyAdversarialTest {
         setMembershipView(membership,
                 new MembershipView(1, Set.of(new Member(remoteAddr, MemberState.ALIVE, 0)), now));
 
-        final ClusteredTable table = new ClusteredTable(tableMeta, localTransport, membership,
-                localAddr);
+        final CatalogClusteredTable table = CatalogClusteredTable.forEngine(tableMeta,
+                localTransport, membership, localAddr);
         try {
             final CountDownLatch aDoneScanning = new CountDownLatch(1);
             final CountDownLatch bDoneScanning = new CountDownLatch(1);
@@ -1618,7 +1571,7 @@ final class ConcurrencyAdversarialTest {
                     "Thread A did not complete its scan in time");
 
             // Change membership to 0 live nodes, so Thread B's scan takes the
-            // liveNodes.isEmpty() path at ClusteredTable.java:284 and writes
+            // liveNodes.isEmpty() path at CatalogClusteredTable.java:284 and writes
             // lastPartialResult with totalPartitionsQueried=0.
             setMembershipView(membership, new MembershipView(2, Set.of(), now));
 

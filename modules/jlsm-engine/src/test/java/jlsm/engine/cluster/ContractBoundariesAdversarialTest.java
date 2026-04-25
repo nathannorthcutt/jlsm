@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.engine.cluster.internal.CatalogClusteredTable;
+
 import jlsm.engine.Engine;
 import jlsm.engine.EngineMetrics;
 import jlsm.engine.Table;
@@ -24,7 +26,6 @@ import org.junit.jupiter.api.Timeout;
 import jlsm.table.JlsmDocument;
 import jlsm.table.PartitionDescriptor;
 import jlsm.table.TableEntry;
-import jlsm.table.TableQuery;
 import jlsm.table.UpdateMode;
 
 import java.io.IOException;
@@ -37,7 +38,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -85,7 +85,7 @@ final class ContractBoundariesAdversarialTest {
     private InJvmTransport localTransport;
     private InJvmTransport remoteTransport;
     private StubMembershipProtocol membership;
-    private ClusteredTable table;
+    private CatalogClusteredTable table;
 
     @BeforeEach
     void setUp() {
@@ -104,7 +104,7 @@ final class ContractBoundariesAdversarialTest {
                                 .completedFuture(new Message(MessageType.QUERY_RESPONSE, REMOTE_A,
                                         msg.sequenceNumber(), new byte[0])));
 
-        table = new ClusteredTable(TABLE_META, localTransport, membership, LOCAL);
+        table = CatalogClusteredTable.forEngine(TABLE_META, localTransport, membership, LOCAL);
     }
 
     @AfterEach
@@ -116,10 +116,11 @@ final class ContractBoundariesAdversarialTest {
     }
 
     // Finding: F-R1.cb.1.1
-    // Bug: ClusteredTable creates a private RendezvousOwnership whose cache is never evicted
+    // Bug: CatalogClusteredTable creates a private RendezvousOwnership whose cache is never evicted
     // on view changes — old epoch entries accumulate without bound
     // Correct behavior: After a new epoch is observed, old epoch cache entries should be evicted
-    // Fix location: ClusteredTable.resolveOwner or collectLiveNodes — evict before current epoch
+    // Fix location: CatalogClusteredTable.resolveOwner or collectLiveNodes — evict before current
+    // epoch
     // Regression watch: Ensure ownership resolution still works correctly after eviction
     @Test
     @Timeout(10)
@@ -133,7 +134,7 @@ final class ContractBoundariesAdversarialTest {
         }
 
         // Access the private ownership field and its internal cache via reflection
-        final Field ownershipField = ClusteredTable.class.getDeclaredField("ownership");
+        final Field ownershipField = CatalogClusteredTable.class.getDeclaredField("ownership");
         ownershipField.setAccessible(true);
         final RendezvousOwnership ownership = (RendezvousOwnership) ownershipField.get(table);
 
@@ -158,7 +159,7 @@ final class ContractBoundariesAdversarialTest {
         }
 
         // After resolving at epoch 2, epoch 1 entries should have been evicted.
-        // BUG: ClusteredTable never calls evictBefore on its private RendezvousOwnership,
+        // BUG: CatalogClusteredTable never calls evictBefore on its private RendezvousOwnership,
         // so epoch 1 entries remain forever.
         assertFalse(cache.containsKey(1L),
                 "Cache should NOT contain epoch 1 after ownership was resolved at epoch 2 — "
@@ -410,7 +411,7 @@ final class ContractBoundariesAdversarialTest {
     // Finding: F-R1.cb.1.6
     // Bug: ClusteredEngine.createTable overwrites clustered proxy without closing old one
     // Correct behavior: When a table name already exists in the clusteredTables map, the old
-    // ClusteredTable proxy should be closed before being replaced
+    // CatalogClusteredTable proxy should be closed before being replaced
     // Fix location: ClusteredEngine.createTable — close old proxy before put
     // Regression watch: Ensure normal (non-duplicate) createTable still works
     @Test
@@ -424,19 +425,19 @@ final class ContractBoundariesAdversarialTest {
                 .transport(localTransport).config(ClusterConfig.builder().build())
                 .localAddress(LOCAL).discovery(new InJvmDiscoveryProvider()).build();
         try {
-            // First createTable — stores a ClusteredTable proxy
+            // First createTable — stores a CatalogClusteredTable proxy
             engine.createTable("t1", SCHEMA);
 
             // Grab the first proxy from the internal map via reflection
             final Field ctField = ClusteredEngine.class.getDeclaredField("clusteredTables");
             ctField.setAccessible(true);
-            final ConcurrentHashMap<String, ClusteredTable> ctMap = (ConcurrentHashMap<String, ClusteredTable>) ctField
+            final ConcurrentHashMap<String, CatalogClusteredTable> ctMap = (ConcurrentHashMap<String, CatalogClusteredTable>) ctField
                     .get(engine);
-            final ClusteredTable firstProxy = ctMap.get("t1");
+            final CatalogClusteredTable firstProxy = ctMap.get("t1");
             assertNotNull(firstProxy, "First proxy should be stored in clusteredTables map");
 
             // Access the closed flag on the first proxy via reflection
-            final Field closedField = ClusteredTable.class.getDeclaredField("closed");
+            final Field closedField = CatalogClusteredTable.class.getDeclaredField("closed");
             closedField.setAccessible(true);
             assertFalse((boolean) closedField.get(firstProxy),
                     "First proxy should not be closed before overwrite");
@@ -448,15 +449,15 @@ final class ContractBoundariesAdversarialTest {
             engine.createTable("t1", schema2);
 
             // The first proxy should have been closed before being replaced
-            // BUG: The old ClusteredTable proxy is leaked — its closed flag is never set,
+            // BUG: The old CatalogClusteredTable proxy is leaked — its closed flag is never set,
             // and it is orphaned in memory. ClusteredEngine.close() won't close it because
             // it has been replaced in the map.
             assertTrue((boolean) closedField.get(firstProxy),
-                    "Old ClusteredTable proxy must be closed when overwritten by a new "
+                    "Old CatalogClusteredTable proxy must be closed when overwritten by a new "
                             + "createTable call — the orphaned proxy leaks resources");
 
             // The new proxy should be in the map and not closed
-            final ClusteredTable secondProxy = ctMap.get("t1");
+            final CatalogClusteredTable secondProxy = ctMap.get("t1");
             assertNotNull(secondProxy, "New proxy should be stored in clusteredTables map");
             assertNotSame(firstProxy, secondProxy,
                     "Second createTable should create a distinct proxy");
@@ -467,9 +468,9 @@ final class ContractBoundariesAdversarialTest {
     }
 
     // Finding: F-R1.cb.1.7
-    // Bug: ClusteredEngine.close does not wrap ClusteredTable.close in try-catch —
+    // Bug: ClusteredEngine.close does not wrap CatalogClusteredTable.close in try-catch —
     // if one table's close throws, remaining tables and subsequent resources are skipped
-    // Correct behavior: Each ClusteredTable.close() should be wrapped in try-catch,
+    // Correct behavior: Each CatalogClusteredTable.close() should be wrapped in try-catch,
     // exceptions collected in the deferred errors list, and all resources still closed
     // Fix location: ClusteredEngine.close (lines 176-178) — wrap ct.close() in try-catch
     // Regression watch: Ensure deferred exception is still thrown after all resources close
@@ -491,16 +492,16 @@ final class ContractBoundariesAdversarialTest {
         // Access internal clusteredTables map via reflection
         final Field ctField = ClusteredEngine.class.getDeclaredField("clusteredTables");
         ctField.setAccessible(true);
-        final ConcurrentHashMap<String, ClusteredTable> ctMap = (ConcurrentHashMap<String, ClusteredTable>) ctField
+        final ConcurrentHashMap<String, CatalogClusteredTable> ctMap = (ConcurrentHashMap<String, CatalogClusteredTable>) ctField
                 .get(engine);
 
         // Sabotage the first table's ownership field to null so close() throws NPE
-        final ClusteredTable firstTable = ctMap.get("t1");
-        final ClusteredTable secondTable = ctMap.get("t2");
+        final CatalogClusteredTable firstTable = ctMap.get("t1");
+        final CatalogClusteredTable secondTable = ctMap.get("t2");
         assertNotNull(firstTable);
         assertNotNull(secondTable);
 
-        final Field ownershipField = ClusteredTable.class.getDeclaredField("ownership");
+        final Field ownershipField = CatalogClusteredTable.class.getDeclaredField("ownership");
         ownershipField.setAccessible(true);
         ownershipField.set(firstTable, null);
 
@@ -514,22 +515,23 @@ final class ContractBoundariesAdversarialTest {
         }
 
         // Verify the second table was still closed despite the first table throwing
-        final Field closedField = ClusteredTable.class.getDeclaredField("closed");
+        final Field closedField = CatalogClusteredTable.class.getDeclaredField("closed");
         closedField.setAccessible(true);
         assertTrue((boolean) closedField.get(secondTable),
-                "Second ClusteredTable must be closed even when the first table's close() "
+                "Second CatalogClusteredTable must be closed even when the first table's close() "
                         + "throws — ClusteredEngine.close must use deferred exception collection");
 
         // Verify the local engine was still closed (subsequent resource cleanup ran)
         assertTrue(stubEngine.closeCalled,
-                "localEngine.close() must be called even when a ClusteredTable.close() "
+                "localEngine.close() must be called even when a CatalogClusteredTable.close() "
                         + "throws — the deferred exception pattern requires all resources to be released");
     }
 
     // Finding: F-R1.cb.1.8
     // Bug: ClusteredEngine.createTable returns localTable, not clusteredTable — caller bypasses
     // clustering
-    // Correct behavior: createTable must return the ClusteredTable proxy so callers route through
+    // Correct behavior: createTable must return the CatalogClusteredTable proxy so callers route
+    // through
     // the clustering layer (partition routing, scatter-gather)
     // Fix location: ClusteredEngine.createTable (line 111) — return clustered proxy instead of
     // localTable
@@ -546,16 +548,16 @@ final class ContractBoundariesAdversarialTest {
         try {
             final Table returned = engine.createTable("t1", SCHEMA);
 
-            // The returned Table must be a ClusteredTable (the partition-aware proxy),
+            // The returned Table must be a CatalogClusteredTable (the partition-aware proxy),
             // NOT the raw local table. If it's the local table, callers bypass the
             // entire clustering layer — partition routing and scatter-gather are dead code.
-            assertInstanceOf(ClusteredTable.class, returned,
-                    "createTable must return the ClusteredTable proxy, not the raw local table — "
+            assertInstanceOf(CatalogClusteredTable.class, returned,
+                    "createTable must return the CatalogClusteredTable proxy, not the raw local table — "
                             + "returning the local table bypasses partition routing and scatter-gather");
 
             // The metadata on the returned proxy must still be correct
             assertEquals("t1", returned.metadata().name(),
-                    "Returned ClusteredTable should have the correct table name");
+                    "Returned CatalogClusteredTable should have the correct table name");
         } finally {
             engine.close();
         }
@@ -698,12 +700,13 @@ final class ContractBoundariesAdversarialTest {
     }
 
     // Finding: F-R1.cb.1.12
-    // Bug: ClusteredTable.resolveOwner throws unchecked IllegalStateException("No live members
+    // Bug: CatalogClusteredTable.resolveOwner throws unchecked IllegalStateException("No live
+    // members
     // in the cluster") through create/get/update/delete which declare throws IOException.
     // Callers catching only IOException will not catch the IllegalStateException.
     // Correct behavior: When no live members exist, the exception should be IOException (or
     // wrapped as IOException) so it matches the declared throws clause of the calling methods.
-    // Fix location: ClusteredTable.resolveOwner (line 227) — wrap IllegalStateException in
+    // Fix location: CatalogClusteredTable.resolveOwner (line 227) — wrap IllegalStateException in
     // IOException
     // Regression watch: Ensure the error message is preserved and the cause chain is intact
     @Test
@@ -1390,7 +1393,7 @@ final class ContractBoundariesAdversarialTest {
             final TableMetadata meta = new TableMetadata(name, schema, NOW,
                     TableMetadata.TableState.READY);
             tables.put(name, meta);
-            return new PermissiveStubTable(meta);
+            return new jlsm.engine.cluster.internal.TestTableStubs.PermissiveStub(meta);
         }
 
         @Override
@@ -1399,7 +1402,7 @@ final class ContractBoundariesAdversarialTest {
             if (meta == null) {
                 throw new IOException("Table not found: " + name);
             }
-            return new PermissiveStubTable(meta);
+            return new jlsm.engine.cluster.internal.TestTableStubs.PermissiveStub(meta);
         }
 
         @Override
@@ -1427,56 +1430,8 @@ final class ContractBoundariesAdversarialTest {
         }
     }
 
-    /**
-     * Minimal stub table for the permissive engine.
-     */
-    private static final class PermissiveStubTable implements Table {
-        private final TableMetadata metadata;
-
-        PermissiveStubTable(TableMetadata metadata) {
-            this.metadata = metadata;
-        }
-
-        @Override
-        public void create(String key, JlsmDocument doc) {
-        }
-
-        @Override
-        public Optional<JlsmDocument> get(String key) {
-            return Optional.empty();
-        }
-
-        @Override
-        public void update(String key, JlsmDocument doc, UpdateMode mode) {
-        }
-
-        @Override
-        public void delete(String key) {
-        }
-
-        @Override
-        public void insert(JlsmDocument doc) {
-        }
-
-        @Override
-        public TableQuery<String> query() {
-            throw new UnsupportedOperationException("Not implemented");
-        }
-
-        @Override
-        public Iterator<TableEntry<String>> scan(String from, String to) {
-            return Collections.emptyIterator();
-        }
-
-        @Override
-        public TableMetadata metadata() {
-            return metadata;
-        }
-
-        @Override
-        public void close() {
-        }
-    }
+    // R8g migration: PermissiveStubTable previously declared `implements Table` — replaced
+    // with the shared {@code TestTableStubs.PermissiveStub} (extends CatalogClusteredTable).
 
     /**
      * Stub engine that tracks whether close() was called.
@@ -1490,7 +1445,7 @@ final class ContractBoundariesAdversarialTest {
             final TableMetadata meta = new TableMetadata(name, schema, NOW,
                     TableMetadata.TableState.READY);
             tables.put(name, meta);
-            return new PermissiveStubTable(meta);
+            return new jlsm.engine.cluster.internal.TestTableStubs.PermissiveStub(meta);
         }
 
         @Override
@@ -1499,7 +1454,7 @@ final class ContractBoundariesAdversarialTest {
             if (meta == null) {
                 throw new IOException("Table not found: " + name);
             }
-            return new PermissiveStubTable(meta);
+            return new jlsm.engine.cluster.internal.TestTableStubs.PermissiveStub(meta);
         }
 
         @Override
