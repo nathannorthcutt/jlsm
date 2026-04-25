@@ -188,6 +188,7 @@ class DispatchRoutingAdversarialTest {
     // with the correct v3 field layout) without false-positive rejection, and must not
     // break the existing V5→V4 defence for finding 1.1.
     // @spec sstable.end-to-end-integrity.R53
+    @org.junit.jupiter.api.Disabled("v1 and v3 magic constants were removed by the SSTable v1-v4 collapse; the cross-version flip scenario this test targeted is structurally absent")
     @Test
     void test_readFooter_dispatch_routing_v1_magic_flip_to_v3_bypasses_format_contract()
             throws IOException {
@@ -314,6 +315,7 @@ class DispatchRoutingAdversarialTest {
     // Regression watch: auto-detect callers must continue to work across v1..v5 without change;
     // a caller specifying expectedVersion=5 that opens a real v5 file must succeed.
     // @spec sstable.end-to-end-integrity.R54
+    @org.junit.jupiter.api.Disabled("genuine legacy SSTables can no longer be produced after the v1-v4 collapse; expectedVersion now accepts only 5")
     @Test
     void test_open_dispatch_routing_expected_version_mismatch_rejects_genuine_legacy_file()
             throws IOException {

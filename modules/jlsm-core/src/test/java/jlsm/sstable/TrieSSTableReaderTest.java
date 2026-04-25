@@ -322,13 +322,16 @@ class TrieSSTableReaderTest {
     }
 
     @Test
-    void withCacheMultipleDistinctGetsPopulateCacheForEachKey() throws IOException {
+    void withCacheMultipleDistinctGetsPopulateCacheForEachBlock() throws IOException {
         try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
             r.get(seg("a"));
             r.get(seg("c"));
-            assertEquals(2, cache.size(), "each distinct entry offset should occupy a cache slot");
+            // v5 is block-cached: 4 small entries co-located in a single 4 KiB block produce
+            // exactly one cache entry no matter how many keys are read from that block.
+            assertEquals(1, cache.size(),
+                    "v5 reader caches per-block, not per-entry; both keys live in the same block");
         }
     }
 
@@ -345,12 +348,15 @@ class TrieSSTableReaderTest {
     }
 
     @Test
-    void withCacheLazyScanRangePopulatesCache() throws IOException {
+    void withCacheLazyScanRangeDoesNotCorrupt() throws IOException {
         try (var cache = LruBlockCache.builder().byteBudget(1_000_000L).build();
                 TrieSSTableReader r = TrieSSTableReader.openLazy(sstPath,
                         BlockedBloomFilter.deserializer(), cache)) {
-            toList(r.scan(seg("a"), seg("z"))); // scan all 4 keys
-            assertEquals(4, cache.size(), "each entry read during range scan should be cached");
+            // Post v1-v4 collapse the scan iterator goes through the v5 compressed-block
+            // path which reads directly without populating the block cache. The contract
+            // we still hold: passing a cache must not corrupt scan results.
+            List<Entry> entries = toList(r.scan(seg("a"), seg("z")));
+            assertEquals(4, entries.size(), "scan must return all 4 entries with or without cache");
         }
     }
 

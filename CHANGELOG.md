@@ -10,6 +10,11 @@ semver release cadence is established.
 
 ## [Unreleased]
 
+### Removed — SSTable formats v1, v2, v3, v4 (pre-GA collapse)
+- First exercise of the [pre-GA format-version deprecation policy](.decisions/pre-ga-format-deprecation-policy/adr.md). Writers now always emit v5; readers reject any other magic with `IncompleteSSTableException`. Deleted constants `SSTableFormat.MAGIC`, `MAGIC_V2`, `MAGIC_V3`, `MAGIC_V4`, `FOOTER_SIZE`, `FOOTER_SIZE_V2`, `FOOTER_SIZE_V3`, `FOOTER_SIZE_V4`, `COMPRESSION_MAP_ENTRY_SIZE`, `COMPRESSION_MAP_ENTRY_SIZE_V3`. Removed reader paths `readFooterV1`, `readKeyIndexV1`, and the v1/v2/v3/v4 dispatch branches in `readFooter`. Removed writer paths `writeFooterV1`, `writeFooterV3`, `writeFooterV4`, `finishV3Layout`, `finishWithDictionaryTraining`, plus the dictionary-training Builder surface (`dictionaryTraining`, `dictionaryBlockThreshold`, `dictionaryMaxBufferBytes`, `dictionaryMaxSize`, `formatVersion`) and `DictionaryTrainingResult`. The 2-arg/3-arg public constructors of `TrieSSTableWriter` are retained but now produce v5 (with `NoneCodec` when no codec is supplied). The "non-default blockSize requires a codec" Builder gate is gone — every writer is v5 with stored blockSize.
+- Specs `sstable.format-v2` and `sstable.v3-format-upgrade` moved to `DEPRECATED` with `superseded_by: sstable.end-to-end-integrity`; both archived in `.spec/CLAUDE.md`. Manifest entries updated.
+- Test files removed: `SSTableFormatV3Test`, `SSTableFormatV4Test`, `SSTableV3IntegrationTest`, `DictionaryCompressionWriterTest`, `DictionaryCompressionReaderTest`. Adversarial tests targeting v3-byte-layout reader bugs disabled with explanatory `@Disabled` reasons (the bugs are masked by stronger v5 integrity guards).
+
 ### Added — End-to-end SSTable integrity (implement-sstable-enhancements WD-03)
 - `sstable.end-to-end-integrity` spec v2 DRAFT → v4 APPROVED → v5 DRAFT — v4 adopted 43 findings across spec-author Pass 2 (32 findings) + Pass 3 (11 findings); v5 adds 13 new requirements (R44-R56) + 4 refinements (R37/R38/R39/R43) + 2 open obligations (OB-01 writer FAILED-state, OB-02 writer-internal counter invariant) from post-implementation audit
 - **5 new constructs in `jlsm-core`:**

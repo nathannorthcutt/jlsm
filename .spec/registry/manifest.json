@@ -1283,7 +1283,7 @@
       "id": "sstable.format-v2",
       "path": ".spec/domains/sstable/format-v2.md",
       "state": "APPROVED",
-      "version": 1,
+      "version": 2,
       "domains": [
         "sstable"
       ],
@@ -1297,7 +1297,11 @@
       ],
       "kb_refs": [
         "algorithms/compression/block-compression-algorithms"
-      ]
+      ],
+      "status": "DEPRECATED",
+      "superseded_by": "sstable.end-to-end-integrity",
+      "deprecated_at": "2026-04-24",
+      "amended_by": "sstable.end-to-end-integrity"
     },
     {
       "id": "sstable.pool-aware-block-size",
@@ -1344,7 +1348,7 @@
       "id": "sstable.v3-format-upgrade",
       "path": ".spec/domains/sstable/v3-format-upgrade.md",
       "state": "APPROVED",
-      "version": 3,
+      "version": 4,
       "domains": [
         "sstable"
       ],
@@ -1360,7 +1364,11 @@
       ],
       "kb_refs": [
         "algorithms/compression/block-compression-algorithms"
-      ]
+      ],
+      "status": "DEPRECATED",
+      "superseded_by": "sstable.end-to-end-integrity",
+      "deprecated_at": "2026-04-24",
+      "amended_by": "sstable.end-to-end-integrity"
     },
     {
       "id": "sstable.writer",

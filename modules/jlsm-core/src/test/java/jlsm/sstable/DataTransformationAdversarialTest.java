@@ -4,7 +4,6 @@ import jlsm.bloom.PassthroughBloomFilter;
 import jlsm.bloom.blocked.BlockedBloomFilter;
 import jlsm.core.bloom.BloomFilter;
 import jlsm.core.compression.CompressionCodec;
-import jlsm.core.compression.ZstdDictionaryTrainer;
 import jlsm.core.model.Entry;
 import jlsm.core.model.Level;
 import jlsm.core.model.SequenceNumber;
@@ -16,16 +15,13 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Field;
-import java.lang.reflect.InaccessibleObjectException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SeekableByteChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,114 +51,12 @@ class DataTransformationAdversarialTest {
                 put("elderberry", "purple", 5));
     }
 
-    // Finding: F-R1.dt.1.1
-    // Bug: blockOffset long-to-int truncation in eager read path — line 343 casts
-    // mapEntry.blockOffset() (long) to int via (int), silently truncating offsets >= 2^31
-    // Correct behavior: reader should detect the overflow and throw IOException, not silently
-    // truncate the offset causing ArrayIndexOutOfBoundsException or wrong-data reads
-    // Fix location: TrieSSTableReader.readAndDecompressBlock, line 343
-    // Regression watch: ensure lazy read path (line 380) is not broken by the fix
-    @Test
-    void eagerReader_blockOffsetExceedingIntRange_throwsIOException_F_R1_dt_1_1(@TempDir Path dir)
-            throws IOException {
-        // Step 1: write a valid small v2 SSTable
-        List<Entry> entries = basicEntries();
-        Path path = dir.resolve("truncation.sst");
-        try (TrieSSTableWriter w = new TrieSSTableWriter(1L, Level.L0, path,
-                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.deflate())) {
-            for (Entry e : entries) {
-                w.append(e);
-            }
-            w.finish();
-        }
-
-        // Step 2: Read the file, locate the compression map, and patch blockOffset
-        // to a value > Integer.MAX_VALUE (0x80000000L = 2,147,483,648)
-        byte[] fileBytes = Files.readAllBytes(path);
-
-        // Read v2 footer (last 64 bytes) to find mapOffset and mapLength
-        int footerStart = fileBytes.length - SSTableFormat.FOOTER_SIZE_V2;
-        long mapOffset = readLong(fileBytes, footerStart);
-        long mapLength = readLong(fileBytes, footerStart + 8);
-
-        // Compression map format: [4-byte blockCount][entries...]
-        // Each entry: [8-byte blockOffset][4-byte compressedSize][4-byte uncompressedSize][1-byte
-        // codecId]
-        // Patch the first entry's blockOffset (at mapOffset + 4) to 0x80000000L
-        int entryStart = (int) mapOffset + 4; // skip blockCount
-        long poisonedOffset = 2_147_483_648L; // 0x80000000 — truncates to Integer.MIN_VALUE
-        writeLong(fileBytes, entryStart, poisonedOffset);
-
-        // Write the modified file back
-        Files.write(path, fileBytes);
-
-        // Step 3: Open eagerly and attempt to read — should throw IOException
-        // The eager open() loads eagerData as a small array, but the compression map
-        // entry claims blockOffset = 2^31. The buggy (int) cast on line 343 produces
-        // Integer.MIN_VALUE (-2147483648), causing ArrayIndexOutOfBoundsException.
-        // Correct behavior: detect the overflow and throw IOException.
-        try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
-                null, CompressionCodec.deflate())) {
-            // Trigger readAndDecompressBlock via get() — this uses the eager read path
-            // with blockCache=null, exercising line 343's (int) cast
-            IOException ex = assertThrows(IOException.class, () -> r.get(seg("apple")));
-            // The exception message should indicate the offset overflow problem
-            assertNotNull(ex.getMessage(),
-                    "IOException should have a descriptive message about the overflow");
-        }
-    }
-
-    // Finding: F-R1.dt.1.2
-    // Bug: blockOffset long-to-int truncation in no-cache read path — line 385 casts
-    // mapEntry.blockOffset() (long) to int via (int), silently truncating offsets >= 2^31
-    // Correct behavior: reader should detect the overflow and throw IOException, not silently
-    // truncate the offset causing ArrayIndexOutOfBoundsException or wrong-data reads
-    // Fix location: TrieSSTableReader.readAndDecompressBlockNoCache, line 385
-    // Regression watch: ensure eager read path (readAndDecompressBlock) still works after fix
-    @Test
-    void scanIterator_blockOffsetExceedingIntRange_throwsIOException_F_R1_dt_1_2(@TempDir Path dir)
-            throws IOException {
-        // Step 1: write a valid small v2 SSTable
-        List<Entry> entries = basicEntries();
-        Path path = dir.resolve("truncation-nocache.sst");
-        try (TrieSSTableWriter w = new TrieSSTableWriter(1L, Level.L0, path,
-                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.deflate())) {
-            for (Entry e : entries) {
-                w.append(e);
-            }
-            w.finish();
-        }
-
-        // Step 2: Patch the first block's blockOffset to a value > Integer.MAX_VALUE.
-        // Writer now produces v3 (72-byte footer) when a codec is configured, per F16 R16.
-        byte[] fileBytes = Files.readAllBytes(path);
-        int footerStart = fileBytes.length - SSTableFormat.FOOTER_SIZE_V3;
-        long mapOffset = readLong(fileBytes, footerStart);
-
-        // Compression map: [4-byte blockCount][entries...]
-        // Each entry: [8-byte blockOffset][4-byte compressedSize][4-byte uncompressedSize][1-byte
-        // codecId]
-        int entryStart = (int) mapOffset + 4; // skip blockCount
-        long poisonedOffset = 2_147_483_648L; // 0x80000000 — truncates to Integer.MIN_VALUE
-        writeLong(fileBytes, entryStart, poisonedOffset);
-
-        Files.write(path, fileBytes);
-
-        // Step 3: Open eagerly and call scan() — this uses readAndDecompressBlockNoCache
-        // The scan iterator bypasses BlockCache and hits the no-cache path at line 385
-        try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
-                null, CompressionCodec.deflate())) {
-            // scan() creates a CompressedBlockIterator whose constructor calls advance(),
-            // which immediately triggers readAndDecompressBlockNoCache on block 0
-            // with the poisoned blockOffset. The buggy (int) cast produces Integer.MIN_VALUE.
-            // The iterator wraps IOException in UncheckedIOException.
-            UncheckedIOException ex = assertThrows(UncheckedIOException.class, () -> r.scan());
-            assertNotNull(ex.getCause(), "UncheckedIOException should wrap an IOException");
-            assertInstanceOf(IOException.class, ex.getCause());
-            assertNotNull(ex.getCause().getMessage(),
-                    "IOException should have a descriptive message about the overflow");
-        }
-    }
+    // Findings F-R1.dt.1.1 and F-R1.dt.1.2 (blockOffset long-to-int truncation in the v3-style
+    // reader paths) are no longer reachable post v1-v4 collapse. The v5 reader verifies the
+    // compression-map CRC32C at open time, so a tampered blockOffset surfaces as
+    // CorruptSectionException(SECTION_COMPRESSION_MAP) before the (int) cast at the eager or
+    // no-cache read paths is ever reached. The downstream truncation paths the original
+    // findings targeted no longer exist on the v5 read path.
 
     // Finding: F-R1.dt.1.4
     // Bug: entryCount long-to-int truncation silently undersizes bloom filter — line 246 casts
@@ -300,7 +194,7 @@ class DataTransformationAdversarialTest {
         // a partial file ("outputPath.partial.<uuid>") and renames to outputPath at finish().
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(42L).level(Level.L0)
                 .path(outputPath).bloomFactory(PassthroughBloomFilter.factory())
-                .codec(CompressionCodec.deflate()).formatVersion(5).build()) {
+                .codec(CompressionCodec.deflate()).build()) {
             w.append(put("alpha", "a", 1));
             w.append(put("beta", "b", 2));
 
@@ -337,142 +231,14 @@ class DataTransformationAdversarialTest {
     // variable defaults to zero (line 407) and is only populated inside the v3 gate. If a v5
     // writer is ever constructed with v3=false, every block's recorded checksum is zero, which
     // silently disables the per-block integrity check required by the per-block-checksums ADR.
-    // Correct behavior: for v5 writes the per-block CRC32C must be computed unconditionally;
-    // integrity coverage must not be gated on an orthogonal legacy flag.
-    // Fix location: TrieSSTableWriter.compressAndWriteBlock, line 407-412 (remove the `if (v3)`
-    // gate for v5 writes, or fold the v5 gate into the CRC branch).
-    // Regression watch: v3 writers must continue to compute checksums; v1/v2 writers must
-    // continue to record checksum=0 (legacy 17-byte entry layout).
-    // @spec sstable.end-to-end-integrity.R47
-    @Test
-    void compressAndWriteBlock_v5CrcMustNotBeGatedOnV3Flag_F_R1_dt_1_4(@TempDir Path dir)
-            throws Exception {
-        // Step 1: Build a v5 writer with deflate so each block goes through compressAndWriteBlock.
-        Path path = dir.resolve("v5-crc-unconditional.sst");
-        TrieSSTableWriter w = TrieSSTableWriter.builder().id(7L).level(Level.L0).path(path)
-                .bloomFactory(PassthroughBloomFilter.factory()).codec(CompressionCodec.deflate())
-                .formatVersion(5).build();
-        try {
-            // Step 2: Flip the legacy `v3` flag to false via reflection — this simulates the
-            // fragile future-refactor scenario called out by the finding. The field is final,
-            // so we need Field.setAccessible + Field.setBoolean. Java 25 permits this for
-            // instance fields when the package is exported to the unnamed module (which it is
-            // via --add-exports), though some JVMs restrict writes to final fields — in that
-            // case the test records IMPOSSIBLE.
-            Field v3Field = TrieSSTableWriter.class.getDeclaredField("v3");
-            v3Field.setAccessible(true);
-            try {
-                v3Field.setBoolean(w, false);
-            } catch (IllegalAccessException | InaccessibleObjectException structural) {
-                // If the JVM refuses to mutate the final primitive, surface as an assertion
-                // failure so the orchestrator classifies this finding as IMPOSSIBLE (cannot
-                // exercise the buggy branch without a structural reachability change).
-                fail("Unable to mutate final `v3` field via reflection: " + structural);
-            }
+    // Finding: F-R1.dt.1.4 (v5 CRC must not be gated on v3 flag) is no longer reachable
+    // post v1-v4 collapse — the `v3` field was removed alongside the v3/v4 emit paths, so
+    // the orthogonal-flag scenario the test exercised cannot exist.
 
-            // Step 3: Write entries large enough to force multiple block flushes so the
-            // compression map has several entries to inspect.
-            byte[] filler = new byte[SSTableFormat.DEFAULT_BLOCK_SIZE / 2];
-            java.util.Arrays.fill(filler, (byte) 'a');
-            w.append(new Entry.Put(seg("key-01"), MemorySegment.ofArray(filler),
-                    new SequenceNumber(1)));
-            w.append(new Entry.Put(seg("key-02"), MemorySegment.ofArray(filler),
-                    new SequenceNumber(2)));
-            w.append(new Entry.Put(seg("key-03"), MemorySegment.ofArray(filler),
-                    new SequenceNumber(3)));
-            w.append(new Entry.Put(seg("key-04"), MemorySegment.ofArray(filler),
-                    new SequenceNumber(4)));
-            w.finish();
-        } finally {
-            w.close();
-        }
-
-        // Step 4: Decode the v5 footer to locate the compression map section.
-        byte[] fileBytes = Files.readAllBytes(path);
-        int footerStart = fileBytes.length - SSTableFormat.FOOTER_SIZE_V5;
-        byte[] footerBytes = new byte[SSTableFormat.FOOTER_SIZE_V5];
-        System.arraycopy(fileBytes, footerStart, footerBytes, 0, SSTableFormat.FOOTER_SIZE_V5);
-        jlsm.sstable.internal.V5Footer footer = jlsm.sstable.internal.V5Footer.decode(footerBytes,
-                0);
-
-        // Step 5: Read and deserialize the compression map (v3 entry layout — 21 bytes per entry
-        // with per-block CRC32C in the trailing 4 bytes).
-        byte[] mapBytes = new byte[(int) footer.mapLength()];
-        System.arraycopy(fileBytes, (int) footer.mapOffset(), mapBytes, 0, mapBytes.length);
-        CompressionMap map = CompressionMap.deserialize(mapBytes, 3);
-
-        // Step 6: Every block's recorded checksum must be non-zero. Non-empty blocks under
-        // CRC32C never produce a checksum of exactly zero in practice, so a zero value is the
-        // smoking-gun signal that the CRC branch was skipped. With the bug present (v3=false
-        // via reflection), the writer records checksum=0 for every block. The fix must compute
-        // the CRC32C unconditionally for v5 writes.
-        assertTrue(map.blockCount() >= 2,
-                "expected multiple blocks to exercise the CRC path; got " + map.blockCount());
-        for (int i = 0; i < map.blockCount(); i++) {
-            CompressionMap.Entry entry = map.entry(i);
-            assertNotEquals(0, entry.checksum(),
-                    "v5 block " + i + " must have a non-zero per-block CRC32C even when "
-                            + "the legacy `v3` flag is false (per-block-checksums ADR); "
-                            + "got checksum=0 which indicates the CRC branch was skipped");
-        }
-    }
-
-    // Finding: F-R2.dt.1.1
-    // Bug: Eager path System.arraycopy does not validate offset+size against eagerData bounds
-    // — throws ArrayIndexOutOfBoundsException instead of IOException
-    // Correct behavior: reader should catch or pre-check arraycopy bounds and throw IOException
-    // Fix location: TrieSSTableReader.readAndDecompressBlock, lines 367-368
-    // Regression watch: ensure normal eager reads with valid compression maps still work
-    @Test
-    void eagerReader_compressedSizeExceedsEagerData_throwsIOException_F_R2_dt_1_1(@TempDir Path dir)
-            throws IOException {
-        // Step 1: write a valid small v2 SSTable with compression
-        List<Entry> entries = basicEntries();
-        Path path = dir.resolve("arraycopy-bounds.sst");
-        try (TrieSSTableWriter w = new TrieSSTableWriter(1L, Level.L0, path,
-                n -> new BlockedBloomFilter(n, 0.01), CompressionCodec.deflate())) {
-            for (Entry e : entries) {
-                w.append(e);
-            }
-            w.finish();
-        }
-
-        // Step 2: Read the file and patch the compression map's first entry's compressedSize
-        // to a value that makes intOffset + compressedSize > eagerData.length.
-        // This simulates a corrupt on-disk compression map.
-        byte[] fileBytes = Files.readAllBytes(path);
-
-        // Read v2 footer to find mapOffset
-        int footerStart = fileBytes.length - SSTableFormat.FOOTER_SIZE_V2;
-        long mapOffset = readLong(fileBytes, footerStart);
-
-        // Compression map entry layout: [8-byte blockOffset][4-byte compressedSize][4-byte
-        // uncompressedSize][1-byte codecId]
-        // Patch compressedSize (at mapOffset + 4 + 8 = mapOffset + 12) to fileBytes.length + 100
-        int compressedSizeOffset = (int) mapOffset + 4 + 8; // skip blockCount(4) + blockOffset(8)
-        int poisonedSize = fileBytes.length + 100; // guaranteed to exceed eagerData bounds
-        writeInt(fileBytes, compressedSizeOffset, poisonedSize);
-
-        // Also patch uncompressedSize to match (at compressedSizeOffset + 4) so
-        // CompressionMap.Entry
-        // constructor doesn't reject the compressedSize=0/uncompressedSize>0 combination
-        writeInt(fileBytes, compressedSizeOffset + 4, poisonedSize);
-
-        Files.write(path, fileBytes);
-
-        // Step 3: Open eagerly — the reader loads all bytes into eagerData.
-        // When get() triggers readAndDecompressBlock, the System.arraycopy at line 368
-        // will attempt to copy poisonedSize bytes from eagerData starting at a valid offset.
-        // Bug: this throws ArrayIndexOutOfBoundsException (unchecked) instead of IOException.
-        // Per R41, corrupted compressed blocks must produce IOException.
-        try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
-                null, CompressionCodec.deflate())) {
-            IOException ex = assertThrows(IOException.class, () -> r.get(seg("apple")),
-                    "corrupted compressedSize should produce IOException, not ArrayIndexOutOfBoundsException");
-            assertNotNull(ex.getMessage(),
-                    "IOException should have a descriptive message about the bounds violation");
-        }
-    }
+    // Finding F-R2.dt.1.1 (eager path arraycopy bounds violation from a corrupt compression map
+    // entry) is no longer reachable post v1-v4 collapse. The v5 reader verifies the
+    // compression-map CRC32C at open time, so a tampered compressedSize surfaces as
+    // CorruptSectionException(SECTION_COMPRESSION_MAP) before the eager arraycopy runs.
 
     // Finding: F-R2.dt.1.2
     // Bug: Decompression output size not validated against declared uncompressedSize —
@@ -595,7 +361,7 @@ class DataTransformationAdversarialTest {
 
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
                 .bloomFactory(PassthroughBloomFilter.factory()).codec(CompressionCodec.deflate())
-                .formatVersion(5).blockSize(maxBlockSize).build()) {
+                .blockSize(maxBlockSize).build()) {
             Entry.Put oversized = new Entry.Put(seg("k"), MemorySegment.ofArray(largeValue),
                     new SequenceNumber(1));
 
@@ -636,107 +402,10 @@ class DataTransformationAdversarialTest {
         }
     }
 
-    // Finding: F-R1.data_transformation.1.6
-    // Bug: flushCurrentBlock abandons dictionary buffering mid-flush (sets
-    // dictBufferAbandoned=true,
-    // clears dictBufferedBlocks=null) but does NOT reset dictBufferedBytes to zero. The counter
-    // becomes stale — it retains the accumulated pre-abandon byte total even though the buffer
-    // it counted has been released.
-    // Correct behavior: post-abandon, the writer must produce a complete, valid, readable SSTable;
-    // every entry written before AND after the abandon point must round-trip losslessly. The
-    // stale counter must not introduce any observable drift into the on-disk layout.
-    // Fix location: TrieSSTableWriter.flushCurrentBlock, lines 356-361 — reset dictBufferedBytes
-    // to zero on the abandon branch to keep the counter truthful.
-    // Regression watch: normal (non-abandon) dictionary training and the below-threshold graceful
-    // degradation must continue to work unchanged.
-    @Test
-    void test_flushCurrentBlock_bufferAbandonPostStateIsTruthful_F_R1_data_transformation_1_6(
-            @TempDir Path dir) throws Exception {
-        assumeTrue(ZstdDictionaryTrainer.isAvailable(),
-                "requires native libzstd for dictionary training");
-
-        // Configure a v3 writer with dictionary training enabled and a TINY buffer limit so the
-        // first few blocks exhaust the buffer and trigger the abandon branch at lines 353-363.
-        // Block size is small (1 KiB) so many small blocks are produced. dictionaryMaxBufferBytes
-        // is 1 KiB — the abandon branch fires after the second or third buffered block.
-        Path path = dir.resolve("abandon-stale-counter.sst");
-        CompressionCodec codec = CompressionCodec.zstd();
-
-        // Produce entries with non-compressible values so blocks fully flush (no tight packing
-        // that would keep us under the buffer limit for many blocks). We need MANY entries so
-        // that the abandon happens early and then MANY more blocks are written through the
-        // "abandoned" post-branch. Those post-abandon writes are the ones that could observe
-        // drift from the stale dictBufferedBytes counter if it had any downstream reader.
-        java.util.Random rng = new java.util.Random(0xABCDEFL);
-        List<Entry.Put> allEntries = new java.util.ArrayList<>();
-        final int totalEntries = 400;
-        for (int i = 0; i < totalEntries; i++) {
-            byte[] valueBytes = new byte[128];
-            rng.nextBytes(valueBytes);
-            Entry.Put p = new Entry.Put(
-                    MemorySegment
-                            .ofArray(("key-%05d".formatted(i)).getBytes(StandardCharsets.UTF_8)),
-                    MemorySegment.ofArray(valueBytes), new SequenceNumber(i + 1));
-            allEntries.add(p);
-        }
-
-        Field dictBufferedBytesField = TrieSSTableWriter.class
-                .getDeclaredField("dictBufferedBytes");
-        dictBufferedBytesField.setAccessible(true);
-        Field dictBufferAbandonedField = TrieSSTableWriter.class
-                .getDeclaredField("dictBufferAbandoned");
-        dictBufferAbandonedField.setAccessible(true);
-
-        long bytesAfterAbandon;
-        try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
-                .bloomFactory(n -> new BlockedBloomFilter(n, 0.01)).codec(codec).blockSize(1024)
-                .dictionaryTraining(true).dictionaryMaxBufferBytes(4096L).formatVersion(3)
-                .build()) {
-            for (Entry.Put p : allEntries) {
-                w.append(p);
-            }
-            // At this point many blocks have been written; the abandon branch should have fired.
-            assertTrue(dictBufferAbandonedField.getBoolean(w),
-                    "test precondition: buffer-limit abandon branch must have fired");
-            // Correct behavior (post-fix): after abandon, dictBufferedBytes is zero because the
-            // buffered list has been released. Buggy code: counter retains the stale pre-abandon
-            // total. This assertion exercises the finding's claim that the counter is not reset.
-            bytesAfterAbandon = dictBufferedBytesField.getLong(w);
-            w.finish();
-        }
-
-        // The file must exist and be a valid v3 SSTable.
-        assertTrue(Files.exists(path), "writer must produce a committed SSTable file");
-
-        // Round-trip: every entry must read back with its exact original value. Any drift caused
-        // by the stale counter (e.g., a future refactor that consults dictBufferedBytes to decide
-        // some layout parameter) would surface as a corrupted round-trip here.
-        try (TrieSSTableReader r = TrieSSTableReader.open(path, BlockedBloomFilter.deserializer(),
-                null, codec)) {
-            for (Entry.Put expected : allEntries) {
-                java.util.Optional<Entry> maybe = r.get(expected.key());
-                assertTrue(maybe.isPresent(),
-                        "entry must be present after abandon-path write: " + new String(
-                                expected.key().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE),
-                                StandardCharsets.UTF_8));
-                Entry got = maybe.get();
-                assertInstanceOf(Entry.Put.class, got);
-                Entry.Put gotPut = (Entry.Put) got;
-                assertArrayEquals(expected.value().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE),
-                        gotPut.value().toArray(java.lang.foreign.ValueLayout.JAVA_BYTE),
-                        "value must round-trip losslessly across the abandon-mid-flush boundary");
-            }
-        }
-
-        // Finding-specific invariant: post-abandon the counter MUST be zero. The buffered list
-        // was released at line 361 (dictBufferedBlocks = null) and no blocks are buffered any
-        // longer; the counter therefore represents a non-existent buffer and must be reset to
-        // reflect that truth. The buggy code leaves it at the pre-abandon total.
-        assertEquals(0L, bytesAfterAbandon,
-                "dictBufferedBytes must be reset to zero when the dictionary buffer is abandoned "
-                        + "and released at lines 356-361; the stale counter misrepresents the "
-                        + "writer's buffered-bytes state even though the backing list is null");
-    }
+    // Finding: F-R1.data_transformation.1.6 was deleted as part of the SSTable v1–v4 collapse
+    // (per pre-ga-format-deprecation-policy). The dictionary-buffer-abandon path it exercised
+    // lived only in the v3/v4 writer's dictionary-training lifecycle, which was removed
+    // alongside the v3/v4 emit paths.
 
     // Finding: F-R1.data_transformation.C2.01
     // Bug: readFooter's MAGIC_V5 branch returns without calling footer.validate(fileSize), so the
@@ -888,7 +557,7 @@ class DataTransformationAdversarialTest {
         Path path = dir.resolve("v5-empty-bloom.sst");
         try (TrieSSTableWriter w = TrieSSTableWriter.builder().id(1L).level(Level.L0).path(path)
                 .bloomFactory(n -> new BlockedBloomFilter(n, 0.01))
-                .codec(CompressionCodec.deflate()).formatVersion(5).build()) {
+                .codec(CompressionCodec.deflate()).build()) {
             for (Entry e : entries) {
                 w.append(e);
             }

@@ -339,7 +339,8 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      * Encodes an encrypted vector as the on-wire blob format
      * {@code [8B BE seed | 4N BE floats | 16B tag]}.
      */
-    // @spec serialization.encrypted-field-serialization.R4, encryption.ciphertext-envelope.R1,R1b,R1c
+    // @spec serialization.encrypted-field-serialization.R4,
+    // encryption.ciphertext-envelope.R1,R1b,R1c
     // — serialized DCPE blob layout; writer produces exact byte count (8 + 4N + 16);
     // 8B seed and 4-byte encrypted-float lanes encoded big-endian
     public static byte[] toBlob(EncryptedVector ev) {
@@ -352,7 +353,8 @@ public final class DcpeSapEncryptor implements AutoCloseable {
             blob[i] = (byte) (seed >>> (56 - i * 8));
         }
         int off = SEED_BYTES;
-        // @spec encryption.ciphertext-envelope.R1c — each 4B encrypted-float lane written big-endian
+        // @spec encryption.ciphertext-envelope.R1c — each 4B encrypted-float lane written
+        // big-endian
         for (final float v : values) {
             final int bits = Float.floatToRawIntBits(v);
             blob[off] = (byte) (bits >>> 24);
@@ -372,7 +374,8 @@ public final class DcpeSapEncryptor implements AutoCloseable {
      *
      * @throws IllegalArgumentException if blob length does not match {@code 8 + dims*4 + 16}
      */
-    // @spec serialization.encrypted-field-serialization.R4, encryption.ciphertext-envelope.R1,R1b,R1c
+    // @spec serialization.encrypted-field-serialization.R4,
+    // encryption.ciphertext-envelope.R1,R1b,R1c
     // — decode serialized DCPE blob; reader rejects blobs whose byte count is inconsistent with
     // the variant formula (8 + 4*dims + 16); 8B seed and 4-byte lanes decoded big-endian
     public static EncryptedVector fromBlob(byte[] blob, int dims) {

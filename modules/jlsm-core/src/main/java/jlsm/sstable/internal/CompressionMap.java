@@ -51,6 +51,9 @@ public final class CompressionMap {
     /** Size in bytes of a single compression map entry. */
     public static final int ENTRY_SIZE = 17;
 
+    /** v3-style (and v5) entry: adds a 4-byte CRC32C checksum over the v2 entry layout. */
+    public static final int ENTRY_SIZE_V3 = 21;
+
     /** Known valid codec IDs: 0x00 = NoneCodec, 0x02 = DeflateCodec, 0x03 = ZstdCodec. */
     private static final Set<Byte> KNOWN_CODEC_IDS = Set.of((byte) 0x00, (byte) 0x02, (byte) 0x03);
 
@@ -187,7 +190,7 @@ public final class CompressionMap {
     // @spec sstable.v3-format-upgrade.R1,R2 — v3 serialization: 21-byte entries with CRC32C, long
     // arithmetic on overflow
     public byte[] serializeV3() {
-        long longSize = 4L + (long) entries.size() * SSTableFormat.COMPRESSION_MAP_ENTRY_SIZE_V3;
+        long longSize = 4L + (long) entries.size() * ENTRY_SIZE_V3;
         if (longSize > Integer.MAX_VALUE) {
             throw new IllegalStateException(
                     "compression map too large to serialize: %d entries require %d bytes"
@@ -287,7 +290,7 @@ public final class CompressionMap {
         if (blockCount < 0) {
             throw new IllegalArgumentException("negative block count: " + blockCount);
         }
-        long expectedLength = 4L + (long) blockCount * SSTableFormat.COMPRESSION_MAP_ENTRY_SIZE_V3;
+        long expectedLength = 4L + (long) blockCount * ENTRY_SIZE_V3;
         if (expectedLength > Integer.MAX_VALUE) {
             throw new IllegalArgumentException(
                     "block count %d requires %d bytes, exceeds maximum array size"

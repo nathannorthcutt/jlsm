@@ -73,6 +73,16 @@
 | 2026-04-02 | F07 | query | SQL Query Support |
 | 2026-04-02 | F05 | engine | In-Process Database Engine |
 
+## Archived
+
+Specs that have been superseded and whose APPROVED state is preserved for
+reference only — they no longer drive implementation behaviour.
+
+| Date Archived | ID | Superseded By | Reason |
+|---------------|-----|---------------|--------|
+| 2026-04-24 | sstable.format-v2 | sstable.end-to-end-integrity | Pre-GA SSTable v1-v4 collapse per `pre-ga-format-deprecation-policy` |
+| 2026-04-24 | sstable.v3-format-upgrade | sstable.end-to-end-integrity | Pre-GA SSTable v1-v4 collapse per `pre-ga-format-deprecation-policy` |
+
 ## Spec File Format Reference
 
 Spec files use JSON front matter (between `---` delimiters), a machine-readable

@@ -68,7 +68,8 @@ public final class AesGcmEncryptor implements AutoCloseable {
      * @return the ciphertext as {@code [12-byte IV || encrypted bytes || 16-byte tag]}
      */
     // @spec encryption.ciphertext-envelope.R1b — writer produces exact byte count for Opaque
-    // variant (12B IV + ciphertext + 16B tag); caller (FieldEncryptionDispatch / DocumentSerializer)
+    // variant (12B IV + ciphertext + 16B tag); caller (FieldEncryptionDispatch /
+    // DocumentSerializer)
     // owns the 4B DEK version prefix if/when envelope versioning is applied
     public byte[] encrypt(byte[] plaintext) {
         Objects.requireNonNull(plaintext, "plaintext must not be null");

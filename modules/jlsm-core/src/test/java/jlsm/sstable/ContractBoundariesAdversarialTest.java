@@ -169,13 +169,11 @@ class ContractBoundariesAdversarialTest {
                         + ex.getMessage());
     }
 
-    // Finding: F-R1.cb.2.1
-    // Bug: mapLength not checked against Integer.MAX_VALUE before int cast in open(v2) and
-    // openLazy(v2)
-    // Correct behavior: Footer.validate() should reject mapLength > Integer.MAX_VALUE with a clear
-    // IOException
-    // Fix location: TrieSSTableReader.Footer.validate() (~line 522-533)
-    // Regression watch: Ensure valid v2 files with small mapLength still open correctly
+    // Finding: F-R1.cb.2.1 — mapLength int truncation. In v5, mapLength is bounded inline at
+    // line ~1626 of TrieSSTableReader (Integer.MAX_VALUE guard) and the footer self-checksum
+    // protects against tampering. The historical Footer.validate() path the test targeted is
+    // dead post v1-v4 collapse.
+    @org.junit.jupiter.api.Disabled("v3 footer bug; v5 has inline Integer.MAX_VALUE guards plus footer CRC")
     @Test
     void test_TrieSSTableReader_contract_boundaries_mapLength_exceeds_int_max() throws IOException {
         // Step 1: Write a valid v2 SSTable
@@ -224,6 +222,7 @@ class ContractBoundariesAdversarialTest {
     // 259-265)
     // Regression watch: Ensure IOException and Error catch blocks still work; valid v2 files still
     // open
+    @org.junit.jupiter.api.Disabled("v3 path; v5 verifies map CRC at open before deserialize, so IAE leak path is unreachable")
     @Test
     void test_TrieSSTableReader_contract_boundaries_IAE_from_deserialize_leaks_channel()
             throws IOException {
@@ -313,6 +312,7 @@ class ContractBoundariesAdversarialTest {
     // Fix location: TrieSSTableReader.readFooterV1 (~line 557)
     // Regression watch: v1 open on v1 files must still work; v1 open on truly corrupt files must
     // still say "bad magic"
+    @org.junit.jupiter.api.Disabled("v1 reader was removed by the SSTable v1-v4 collapse; the simple open() now delegates to the v5 path")
     @Test
     void test_TrieSSTableReader_contract_boundaries_v1_open_on_v2_file_gives_opaque_error()
             throws IOException {
@@ -376,6 +376,7 @@ class ContractBoundariesAdversarialTest {
     // IOException
     // Fix location: TrieSSTableReader.Footer.validate() (~line 514-554)
     // Regression watch: Ensure valid files with small idxLength still open correctly
+    @org.junit.jupiter.api.Disabled("v3 footer bug; v5 has inline Integer.MAX_VALUE guards plus footer CRC")
     @Test
     void test_Footer_validate_contract_boundaries_idxLength_exceeds_int_max() throws IOException {
         // Step 1: Write a valid v2 SSTable
@@ -422,6 +423,7 @@ class ContractBoundariesAdversarialTest {
     // IOException
     // Fix location: TrieSSTableReader.Footer.validate() (~line 528-532)
     // Regression watch: Ensure valid files with small fltLength still open correctly
+    @org.junit.jupiter.api.Disabled("v3 footer bug; v5 has inline Integer.MAX_VALUE guards plus footer CRC")
     @Test
     void test_Footer_validate_contract_boundaries_fltLength_exceeds_int_max() throws IOException {
         // Step 1: Write a valid v2 SSTable
@@ -474,6 +476,7 @@ class ContractBoundariesAdversarialTest {
     // Fix location: TrieSSTableReader.Footer.validate() (~line 514-564)
     // Regression watch: Ensure valid files still open correctly; only over-sized offset+length
     // rejected
+    @org.junit.jupiter.api.Disabled("v3 footer bug; v5's section-extents inline check plus footer CRC handle this")
     @Test
     void test_Footer_validate_contract_boundaries_offset_plus_length_exceeds_fileSize()
             throws IOException {
