@@ -4,6 +4,7 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| KMS Integration Model | kms-integration-model | 2026-04-21 | KmsClient SPI (wrap/unwrap/isUsable + transient/permanent exceptions); 30min cache TTL; 3-retry exp-backoff (100ms→400ms→1.6s, ±25% jitter); 10s call timeout; encryption context carries tenantId+domainId+purpose |
 | DEK Scoping Granularity | dek-scoping-granularity | 2026-04-21 | Per-(tenant, domain, table) DEK with version; domain groups tables; HKDF field derivation from tableDek with length-prefixed info (tenantId, domainId, tableName, fieldName, dekVersion) |
 | Tenant Key Revocation and External Rotation | tenant-key-revocation-and-external-rotation | 2026-04-21 | API (proof-of-control sentinel) + opt-in polling; streaming paginated rekey with dual-reference migration; 3-state failure machine (healthy → grace-read-only → failed, N=5 / 1h defaults); explicit decommission deferred |
 | Three-Tier Key Hierarchy | three-tier-key-hierarchy | 2026-04-21 | Tenant KEK → data-domain KEK → DEK; per-tenant KMS isolation always-on; 3 KMS flavors (none/local/external); HKDF hybrid derivation; amends `encryption-key-rotation` + `per-field-key-binding` |

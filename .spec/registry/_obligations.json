@@ -57,7 +57,7 @@
         "serialization",
         "engine"
       ],
-      "description": "F15.R27 VIOLATED: JsonParser uses mutual recursion (parseValue \u2192 parseObject/parseArray \u2192 parseValue) for nested structure traversal, despite the spec requiring \"must not use recursion for depth traversal.\" The code comment at JsonParser.java:153-156 explicitly acknowledges the deviation, accepting bounded recursion (capped by R52 at maxDepth=4096) in exchange for simpler code. Resolution path: either rewrite as an explicit stack-based state machine in Materializer, or amend R27 to permit bounded mutual recursion with an explicit maxDepth cap.",
+      "description": "F15.R27 VIOLATED: JsonParser uses mutual recursion (parseValue → parseObject/parseArray → parseValue) for nested structure traversal, despite the spec requiring \"must not use recursion for depth traversal.\" The code comment at JsonParser.java:153-156 explicitly acknowledges the deviation, accepting bounded recursion (capped by R52 at maxDepth=4096) in exchange for simpler code. Resolution path: either rewrite as an explicit stack-based state machine in Materializer, or amend R27 to permit bounded mutual recursion with an explicit maxDepth cap.",
       "created_by": "spec-verify",
       "created": "2026-04-16",
       "status": "resolved",
@@ -72,7 +72,7 @@
         "query",
         "engine"
       ],
-      "description": "F10.R79-R84 VIOLATED (plus R5 PARTIAL): FullTextFieldIndex is a stub \u2014 all operations (onInsert, onUpdate, onDelete, lookup, supports, definition, close) throw UnsupportedOperationException. IndexRegistry.validate correctly enforces STRING/BoundedString field-type constraints for FULL_TEXT indices, so IndexDefinitions can be registered, but any table with a FULL_TEXT index fails on first write. Resolution requires wiring LsmFullTextIndex from jlsm-indexing through the jlsm-core interface boundary.",
+      "description": "F10.R79-R84 VIOLATED (plus R5 PARTIAL): FullTextFieldIndex is a stub — all operations (onInsert, onUpdate, onDelete, lookup, supports, definition, close) throw UnsupportedOperationException. IndexRegistry.validate correctly enforces STRING/BoundedString field-type constraints for FULL_TEXT indices, so IndexDefinitions can be registered, but any table with a FULL_TEXT index fails on first write. Resolution requires wiring LsmFullTextIndex from jlsm-indexing through the jlsm-core interface boundary.",
       "blocked_by": "jlsm-indexing LsmFullTextIndex integration",
       "affects": [
         "query.index-types.R5",
@@ -98,7 +98,7 @@
         "engine",
         "vector-indexing"
       ],
-      "description": "F10.R85-R90 VIOLATED (plus R6 PARTIAL): VectorFieldIndex is a stub \u2014 onInsert/onUpdate/onDelete are no-ops, supports() always returns false, lookup() throws UnsupportedOperationException. IndexRegistry.validate correctly enforces VectorType field-type constraints for VECTOR indices. Silent no-op mutations are especially hazardous because tables with VECTOR indices accept writes that are never actually indexed. Resolution requires wiring LsmVectorIndex (IvfFlat/Hnsw) from jlsm-vector through the jlsm-core interface boundary.",
+      "description": "F10.R85-R90 VIOLATED (plus R6 PARTIAL): VectorFieldIndex is a stub — onInsert/onUpdate/onDelete are no-ops, supports() always returns false, lookup() throws UnsupportedOperationException. IndexRegistry.validate correctly enforces VectorType field-type constraints for VECTOR indices. Silent no-op mutations are especially hazardous because tables with VECTOR indices accept writes that are never actually indexed. Resolution requires wiring LsmVectorIndex (IvfFlat/Hnsw) from jlsm-vector through the jlsm-core interface boundary.",
       "blocked_by": "jlsm-vector LsmVectorIndex integration",
       "affects": [
         "query.index-types.R6",
@@ -112,7 +112,7 @@
       "created_by": "spec-verify",
       "created": "2026-04-17",
       "status": "resolved",
-      "resolved_by": "cross-module-integration WD-02: VectorIndex.Factory nested SPI in jlsm-core keyed on (tableName, fieldName, dimensions, precision, similarityFunction); jlsm-vector supplies LsmVectorIndexFactory; VectorFieldIndex adapts SecondaryIndex mutations to VectorIndex.index/remove and VectorNearest lookup to VectorIndex.search; silent no-op writes eliminated \u2014 missing factory is now a fail-fast IllegalArgumentException at table build().",
+      "resolved_by": "cross-module-integration WD-02: VectorIndex.Factory nested SPI in jlsm-core keyed on (tableName, fieldName, dimensions, precision, similarityFunction); jlsm-vector supplies LsmVectorIndexFactory; VectorFieldIndex adapts SecondaryIndex mutations to VectorIndex.index/remove and VectorNearest lookup to VectorIndex.search; silent no-op writes eliminated — missing factory is now a fail-fast IllegalArgumentException at table build().",
       "resolved_date": "2026-04-20"
     },
     {
@@ -249,7 +249,7 @@
       "created_by": "spec-verify",
       "created": "2026-04-18",
       "status": "resolved",
-      "resolved_by": "f04-obligation-resolution WD-04: full RAPID consensus \u2014 ExpanderGraphOverlay monitoring, ConsensusCoordinator with observer-quorum voting, self-refutation via incarnation bump, configurable round timeout",
+      "resolved_by": "f04-obligation-resolution WD-04: full RAPID consensus — ExpanderGraphOverlay monitoring, ConsensusCoordinator with observer-quorum voting, self-refutation via incarnation bump, configurable round timeout",
       "resolved_date": "2026-04-19"
     },
     {
@@ -267,7 +267,7 @@
       "created_by": "spec-verify",
       "created": "2026-04-18",
       "status": "resolved",
-      "resolved_by": "f04-obligation-resolution WD-04: full RAPID consensus \u2014 ExpanderGraphOverlay monitoring, ConsensusCoordinator with observer-quorum voting, self-refutation via incarnation bump, configurable round timeout",
+      "resolved_by": "f04-obligation-resolution WD-04: full RAPID consensus — ExpanderGraphOverlay monitoring, ConsensusCoordinator with observer-quorum voting, self-refutation via incarnation bump, configurable round timeout",
       "resolved_date": "2026-04-19"
     },
     {
@@ -393,7 +393,7 @@
       "domains": [
         "engine"
       ],
-      "description": "F04.R77 (CODE BUG NOT REPAIRED INLINE): ClusteredTable.scan issues partition requests sequentially; each getRange blocks in sendRequestAndAwait before the next partition is contacted. Parallel fanout via transport.request futures plus a barrier-style collection is required. Not repaired inline because getRange eager-materializes the entire partition response into a List \u2014 a correct streaming parallel implementation needs getRange to return a CompletableFuture<Iterator<TableEntry<String>>> first, a broader refactor than a spec-verify session.",
+      "description": "F04.R77 (CODE BUG NOT REPAIRED INLINE): ClusteredTable.scan issues partition requests sequentially; each getRange blocks in sendRequestAndAwait before the next partition is contacted. Parallel fanout via transport.request futures plus a barrier-style collection is required. Not repaired inline because getRange eager-materializes the entire partition response into a List — a correct streaming parallel implementation needs getRange to return a CompletableFuture<Iterator<TableEntry<String>>> first, a broader refactor than a spec-verify session.",
       "blocked_by": "getRange async-iterator refactor",
       "affects": [
         "engine.clustering.R77"
@@ -507,6 +507,19 @@
       "status": "resolved",
       "resolved_by": "cross-module-integration WD-03: TableQuery bindable via QueryRunner factory + StringKeyedTable.query() + QueryExecutor wiring",
       "resolved_date": "2026-04-20"
+    },
+    {
+      "id": "OB-engine-clustered-table-construction-01",
+      "spec": "engine.clustered-table-construction",
+      "description": "Deprecation window for the 4-arg and 5-arg `CatalogClusteredTable.forEngine` overloads must close. Resolution is either (a) remove the overloads after all callers migrate to the canonical entry point with an explicit local engine handle, or (b) re-affirm the overloads with a new requirement defining transport-only dispatch semantics that replaces the audited silent-fallthrough behavior.",
+      "blocked_by": "test-suite migration (ClusteredTableTest, ContractBoundariesAdversarialTest, EngineClusteringAdversarialTest, ResourceLifecycleAdversarialTest, SharedStateAdversarialTest, ConcurrencyAdversarialTest, ClusteredTableScanParallelTest, ClusteredTableScanPruningTest, ClusteredTableLocalShortCircuitTest)",
+      "affects": [
+        "engine.clustered-table-construction.R17",
+        "engine.clustered-table-construction.R18",
+        "engine.clustered-table-construction.R19"
+      ],
+      "status": "open",
+      "created": "2026-04-25"
     }
   ]
 }
