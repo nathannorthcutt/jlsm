@@ -38,7 +38,7 @@ The central module. All interfaces and their implementations live here.
 | **Compaction** | Size-tiered, leveled, and SPOOKY strategies |
 | **Block Cache** | LRU and striped (multi-threaded) cache for hot SSTable blocks |
 | **Compression** | Block-level codec abstraction with Deflate implementation and streaming decompression |
-| **Encryption** | Field-level encryption — AES-GCM, AES-SIV, Order-Preserving (OPE), and DCPE-SAP |
+| **Encryption** | Field-level encryption (AES-GCM, AES-SIV, OPE, DCPE-SAP); three-tier key hierarchy (root KEK → data-domain KEK → DEK); per-field 4-byte DEK version envelope; SSTable v6 footer scope (tenant/domain/table) for cross-scope read rejection |
 | **LSM Tree** | `StandardLsmTree` and typed wrappers (String, Long, MemorySegment keys) |
 
 File I/O is built on `java.nio` with a `SeekableByteChannel` abstraction that supports both local filesystems and remote object stores (e.g., S3 via Java NIO FileSystem SPI). Off-heap memory is managed through `ArenaBufferPool` backed by `Arena.ofShared()`; the SSTable writer's block size can be derived from the pool's buffer size via `TrieSSTableWriter.Builder.pool(ArenaBufferPool)` so deployment profiles are configured once on the pool and inherited by writers.
@@ -74,9 +74,10 @@ Hand-written recursive descent SQL parser supporting SELECT, WHERE, ORDER BY, LI
 
 In-process database engine that manages multiple named tables from a self-organized root directory. Each table gets its own subdirectory with WAL, SSTable, and metadata files. Features:
 
-- **Interface-based handle pattern** — `Engine` and `Table` interfaces supporting embedded and future remote modes
+- **Interface-based handle pattern** — `Engine` and `Table` interfaces supporting embedded and clustered modes; `Table` is `sealed` with two permitted internal subtypes (`CatalogTable` for single-node, `CatalogClusteredTable` for clustered) so only catalog-mediated handles reach the encryption read path
 - **Handle lifecycle tracking** — per-source attribution, configurable limits, greedy-source-first eviction under pressure
 - **Per-table metadata directories** — lazy catalog recovery, partial-creation cleanup, per-table failure isolation
+- **Encryption lifecycle** — `Engine.createEncryptedTable(name, schema, scope)` and `Engine.enableEncryption(name, scope)` enable encryption at creation or post-hoc; one-way (in-place disable is deferred); per-table `CatalogLock` serialises enableEncryption with concurrent SSTable writers under R7b/R10c
 - **Thread-safe** — concurrent table creation, data operations, and handle management
 
 ---
