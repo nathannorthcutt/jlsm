@@ -23,10 +23,10 @@ __pycache__/
 .claude/settings.local.json
 .claude/worktrees/
 
-# Feature working state — scratch directories, not source-controlled
-# project-config.md and CLAUDE.md are committed (see below)
-.feature/*/
-.feature/_archive/
+# Feature working state — scratch directories and ad-hoc files,
+# not source-controlled. project-config.md and CLAUDE.md are the only
+# tracked files (carve-outs below).
+.feature/*
 
 # Explicitly track the project config and index
 !.feature/project-config.md
@@ -47,5 +47,4 @@ perf-output/**/gc.log
 .claude/.statusline-baseline
 .claude/.token-state
 .claude/.token-checkpoint
-.feature/
 .curate/
