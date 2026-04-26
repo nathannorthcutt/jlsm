@@ -3,7 +3,7 @@ package jlsm.engine.cluster.internal;
 import jlsm.engine.cluster.MembershipListener;
 import jlsm.engine.cluster.MembershipProtocol;
 import jlsm.engine.cluster.MembershipView;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

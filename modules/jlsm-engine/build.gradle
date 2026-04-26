@@ -2,6 +2,7 @@ plugins { id 'java-library' }
 
 dependencies {
     api project(':modules:jlsm-table')
+    api project(':modules:jlsm-cluster')
 }
 
 tasks.withType(JavaCompile).configureEach {

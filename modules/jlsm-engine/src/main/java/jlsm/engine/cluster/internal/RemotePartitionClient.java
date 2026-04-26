@@ -1,9 +1,9 @@
 package jlsm.engine.cluster.internal;
 
-import jlsm.engine.cluster.ClusterTransport;
-import jlsm.engine.cluster.Message;
-import jlsm.engine.cluster.MessageType;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.ClusterTransport;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.NodeAddress;
 import jlsm.table.JlsmDocument;
 import jlsm.table.JlsmSchema;
 import jlsm.table.PartitionClient;

@@ -15,13 +15,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 
-import jlsm.engine.cluster.ClusterTransport;
+import jlsm.cluster.ClusterTransport;
 import jlsm.engine.cluster.Member;
 import jlsm.engine.cluster.MemberState;
 import jlsm.engine.cluster.MembershipView;
-import jlsm.engine.cluster.Message;
-import jlsm.engine.cluster.MessageType;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.NodeAddress;
 
 /**
  * Owns all active consensus rounds for the local node; routes proposals, votes, and refutations

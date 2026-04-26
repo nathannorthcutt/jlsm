@@ -1,5 +1,7 @@
 package jlsm.engine.cluster.internal;
 
+import jlsm.cluster.internal.InJvmTransport;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -24,14 +26,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import jlsm.engine.cluster.ClusterConfig;
-import jlsm.engine.cluster.ClusterTransport;
+import jlsm.cluster.ClusterTransport;
 import jlsm.engine.cluster.Member;
 import jlsm.engine.cluster.MemberState;
 import jlsm.engine.cluster.MembershipView;
-import jlsm.engine.cluster.Message;
-import jlsm.engine.cluster.MessageHandler;
-import jlsm.engine.cluster.MessageType;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageHandler;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.NodeAddress;
 
 /**
  * Integration tests for the RAPID consensus protocol wiring in {@link RapidMembership} (WU-4).

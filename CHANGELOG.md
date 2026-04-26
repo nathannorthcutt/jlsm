@@ -10,7 +10,26 @@ semver release cadence is established.
 
 ## [Unreleased]
 
-### Added — Ciphertext format + SSTable footer scope signalling (implement-encryption-lifecycle WD-02)
+### Added — `jlsm-cluster` module + multiplexed transport baseline (implement-transport WD-01)
+- **New module:** `modules/jlsm-cluster/` — Gradle subproject with public `jlsm.cluster` package + non-exported `jlsm.cluster.internal`. Module declares `requires jlsm.core`; qualified export `jlsm.cluster.internal to jlsm.engine` for `NodeAddressCodec` (used by membership protocol).
+- **Migrated transport SPI types** from `jlsm.engine.cluster` to `jlsm.cluster`: `ClusterTransport`, `Message`, `MessageType`, `MessageHandler`, `NodeAddress`, plus internal helpers `NodeAddressCodec` and `InJvmTransport`. `MessageType` now carries a stable wire `tag()` byte (PING=0x00 .. STATE_DELTA=0x06) plus `fromTag()` reverse mapping. `jlsm-engine` updated to `requires transitive jlsm.cluster`; 60+ files across `jlsm-engine` mainline + tests rewired to import from the new location.
+- **`transport.multiplexed-framing` v1 DRAFT → v3 APPROVED** — 2 adversarial-falsification rounds via `/spec-author` (Pass 2: 16 findings; Pass 3: 11 fix-consequence findings). All 27 net-new findings applied. New requirements: R23b (multi-handshake), R26b (write-failure cleanup + idempotent timeout-arming + value-conditional remove + scheduler-failure handling), R34c (response bypass to prevent handler-callback deadlock), R34d (sync vs async handler completion), R37c (per-connection abuse threshold for repeated R37 violations). Modified: R6, R20, R23a, R27, R28, R30, R30a, R37, R37a, R39 (3-option safe-publication), R40 (version + nodeId validation), R45 (counters j/k/l/m). Ambiguity score 0.00; 69 requirements; zero open obligations.
+- **`MultiplexedTransport` impl** at `jlsm.cluster.internal.MultiplexedTransport` covering the foundational requirement set (R1-R29 wire format, dispatch, lifecycle; R45 counter surface). Supporting types: `Frame`/`FrameCodec` (R1-R5/R9/R10), `Handshake` (R40 + R40-bidi with version + nodeId + UTF-8 RFC 3629 validation), `PendingMap` (R6/R6a/R8/R26b/R27 with value-conditional removal), `PeerConnection` (R15-R20 reader/writer thread + lifecycle), `TransportMetrics` (R45). Static factory `MultiplexedTransport.start(...)` adopts R39 option (b) safe-publication.
+- **Round-trip integration test** (WD-01 acceptance criterion): `MultiplexedTransportRoundTripIntegrationTest` exercises real localhost TCP for fire-and-forget delivery, request-response, 10 concurrent multi-stream requests, and post-close API rejection.
+- **New ADR:** `transport-module-placement` confirming Option A (single `jlsm-cluster` module) over Option B (split api+impl) and Option D (SPI in jlsm-core, rejected on cohesion). Conditions for revision documented (thin-client consumer triggers A → B split).
+- **Updated ADR `files:` fields:** `connection-pooling` and `transport-abstraction-design` now point at `modules/jlsm-cluster/...` paths.
+
+### Known Gaps — `implement-transport` WD-01 follow-up scope
+- Multi-frame reassembly (R35-R38, R37a) — single-frame messages only in the initial drop. WU-4 in `work-plan.md`.
+- R37c per-connection abuse threshold — not yet wired; requires reassembly path landing first.
+- R30 cleanupBarrier + R30a barrier-await — peer-departure path is not yet split into atomic step (1) + dispatched step (2). Affects re-join correctness under fast departure→rejoin races.
+- R23b N≥3 simultaneous-handshake queue — basic two-peer tie-break works (lower nodeId wins outbound); N≥3 case pending.
+- R34b bounded handler dispatch pool (semaphore + queue) — handlers currently spawn one virtual thread each without bound. R34c response bypass works as designed; the queue side lands with R34b.
+- R26 timeout-discipline coverage — `orTimeout` armed but the R26b scheduler-failure branch and the R20-vs-arm race lack dedicated regression tests.
+- R45 counters (d), (j), (l) — wired in `TransportMetrics` but only incremented when their subsystems land (reassembly, handshake-blocking gate, request-too-large path).
+- `engine.clustering` `@spec` annotations on migrated types not yet retargeted to `transport.multiplexed-framing`. Mechanical follow-up.
+
+
 - **`sstable.footer-encryption-scope`** spec v4 → v5 — R8e widened to two-permits sealed `Table` declaration (`CatalogTable` + `CatalogClusteredTable`); R8f/R6c/R8g updated to cover both internal classes and the cluster test-stub migration.
 - **New jlsm-core types:** `jlsm.encryption.TableScope` (record `(TenantId, DomainId, TableId)`), `jlsm.encryption.EnvelopeCodec` (4-byte BE DEK version prefix codec), `jlsm.encryption.ReadContext` (record carrying `Set<Integer> allowedDekVersions` for the R3e dispatch gate), `jlsm.encryption.internal.IdentifierValidator` (R2e UTF-8 + control-codepoint discipline), `jlsm.sstable.WriterCommitHook` SPI (engine plugs into the writer R10c finish protocol without jlsm-core depending on jlsm-engine), `jlsm.sstable.internal.V6Footer`.
 - **New jlsm-engine types:** `jlsm.engine.EncryptionMetadata` (record `(TableScope scope)`), `jlsm.engine.internal.CatalogIndex` (R9a-mono per-table format-version high-water enforcing cold-start + downgrade defence), `jlsm.engine.internal.CatalogLock` + `FileBasedCatalogLock` + `CatalogLockFactory` (per-table exclusive lock SPI shared by enableEncryption R7b and writer finish R10c, with file-lock + PID-with-bounded-reclaim liveness recovery).

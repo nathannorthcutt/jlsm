@@ -5,7 +5,11 @@ version: 1
 status: "confirmed"
 supersedes: null
 files:
-  - "modules/jlsm-engine/src/main/java/jlsm/engine/cluster/"
+  - "modules/jlsm-cluster/src/main/java/jlsm/cluster/ClusterTransport.java"
+  - "modules/jlsm-cluster/src/main/java/jlsm/cluster/Message.java"
+  - "modules/jlsm-cluster/src/main/java/jlsm/cluster/MessageHandler.java"
+  - "modules/jlsm-cluster/src/main/java/jlsm/cluster/MessageType.java"
+  - "modules/jlsm-cluster/src/main/java/jlsm/cluster/NodeAddress.java"
 ---
 
 # ADR — Transport Abstraction Design

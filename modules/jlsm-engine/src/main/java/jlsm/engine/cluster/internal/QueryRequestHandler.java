@@ -2,10 +2,10 @@ package jlsm.engine.cluster.internal;
 
 import jlsm.engine.Engine;
 import jlsm.engine.Table;
-import jlsm.engine.cluster.Message;
-import jlsm.engine.cluster.MessageHandler;
-import jlsm.engine.cluster.MessageType;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageHandler;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.NodeAddress;
 import jlsm.table.JlsmDocument;
 import jlsm.table.JlsmSchema;
 import jlsm.table.TableEntry;

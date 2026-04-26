@@ -1,0 +1,10 @@
+plugins { id 'java-library' }
+
+dependencies {
+    api project(':modules:jlsm-core')
+}
+
+test {
+    jvmArgs '--add-exports', 'jlsm.cluster/jlsm.cluster.internal=ALL-UNNAMED'
+    jvmArgs '-ea'
+}

@@ -1,6 +1,6 @@
 package jlsm.engine.cluster.internal;
 
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;

@@ -1,6 +1,6 @@
 package jlsm.engine.cluster.internal;
 
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 
 import java.time.Clock;
 import java.time.Duration;

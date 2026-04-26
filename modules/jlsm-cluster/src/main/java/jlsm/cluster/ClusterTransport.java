@@ -1,4 +1,4 @@
-package jlsm.engine.cluster;
+package jlsm.cluster;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;

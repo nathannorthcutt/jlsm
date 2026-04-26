@@ -1,10 +1,16 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.MessageHandler;
+import jlsm.cluster.ClusterTransport;
+
 import jlsm.engine.cluster.internal.CatalogClusteredTable;
 
 import jlsm.engine.cluster.internal.GracePeriodManager;
 import jlsm.engine.cluster.internal.InJvmDiscoveryProvider;
-import jlsm.engine.cluster.internal.InJvmTransport;
+import jlsm.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.PhiAccrualFailureDetector;
 import jlsm.engine.cluster.internal.RapidMembership;
 import jlsm.engine.cluster.internal.RemotePartitionClient;

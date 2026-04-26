@@ -1,9 +1,13 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+
 import jlsm.engine.Table;
 import jlsm.engine.cluster.internal.GracePeriodManager;
 import jlsm.engine.cluster.internal.InJvmDiscoveryProvider;
-import jlsm.engine.cluster.internal.InJvmTransport;
+import jlsm.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.QueryRequestHandler;
 import jlsm.engine.cluster.internal.RemotePartitionClient;
 import jlsm.engine.cluster.internal.RendezvousOwnership;

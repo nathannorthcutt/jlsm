@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+
 import java.io.IOException;
 import java.util.List;
 

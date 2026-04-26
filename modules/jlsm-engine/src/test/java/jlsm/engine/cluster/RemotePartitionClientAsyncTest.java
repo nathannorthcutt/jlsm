@@ -1,6 +1,12 @@
 package jlsm.engine.cluster;
 
-import jlsm.engine.cluster.internal.InJvmTransport;
+import jlsm.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.MessageHandler;
+import jlsm.cluster.ClusterTransport;
+
+import jlsm.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.QueryRequestPayload;
 import jlsm.engine.cluster.internal.RemotePartitionClient;
 import jlsm.table.FieldType;

@@ -4,7 +4,7 @@ import jlsm.engine.cluster.LexicographicPartitionKeySpace;
 import jlsm.engine.cluster.Member;
 import jlsm.engine.cluster.MemberState;
 import jlsm.engine.cluster.MembershipView;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 import jlsm.engine.cluster.SinglePartitionKeySpace;
 
 import org.junit.jupiter.api.BeforeEach;

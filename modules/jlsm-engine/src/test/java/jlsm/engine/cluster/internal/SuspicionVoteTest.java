@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 

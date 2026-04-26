@@ -16,7 +16,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 import jlsm.engine.cluster.internal.ConsensusRound.Outcome;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;

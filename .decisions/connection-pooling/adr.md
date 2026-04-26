@@ -5,7 +5,9 @@ version: 1
 status: "confirmed"
 supersedes: null
 files:
-  - "modules/jlsm-engine/src/main/java/jlsm/engine/cluster/"
+  - "modules/jlsm-cluster/src/main/java/jlsm/cluster/internal/MultiplexedTransport.java"
+  - "modules/jlsm-cluster/src/main/java/jlsm/cluster/internal/PeerConnection.java"
+  - "modules/jlsm-cluster/src/main/java/jlsm/cluster/internal/PendingMap.java"
 ---
 
 # ADR — Connection Management and Pooling

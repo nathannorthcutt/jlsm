@@ -3,7 +3,7 @@ package jlsm.engine.cluster.internal;
 import jlsm.engine.cluster.Member;
 import jlsm.engine.cluster.MemberState;
 import jlsm.engine.cluster.MembershipView;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 import jlsm.engine.cluster.PartitionKeySpace;
 
 import java.nio.charset.StandardCharsets;

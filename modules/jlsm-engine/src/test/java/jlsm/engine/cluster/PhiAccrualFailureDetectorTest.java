@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+
 import jlsm.engine.cluster.internal.PhiAccrualFailureDetector;
 
 import org.junit.jupiter.api.Test;

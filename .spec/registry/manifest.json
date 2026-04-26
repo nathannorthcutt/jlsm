@@ -1403,8 +1403,8 @@
     {
       "id": "transport.multiplexed-framing",
       "path": ".spec/domains/transport/multiplexed-framing.md",
-      "state": "DRAFT",
-      "version": 1,
+      "state": "APPROVED",
+      "version": 3,
       "domains": [
         "transport"
       ],

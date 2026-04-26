@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Set;

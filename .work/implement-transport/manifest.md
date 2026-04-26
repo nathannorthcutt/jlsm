@@ -9,7 +9,7 @@
 
 | WD | Title | Status | Domains | Deps | Produces |
 |----|-------|--------|---------|------|----------|
-| WD-01 | Implement transport.multiplexed-framing | READY | transport | 0 | — |
+| WD-01 | Implement transport.multiplexed-framing | IMPLEMENTING | transport | 0 | — |
 | WD-02 | Implement transport.traffic-priority | BLOCKED | transport | 1 | — |
 | WD-03 | Implement transport.scatter-gather-flow-control | BLOCKED | transport | 2 | — |
 
