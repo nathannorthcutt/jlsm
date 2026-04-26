@@ -8,6 +8,7 @@ concurrent callers.
 ## Dependencies
 
 - `jlsm.table` (transitive) — document model, schema, query API
+- `jlsm.cluster` (transitive) — `ClusterTransport` SPI + `Message`, `MessageType`, `MessageHandler`, `NodeAddress` (migrated out of jlsm-engine into the new jlsm-cluster module per `transport-module-placement` ADR)
 - `jlsm.core` — LSM tree, WAL, MemTable, SSTable, bloom filters
 
 ## Exported Packages
@@ -18,9 +19,13 @@ concurrent callers.
 - `jlsm.engine.cluster` — clustering API: `ClusteredEngine`,
   `ClusterOperationalMode`, `QuorumLostException`,
   `PartitionKeySpace`, `SinglePartitionKeySpace`, `LexicographicPartitionKeySpace`,
-  `NodeAddress`, `ClusterConfig`, `Message`, `MessageType`, `Member`, `MemberState`,
-  `MembershipView`, `PartialResultMetadata`, `ClusterTransport`, `MessageHandler`,
+  `ClusterConfig`, `Member`, `MemberState`,
+  `MembershipView`, `PartialResultMetadata`,
   `DiscoveryProvider`, `MembershipProtocol`, `MembershipListener`
+
+(Note: `NodeAddress`, `Message`, `MessageType`, `ClusterTransport`, `MessageHandler` previously
+exported here have been migrated to the public `jlsm.cluster` package in the new `jlsm-cluster`
+module. Consumers reach them via the transitive `requires jlsm.cluster`.)
 
 ## Internal Packages
 
@@ -35,10 +40,14 @@ Not exported in `module-info.java` and must not be made public:
   R10c step 2)
 - `jlsm.engine.cluster.internal` — `CatalogClusteredTable` (was public
   `ClusteredTable` — relocated + renamed by WD-02 WU-1 to one of two permits
-  of sealed `Table`), `InJvmTransport`, `InJvmDiscoveryProvider`,
+  of sealed `Table`), `InJvmDiscoveryProvider`,
   `PhiAccrualFailureDetector`, `RapidMembership`, `RendezvousOwnership`,
   `GracePeriodManager`, `RemotePartitionClient`,
   `ViewReconciler`, `SeedRetryTask`, `GraceGatedRebalancer`
+
+(Note: `InJvmTransport` and `NodeAddressCodec` previously here have been migrated to
+`jlsm.cluster.internal` in the new `jlsm-cluster` module. `NodeAddressCodec` is reachable from
+this module via the qualified export `jlsm.cluster/jlsm.cluster.internal to jlsm.engine`.)
 
 ## Key Design Decisions
 
@@ -53,7 +62,9 @@ Not exported in `module-info.java` and must not be made public:
 - **Scatter-Gather:** Partition-aware proxy table with k-way merge
   ([ADR](.decisions/scatter-gather-query-execution/adr.md))
 - **Transport:** Message-oriented SPI with fire-and-forget + request-response
-  ([ADR](.decisions/transport-abstraction-design/adr.md))
+  ([ADR](.decisions/transport-abstraction-design/adr.md)). Implementation lives in jlsm-cluster
+  (per [`transport-module-placement` ADR](.decisions/transport-module-placement/adr.md)) — see
+  `transport.multiplexed-framing` v3 APPROVED spec.
 
 ## Known Gaps
 

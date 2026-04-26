@@ -19,15 +19,20 @@ semver release cadence is established.
 - **New ADR:** `transport-module-placement` confirming Option A (single `jlsm-cluster` module) over Option B (split api+impl) and Option D (SPI in jlsm-core, rejected on cohesion). Conditions for revision documented (thin-client consumer triggers A → B split).
 - **Updated ADR `files:` fields:** `connection-pooling` and `transport-abstraction-design` now point at `modules/jlsm-cluster/...` paths.
 
-### Known Gaps — `implement-transport` WD-01 follow-up scope
-- Multi-frame reassembly (R35-R38, R37a) — single-frame messages only in the initial drop. WU-4 in `work-plan.md`.
-- R37c per-connection abuse threshold — not yet wired; requires reassembly path landing first.
-- R30 cleanupBarrier + R30a barrier-await — peer-departure path is not yet split into atomic step (1) + dispatched step (2). Affects re-join correctness under fast departure→rejoin races.
-- R23b N≥3 simultaneous-handshake queue — basic two-peer tie-break works (lower nodeId wins outbound); N≥3 case pending.
-- R34b bounded handler dispatch pool (semaphore + queue) — handlers currently spawn one virtual thread each without bound. R34c response bypass works as designed; the queue side lands with R34b.
-- R26 timeout-discipline coverage — `orTimeout` armed but the R26b scheduler-failure branch and the R20-vs-arm race lack dedicated regression tests.
-- R45 counters (d), (j), (l) — wired in `TransportMetrics` but only incremented when their subsystems land (reassembly, handshake-blocking gate, request-too-large path).
-- `engine.clustering` `@spec` annotations on migrated types not yet retargeted to `transport.multiplexed-framing`. Mechanical follow-up.
+### Added — Multi-frame reassembly + chunking + bounded dispatch (WD-01 round 2)
+- **`Reassembler`** (`jlsm.cluster.internal`) — per-connection, per-stream-id reassembly state machine implementing R35/R35a/R36/R37/R37a/R38/R43a. Handles single-frame fast path, multi-frame buffering, drain state on per-stream limit (R37) or global budget exhaustion (R37a), corruption on type/seq mismatch (R43a). 11 unit tests.
+- **`Chunker`** — outbound message chunker per R43/R43a/R44. Splits bodies exceeding `maxFrameSize - 14` into chunks with shared type/seq, MORE_FRAMES on non-final, RESPONSE flag preserved. Rejects oversized fire-and-forget per R44. 8 unit tests.
+- **`AbuseTracker`** — sliding-window violation counter for R37c (per-connection abuse threshold; default 4 violations / 60 seconds → close connection). 7 unit tests.
+- **`DispatchPool`** — bounded handler-dispatch pool for R34b (default 256 permits + 1024-deep queue). Permit-before-take dispatcher ordering keeps queue depth honest. R20 lazy-drain via per-task liveness check. 6 unit tests.
+- **R30 cleanupBarrier + R30a barrier-await** — `peerDeparted(NodeAddress)` splits into atomic step (1) + dispatched step (2); subsequent `getOrConnect` awaits any in-flight cleanup before establishing a new connection. 5 integration tests.
+- **R34c response bypass + R34c-bis closed-flag check** — incoming response frames complete pending futures directly on the reader thread (bypassing R34b queue) to prevent handler-callback deadlock; closed-flag check before completion increments R45(k) post-close discards.
+- **R34d async handler completion** — dispatch vthread blocks on `response.get()` so the R34b semaphore is held until the handler's CF transitions to a terminal state (sync return OR async completion). 3 integration tests.
+- **R43 outbound chunking** — `MultiplexedTransport.send/request` and the response path now route through `PeerConnection.writeMessage` which chunks bodies > `maxFrameSize - 14`. Write lock held for the entire chunk sequence (R15a). 3 large-message integration tests including a 5 MiB request/response round-trip.
+
+### Known Gaps — `implement-transport` WD-01 follow-up scope (narrowed)
+- **R23b N≥3** simultaneous-handshake queue — basic two-peer tie-break works (lower nodeId wins outbound); N≥3 case requires a custom timing harness and remains pending.
+- **R26b scheduler-failure path** — `orTimeout` arming is in place; the explicit `RejectedExecutionException` recovery branch lacks a dedicated regression test (the behavior is correct in the common path).
+- **`engine.clustering` `@spec` annotations** on migrated types not yet retargeted to `transport.multiplexed-framing`. Mechanical follow-up; existing annotations remain valid since the engine.clustering spec is unchanged.
 
 
 - **`sstable.footer-encryption-scope`** spec v4 → v5 — R8e widened to two-permits sealed `Table` declaration (`CatalogTable` + `CatalogClusteredTable`); R8f/R6c/R8g updated to cover both internal classes and the cluster test-stub migration.

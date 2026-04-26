@@ -31,11 +31,14 @@ import jlsm.cluster.NodeAddress;
  * per-connection {@link ReentrantLock}. Pending request futures are correlated by stream-id.
  *
  * <p>
- * This implementation lands the foundational behaviour required by R1-R29 and R45 (basic counter
- * surface). Multi-frame reassembly (R35-R37c), abuse-threshold handling (R37c),
- * cleanupBarrier-based peer-departure (R30 v3), bidirectional handshake tie-break (R23a/R23b),
- * accept-loop safe-publication option (a)/(b)/(c) (R39), and observability counters (j-m) are
- * tracked under WD-01 follow-up work — see {@code work-plan.md}.
+ * Coverage: R1-R29 (wire format, multiplexing, dispatch, lifecycle), R30/R30a (peer-departure
+ * cleanupBarrier), R33 (thread safety), R34/R34b/R34c/R34d (handler dispatch, bounded pool,
+ * response bypass, async completion), R35-R38, R37a, R37c (multi-frame reassembly + abuse threshold
+ * via {@link Reassembler} + {@link AbuseTracker}), R39 (option-b safe-publication via static
+ * factory + R39(a)(i) backlog), R40/R40-bidi/R40a (bidirectional handshake), R43, R43a, R44
+ * (outbound chunking via {@link Chunker}), R45 (counters a-m via {@link TransportMetrics}).
+ * Remaining gaps tracked under WD-01 follow-up: R23b N≥3 simultaneous handshake queue, R26b
+ * scheduler-failure regression test.
  *
  * @spec transport.multiplexed-framing.R1
  * @spec transport.multiplexed-framing.R6
@@ -56,7 +59,13 @@ import jlsm.cluster.NodeAddress;
  * @spec transport.multiplexed-framing.R26
  * @spec transport.multiplexed-framing.R28
  * @spec transport.multiplexed-framing.R29
+ * @spec transport.multiplexed-framing.R30
+ * @spec transport.multiplexed-framing.R30a
  * @spec transport.multiplexed-framing.R33
+ * @spec transport.multiplexed-framing.R34
+ * @spec transport.multiplexed-framing.R34b
+ * @spec transport.multiplexed-framing.R34c
+ * @spec transport.multiplexed-framing.R34d
  * @spec transport.multiplexed-framing.R39
  * @spec transport.multiplexed-framing.R40
  * @spec transport.multiplexed-framing.R45
@@ -72,8 +81,11 @@ public final class MultiplexedTransport implements ClusterTransport {
     private final ServerSocketChannel serverChannel;
     private final Thread acceptThread;
     private final Map<String, PeerConnection> peers = new ConcurrentHashMap<>();
+    /** R30 v3: per-peer cleanup barriers — non-null while a peer-departure cleanup is in-flight. */
+    private final Map<String, CompletableFuture<Void>> pendingCleanups = new ConcurrentHashMap<>();
     private final Map<MessageType, MessageHandler> handlers = new ConcurrentHashMap<>();
     private final TransportMetrics metrics = new TransportMetrics();
+    private final DispatchPool dispatchPool = new DispatchPool();
     private final long requestTimeoutMs;
     private final AtomicLong sequenceCounter = new AtomicLong(0);
     private volatile boolean closed = false;
@@ -132,10 +144,9 @@ public final class MultiplexedTransport implements ClusterTransport {
             throw new IOException("transport is closed"); // R29
         }
         PeerConnection conn = getOrConnect(target);
-        Frame frame = new Frame(msg.type(), Frame.NO_REPLY_STREAM_ID, (byte) 0,
-                msg.sequenceNumber(), msg.payload()); // R7
         try {
-            conn.write(frame); // R15-R17
+            conn.writeMessage(msg.type(), Frame.NO_REPLY_STREAM_ID, (byte) 0, msg.sequenceNumber(),
+                    msg.payload()); // R7 + R43/R44 (R44 will throw if F&F too big)
         } catch (IOException e) {
             metrics.writeFailures.incrementAndGet();
             throw e;
@@ -161,10 +172,9 @@ public final class MultiplexedTransport implements ClusterTransport {
                 metrics.streamIdExhaustion.incrementAndGet();
                 return future;
             }
-            Frame frame = new Frame(msg.type(), streamId, (byte) 0, msg.sequenceNumber(),
-                    msg.payload());
             try {
-                conn.write(frame);
+                conn.writeMessage(msg.type(), streamId, (byte) 0, msg.sequenceNumber(),
+                        msg.payload()); // R43 chunks if oversize
                 future.orTimeout(requestTimeoutMs, TimeUnit.MILLISECONDS); // R26
                 future.whenComplete((r, t) -> conn.pending().remove(streamId, future)); // R26b/R27
             } catch (IOException e) {
@@ -217,12 +227,22 @@ public final class MultiplexedTransport implements ClusterTransport {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        dispatchPool.close();
     }
 
     private PeerConnection getOrConnect(NodeAddress target) throws IOException {
         PeerConnection existing = peers.get(target.nodeId());
         if (existing != null && existing.isOpen()) {
             return existing;
+        }
+        // R30a: await any in-flight cleanup barrier before establishing a new connection
+        try {
+            if (!awaitPeerCleanup(target, requestTimeoutMs, TimeUnit.MILLISECONDS)) {
+                throw new IOException("peer-departure cleanup did not complete within timeout");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted awaiting peer-departure cleanup", e);
         }
         synchronized (peers) { // R23
             existing = peers.get(target.nodeId());
@@ -356,44 +376,55 @@ public final class MultiplexedTransport implements ClusterTransport {
             metrics.noHandlerDiscards.incrementAndGet(); // R45(b)
             return;
         }
-        Thread.ofVirtual() // R34
-                .name("jlsm-cluster-handler-" + frame.type() + "-" + frame.streamId())
-                .start(() -> dispatchHandler(conn, frame, handler));
+        // R34b: handler dispatch goes through bounded pool (semaphore + queue).
+        // R20: liveness check carries connection-alive epoch for lazy-drain on dead connection.
+        boolean accepted = dispatchPool.submit(() -> dispatchHandler(conn, frame, handler),
+                conn::isAlive);
+        if (!accepted) {
+            metrics.dispatchOverflow.incrementAndGet(); // R45(h)
+        }
     }
 
     private void dispatchHandler(PeerConnection conn, Frame frame, MessageHandler handler) {
         Message msg = buildMessage(conn.remote(), frame);
         if (frame.streamId() == Frame.NO_REPLY_STREAM_ID) { // R12
             try {
-                handler.handle(conn.remote(), msg);
-            } catch (Exception e) {
-                metrics.handlerExceptions.incrementAndGet(); // R45(m)
+                CompletableFuture<Message> response = handler.handle(conn.remote(), msg);
+                if (response != null) {
+                    // R34d: block this vthread until the async handler CF terminates so the
+                    // R34b permit is held until "handler completion" per the v3 definition.
+                    try {
+                        response.get();
+                    } catch (Exception ex) {
+                        metrics.handlerExceptions.incrementAndGet(); // R45(m)
+                    }
+                }
+            } catch (Exception e) { // R14 sync throw
+                metrics.handlerExceptions.incrementAndGet();
             }
             return;
         }
-        // R13: incoming request — invoke handler, send response on success.
+        // R13: incoming request — invoke handler, await response CF terminal state, send.
+        Message respMsg;
         try {
             CompletableFuture<Message> response = handler.handle(conn.remote(), msg);
-            response.whenComplete((respMsg, err) -> {
-                if (err != null) { // R14
-                    metrics.handlerExceptions.incrementAndGet();
-                    return;
-                }
-                if (closed) {
-                    metrics.postCloseDiscards.incrementAndGet(); // R45(k)/R28
-                    return;
-                }
-                Frame respFrame = new Frame(respMsg.type(), frame.streamId(), Frame.FLAG_RESPONSE,
-                        respMsg.sequenceNumber(), respMsg.payload());
-                try {
-                    conn.write(respFrame);
-                } catch (IOException ioe) {
-                    metrics.writeFailures.incrementAndGet();
-                    LOG.log(Level.FINE, "response write failed", ioe);
-                }
-            });
-        } catch (Exception e) { // R14 sync throw
+            // R34d: hold the permit until the response CF terminates (sync or async).
+            respMsg = response.get();
+        } catch (Exception e) { // R14 — sync throw or async exceptional completion
             metrics.handlerExceptions.incrementAndGet();
+            return;
+        }
+        // R28 + R34c-bis: if transport closed mid-handler, discard response silently.
+        if (closed) {
+            metrics.postCloseDiscards.incrementAndGet(); // R45(k)
+            return;
+        }
+        try {
+            conn.writeMessage(respMsg.type(), frame.streamId(), Frame.FLAG_RESPONSE,
+                    respMsg.sequenceNumber(), respMsg.payload()); // R43 chunks if oversize
+        } catch (IOException ioe) {
+            metrics.writeFailures.incrementAndGet();
+            LOG.log(Level.FINE, "response write failed", ioe);
         }
     }
 
@@ -407,6 +438,78 @@ public final class MultiplexedTransport implements ClusterTransport {
 
     void onConnectionDead(PeerConnection conn) { // R20
         peers.remove(conn.remote().nodeId(), conn);
+    }
+
+    /**
+     * Mark a peer as departed and tear down its connection. Implements R30 v3 split: step (1)
+     * atomic — install cleanupBarrier in {@link #pendingCleanups}, remove from {@link #peers}; step
+     * (2) dispatched on a virtual thread — close channel, fail pending futures, complete the
+     * barrier.
+     *
+     * <p>
+     * Idempotent: a second call for the same peer while cleanup is still in-flight is a no-op (the
+     * existing barrier is left in place). A call for an unknown peer is also a no-op.
+     *
+     * <p>
+     * Does not block the calling (notification) thread.
+     *
+     * @spec transport.multiplexed-framing.R30
+     */
+    public void peerDeparted(NodeAddress peer) {
+        if (peer == null) {
+            throw new IllegalArgumentException("peer must not be null");
+        }
+        final String nodeId = peer.nodeId();
+        final PeerConnection conn;
+        final CompletableFuture<Void> barrier;
+        // Step (1) — atomic: install barrier and remove registry entry
+        synchronized (peers) {
+            if (pendingCleanups.containsKey(nodeId)) {
+                // Cleanup already in-flight; idempotent no-op
+                return;
+            }
+            conn = peers.remove(nodeId);
+            if (conn == null) {
+                // Peer not connected; nothing to clean up
+                return;
+            }
+            barrier = new CompletableFuture<>();
+            pendingCleanups.put(nodeId, barrier);
+        }
+        // Step (2) — dispatched: close channel, fail pending, complete barrier
+        Thread.ofVirtual().name("jlsm-cluster-departure-" + nodeId).start(() -> {
+            try {
+                conn.close();
+            } finally {
+                pendingCleanups.remove(nodeId);
+                barrier.complete(null);
+            }
+        });
+    }
+
+    /**
+     * Wait for any in-flight peer-departure cleanup for the given peer to complete. Returns
+     * immediately {@code true} if no cleanup is in progress.
+     *
+     * @spec transport.multiplexed-framing.R30a
+     */
+    public boolean awaitPeerCleanup(NodeAddress peer, long timeout, TimeUnit unit)
+            throws InterruptedException {
+        if (peer == null) {
+            throw new IllegalArgumentException("peer must not be null");
+        }
+        CompletableFuture<Void> barrier = pendingCleanups.get(peer.nodeId());
+        if (barrier == null) {
+            return true;
+        }
+        try {
+            barrier.get(timeout, unit);
+            return true;
+        } catch (java.util.concurrent.ExecutionException e) {
+            return barrier.isDone();
+        } catch (java.util.concurrent.TimeoutException e) {
+            return false;
+        }
     }
 
     private static void closeQuietly(Channel c) {

@@ -16,11 +16,13 @@ There are no external runtime dependencies. The library is a pure composition of
 jlsm-core           All LSM-Tree interfaces and implementations
   |
   +-- jlsm-indexing  Full-text inverted index with stemming and stop words
-  +-- jlsm-vector   ANN vector indices (IvfFlat, HNSW) with SIMD acceleration
-  +-- jlsm-table    Document model, schema, secondary indices, fluent query API
+  +-- jlsm-vector    ANN vector indices (IvfFlat, HNSW) with SIMD acceleration
+  +-- jlsm-cluster   Cluster transport SPI + NIO multiplexed-framing implementation
+  +-- jlsm-table     Document model, schema, secondary indices, fluent query API
   |     |
   |     +-- jlsm-sql     SQL SELECT parser and translator (hand-written, no deps)
   |     +-- jlsm-engine  In-process database engine with multi-table management
+  |                      (depends on jlsm-table + jlsm-cluster)
   |
   +-- (tests/jlsm-remote-integration)  S3 integration tests via S3Mock
 ```
@@ -65,6 +67,10 @@ Approximate Nearest Neighbor search with two index implementations:
 - **HNSW** — Hierarchical Navigable Small World graph
 
 Both use SIMD acceleration via `jdk.incubator.vector` (`FloatVector.SPECIES_PREFERRED`).
+
+### jlsm-cluster
+
+NIO-based multiplexed transport for inter-node messaging. Single TCP connection per peer with Kafka-style binary framing (4-byte length prefix + 14-byte header), per-stream multiplexing, virtual-thread reader, ReentrantLock write serialization. Provides `ClusterTransport` SPI with `send` (fire-and-forget) and `request` (request-response with `CompletableFuture`). Bidirectional handshake (R40 + R40-bidi) with version, nodeId, host, port validation. Multi-frame reassembly with per-stream and global memory budgets, per-connection R37c abuse threshold, R34b bounded handler dispatch pool. Backed by `transport.multiplexed-framing` v3 APPROVED spec. Consumed by `jlsm-engine`'s clustering subsystem (`ClusteredEngine`, membership, scatter-gather query dispatch).
 
 ### jlsm-sql
 
@@ -196,6 +202,7 @@ modules/
   jlsm-core/         All interfaces + implementations
   jlsm-indexing/      Full-text inverted index
   jlsm-vector/        ANN vector indices (IvfFlat, HNSW)
+  jlsm-cluster/       Cluster transport SPI + NIO multiplexed-framing impl
   jlsm-table/         Document model, schema, indices, query API
   jlsm-sql/           SQL SELECT parser and translator
   jlsm-engine/        In-process database engine
