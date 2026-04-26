@@ -29,10 +29,11 @@ semver release cadence is established.
 - **R34d async handler completion** — dispatch vthread blocks on `response.get()` so the R34b semaphore is held until the handler's CF transitions to a terminal state (sync return OR async completion). 3 integration tests.
 - **R43 outbound chunking** — `MultiplexedTransport.send/request` and the response path now route through `PeerConnection.writeMessage` which chunks bodies > `maxFrameSize - 14`. Write lock held for the entire chunk sequence (R15a). 3 large-message integration tests including a 5 MiB request/response round-trip.
 
-### Known Gaps — `implement-transport` WD-01 follow-up scope (narrowed)
-- **R23b N≥3** simultaneous-handshake queue — basic two-peer tie-break works (lower nodeId wins outbound); N≥3 case requires a custom timing harness and remains pending.
-- **R26b scheduler-failure path** — `orTimeout` arming is in place; the explicit `RejectedExecutionException` recovery branch lacks a dedicated regression test (the behavior is correct in the common path).
-- **`engine.clustering` `@spec` annotations** on migrated types not yet retargeted to `transport.multiplexed-framing`. Mechanical follow-up; existing annotations remain valid since the engine.clustering spec is unchanged.
+### Added — Final WD-01 gap closure (round 3)
+- **R23a per-peer locking refactor** — replaces the global `synchronized(peers)` with a per-`nodeId` `ConcurrentHashMap<String, Object>` lock map (stable lock identity; no eviction per R23a v3 lifetime rule). `getOrConnect` and the accept-loop's tie-break now serialize per-peer; distinct peers proceed in parallel.
+- **R23b N≥3 simultaneous-handshake stress test** — `MultiplexedTransportSimultaneousHandshakeTest` exercises 8 concurrent same-peer requests, 3 distinct-peer concurrent sends, and 5 concurrent re-joins after `peerDeparted`. All converge on a single per-peer connection.
+- **R26b scheduler-failure path** — `request()` now registers the `whenComplete` cleanup BEFORE arming `orTimeout`, and wraps `orTimeout` in a `RuntimeException` catch that completes the future with `IOException("transport unavailable")` and increments `R45(f)` write-failures. `MultiplexedTransportPendingInvariantTest` exercises rapid request cycling (200 round-trips, then forced connection-drop) and asserts the pending map drains to zero per R27.
+- **`engine.clustering` `@spec` annotation retargeting** — the migrated SPI types (`ClusterTransport`, `Message`, `MessageType`, `NodeAddress`) now carry both the original `engine.clustering.R*` annotations (unchanged behavior) and supplemental `transport.multiplexed-framing.R*` annotations pointing at the multiplexed-framing spec's wire-format and lifecycle requirements.
 
 
 - **`sstable.footer-encryption-scope`** spec v4 → v5 — R8e widened to two-permits sealed `Table` declaration (`CatalogTable` + `CatalogClusteredTable`); R8f/R6c/R8g updated to cover both internal classes and the cluster test-stub migration.

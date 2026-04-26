@@ -19,6 +19,9 @@ import java.util.Objects;
  *
  * @spec engine.clustering.R1 — node address = (nodeId, host, port); id/host non-null-non-empty;
  *       port [1,65535]
+ * @spec transport.multiplexed-framing.R40 — wire form for the bidirectional handshake; nodeId
+ *       length [1,256] bytes, well-formed UTF-8 per RFC 3629; host length [1,256] bytes; port in
+ *       [1,65535]; equality is byte-equivalence on validated wire bytes (R23a tie-break comparand)
  */
 public record NodeAddress(String nodeId, String host, int port) {
 

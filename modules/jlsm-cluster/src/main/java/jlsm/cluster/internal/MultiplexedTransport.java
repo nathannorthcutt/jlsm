@@ -31,14 +31,15 @@ import jlsm.cluster.NodeAddress;
  * per-connection {@link ReentrantLock}. Pending request futures are correlated by stream-id.
  *
  * <p>
- * Coverage: R1-R29 (wire format, multiplexing, dispatch, lifecycle), R30/R30a (peer-departure
- * cleanupBarrier), R33 (thread safety), R34/R34b/R34c/R34d (handler dispatch, bounded pool,
- * response bypass, async completion), R35-R38, R37a, R37c (multi-frame reassembly + abuse threshold
- * via {@link Reassembler} + {@link AbuseTracker}), R39 (option-b safe-publication via static
- * factory + R39(a)(i) backlog), R40/R40-bidi/R40a (bidirectional handshake), R43, R43a, R44
- * (outbound chunking via {@link Chunker}), R45 (counters a-m via {@link TransportMetrics}).
- * Remaining gaps tracked under WD-01 follow-up: R23b N≥3 simultaneous handshake queue, R26b
- * scheduler-failure regression test.
+ * Coverage: R1-R29 (wire format, multiplexing, dispatch, lifecycle), R23a/R23b (per-peer locking
+ * with stable lock identity; concurrent same-peer attempts converge on a single connection), R26b
+ * (scheduler-failure-resilient timeout arming; whenComplete cleanup attached before orTimeout),
+ * R30/R30a (peer-departure cleanupBarrier), R33 (thread safety), R34/R34b/R34c/R34d (handler
+ * dispatch, bounded pool, response bypass, async completion), R35-R38, R37a, R37c (multi-frame
+ * reassembly + abuse threshold via {@link Reassembler} + {@link AbuseTracker}), R39 (option-b
+ * safe-publication via static factory + R39(a)(i) backlog), R40/R40-bidi/R40a (bidirectional
+ * handshake), R43, R43a, R44 (outbound chunking via {@link Chunker}), R45 (counters a-m via
+ * {@link TransportMetrics}).
  *
  * @spec transport.multiplexed-framing.R1
  * @spec transport.multiplexed-framing.R6
@@ -81,6 +82,12 @@ public final class MultiplexedTransport implements ClusterTransport {
     private final ServerSocketChannel serverChannel;
     private final Thread acceptThread;
     private final Map<String, PeerConnection> peers = new ConcurrentHashMap<>();
+    /**
+     * R23a v3: per-peer lock objects — stable identity for the JVM lifetime (no eviction). Each
+     * peer's connection establishment, tie-break, and registry mutation serialize on the same
+     * object, so distinct peers proceed in parallel without contention.
+     */
+    private final Map<String, Object> perPeerLocks = new ConcurrentHashMap<>();
     /** R30 v3: per-peer cleanup barriers — non-null while a peer-departure cleanup is in-flight. */
     private final Map<String, CompletableFuture<Void>> pendingCleanups = new ConcurrentHashMap<>();
     private final Map<MessageType, MessageHandler> handlers = new ConcurrentHashMap<>();
@@ -175,8 +182,20 @@ public final class MultiplexedTransport implements ClusterTransport {
             try {
                 conn.writeMessage(msg.type(), streamId, (byte) 0, msg.sequenceNumber(),
                         msg.payload()); // R43 chunks if oversize
-                future.orTimeout(requestTimeoutMs, TimeUnit.MILLISECONDS); // R26
+                // R26b cleanup is registered BEFORE arming the timeout so that even if the
+                // timeout-arming step throws (e.g. RejectedExecutionException from a shutting-down
+                // scheduler — exotic, but covered by the spec), the pending-map entry has a
+                // single-shot value-conditional remove path attached to the future.
                 future.whenComplete((r, t) -> conn.pending().remove(streamId, future)); // R26b/R27
+                try {
+                    future.orTimeout(requestTimeoutMs, TimeUnit.MILLISECONDS); // R26
+                } catch (RuntimeException timerEx) {
+                    // R26b Pass 3: scheduler-failure path. Complete future immediately; the
+                    // R26b whenComplete callback above runs on completion and removes the entry.
+                    metrics.writeFailures.incrementAndGet();
+                    future.completeExceptionally(new IOException(
+                            "transport unavailable: timeout scheduler failed", timerEx));
+                }
             } catch (IOException e) {
                 metrics.writeFailures.incrementAndGet();
                 conn.pending().remove(streamId, future); // R26b
@@ -244,7 +263,9 @@ public final class MultiplexedTransport implements ClusterTransport {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted awaiting peer-departure cleanup", e);
         }
-        synchronized (peers) { // R23
+        // R23a Pass 3: per-peer lock — distinct peers proceed in parallel; same-peer concurrent
+        // attempts queue on the monitor (R23b queue is the natural FIFO of waiters here).
+        synchronized (perPeerLock(target.nodeId())) {
             existing = peers.get(target.nodeId());
             if (existing != null && existing.isOpen()) {
                 return existing;
@@ -297,24 +318,36 @@ public final class MultiplexedTransport implements ClusterTransport {
                 // After handshake, return to blocking I/O without timeout for reader loop
                 ch.socket().setSoTimeout(0);
                 String nodeId = remote.nodeId();
-                PeerConnection existing = peers.get(nodeId);
-                if (existing != null && existing.isOpen()) {
-                    // R23a tie-break (simplified): lower nodeId wins outbound.
-                    if (self.nodeId().compareTo(nodeId) < 0) {
-                        ch.close();
-                        continue;
-                    } else {
-                        existing.close();
+                // R23a Pass 3 + R23b: serialize tie-break and registry insert per-peer
+                boolean lostTieBreak = false;
+                synchronized (perPeerLock(nodeId)) {
+                    PeerConnection existing = peers.get(nodeId);
+                    if (existing != null && existing.isOpen()) {
+                        // R23a tie-break: lower nodeId wins outbound.
+                        if (self.nodeId().compareTo(nodeId) < 0) {
+                            lostTieBreak = true;
+                        } else {
+                            existing.close();
+                        }
+                    }
+                    if (!lostTieBreak) {
+                        PeerConnection conn = new PeerConnection(remote, ch, this);
+                        peers.put(nodeId, conn);
+                        conn.startReader();
                     }
                 }
-                PeerConnection conn = new PeerConnection(remote, ch, this);
-                peers.put(nodeId, conn);
-                conn.startReader();
+                if (lostTieBreak) {
+                    ch.close();
+                }
             } catch (IOException e) {
                 metrics.handshakeFailures.incrementAndGet();
                 closeQuietly(ch);
             }
         }
+    }
+
+    private Object perPeerLock(String nodeId) {
+        return perPeerLocks.computeIfAbsent(nodeId, k -> new Object());
     }
 
     private NodeAddress readHandshake(SocketChannel ch, String localNodeId) throws IOException {

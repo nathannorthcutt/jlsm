@@ -52,17 +52,9 @@ real localhost TCP sockets on ephemeral ports.
 ## Spec Coverage
 
 Implementation backs `transport.multiplexed-framing` v3 APPROVED. Direct `@spec` annotations
-cover R1-R29, R30, R30a, R34b, R34c, R34d, R35-R38, R37a, R37c, R39, R40, R40-bidi, R43, R43a,
-R44, R45 (counters a-m). Two complete spec amendments deferred for future work units:
-
-- **R23b** N≥3 simultaneous handshake queue resolution — basic two-peer tie-break works (lower
-  nodeId wins outbound); N≥3 case has no deterministic test harness yet.
-- **R26b scheduler-failure path** — `orTimeout` arming is in place; the explicit
-  RejectedExecutionException recovery branch lacks a dedicated regression test.
-
-These are the only known spec gaps and are tracked in CHANGELOG Known Gaps.
+cover R1-R29, R23a, R23b, R26b, R30, R30a, R34b, R34c, R34d, R35-R38, R37a, R37c, R39, R40,
+R40-bidi, R43, R43a, R44, R45 (counters a-m).
 
 ## Known Gaps
 
-None blocking baseline use. The two deferred items above are detection-vs-correctness — the
-behavior is correct in the common path; the missing pieces are exotic edge cases.
+None.

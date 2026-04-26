@@ -17,7 +17,9 @@ package jlsm.cluster;
  *
  * @spec engine.clustering.R9 — message types distinguish at minimum: ping, ack, view change, query
  *       request, query response, state digest, state delta
+ * @spec transport.multiplexed-framing.R2 — type tag is the first byte of the 14-byte frame header
  * @spec transport.multiplexed-framing.R2a — type tag byte mapping (PING=0x00 .. STATE_DELTA=0x06)
+ *       is stable; values must not be reordered; unknown tags decode as corrupt frames
  */
 public enum MessageType {
 
