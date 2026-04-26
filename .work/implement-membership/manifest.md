@@ -9,7 +9,7 @@
 
 | WD | Title | Status | Domains | Deps | Produces |
 |----|-------|--------|---------|------|----------|
-| WD-01 | Implement membership.continuous-rediscovery | READY | membership | 0 | — |
+| WD-01 | Implement membership.continuous-rediscovery | BLOCKED | membership | 0 | — |
 | WD-02 | Implement membership.cluster-health-and-recovery | BLOCKED | membership | 1 | — |
 
 ## Dependency Graph

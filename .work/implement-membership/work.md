@@ -3,6 +3,8 @@ group: implement-membership
 goal: Implement the two membership.* DRAFT specs once the transport layer (WG2) is in place. Establishes cluster discovery, health tracking, and recovery.
 status: active
 created: 2026-04-21
+external_deps:
+  - { type: group, ref: "implement-transport", required_state: COMPLETE }
 ---
 
 ## Goal
