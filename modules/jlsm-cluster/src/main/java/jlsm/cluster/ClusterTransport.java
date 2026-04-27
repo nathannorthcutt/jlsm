@@ -1,4 +1,4 @@
-package jlsm.engine.cluster;
+package jlsm.cluster;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -20,6 +20,13 @@ import java.util.concurrent.CompletableFuture;
  *       completes exceptionally on delivery failure (timeout is enforced at the caller layer)
  * @spec engine.clustering.R30 — handler registration keyed by message type; re-registration
  *       replaces atomically
+ * @spec transport.multiplexed-framing.R7 — fire-and-forget messages use stream ID 0
+ * @spec transport.multiplexed-framing.R8 — request-response register pending future before write
+ * @spec transport.multiplexed-framing.R20 — connection-failure path completes pending exceptionally
+ * @spec transport.multiplexed-framing.R26 — request future timeout (default 30s,
+ *       builder-configurable)
+ * @spec transport.multiplexed-framing.R34a — deregister takes effect immediately; in-flight
+ *       handlers complete normally
  */
 public interface ClusterTransport extends AutoCloseable {
 

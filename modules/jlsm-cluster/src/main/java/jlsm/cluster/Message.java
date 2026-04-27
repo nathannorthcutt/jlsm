@@ -1,4 +1,4 @@
-package jlsm.engine.cluster;
+package jlsm.cluster;
 
 import java.util.Objects;
 
@@ -23,6 +23,11 @@ import java.util.Objects;
  * @spec engine.clustering.R10 — exposes monotonic sequenceNumber so receivers that care about
  *       exactly-once semantics can deduplicate (deduplication is not enforced at protocol level)
  * @spec engine.clustering.R11 — zero-length payloads are accepted; null payloads rejected with NPE
+ * @spec transport.multiplexed-framing.R2 — sequenceNumber is wire field; non-negative invariant
+ *       (R2b says deserialised negative seq is corrupt frame)
+ * @spec transport.multiplexed-framing.R41 — sender NodeAddress is the per-frame association
+ *       observed by the receiver (transport derives from the connection's handshake-validated
+ *       remote, never from a wire field)
  */
 public record Message(MessageType type, NodeAddress sender, long sequenceNumber, byte[] payload) {
 

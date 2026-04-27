@@ -1,7 +1,7 @@
 package jlsm.engine.cluster.internal;
 
 import jlsm.engine.cluster.MembershipProtocol;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 
 import java.time.Duration;
 import java.util.List;

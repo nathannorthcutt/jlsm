@@ -1,5 +1,9 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

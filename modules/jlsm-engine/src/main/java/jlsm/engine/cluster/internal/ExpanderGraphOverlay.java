@@ -12,7 +12,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 
 /**
  * K-regular expander-graph monitoring overlay over ALIVE cluster members.

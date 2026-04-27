@@ -1,12 +1,14 @@
 package jlsm.engine.cluster.internal;
 
+import jlsm.cluster.internal.InJvmTransport;
+
 import jlsm.engine.cluster.ClusterConfig;
 import jlsm.engine.cluster.Member;
 import jlsm.engine.cluster.MemberState;
 import jlsm.engine.cluster.MembershipView;
-import jlsm.engine.cluster.Message;
-import jlsm.engine.cluster.MessageType;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.NodeAddress;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

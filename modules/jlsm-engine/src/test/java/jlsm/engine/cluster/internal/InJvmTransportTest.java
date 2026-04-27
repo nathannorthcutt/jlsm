@@ -1,8 +1,10 @@
 package jlsm.engine.cluster.internal;
 
-import jlsm.engine.cluster.Message;
-import jlsm.engine.cluster.MessageType;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.internal.InJvmTransport;
+
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.NodeAddress;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

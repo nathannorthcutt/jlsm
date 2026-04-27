@@ -1,16 +1,16 @@
 package jlsm.engine.cluster.internal;
 
 import jlsm.engine.cluster.ClusterConfig;
-import jlsm.engine.cluster.ClusterTransport;
+import jlsm.cluster.ClusterTransport;
 import jlsm.engine.cluster.DiscoveryProvider;
 import jlsm.engine.cluster.Member;
 import jlsm.engine.cluster.MemberState;
 import jlsm.engine.cluster.MembershipListener;
 import jlsm.engine.cluster.MembershipProtocol;
 import jlsm.engine.cluster.MembershipView;
-import jlsm.engine.cluster.Message;
-import jlsm.engine.cluster.MessageType;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.NodeAddress;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;

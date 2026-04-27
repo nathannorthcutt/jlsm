@@ -1,9 +1,9 @@
 ---
 {
   "id": "transport.multiplexed-framing",
-  "version": 1,
+  "version": 3,
   "status": "ACTIVE",
-  "state": "DRAFT",
+  "state": "APPROVED",
   "domains": [
     "transport"
   ],
@@ -62,8 +62,14 @@ frames, not reassembled logical messages.
 
 R6. Stream IDs must be allocated per-connection from a monotonically increasing
 atomic counter, starting at 1. On wraparound past `Integer.MAX_VALUE`, the
-counter must reset to 1, skipping 0 and all negative values. The
-implementation must ensure no stream ID currently in the pending map is reused.
+counter must reset to 1, skipping 0 and all negative values. With at most R6a
+pending entries and a (2^31 - 1) ID range, an ID returned to the pool by
+request completion is unique against any newly-allocated ID for at least 32766
+subsequent allocations under default config. After wraparound to 1, before
+reusing IDs in the [1, R6a-cap] range, the implementation must verify each
+candidate is not in the pending map; verification must be bounded by the R6a
+cap. If the pending map is at capacity (R6a), allocation fails per R6a
+regardless of the counter value.
 
 R6a. The pending map must have a configurable maximum size (default 65536). If
 `request()` is called when the pending map is at capacity, it must return a
@@ -153,6 +159,19 @@ R20. On read failure (IOException, end-of-stream indicated by read returning
 `CompletableFuture`s exceptionally with IOException, and schedule reconnection
 per R24. Closing a connection must interrupt and join the reader virtual thread.
 No frames from a closed connection may be dispatched after close completes.
+Handler dispatches already in progress at the time of read failure (per R34)
+must complete normally per R34a. Their attempted response writes will fail per
+R29's post-dead-channel semantics; each such failure must increment R45(f) and
+be logged at debug level. The R34b queue contents for the dead connection
+must be drained and discarded; queue-discard counts must increment R45(h).
+Drain may be lazy through the consumer path: each R34b queue task must carry
+a reference to its originating connection (or an opaque connection epoch
+token); the reader-thread join (R20) must mark the connection dead in O(1);
+the handler-dispatch consumer side, on dequeue, must check the task's
+connection state and discard with R45(h) increment if dead. Synchronous walk
+of the queue is permitted but not required, provided that the dispatched-task
+count for the dead connection reaches zero within a bounded time after
+read-loop join (default 5 seconds, equal to handshake timeout).
 
 ### Connection Lifecycle
 
@@ -172,15 +191,43 @@ R23. The connection registry must prevent duplicate connections to the same
 peer. If two threads trigger first-access to the same peer concurrently, only
 one connection must be created.
 
-R23a. When both peers independently connect to each other, the node with the
+R23a. The connection registry must use per-peer locking keyed by remote
+`nodeId`. From the moment the handshake `nodeId` field is parsed, the per-peer
+slot must be locked through registration completion and tie-break resolution.
+Concurrent handshakes for distinct peers must proceed in parallel without
+mutual blocking. The registry's top-level data structure access must be
+lock-free or use a lock granularity (e.g., `ConcurrentHashMap` segment) that
+does not serialize unrelated peers. The per-peer lock object identity must be
+stable for the lifetime of the JVM for any nodeId that has ever been observed:
+implementations must not evict per-peer Lock entries from the lock map. If
+memory pressure on the lock map is a concern (e.g., 1000-node clusters with
+churn), the implementation must use a fixed-size striped lock (e.g.,
+`Striped<Lock>` style hash partitioning) so that lock identity is determined
+by hash partition, not by registry presence. R30 step (1) must NOT remove the
+per-peer Lock from the lock map; only the registry-value entry is removed.
+When both peers independently connect to each other, the node with the
 lexicographically smaller `nodeId` keeps its outbound connection; the other
-node closes its outbound and uses the accepted inbound. The connection registry
-must be locked from handshake validation through registration and tie-break
-resolution. If the losing connection has pending futures, they must be failed
-before the lock is released. Tie-break applies only to connections that have
-completed the bidirectional handshake. If one connection is still handshaking
-when the other completes, the completed connection wins regardless of nodeId
+node closes its outbound and uses the accepted inbound. If the losing
+connection has pending futures, they must be failed before the per-peer lock
+is released. Tie-break applies only to connections that have completed the
+bidirectional handshake. If one connection is still handshaking when the
+other completes, the completed connection wins regardless of `nodeId`
 ordering, and the handshaking connection is aborted.
+
+R23b. Any number of pending connections to the same peer may be in the
+handshake phase simultaneously; the per-peer queue under the per-peer
+registry lock (R23a) must hold all of them. When the FIRST one completes its
+handshake, it wins immediately and ALL others are aborted with `IOException`
+indicating duplicate-connection-rejected. After the winning connection is
+registered, any subsequent handshake completion for the same peer (e.g., a
+connection that was in flight but not yet in the queue at the moment of the
+win) must be treated per R40a: rejected with handshake-failure counter
+increment, regardless of `nodeId` ordering. R23a's tie-break clause applies
+only when two connections complete handshake within the same atomic critical
+section — if one is registered and the other arrives later, R40a takes
+precedence. If all queued handshakes fail to complete within R40's 5s
+timeout, all are aborted and the handshake-failure counter is incremented
+once per aborted connection.
 
 R24. On connection failure, the transport must reconnect with exponential
 backoff: initial delay 100ms, doubling, capped at 30s. Only one reconnect
@@ -198,8 +245,27 @@ exceptionally.
 ### Server Socket and Handshake
 
 R39. The transport must bind a `ServerSocketChannel` on the local node's port
-(from its `NodeAddress`) at construction time. A dedicated virtual thread must
-run the accept loop.
+(from its `NodeAddress`) before any inbound connection can be accepted. The
+accept-loop virtual thread must be started only after the transport's
+constructor has completed and all final fields are safely published.
+Implementations must choose ONE of:
+- **(a)** bind the `ServerSocketChannel` in the constructor but defer
+  accept-loop start to an explicit `start()` call invoked by the caller after
+  construction; or
+- **(b)** bind and start atomically inside a static factory method that
+  returns the fully-constructed transport; or
+- **(c)** defer the `bind()` call itself to `start()`, eliminating the
+  listen-without-accept window entirely.
+
+Direct accept-loop start from within the constructor is forbidden. Option (a)
+implementations must additionally: (i) configure the `ServerSocketChannel`
+backlog parameter explicitly to at least 1024 via `bind(addr, backlog)`;
+(ii) document a recommended construction-to-`start()` budget of <100ms with
+the warning that exceeding it risks OS-backlog overflow; (iii) on `start()`,
+drain any already-pending connections from the OS backlog with a non-blocking
+accept loop until empty before entering the steady-state accept loop, so that
+the handshake-read clock is armed close to TCP-accept time. The implementation
+must document its choice (a, b, or c) in the transport class javadoc.
 
 R39a. If `accept()` throws an IOException and the transport is not closed, the
 accept loop must log the error, increment the handshake-failure counter, and
@@ -210,12 +276,26 @@ R40. On establishing a connection, the connecting node must send a handshake as
 the first data. Wire format: 1-byte protocol version (version 1 for this
 spec), then 4-byte big-endian int32 total-length, then UTF-8 nodeId (4-byte
 length-prefixed), UTF-8 host (4-byte length-prefixed), 4-byte big-endian int32
-port. The implementation must read the total-length field first and reject the
-handshake if total-length exceeds 4 KiB, before reading any payload bytes.
-Individual string length prefixes must be validated against remaining bytes
-before allocating read buffers. Maximum handshake size: 4 KiB. Handshake read
-timeout: 5 seconds. On malformed handshake: close connection, increment
-handshake-failure counter. On timeout: close connection, increment counter.
+port. On reading the version byte: if it does not equal 1, the implementation
+must close the connection without reading further bytes, increment the
+handshake-failure counter R45(e), and log the rejected version. Version
+validation must occur before any payload bytes are read, before total-length
+validation. The implementation must read the total-length field next and
+reject the handshake if total-length exceeds 4 KiB, before reading any payload
+bytes. Individual string length prefixes must be validated against remaining
+bytes before allocating read buffers. The nodeId field must be non-empty
+(length > 0) and must not equal the receiving node's own nodeId. Length must
+be in [1, 256] bytes — this check must occur on the raw 4-byte wire
+length-prefix BEFORE allocating a read buffer for the bytes. After reading
+the bytes, the implementation must (not should) validate the byte sequence
+is well-formed UTF-8 per RFC 3629, rejecting overlong encodings and unpaired
+surrogates. Equivalence of `nodeId` for R40a duplicate detection and R23a
+tie-break is byte-equivalence on the validated wire bytes (NOT
+`String.equals` on decoded strings, to avoid normalization-form ambiguity).
+Maximum handshake size: 4 KiB. Handshake read
+timeout: 5 seconds. On malformed handshake (including version mismatch and
+invalid nodeId): close connection, increment handshake-failure counter. On
+timeout: close connection, increment counter.
 
 R40-bidi. The accepting node must send its `NodeAddress` back in the identical
 wire format as R40, including the protocol version byte. The connecting node
@@ -246,9 +326,29 @@ multi-frame message) has been successfully written to the channel. If the write
 fails, the future must be completed exceptionally with `IOException`
 immediately, without waiting for timeout.
 
+R26b. On write failure as defined in R26a, the pending-map entry registered by
+R8 must be removed in the same step as future completion. The removal must
+occur even if the connection is not yet marked dead. Arming the timeout per
+R26a and registering the pending-map removal callback must be performed in a
+single step relative to the future's completion. The timeout-arming mechanism
+must be idempotent against R20's pending-map sweep: re-completion of an
+already-terminal future and re-removal of an already-removed map entry must
+both be no-ops. All pending-map removals (R11, R26, R26b, R20/R25) must use
+value-conditional removal (`ConcurrentMap.remove(streamId, futureRef)` or
+equivalent) so that removal succeeds only when the map entry's value identity
+matches the future being cleaned up. If a different future is present (e.g.,
+post-R6-wrap reuse), the removal must be a true no-op. The future reference
+captured at R8 registration must be carried through to all cleanup paths for
+value-equality comparison. If the timeout-arming step itself fails (e.g.,
+`RejectedExecutionException` from a shutting-down scheduler), the
+implementation must (a) immediately complete the future exceptionally with
+`IOException(transport unavailable)`, (b) remove the pending-map entry by
+value-conditional remove, (c) increment R45(f), and (d) propagate the failure
+to the caller of `request()` if the call site is still on the calling thread.
+
 R27. The pending map must not leak entries. Every entry must be removed exactly
-once: by response completion (R11), timeout (R26), or connection failure
-cleanup (R20/R25).
+once: by response completion (R11), timeout (R26), connection failure cleanup
+(R20/R25), or write-failure cleanup (R26b).
 
 ### Send-Side Validation and Chunking
 
@@ -289,16 +389,36 @@ and check membership on each received frame). Frames for other stream IDs must
 be processed normally during drain. All subsequent frames with the draining
 stream ID and MORE_FRAMES set must be discarded without buffering. When a frame
 with MORE_FRAMES cleared arrives for that stream ID, drain ends and the final
-chunk is also discarded. For request-response: complete the pending future
+chunk is also discarded. For an outbound request whose response is being
+reassembled and exceeds the limit: complete the pending future from R8
 exceptionally with `IOException` indicating the message exceeded the size
-limit.
+limit. For an inbound request whose body is being reassembled and exceeds the
+limit: increment R45's `(l) request-too-large-discarded` counter, do not
+invoke any handler, and send no response (the originating peer's R26 timeout
+handles the failure). The handler-dispatch path is bypassed in this case.
+
+R37c. Each connection must track consecutive R37 inbound size-limit
+violations. If a single connection produces more than `N` (default 4,
+configurable) such violations within a sliding window (default 60 seconds,
+configurable), the connection must be closed per R5's failure semantics
+(close, fail pending futures, schedule reconnection per R24) and R45(c) must
+increment in addition to R45(l). The implementation must also emit a
+structured log entry naming the offending peer's `nodeId`. This bounds the
+denial-of-service surface introduced by R37's silent-drop discipline for
+inbound oversized requests.
 
 R37a. Total memory used for in-progress reassembly buffers across all
 connections and stream IDs must be bounded (default 64 MiB, independently
-configurable from R19a). When this global reassembly budget is exhausted, new
-multi-frame streams must enter drain state (R37) immediately. Reassembly
-buffers are separate from and additional to the R19a read buffer budget; the
-builder must expose both limits.
+configurable from R19a). Before allocating the first reassembly buffer for a
+multi-frame message (a frame with MORE_FRAMES set on a stream-id with no
+existing reassembly state), the transport must check that the post-allocation
+total memory across all in-progress reassemblies will not exceed the global
+reassembly budget. If it would, the stream must be entered into drain state
+(R37) before the first chunk's body is buffered. Single-frame messages
+(MORE_FRAMES cleared on first frame) do not consume reassembly-budget memory
+and are bounded only by R5's max-frame-size. Reassembly buffers are separate
+from and additional to the R19a read buffer budget; the builder must expose
+both limits.
 
 R38. Multi-frame reassembly must be isolated per stream ID. Chunks for stream
 ID 5 must not interfere with reassembly of stream ID 7.
@@ -313,7 +433,11 @@ The accept loop must check the closed flag after each `accept()` — if closed,
 close any newly accepted channel immediately without handshake processing.
 `close()` must interrupt and join the accept-loop virtual thread (bounded
 timeout, 5 seconds) to ensure no new connections are accepted after close
-completes.
+completes. In-progress handler invocations dispatched per R34 must complete
+normally per R34a's non-interruption rule; any response they attempt to send
+after step (1) must be discarded silently. The transport must increment
+R45's `(k) post-close-response-discards` counter for each such drop,
+distinguishing it from R45(f) write-failures and R34b overflows.
 
 R29. After `close()`: `send()` must throw `IOException` with a message
 indicating the transport is closed. `request()` must throw
@@ -322,16 +446,30 @@ throw `IllegalStateException`.
 
 ### Peer Departure
 
-R30. On peer departure notification: close connection, complete pending futures
-exceptionally, remove from registry, cancel in-progress reconnection. Departure
-cleanup must atomically remove the connection and mark the peer as departed.
-Must not block the notification thread.
+R30. On peer-departure notification, the transport must (1) atomically under
+the per-peer registry lock from R23a: install a `cleanupBarrier`
+(`CompletableFuture<Void>` or equivalent) into the per-peer slot, mark the
+peer as DEPARTED, remove the registry entry, and cancel any in-progress
+reconnect task; (2) outside the registry lock and on a dispatched virtual
+thread: close the channel, complete pending futures exceptionally, and as the
+final action complete the `cleanupBarrier`. The slot identity (per-peer Lock
+plus barrier slot) must persist across the cleanup window per R23a's lock
+lifetime rule. The DEPARTED mark, registry removal, and barrier installation
+in step (1) must all be visible to any subsequent `send()`/`request()` per
+R30a before step (2) begins. Step (2) must not block the notification
+thread — implementations must dispatch step (2) to a virtual thread.
 
 R30a. The reconnection loop must check that the peer has not departed before
 establishing a new connection. Subsequent `send()`/`request()` to a re-joining
-peer must acquire the registry lock and check for in-progress cleanup before
-creating a new connection. If cleanup is in progress, the new connection must
-wait for cleanup to complete.
+peer must acquire the per-peer registry lock and check for in-progress
+cleanup before creating a new connection. The check is: `cleanupBarrier ==
+null || cleanupBarrier.isDone()`. If the barrier exists and is not done, the
+caller must `await` the barrier (with a timeout matching R26's request
+timeout) under the per-peer lock; on timeout the new connection attempt is
+abandoned with `IOException(cleanup-timeout)`. If cleanup is in progress, the
+new connection must wait for cleanup (the barrier) to complete before
+proceeding.
+
 
 ### Scale
 
@@ -372,14 +510,45 @@ request), no response is sent; the remote peer's future will complete via
 timeout (R26). This is intentional — the transport provides no explicit
 backpressure signal to remote peers.
 
+R34c. Response messages (RESPONSE flag set) must bypass the R34b semaphore and
+queue. Responses are completed directly on the reader virtual thread by
+removing the entry from the pending map (R11) and completing the future.
+Handler dispatch (R12, R13) is the only path subject to R34b limits. The
+reader virtual thread must never block on R34b semaphore acquisition for
+response messages. This requirement prevents handler-callback deadlock when a
+handler in the bounded pool issues `request()` and then awaits the response —
+the response cannot be enqueued behind handler-bound traffic. After R28
+step (1) sets the closed flag, the reader thread must check the closed flag
+before completing any in-flight response future. If closed, the response must
+be discarded and the future must NOT be completed (it will be completed
+exceptionally by R28 step (2)). Implementations must order step (1)'s flag
+set and step (2)'s pending iteration with a memory barrier such that any
+reader thread observing the flag set will not subsequently `complete(value)`
+a future that step (2) has already completed exceptionally. Future completion
+on the reader thread must use `complete()` (not `obtrudeValue()`); use of
+`obtrudeValue` is forbidden.
+
+R34d. Handler completion is defined as: for synchronous handlers, the moment
+the handler method returns or throws; for asynchronous handlers (those that
+return `CompletableFuture<Message>` or equivalent), the moment the returned
+future transitions to a terminal state. The R34b semaphore must remain held
+until handler completion under this definition, NOT merely until the method
+returns. R45(m) must increment on either a synchronous throw or an
+asynchronous exceptional completion. R34a's "in-progress" handler is defined
+identically: a handler is in progress until the returned future completes.
+
 ### Observability
 
 R45. The transport must maintain queryable counters for: (a) orphaned
 responses, (b) no-handler discards, (c) corrupt frame disconnections, (d)
 reassembly limit exceeded, (e) handshake failures (malformed, timeout,
-duplicate nodeId, accept errors), (f) write failures, (g) reconnection
-attempts, (h) handler dispatch overflow, (i) stream ID exhaustion. These
-counters must be accessible via a metrics/stats method.
+version mismatch, invalid nodeId, duplicate nodeId, accept errors), (f) write
+failures, (g) reconnection attempts, (h) handler dispatch overflow, (i)
+stream ID exhaustion, (j) handshake-blocked send/request count (R22a wait
+events), (k) post-close response discards (R28), (l)
+request-too-large-discarded (R37 inbound size-limit), (m) handler exceptions
+on incoming requests (R14). These counters must be accessible via a
+metrics/stats method.
 
 ---
 
@@ -404,6 +573,14 @@ that traffic priority (DRR) and backpressure (credit-based Flow API) build on.
 The incremental complexity over bare TCP (correlation dispatch, pending map,
 handshake, reassembly) is unavoidable — even connection-per-peer needs framing
 for `request()` semantics.
+
+The wire format is binary framing inspired by Kafka's 4-byte length prefix +
+fixed-position header pattern, but with three deliberate divergences:
+(1) per-direction stream-id allocation requiring a RESPONSE flag (R10);
+(2) an 8-byte sequence number for membership protocol use (no Kafka analogue);
+(3) bidirectional handshake with version validation (R40-bidi).
+Implementers should not assume Kafka wire-protocol compatibility — the
+spec, not Kafka, is authoritative.
 
 ### What was ruled out
 
@@ -441,7 +618,7 @@ simultaneously, consuming unbounded memory.
 
 ### Hardening summary
 
-This spec was refined through three adversarial falsification rounds:
+This spec was refined through four adversarial falsification rounds:
 - Round 1: 20 findings — server socket, handshake, sender identity, sequence
   number, bidirectional connections, stream ID wraparound, type tag encoding,
   send-side validation
@@ -451,3 +628,59 @@ This spec was refined through three adversarial falsification rounds:
 - Round 3: 7 findings — reverse handshake format, chunk header consistency,
   handshake state, reassembly memory budget, accept loop resilience, handshake
   field validation
+- Round 4 (v2): 16 findings — pending-map cleanup on write failure (R26b),
+  peer-departure cleanup atomicity (R30 split into atomic-mutation + dispatched
+  side-effects), handler-callback dispatch deadlock (R34c response bypass),
+  reassembly limit inbound vs outbound disambiguation (R37 split), per-peer
+  registry locking (R23a generalised), dual-handshake-in-flight resolution
+  (R23b), accept-loop safe publication (R39), handshake version validation
+  and nodeId well-formedness (R40), reassembly budget first-chunk check (R37a),
+  stream-id wrap clarification (R6), in-flight handler dispatch on dead
+  connection (R20 extension), post-close handler response disposition (R28
+  extension), observability counters extended (R45 j/k/l/m), Kafka-divergence
+  narrative clarification.
+- Round 5 (v3, depth pass — fix-consequence bugs from Round 4): 11 findings —
+  R30 cleanupBarrier + R30a wait semantics for the dispatched-cleanup window,
+  R23a per-peer Lock object lifetime stability (no eviction, or stripe by
+  hash), R26b value-conditional pending-map removal + scheduler-failure
+  handling, R37c per-connection abuse threshold for repeated inbound
+  size-limit violations, R34c reader-thread closed-flag check before
+  completing in-flight responses (forbid `obtrudeValue`), R39 explicit
+  backlog-and-budget discipline for option (a) plus option (c) for
+  bind-on-start, R20 lazy queue drain via per-task connection epoch (avoids
+  O(N) iteration under R34b lock), R23b N≥3 connection generalisation
+  (R23a-vs-R40a precedence), R34d handler completion semantics for
+  synchronous vs asynchronous handlers, R40 nodeId length-prefix validation
+  on raw wire bytes (UTF-8 well-formedness MUST not should), Kafka-divergence
+  already addressed in Round 4.
+
+### Known uncertain area (carried forward, not normative)
+
+UF4 — R34c reader-thread response completion may execute caller-supplied
+synchronous callbacks (`.thenApply` / `.whenComplete` chains) on the reader
+thread, blocking frame parsing for the duration of those callbacks. R34c
+prevents handler-callback deadlock by bypassing R34b for responses, but does
+not bind the caller's chained-callback execution policy. Callers that need
+to perform blocking work in response to a request future must use
+`.thenApplyAsync(executor)` to offload. This is a usage discipline, not a
+spec requirement; the spec author may choose to tighten R34c to mandate
+`completeAsync(value, dispatchExecutor)` on the reader thread if profiling
+demonstrates reader starvation. Not normative pending real-world signal.
+
+## Verification Notes
+
+This spec was authored through `/spec-author` with three formal adversarial
+falsification rounds (the "Hardening summary" Round 4 + Round 5 in this
+narrative; Rounds 1-3 were the pre-migration F19 hardening). All findings
+were applied; the v3 spec carries an ambiguity score of 0.00 (no
+[UNVERIFIED], [UNRESOLVED], or [CONFLICT] markers across 69 requirement
+clauses). The spec has zero `open_obligations` at registration.
+
+Direct implementation and test annotations will be added during the
+`/work-start` implementation phase per the WD-01 acceptance criterion
+"transport.multiplexed-framing R1-R∞ all have direct impl + test
+annotations". The new requirements introduced in v2/v3 (R23b, R26b, R34c,
+R34d, R37c) and the amended requirements (R6, R20, R23a, R27, R28, R30,
+R30a, R34c, R37, R37a, R39, R40, R45) all require corresponding test
+coverage during `/work-start` `/feature-test` and `/feature-implement`
+stages.

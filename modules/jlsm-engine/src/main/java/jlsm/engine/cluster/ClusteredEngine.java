@@ -1,5 +1,9 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.ClusterTransport;
+
 import jlsm.encryption.TableScope;
 import jlsm.engine.Engine;
 import jlsm.engine.EngineMetrics;

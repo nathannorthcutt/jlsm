@@ -5,7 +5,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 
 /**
  * State machine for a single observer-agreement round in the RAPID consensus protocol.

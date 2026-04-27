@@ -1,9 +1,11 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+
 import jlsm.engine.cluster.internal.CatalogClusteredTable;
 
 import jlsm.engine.TableMetadata;
-import jlsm.engine.cluster.internal.InJvmTransport;
+import jlsm.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
 import jlsm.table.FieldType;
 import jlsm.table.JlsmDocument;

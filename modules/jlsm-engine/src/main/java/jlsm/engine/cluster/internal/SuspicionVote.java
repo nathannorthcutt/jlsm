@@ -1,10 +1,12 @@
 package jlsm.engine.cluster.internal;
 
+import jlsm.cluster.internal.NodeAddressCodec;
+
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 
 /**
  * Immutable payload for the {@code SUSPICION_VOTE} VIEW_CHANGE sub-type (byte {@code 0x06}).

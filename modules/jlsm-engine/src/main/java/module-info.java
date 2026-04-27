@@ -2,6 +2,7 @@
 // transitive requires on jlsm.table exposes shared document/schema/query types
 module jlsm.engine {
     requires transitive jlsm.table;
+    requires transitive jlsm.cluster;
     requires jlsm.core;
     requires java.logging;
 

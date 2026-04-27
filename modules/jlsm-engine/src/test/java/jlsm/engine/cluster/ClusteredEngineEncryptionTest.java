@@ -1,5 +1,7 @@
 package jlsm.engine.cluster;
 
+import jlsm.cluster.NodeAddress;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -24,7 +26,7 @@ import jlsm.engine.Table;
 import jlsm.engine.TableMetadata;
 import jlsm.engine.cluster.internal.GracePeriodManager;
 import jlsm.engine.cluster.internal.InJvmDiscoveryProvider;
-import jlsm.engine.cluster.internal.InJvmTransport;
+import jlsm.cluster.internal.InJvmTransport;
 import jlsm.engine.cluster.internal.RendezvousOwnership;
 import jlsm.table.FieldType;
 import jlsm.table.JlsmSchema;

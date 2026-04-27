@@ -1,10 +1,10 @@
-package jlsm.engine.cluster.internal;
+package jlsm.cluster.internal;
 
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.NodeAddress;
 
 /**
  * Shared big-endian {@link NodeAddress} binary codec.
@@ -20,12 +20,12 @@ import jlsm.engine.cluster.NodeAddress;
  * All methods throw {@link IllegalArgumentException} on truncated payloads or invalid length
  * prefixes; callers should wrap upstream byte input so these exceptions surface as decoder errors.
  */
-final class NodeAddressCodec {
+public final class NodeAddressCodec {
 
     private NodeAddressCodec() {
     }
 
-    static byte[] encode(NodeAddress addr) {
+    public static byte[] encode(NodeAddress addr) {
         final byte[] nodeId = addr.nodeId().getBytes(StandardCharsets.UTF_8);
         final byte[] host = addr.host().getBytes(StandardCharsets.UTF_8);
         final ByteBuffer buf = ByteBuffer.allocate(4 + nodeId.length + 4 + host.length + 4);
@@ -37,7 +37,7 @@ final class NodeAddressCodec {
         return buf.array();
     }
 
-    static NodeAddress decode(ByteBuffer buf, String fieldLabel) {
+    public static NodeAddress decode(ByteBuffer buf, String fieldLabel) {
         final int nodeIdLen;
         try {
             nodeIdLen = buf.getInt();

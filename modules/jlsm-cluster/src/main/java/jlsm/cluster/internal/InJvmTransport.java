@@ -1,10 +1,10 @@
-package jlsm.engine.cluster.internal;
+package jlsm.cluster.internal;
 
-import jlsm.engine.cluster.ClusterTransport;
-import jlsm.engine.cluster.Message;
-import jlsm.engine.cluster.MessageHandler;
-import jlsm.engine.cluster.MessageType;
-import jlsm.engine.cluster.NodeAddress;
+import jlsm.cluster.ClusterTransport;
+import jlsm.cluster.Message;
+import jlsm.cluster.MessageHandler;
+import jlsm.cluster.MessageType;
+import jlsm.cluster.NodeAddress;
 
 import java.io.IOException;
 import java.time.Duration;
