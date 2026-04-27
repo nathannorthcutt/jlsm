@@ -1,5 +1,7 @@
 package jlsm.encryption;
 
+import java.io.IOException;
+
 /**
  * Sealed base class classifying a failure returned from the {@link KmsClient} SPI. The sealed
  * hierarchy partitions errors into {@link KmsTransientException} (retry is permitted) and
@@ -8,15 +10,19 @@ package jlsm.encryption;
  * pattern-match the sealed subtypes.
  *
  * <p>
- * Modelled as an abstract sealed {@code Exception} rather than an interface because Java's
- * checked-exception plumbing requires a {@link Throwable} subclass; the sealed modifier delivers
- * the "closed set of subtypes" property an interface would have provided.
+ * Modelled as an abstract sealed subclass of {@link IOException} per R83 — the
+ * {@code KmsPermanentException} subtree (and its {@link KekRevokedException} subtree) MUST extend
+ * {@code IOException} so the read-path failure type matrix has a uniform checked-exception parent.
+ * The sealed modifier delivers the "closed set of subtypes" property an interface would have
+ * provided.
  *
  * <p>
  * Governed by: spec {@code encryption.primitives-lifecycle} R76a (permanent vs transient
- * classification).
+ * classification), R83 (IOException parent for the permanent subtree).
+ *
+ * @spec encryption.primitives-lifecycle R83
  */
-public abstract sealed class KmsException extends Exception
+public abstract sealed class KmsException extends IOException
         permits KmsTransientException, KmsPermanentException {
 
     private static final long serialVersionUID = 1L;

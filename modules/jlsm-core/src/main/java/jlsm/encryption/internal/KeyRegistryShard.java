@@ -3,6 +3,7 @@ package jlsm.encryption.internal;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 import jlsm.encryption.DekHandle;
 import jlsm.encryption.DomainId;
@@ -31,7 +32,9 @@ import jlsm.encryption.WrappedDomainKek;
  * @param hkdfSalt HKDF salt bytes (defensively copied; see accessor note)
  */
 public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> deks,
-        Map<DomainId, WrappedDomainKek> domainKeks, KekRef activeTenantKekRef, byte[] hkdfSalt) {
+        Map<DomainId, WrappedDomainKek> domainKeks, KekRef activeTenantKekRef, byte[] hkdfSalt,
+        RetiredReferences retiredReferences, Optional<RekeyCompleteMarker> rekeyCompleteMarker,
+        PermanentlyRevokedDeksSet permanentlyRevokedDeks) {
 
     /**
      * @throws NullPointerException if any non-nullable reference is null
@@ -41,6 +44,9 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
         Objects.requireNonNull(deks, "deks must not be null");
         Objects.requireNonNull(domainKeks, "domainKeks must not be null");
         Objects.requireNonNull(hkdfSalt, "hkdfSalt must not be null");
+        Objects.requireNonNull(retiredReferences, "retiredReferences must not be null");
+        Objects.requireNonNull(rekeyCompleteMarker, "rekeyCompleteMarker must not be null");
+        Objects.requireNonNull(permanentlyRevokedDeks, "permanentlyRevokedDeks must not be null");
         // activeTenantKekRef may be null (first-write case)
         // Per-entry null checks ahead of Map.copyOf so operators see which field and
         // which key produced the null when a corrupt shard is rejected. Map.copyOf's
@@ -69,6 +75,18 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
         deks = Map.copyOf(deks);
         domainKeks = Map.copyOf(domainKeks);
         hkdfSalt = hkdfSalt.clone();
+    }
+
+    /**
+     * Backward-compatible 5-arg constructor for callers that don't carry WD-03 v2 extension state.
+     * The new components default to empty / absent. Used by initial-load synthesis and v1 shard
+     * deserialization.
+     */
+    public KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> deks,
+            Map<DomainId, WrappedDomainKek> domainKeks, KekRef activeTenantKekRef,
+            byte[] hkdfSalt) {
+        this(tenantId, deks, domainKeks, activeTenantKekRef, hkdfSalt, RetiredReferences.empty(),
+                Optional.empty(), PermanentlyRevokedDeksSet.empty());
     }
 
     /**
@@ -106,7 +124,8 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
         Objects.requireNonNull(newDek, "newDek must not be null");
         final java.util.Map<DekHandle, WrappedDek> next = new java.util.HashMap<>(deks);
         next.put(newDek.handle(), newDek);
-        return new KeyRegistryShard(tenantId, next, domainKeks, activeTenantKekRef, hkdfSalt);
+        return new KeyRegistryShard(tenantId, next, domainKeks, activeTenantKekRef, hkdfSalt,
+                retiredReferences, rekeyCompleteMarker, permanentlyRevokedDeks);
     }
 
     /**
@@ -119,7 +138,8 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
         Objects.requireNonNull(newDomainKek, "newDomainKek must not be null");
         final java.util.Map<DomainId, WrappedDomainKek> next = new java.util.HashMap<>(domainKeks);
         next.put(newDomainKek.domainId(), newDomainKek);
-        return new KeyRegistryShard(tenantId, deks, next, activeTenantKekRef, hkdfSalt);
+        return new KeyRegistryShard(tenantId, deks, next, activeTenantKekRef, hkdfSalt,
+                retiredReferences, rekeyCompleteMarker, permanentlyRevokedDeks);
     }
 
     /**
@@ -129,7 +149,53 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
      */
     public KeyRegistryShard withTenantKekRef(KekRef newRef) {
         Objects.requireNonNull(newRef, "newRef must not be null");
-        return new KeyRegistryShard(tenantId, deks, domainKeks, newRef, hkdfSalt);
+        return new KeyRegistryShard(tenantId, deks, domainKeks, newRef, hkdfSalt, retiredReferences,
+                rekeyCompleteMarker, permanentlyRevokedDeks);
+    }
+
+    // --- WD-03 stubs ----------------------------------------------------
+    // The shard is extended with four new logical fields delivered by WD-03:
+    // - retired : RetiredReferences
+    // - rekeyComplete : Optional<RekeyCompleteMarker>
+    // - permanentlyRevoked : PermanentlyRevokedDeksSet
+    // - dualRefDeks : Map<DekHandle, DualWrappedDek> // during in-flight rekey
+    // The canonical record components are NOT yet bumped — adding components is a breaking
+    // change to existing serialized form and to every KeyRegistryShard constructor site
+    // (TenantShardRegistry, ShardStorage, EncryptionKeyHolder). The implementation pipeline
+    // bumps the record signature and ShardStorage FORMAT_VERSION (1 → 2) atomically.
+
+    /**
+     * Produce a new shard with {@code retired} replacing the prior retired-references container.
+     *
+     * @spec encryption.primitives-lifecycle R33
+     */
+    public KeyRegistryShard withRetiredReferences(RetiredReferences retired) {
+        Objects.requireNonNull(retired, "retired must not be null");
+        return new KeyRegistryShard(tenantId, deks, domainKeks, activeTenantKekRef, hkdfSalt,
+                retired, rekeyCompleteMarker, permanentlyRevokedDeks);
+    }
+
+    /**
+     * Produce a new shard with {@code marker} replacing the prior rekey-complete marker (or
+     * installing one for the first time).
+     *
+     * @spec encryption.primitives-lifecycle R78f
+     */
+    public KeyRegistryShard withRekeyCompleteMarker(RekeyCompleteMarker marker) {
+        Objects.requireNonNull(marker, "marker must not be null");
+        return new KeyRegistryShard(tenantId, deks, domainKeks, activeTenantKekRef, hkdfSalt,
+                retiredReferences, Optional.of(marker), permanentlyRevokedDeks);
+    }
+
+    /**
+     * Produce a new shard with {@code revoked} replacing the prior permanently-revoked DEKs set.
+     *
+     * @spec encryption.primitives-lifecycle R83g
+     */
+    public KeyRegistryShard withPermanentlyRevokedDeks(PermanentlyRevokedDeksSet revoked) {
+        Objects.requireNonNull(revoked, "revoked must not be null");
+        return new KeyRegistryShard(tenantId, deks, domainKeks, activeTenantKekRef, hkdfSalt,
+                retiredReferences, rekeyCompleteMarker, revoked);
     }
 
     @Override
@@ -143,7 +209,10 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
         return tenantId.equals(other.tenantId) && deks.equals(other.deks)
                 && domainKeks.equals(other.domainKeks)
                 && Objects.equals(activeTenantKekRef, other.activeTenantKekRef)
-                && Arrays.equals(hkdfSalt, other.hkdfSalt);
+                && Arrays.equals(hkdfSalt, other.hkdfSalt)
+                && retiredReferences.equals(other.retiredReferences)
+                && rekeyCompleteMarker.equals(other.rekeyCompleteMarker)
+                && permanentlyRevokedDeks.equals(other.permanentlyRevokedDeks);
     }
 
     @Override
@@ -153,6 +222,9 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
         result = 31 * result + domainKeks.hashCode();
         result = 31 * result + Objects.hashCode(activeTenantKekRef);
         result = 31 * result + Arrays.hashCode(hkdfSalt);
+        result = 31 * result + retiredReferences.hashCode();
+        result = 31 * result + rekeyCompleteMarker.hashCode();
+        result = 31 * result + permanentlyRevokedDeks.hashCode();
         return result;
     }
 
@@ -160,6 +232,9 @@ public record KeyRegistryShard(TenantId tenantId, Map<DekHandle, WrappedDek> dek
     public String toString() {
         return "KeyRegistryShard[tenantId=" + tenantId + ", deks=<" + deks.size()
                 + " entries>, domainKeks=<" + domainKeks.size() + " entries>, activeTenantKekRef="
-                + activeTenantKekRef + ", hkdfSalt=<" + hkdfSalt.length + " bytes>]";
+                + activeTenantKekRef + ", hkdfSalt=<" + hkdfSalt.length + " bytes>, retired=<"
+                + retiredReferences.entries().size() + " entries>, rekeyComplete="
+                + rekeyCompleteMarker.isPresent() + ", revokedDeks=<"
+                + permanentlyRevokedDeks.handles().size() + " entries>]";
     }
 }

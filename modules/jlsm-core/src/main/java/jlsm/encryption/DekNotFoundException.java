@@ -14,7 +14,10 @@ import java.util.Objects;
  * <p>
  * Governed by: spec {@code encryption.primitives-lifecycle} R24, R57.
  */
-public final class DekNotFoundException extends IllegalStateException {
+// WD-03: implements {@link RetryDisposition.NonRetryable} so callers using the
+// retry-disposition marker pattern do not retry a missing-DEK condition.
+public final class DekNotFoundException extends IllegalStateException
+        implements RetryDisposition.NonRetryable {
 
     private static final long serialVersionUID = 1L;
 

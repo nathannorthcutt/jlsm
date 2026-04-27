@@ -7,7 +7,9 @@ package jlsm.encryption;
  * <p>
  * Governed by: spec {@code encryption.primitives-lifecycle} R76a.
  */
-public final class KmsPermanentException extends KmsException {
+// WD-03: sealed to permit only the {@link KekRevokedException} subhierarchy. Direct extension
+// is forbidden; new permanent-class faults must extend {@link KekRevokedException} (also sealed).
+public sealed class KmsPermanentException extends KmsException permits KekRevokedException {
 
     private static final long serialVersionUID = 1L;
 

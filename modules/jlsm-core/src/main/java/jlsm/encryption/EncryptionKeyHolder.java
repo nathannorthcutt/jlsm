@@ -13,12 +13,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import jlsm.encryption.internal.AesGcmContextWrap;
+import jlsm.encryption.internal.DekVersionRegistry;
 import jlsm.encryption.internal.Hkdf;
 import jlsm.encryption.internal.KeyRegistryShard;
 import jlsm.encryption.internal.TenantShardRegistry;
@@ -89,6 +91,36 @@ public final class EncryptionKeyHolder implements AutoCloseable {
     private final Duration cacheTtl;
     private final Clock clock;
     private final SecureRandom rng;
+    /**
+     * Optional WD-03 collaborator: receives a CoW publish of the new DEK version after each
+     * successful {@link #generateDek}. May be null on builders that opt out (backward-compatible).
+     */
+    private final DekVersionRegistry dekVersionRegistry;
+    /**
+     * Optional WD-03 collaborator: receives lifecycle events (R78g rekey events, R83f state
+     * transitions). May be null; rekey() emits to a no-op observer when unset.
+     */
+    private final KmsObserver observer;
+    /** Lazily-initialised per-holder rekey-progress store (R78c). */
+    private final java.util.concurrent.atomic.AtomicReference<jlsm.encryption.internal.RekeyProgress> rekeyProgressRef = new java.util.concurrent.atomic.AtomicReference<>();
+    /** Lazily-initialised per-holder liveness witness (R78e). */
+    private final java.util.concurrent.atomic.AtomicReference<jlsm.encryption.internal.LivenessWitness> livenessWitnessRef = new java.util.concurrent.atomic.AtomicReference<>();
+    /**
+     * Holder-scoped shard-lock registry. Shared across all WD-03 rotation invocations on this
+     * holder so concurrent rekey or rotateTenantKek calls serialize on the same per-shard lock
+     * (R34a). Allocating a fresh registry per call would mean two concurrent rekeys could acquire
+     * exclusive locks on the same logical shard simultaneously.
+     */
+    private final jlsm.encryption.internal.ShardLockRegistry shardLockRegistry = jlsm.encryption.internal.ShardLockRegistry
+            .create();
+    /**
+     * Per-tenant rekey event sequence counter. Resumes from the persisted lastEmittedEventSeq+1 on
+     * resume; advances monotonically across shard-commit and witness-progress events. Distinct from
+     * the durable {@code lastEmittedEventSeq} field in the progress record — we use
+     * {@code AtomicLong} for the in-memory counter and persist the value durably after each
+     * observer-observed emission per R78g.
+     */
+    private final ConcurrentHashMap<TenantId, java.util.concurrent.atomic.AtomicLong> rekeyEventSeq = new ConcurrentHashMap<>();
 
     private final Arena cacheArena;
     private final ConcurrentHashMap<DomainKey, CachedDomainKek> domainCache = new ConcurrentHashMap<>();
@@ -106,6 +138,8 @@ public final class EncryptionKeyHolder implements AutoCloseable {
         this.clock = builder.clock != null ? builder.clock : Clock.systemUTC();
         this.rng = builder.rng != null ? builder.rng : new SecureRandom();
         this.cacheArena = Arena.ofShared();
+        this.dekVersionRegistry = builder.dekVersionRegistry;
+        this.observer = builder.observer;
     }
 
     /** Start a new builder. */
@@ -254,11 +288,12 @@ public final class EncryptionKeyHolder implements AutoCloseable {
             // Pre-generate DEK plaintext — the mutator captures it via closure.
             final byte[] dekPlaintext = new byte[DEK_BYTES];
             rng.nextBytes(dekPlaintext);
+            final DekHandle handle;
             try {
-                return registry.updateShard(tenantId, current -> {
+                handle = registry.updateShard(tenantId, current -> {
                     final int nextVersion = nextDekVersion(current, tenantId, domainId, tableId);
                     final DekVersion ver = new DekVersion(nextVersion);
-                    final DekHandle handle = new DekHandle(tenantId, domainId, tableId, ver);
+                    final DekHandle h = new DekHandle(tenantId, domainId, tableId, ver);
                     final EncryptionContext ctx = EncryptionContext.forDek(tenantId, domainId,
                             tableId, ver);
                     final byte[] wrapped;
@@ -281,16 +316,60 @@ public final class EncryptionKeyHolder implements AutoCloseable {
                     final KekRef effectiveRef = current.activeTenantKekRef() != null
                             ? current.activeTenantKekRef()
                             : activeTenantKekRef;
-                    final WrappedDek wd = new WrappedDek(handle, wrapped, domainKekVersion,
-                            effectiveRef, clock.instant());
+                    final WrappedDek wd = new WrappedDek(h, wrapped, domainKekVersion, effectiveRef,
+                            clock.instant());
                     final KeyRegistryShard newShard = current.withDek(wd);
-                    return new TenantShardRegistry.ShardUpdate<>(newShard, handle);
+                    return new TenantShardRegistry.ShardUpdate<>(newShard, h);
                 });
             } finally {
                 Arrays.fill(dekPlaintext, (byte) 0);
             }
+            // R64 + WD-03 P4-22: publish the new version to the wait-free DekVersionRegistry
+            // AFTER persistence completes (registry.updateShard has fsynced and published the
+            // new in-memory snapshot). The publish lives outside the per-tenant write lock and
+            // outside the wrap window — readers observe the in-memory version registry only
+            // after the durable shard is committed. If the version registry collaborator was
+            // not wired (legacy callers), no publish happens.
+            if (dekVersionRegistry != null) {
+                publishVersionUpdate(tenantId, domainId, tableId, handle.version().value());
+            }
+            return handle;
         } finally {
             deriveGuard.readLock().unlock();
+        }
+    }
+
+    /**
+     * Publish the post-generateDek version snapshot to the wait-free {@link DekVersionRegistry}
+     * (R64). Reads the post-write tenant shard once (already cached by {@code updateShard}'s
+     * volatile-snapshot publish), computes the in-scope known-version set + new current, and
+     * CoW-publishes to the version registry. Failures here do not roll back the shard write — the
+     * durable shard is the authoritative record (P4-22).
+     */
+    private void publishVersionUpdate(TenantId tenantId, DomainId domainId, TableId tableId,
+            int newCurrent) {
+        try {
+            final KeyRegistryShard snap = registry.readSnapshot(tenantId);
+            final HashSet<Integer> known = new HashSet<>();
+            for (DekHandle h : snap.deks().keySet()) {
+                if (h.tenantId().equals(tenantId) && h.domainId().equals(domainId)
+                        && h.tableId().equals(tableId)) {
+                    known.add(h.version().value());
+                }
+            }
+            // newCurrent must always be a member of known after a successful generateDek (the
+            // mutator persisted it before this read), but include it defensively in case the
+            // shard read raced a peculiar concurrent state.
+            known.add(newCurrent);
+            final TableScope scope = new TableScope(tenantId, domainId, tableId);
+            dekVersionRegistry.publishUpdate(scope, newCurrent, known);
+        } catch (IOException e) {
+            // The shard read just after a successful write is highly unlikely to fail — but if
+            // it does, surface it as UncheckedIOException matching currentDek/resolveDek's
+            // boundary discipline. The DEK is durably persisted; a subsequent generateDek (or
+            // explicit CoW publish) will re-establish the version registry.
+            throw new UncheckedIOException(
+                    "failed to read tenant shard for DekVersionRegistry publish", e);
         }
     }
 
@@ -406,6 +485,312 @@ public final class EncryptionKeyHolder implements AutoCloseable {
                             + "suppressed exceptions",
                     primary);
         }
+    }
+
+    // --- WD-03 stubs ----------------------------------------------------
+    // The following methods extend the holder facade to expose WD-03 lifecycle operations.
+    // Logic is delivered by the WD-03 implementation pipeline; these stubs throw
+    // UnsupportedOperationException and exist purely so callers and tests can compile against
+    // the post-WD-03 surface during planning.
+
+    /**
+     * Resume or begin a tenant-KEK rekey. Verifies the supplied {@link RekeySentinel} via the
+     * dual-unwrap protocol (R78a), then advances one shard batch. Returns a new
+     * {@link ContinuationToken} the caller passes back to continue, or completes the rekey when the
+     * returned token's kind is terminal.
+     *
+     * @throws NullPointerException if any argument is null
+     * @throws KmsException on KMS failure
+     * @throws IOException on registry I/O failure
+     * @spec encryption.primitives-lifecycle R78a, R78b, R78f
+     */
+    public ContinuationToken rekey(TenantId tenantId, KekRef oldRef, KekRef newRef,
+            RekeySentinel proof, ContinuationToken token) throws KmsException, IOException {
+        Objects.requireNonNull(tenantId, "tenantId");
+        Objects.requireNonNull(oldRef, "oldRef");
+        Objects.requireNonNull(newRef, "newRef");
+        Objects.requireNonNull(proof, "proof");
+        // token may be null on the first call (fresh rekey)
+        if (oldRef.equals(newRef)) {
+            throw new IllegalArgumentException("oldRef and newRef must differ");
+        }
+        requireOpen();
+
+        // R78a — verify the proof of control before any shard mutation. Sentinel mismatch is a
+        // permanent failure (KmsPermanentException) and aborts the rekey.
+        jlsm.encryption.internal.RekeySentinelVerifier.verify(kmsClient, oldRef, newRef, proof);
+
+        final jlsm.encryption.internal.RekeyProgress progress = rekeyProgress();
+        final jlsm.encryption.internal.LivenessWitness witness = livenessWitness();
+        final java.util.Optional<jlsm.encryption.internal.RekeyProgress.ProgressRecord> existing = progress
+                .read(tenantId);
+
+        // R78g-2 — distinguish start vs resume by the token argument.
+        final long rekeyEpoch;
+        final long startingEventSeq;
+        final boolean isResume;
+        if (token == null) {
+            // Start path. A progress file for the same (oldRef, newRef) that is incomplete means
+            // a prior caller crashed mid-rekey on this exact pair — that is a resume, not a fresh
+            // start. The user must pass the existing token to resume; fail the start so resume
+            // isn't silently misclassified.
+            if (existing.isPresent()) {
+                final var prior = existing.get();
+                final boolean priorComplete = registry.readSnapshot(tenantId).rekeyCompleteMarker()
+                        .filter(m -> m.completedKekRef().equals(newRef)).isPresent();
+                if (priorComplete) {
+                    return null;
+                }
+                if (prior.oldKekRef().equals(oldRef) && prior.newKekRef().equals(newRef)) {
+                    throw new IllegalStateException("rekey already in flight for tenant=" + tenantId
+                            + " (rekeyEpoch=" + prior.rekeyEpoch()
+                            + "); pass the continuation token to resume");
+                }
+                throw new IllegalStateException(
+                        "another in-flight rekey exists for tenant=" + tenantId + " under refs ("
+                                + prior.oldKekRef().value() + " -> " + prior.newKekRef().value()
+                                + "); finish or abort before starting a new " + "rekey");
+            }
+            rekeyEpoch = 1L;
+            startingEventSeq = 0L;
+            isResume = false;
+        } else {
+            // Resume path — verify token matches progress file.
+            if (!token.tenantId().equals(tenantId) || !token.oldKekRef().equals(oldRef)
+                    || !token.newKekRef().equals(newRef)) {
+                throw new IllegalArgumentException(
+                        "continuation token does not match (tenantId, oldRef, newRef)");
+            }
+            if (existing.isEmpty()) {
+                final var marker = registry.readSnapshot(tenantId).rekeyCompleteMarker();
+                if (marker.isPresent() && marker.get().completedKekRef().equals(newRef)) {
+                    return null;
+                }
+                throw new IllegalArgumentException(
+                        "continuation token references a tenant with no in-flight rekey");
+            }
+            final var prior = existing.get();
+            if (!prior.oldKekRef().equals(oldRef) || !prior.newKekRef().equals(newRef)) {
+                throw new IllegalArgumentException(
+                        "continuation token oldRef/newRef differs from in-flight rekey progress");
+            }
+            if (prior.rekeyEpoch() != token.rekeyEpoch()) {
+                throw new IllegalArgumentException("continuation token rekeyEpoch ("
+                        + token.rekeyEpoch() + ") does not match in-flight progress ("
+                        + prior.rekeyEpoch() + ")");
+            }
+            rekeyEpoch = prior.rekeyEpoch();
+            startingEventSeq = prior.lastEmittedEventSeq() + 1;
+            isResume = true;
+        }
+
+        // Per-tenant in-memory event-seq counter is initialised on (tenantId, rekeyEpoch) start.
+        final java.util.concurrent.atomic.AtomicLong seqCounter = rekeyEventSeq.computeIfAbsent(
+                tenantId, _t -> new java.util.concurrent.atomic.AtomicLong(startingEventSeq));
+
+        // Emit rekeyStarted (or rekeyResumed) the first time we cross this branch.
+        if (token == null) {
+            emitRekeyEvent(tenantId, "started", oldRef, newRef, 0L, seqCounter, progress,
+                    rekeyEpoch);
+        } else if (isResume) {
+            emitRekeyEvent(tenantId, "resumed", oldRef, newRef, 0L, seqCounter, progress,
+                    rekeyEpoch);
+        }
+
+        // Run one shard pass via TenantKekRotation. The simple LocalKmsClient model rotates a
+        // tenant's full domain-KEK set in a single advance; here we drive the rotation to
+        // completion in a single rekey() call, then proceed to witness-check. The lock registry
+        // is holder-scoped so concurrent rekey calls on different (tenant, ref) pairs share the
+        // per-shard lock fabric (R34a).
+        final jlsm.encryption.internal.TenantKekRotation rotation = jlsm.encryption.internal.TenantKekRotation
+                .create(registry, shardLockRegistry, kmsClient);
+        long shardsCompleted = 0L;
+        try (var handle = rotation.startRotation(tenantId, oldRef, newRef)) {
+            int loops = 0;
+            while (handle.advance()) {
+                shardsCompleted++;
+                emitRekeyEvent(tenantId, "shardCommitted", oldRef, newRef, shardsCompleted,
+                        seqCounter, progress, rekeyEpoch);
+                if (++loops > 10_000) {
+                    throw new IllegalStateException("rekey did not converge after 10k advances");
+                }
+            }
+            // Persist progress so a crash mid-rekey leaves a record.
+            final int nextShardIndex = (int) Math.min(Integer.MAX_VALUE, shardsCompleted);
+            progress.commit(tenantId,
+                    new jlsm.encryption.internal.RekeyProgress.ProgressRecord(oldRef, newRef,
+                            nextShardIndex, Instant.now(clock), rekeyEpoch, seqCounter.get(), 0L));
+        }
+
+        // R78e — on-disk liveness witness check. If non-zero, return AWAITING token.
+        final long liveness = witness.count(tenantId, oldRef);
+        if (liveness > 0L) {
+            emitRekeyEvent(tenantId, "witnessProgress", oldRef, newRef, liveness, seqCounter,
+                    progress, rekeyEpoch);
+            return new ContinuationToken(tenantId, oldRef, newRef, Integer.MAX_VALUE, rekeyEpoch,
+                    ContinuationToken.ContinuationKind.AWAITING_LIVENESS_WITNESS);
+        }
+        // Witness drained — emit witness-zero and finalize.
+        emitRekeyEvent(tenantId, "witnessProgress", oldRef, newRef, 0L, seqCounter, progress,
+                rekeyEpoch);
+
+        // R78f — write the rekey-complete marker atomically.
+        final KekRef completedRef = newRef;
+        final Instant completedAt = Instant.now(clock);
+        registry.updateShard(tenantId, current -> {
+            final jlsm.encryption.internal.RekeyCompleteMarker marker = new jlsm.encryption.internal.RekeyCompleteMarker(
+                    completedRef, completedAt);
+            return new TenantShardRegistry.ShardUpdate<>(current.withRekeyCompleteMarker(marker),
+                    null);
+        });
+
+        emitRekeyEvent(tenantId, "completed", oldRef, newRef, shardsCompleted, seqCounter, progress,
+                rekeyEpoch);
+
+        // Clear the durable progress file — rekey is complete and the marker is the source of
+        // truth.
+        progress.clear(tenantId);
+        rekeyEventSeq.remove(tenantId);
+        return null;
+    }
+
+    /**
+     * Emit a rekey lifecycle event via the wired observer (if any) and persist the
+     * lastEmittedEventSeq into the progress file so a crash-resume can dedup.
+     */
+    private void emitRekeyEvent(TenantId tenantId, String phase, KekRef oldRef, KekRef newRef,
+            long shardsCompleted, java.util.concurrent.atomic.AtomicLong seqCounter,
+            jlsm.encryption.internal.RekeyProgress progress, long rekeyEpoch) {
+        final long seq = seqCounter.getAndIncrement();
+        if (observer != null) {
+            try {
+                final KmsObserver.EventEnvelope env = new KmsObserver.EventEnvelope(seq,
+                        EventCategory.REKEY, EventCategory.REKEY.isDurable(), Instant.now(clock),
+                        tenantId, java.util.UUID.randomUUID().toString());
+                observer.onRekeyEvent(
+                        new KmsObserver.RekeyEvent(env, phase, oldRef, newRef, shardsCompleted));
+            } catch (RuntimeException ignored) {
+                // Observer faults must not break the rekey loop. Best-effort emission.
+            }
+        }
+        // Persist lastEmittedEventSeq durably (R78g — durable seq for rekey).
+        try {
+            progress.commit(tenantId, new jlsm.encryption.internal.RekeyProgress.ProgressRecord(
+                    oldRef, newRef, 0, Instant.now(clock), rekeyEpoch, seq, 0L));
+        } catch (IOException ignored) {
+            // Best-effort — the durable persistence failure is captured by the next commit.
+        }
+    }
+
+    /** Lazy initialiser for the rekey-progress store. */
+    private jlsm.encryption.internal.RekeyProgress rekeyProgress() {
+        jlsm.encryption.internal.RekeyProgress p = rekeyProgressRef.get();
+        if (p != null) {
+            return p;
+        }
+        final jlsm.encryption.internal.RekeyProgress fresh = jlsm.encryption.internal.RekeyProgress
+                .open(registry.registryRoot());
+        if (rekeyProgressRef.compareAndSet(null, fresh)) {
+            return fresh;
+        }
+        return rekeyProgressRef.get();
+    }
+
+    /** Lazy initialiser for the liveness witness. */
+    private jlsm.encryption.internal.LivenessWitness livenessWitness() {
+        jlsm.encryption.internal.LivenessWitness w = livenessWitnessRef.get();
+        if (w != null) {
+            return w;
+        }
+        final jlsm.encryption.internal.LivenessWitness fresh = jlsm.encryption.internal.LivenessWitness
+                .open(registry.registryRoot());
+        if (livenessWitnessRef.compareAndSet(null, fresh)) {
+            return fresh;
+        }
+        return livenessWitnessRef.get();
+    }
+
+    /**
+     * Initiate streaming per-shard tenant-KEK rotation (R32a). Drives
+     * {@link jlsm.encryption.internal.TenantKekRotation} under the hood.
+     *
+     * @spec encryption.primitives-lifecycle R32a
+     */
+    public void rotateTenantKek(TenantId tenantId, KekRef oldRef, KekRef newRef)
+            throws KmsException, IOException {
+        Objects.requireNonNull(tenantId, "tenantId");
+        Objects.requireNonNull(oldRef, "oldRef");
+        Objects.requireNonNull(newRef, "newRef");
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /**
+     * Rotate the tier-2 domain KEK for {@code (tenantId, domainId)} synchronously. Drives
+     * {@link jlsm.encryption.internal.DomainKekRotation}.
+     *
+     * @spec encryption.primitives-lifecycle R32b
+     */
+    public void rotateDomainKek(TenantId tenantId, DomainId domainId)
+            throws KmsException, IOException {
+        Objects.requireNonNull(tenantId, "tenantId");
+        Objects.requireNonNull(domainId, "domainId");
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /**
+     * Read the convergence state for {@code (scope, oldDekVersion)}.
+     *
+     * @spec encryption.primitives-lifecycle R37b-1
+     */
+    public ConvergenceState convergenceStateFor(TableScope scope, int oldDekVersion) {
+        Objects.requireNonNull(scope, "scope");
+        if (oldDekVersion <= 0) {
+            throw new IllegalArgumentException(
+                    "oldDekVersion must be positive, got " + oldDekVersion);
+        }
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /**
+     * Register a convergence callback for {@code (scope, oldDekVersion)}. The returned
+     * {@link ConvergenceRegistration} is closed automatically on holder close (R37b-3).
+     *
+     * @spec encryption.primitives-lifecycle R37b
+     */
+    public ConvergenceRegistration registerConvergence(TableScope scope, int oldDekVersion,
+            jlsm.encryption.internal.ConvergenceTracker.ConvergenceCallback callback) {
+        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(callback, "callback");
+        if (oldDekVersion <= 0) {
+            throw new IllegalArgumentException(
+                    "oldDekVersion must be positive, got " + oldDekVersion);
+        }
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /**
+     * Operator-initiated registry shred for {@code (tenantId, domainId)}. Single-use: the
+     * confirmation's nonce is consumed.
+     *
+     * @spec encryption.primitives-lifecycle R83b-2
+     */
+    public void forceShredRegistry(TenantId tenantId, DomainId domainId,
+            RegistryShredConfirmation confirmation) throws IOException {
+        Objects.requireNonNull(tenantId, "tenantId");
+        Objects.requireNonNull(domainId, "domainId");
+        Objects.requireNonNull(confirmation, "confirmation");
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /**
+     * Read the current {@link TenantState} for {@code tenantId}. Lazy-loads the durable state on
+     * first access; subsequent reads are wait-free.
+     *
+     * @spec encryption.primitives-lifecycle R76b-2
+     */
+    public TenantState tenantState(TenantId tenantId) throws IOException {
+        Objects.requireNonNull(tenantId, "tenantId");
+        throw new UnsupportedOperationException("not implemented");
     }
 
     /**
@@ -767,6 +1152,15 @@ public final class EncryptionKeyHolder implements AutoCloseable {
         private KekRef activeTenantKekRef;
         private Clock clock;
         private SecureRandom rng;
+        private DekVersionRegistry dekVersionRegistry;
+        // WU-8 polling config: opt-in polling per R79 with default-on for flavor-3 per R79d.
+        private DeployerInstanceId deployerInstanceId;
+        // R79d default: polling enabled. Deployers may opt out via pollingEnabled(false).
+        private boolean pollingEnabled = true;
+        // WU-6 observer wiring (KmsObserver receives lifecycle events). Stored for forward
+        // compatibility with WU-6's rekey/state-transition/polling event paths; this field is
+        // accepted by the builder but not yet consumed by the WD-03 reference implementation.
+        private KmsObserver observer;
 
         private Builder() {
         }
@@ -860,6 +1254,61 @@ public final class EncryptionKeyHolder implements AutoCloseable {
          */
         public Builder rng(SecureRandom rng) {
             this.rng = Objects.requireNonNull(rng, "rng must not be null");
+            return this;
+        }
+
+        /**
+         * Wire a {@link DekVersionRegistry} to receive CoW publishes after each successful
+         * {@link EncryptionKeyHolder#generateDek} (R64). Optional — builders that omit this stay
+         * backward-compatible with WD-01 callers. The publish lands AFTER the per-tenant shard
+         * write so the version registry is never ahead of persisted state (WD-03 P4-22).
+         *
+         * @throws NullPointerException if {@code registry} is null
+         * @spec encryption.primitives-lifecycle R64
+         */
+        public Builder dekVersionRegistry(DekVersionRegistry registry) {
+            this.dekVersionRegistry = Objects.requireNonNull(registry,
+                    "dekVersionRegistry must not be null");
+            return this;
+        }
+
+        /**
+         * Configure the deployer-instance secret used to derive deterministic per-tenant polling-
+         * jitter offsets per R79c-1. Required when {@link #pollingEnabled(boolean) polling is
+         * enabled}; optional otherwise.
+         *
+         * @throws NullPointerException if {@code id} is null
+         * @spec encryption.primitives-lifecycle R79c-1
+         */
+        public Builder deployerInstanceId(DeployerInstanceId id) {
+            this.deployerInstanceId = Objects.requireNonNull(id,
+                    "deployerInstanceId must not be null");
+            return this;
+        }
+
+        /**
+         * Enable or disable per-tenant opt-in polling per R79 / R79d. Default {@code true} per R79d
+         * (flavor-3 default-on posture). Opt-out is permitted; deployers that opt out trade
+         * revocation-detection latency (bounded by cache TTL only — R91, up to 24h) for cost.
+         *
+         * @spec encryption.primitives-lifecycle R79
+         * @spec encryption.primitives-lifecycle R79d
+         */
+        public Builder pollingEnabled(boolean enabled) {
+            this.pollingEnabled = enabled;
+            return this;
+        }
+
+        /**
+         * Wire a {@link KmsObserver} to receive lifecycle events (state transitions, rekey events,
+         * polling outcomes, unclassified-error escalations). Optional; null observer means events
+         * are not emitted. WU-6 implementation pipeline consumes this field.
+         *
+         * @throws NullPointerException if {@code observer} is null
+         * @spec encryption.primitives-lifecycle R83f
+         */
+        public Builder observer(KmsObserver observer) {
+            this.observer = Objects.requireNonNull(observer, "observer must not be null");
             return this;
         }
 
