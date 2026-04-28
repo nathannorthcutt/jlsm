@@ -1528,9 +1528,10 @@ if [[ -s "$TMPDIR_SCAN/artifact-hits.txt" ]]; then
     echo "" >> "$SUMMARY_FILE"
     echo "| Type | Artifact | Changed File |" >> "$SUMMARY_FILE"
     echo "|------|----------|--------------|" >> "$SUMMARY_FILE"
-    sort -u "$TMPDIR_SCAN/artifact-hits.txt" | head -30 | while IFS='|' read -r type artifact file; do
+    { sort -u "$TMPDIR_SCAN/artifact-hits.txt" || true; } | head -30 > "$TMPDIR_SCAN/artifact-hits-top.txt"
+    while IFS='|' read -r type artifact file; do
         echo "| $type | $artifact | $file |" >> "$SUMMARY_FILE"
-    done
+    done < "$TMPDIR_SCAN/artifact-hits-top.txt"
     echo "" >> "$SUMMARY_FILE"
 fi
 
