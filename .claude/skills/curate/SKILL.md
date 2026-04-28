@@ -386,6 +386,42 @@ For each aging obligation, use AskUserQuestion with options:
   design narrative explaining the closure
 - **"Skip for now"** — defer to next /curate pass
 
+### 2o — Subdivision candidates (mature specs that may want to subdivide)
+
+**Guard:** Only run this step if "Subdivision Candidates" section exists in
+the scan summary. If absent, skip entirely.
+
+From "Subdivision Candidates" in the scan summary:
+
+1. Each row shows a spec that has grown past one file's worth of behavior
+   (≥50 reqs OR ≥15K tokens) AND shows multiple distinct concerns
+   (≥2 section headers, no single section dominating).
+2. Subdivision is a **natural progression** for these specs — the parent
+   stays a full spec retaining cross-cutting requirements, while concern-
+   specific reqs move to child specs. The detection is heuristic; a spec
+   that looks subdividable on paper may turn out to be a single tightly-
+   coupled concern that just happens to have multiple section headers.
+3. The script already filters out specs where one section holds ≥90% of
+   the requirements (those are mature-but-singular and not real candidates).
+
+For each candidate, use AskUserQuestion with options:
+- **"Subdivide via /spec-split"** → run `/spec-split <spec-id>`. The skill
+  will propose concern boundaries from the spec's existing section
+  structure, confirm with you (with edit option), and execute the split
+  with @spec annotation rewrites + automatic rollback on validation
+  failure.
+- **"Decline — concerns are interlocked"** → mark this spec as a recent
+  decline so a future /curate pass doesn't surface it again immediately.
+  Add a one-line note to the spec's design narrative explaining why it
+  shouldn't subdivide (e.g. "single algorithm, requirement clusters
+  reflect implementation phases, not separable concerns").
+- **"Defer"** → the spec is a candidate but you're not ready to subdivide
+  this session. It will resurface at the next /curate run.
+
+The "Decline — concerns are interlocked" option is important. Subdivision
+fragments a coherent contract when forced; it should never be automatic.
+Honest declines are a feature, not a failure.
+
 ---
 
 ## Step 3 — Present findings as a numbered pick list

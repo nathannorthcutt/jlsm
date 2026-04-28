@@ -84,6 +84,30 @@ job, not this skill's.
    - This information does not change the authoring flow — it adds awareness
      of who will consume the spec being authored.
 
+6. **Layered-spec family load (if amending a child spec):** If the target
+   spec already exists in the manifest AND its frontmatter has a non-empty
+   `parent_spec`, this is a child in a layered family. Adversarial review
+   needs the parent (cross-cutting requirements) AND all siblings (cross-
+   sibling contradictions) loaded as full files, not summaries. Re-run the
+   resolver with sibling inclusion:
+
+   ```bash
+   EXPLICIT_SPEC_IDS="<target-spec-id>" INCLUDE_SIBLINGS=true \
+     bash .claude/scripts/spec-resolve.sh "<feature description>" 16000
+   ```
+
+   `spec-resolve.sh` auto-includes the parent chain when a child is
+   selected; `INCLUDE_SIBLINGS=true` adds every other child of the same
+   parent. The resulting bundle becomes Pass 2 / Pass 3's "resolved
+   context bundle" instead of the pre-flight default — falsification
+   subagents need this richer family view to spot contradictions across
+   the family.
+
+   Also re-run the work-group context query against the family's domains
+   (Step 5) so consumers of any sibling are surfaced.
+
+   If the target is a top-level spec (no `parent_spec`), skip this step.
+
 ---
 
 ## Pass 1 — Structured authoring
@@ -531,6 +555,56 @@ For each finding, provide:
 
 The user decides what to include, adjust, or drop. Apply their decisions
 to the spec.
+
+### Just-in-time subdivision signal (after arbitration applied)
+
+After applying the user's arbitration decisions, evaluate the spec's
+post-amendment shape against the natural-progression heuristic. The
+goal is a non-blocking heads-up — if this amendment has tipped the
+spec into "multiple distinct concerns at scale" territory,
+`/spec-split` is now an option.
+
+Mechanical check (apply mentally — no script needed):
+
+1. Count R-numbered requirements (lines matching `^R[0-9]+`).
+2. Count distinct concern-style section headers in the machine section
+   (`## <Concern>` or `### <Concern>` — exclude headers named
+   "Notes", "Narrative", "Design", "History", "Appendix").
+3. For each section, count the requirements under it. Track the
+   largest section's count.
+4. Apply the same thresholds `/curate` uses (so detection here matches
+   what /curate would flag at the next housekeeping pass):
+
+   - Reqs ≥ 50 OR machine-section size ≥ ~15K tokens (~60 KB)
+   - Section count ≥ 2
+   - Largest section's share < 90% of total reqs (otherwise the spec
+     is large-but-singular, not a real subdivision candidate)
+   - Spec does NOT already have `parent_spec` set (skip — already
+     part of a layered family)
+
+If all thresholds match, surface alongside the Pass 2 findings with
+this exact framing — note its non-blocking nature explicitly so the
+user knows it's information, not a request:
+
+```
+── Just-in-time subdivision signal ───────────────
+This spec now sits in subdivision territory:
+  N requirements across M concern sections
+  Largest section: <section name>  (K reqs, P% of total)
+
+After this amendment lands, consider:
+  /spec-split <spec-id>
+
+This is a heads-up, not a blocker. Proceed to Pass 3 normally. The
+candidate will also surface at the next /curate run.
+```
+
+If the thresholds do NOT match, do not surface anything — silence is
+the default when subdivision isn't applicable. Don't draw attention
+to the absence of the signal.
+
+This signal does NOT block Pass 3. It does NOT modify any file. It
+just informs the user that natural subdivision has become an option.
 
 ---
 

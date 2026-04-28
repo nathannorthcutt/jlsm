@@ -105,10 +105,12 @@ while IFS= read -r cat_index; do
         stem="${subj_file%.md}"
         key="$topic/$category/$stem"
 
-        # Count query token hits in category index
+        # Count query token hits in category index. Use here-strings so
+        # SIGPIPE under pipefail cannot flip the result on a large KB
+        # category index (`grep -q` closes stdin after first match).
         hits=0
         for token in "${QUERY_TOKENS[@]}"; do
-            if echo "$content_lower" | grep -q "$token" 2>/dev/null; then
+            if grep -q "$token" <<< "$content_lower" 2>/dev/null; then
                 hits=$((hits + 1))
             fi
         done
@@ -120,7 +122,7 @@ while IFS= read -r cat_index; do
             fm=$(awk '/^---$/{c++; if(c==2) exit} c>=1{print}' "$subj_path" 2>/dev/null || true)
             fm_lower=$(echo "$fm" | tr '[:upper:]' '[:lower:]')
             for token in "${QUERY_TOKENS[@]}"; do
-                if echo "$fm_lower" | grep -q "$token" 2>/dev/null; then
+                if grep -q "$token" <<< "$fm_lower" 2>/dev/null; then
                     hits=$((hits + 1))
                 fi
             done

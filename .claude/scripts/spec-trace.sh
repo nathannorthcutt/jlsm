@@ -30,10 +30,12 @@ FORMAT="${SPEC_TRACE_FORMAT:-summary}"
 }
 
 # Validate spec ID format: legacy FXX (zero-padded 2+ digits) OR domain.slug
-# (lowercase letter + hyphenated segments separated by a single dot).
-if ! echo "$SPEC_ID" | grep -qE '^(F[0-9]{2,}|[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*)$'; then
+# (lowercase letter + hyphenated segments separated by one or more dots —
+# multi-dot IDs are nested specs, e.g. encryption.primitives-lifecycle.key-rotation).
+if ! echo "$SPEC_ID" | grep -qE '^(F[0-9]{2,}|[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+)$'; then
   echo "ERROR: Invalid spec ID '$SPEC_ID'." >&2
   echo "  Expected: legacy FXX (e.g. F01, F13) OR domain.slug (e.g. schema.field-access)" >&2
+  echo "  Nested IDs allowed: encryption.primitives-lifecycle.key-rotation" >&2
   exit 1
 fi
 

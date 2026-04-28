@@ -77,12 +77,15 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
     echo "[validate] Warning: manifest not found, skipping requires check" >&2
   fi
 
-  # ── Spec ID format patterns (legacy FXX or new domain.slug) ───────────────
-  # Spec ID alone:           F01  OR  schema.field-access
-  # Spec requirement ref:    F01.R3  OR  schema.field-access.R3
-  #                          (letter-suffix RNs like R51a are supported)
-  spec_id_re='^(F[0-9]+|[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*)$'
-  spec_ref_re='^(F[0-9]+|[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*)\.R[0-9]+[a-z]?$'
+  # ── Spec ID format patterns (legacy FXX or domain.slug, optionally nested) ──
+  # Spec ID alone:           F01  OR  schema.field-access  OR
+  #                          encryption.primitives-lifecycle.key-rotation
+  # Spec requirement ref:    F01.R3  OR  schema.field-access.R3  OR
+  #                          encryption.primitives-lifecycle.key-rotation.R3
+  #                          (letter-suffix RNs like R51a are supported;
+  #                           multi-dot IDs are nested specs.)
+  spec_id_re='^(F[0-9]+|[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+)$'
+  spec_ref_re='^(F[0-9]+|[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+)\.R[0-9]+[a-z]?$'
 
   # ── Check 7: invalidates[] format AND target existence
   while IFS= read -r inv; do
@@ -141,6 +144,55 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
     fi
   done < <(fm "$FILE" '.revived_by // [] | .[]')
 
+  # ── Check 7f: parent_spec resolves + ID-prefix consistency + acyclic ────────
+  # parent_spec is a single-string field. When set:
+  #   1. The parent must exist in the manifest.
+  #   2. The child's ID must be the parent's ID + "." + a single hierarchical
+  #      segment (so encryption.primitives-lifecycle.key-rotation may declare
+  #      encryption.primitives-lifecycle as parent, but NOT encryption.foo).
+  #   3. The chain walked via parent_spec MUST be acyclic. spec_walk_parent_chain
+  #      surfaces any cycle on stderr; we verify by counting hops vs depth cap.
+  PARENT_SPEC=$(fm "$FILE" '.parent_spec // ""')
+  if [[ -n "$PARENT_SPEC" && "$PARENT_SPEC" != "null" ]]; then
+    # Format check
+    if ! echo "$PARENT_SPEC" | grep -qE "$spec_id_re"; then
+      ERRORS+=("Invalid parent_spec format: '$PARENT_SPEC' (expected FXX or domain.slug[.subdomain...])")
+    elif [[ -f "$MANIFEST" ]]; then
+      # Existence check
+      par_file=$(spec_file_for_id "$MANIFEST" "$PARENT_SPEC")
+      if [[ -z "$par_file" || ! -f "$par_file" ]]; then
+        ERRORS+=("Unresolvable parent_spec: $PARENT_SPEC (not in registry)")
+      else
+        # ID-prefix check: child ID must be parent ID + "." + one segment
+        SELF_ID=$(fm "$FILE" '.id // ""')
+        if [[ -n "$SELF_ID" ]]; then
+          expected_prefix="${PARENT_SPEC}."
+          if [[ "$SELF_ID" != ${expected_prefix}* ]]; then
+            ERRORS+=("ID prefix mismatch: '$SELF_ID' must start with '$expected_prefix' to declare parent_spec '$PARENT_SPEC'")
+          else
+            # Trailing portion after the prefix must be a single hierarchical
+            # segment (one or more lowercase-hyphenated words separated by dots
+            # is valid for grandchildren — actually, wait, exactly one segment
+            # for an immediate parent). We enforce ONE segment because
+            # parent_spec is the *immediate* parent.
+            tail_part="${SELF_ID#${expected_prefix}}"
+            if [[ "$tail_part" == *.* ]]; then
+              ERRORS+=("ID-segment mismatch: '$SELF_ID' has more than one segment beyond parent_spec '$PARENT_SPEC' — parent_spec must point to the IMMEDIATE parent (e.g. for a.b.c.d, parent_spec must be a.b.c, not a.b)")
+            elif [[ -z "$tail_part" ]]; then
+              ERRORS+=("ID equals parent_spec — '$SELF_ID' cannot declare itself as its own parent")
+            fi
+          fi
+        fi
+        # Acyclic check: walk the chain; spec_walk_parent_chain emits an
+        # error to stderr if it detects a cycle or exceeds depth.
+        chain_err=$(spec_walk_parent_chain "$MANIFEST" "$SELF_ID" 2>&1 >/dev/null || true)
+        if echo "$chain_err" | grep -q "ERROR:"; then
+          ERRORS+=("parent_spec chain invalid for '$SELF_ID': $(echo "$chain_err" | head -1 | sed 's/^\[spec-lib\] //')")
+        fi
+      fi
+    fi
+  fi
+
   # ── Check 7e: displacement_reason present when displaced_by is non-empty (warning)
   DISPLACED_BY_COUNT=$(fm "$FILE" '.displaced_by // [] | length')
   if [[ "$DISPLACED_BY_COUNT" != "0" && "$DISPLACED_BY_COUNT" != "null" ]]; then
@@ -163,6 +215,9 @@ if [[ ${#ERRORS[@]} -eq 0 ]]; then
   done < <(fm "$FILE" '.kb_refs // [] | .[]')
 
   # ── Check 9b: APPROVED specs must not have unresolved conflict markers
+  # Use here-strings (not `echo "$var" | grep`) so SIGPIPE under pipefail
+  # cannot flip the result on very large machine sections — observed at
+  # 134 KB on encryption.primitives-lifecycle in jlsm.
   if [[ "$STATE" == "APPROVED" ]]; then
     spec_body=$(machine_section "$FILE")
     if grep -qE '\[UNRESOLVED\]' <<< "$spec_body" 2>/dev/null; then
@@ -183,6 +238,7 @@ if (( delim_count < 3 )); then
 fi
 
 # ── Check 11: numbered requirements exist in machine section
+# Here-string instead of pipe — see 9b above for SIGPIPE rationale.
 machine=$(machine_section "$FILE")
 if ! grep -qE '^R[0-9]+\.' <<< "$machine"; then
   ERRORS+=("No numbered requirements found in machine section (expected R1. R2. format)")
