@@ -11,9 +11,9 @@
 |----|-------|--------|---------|------|----------|
 | WD-01 | Key hierarchy (root KEK, data KEKs, DEKs) | COMPLETE | encryption | 0 | — |
 | WD-02 | Ciphertext format + signalling | COMPLETE | encryption,  sstable,  engine | 0 | — |
-| WD-03 | DEK lifecycle + KEK rotation | IMPLEMENTING | encryption | 0 | — |
-| WD-04 | Compaction-driven migration | BLOCKED | encryption | 1 | — |
-| WD-05 | Runtime concerns (memory handling, key caching, zeroisation) | BLOCKED | encryption | 1 | — |
+| WD-03 | DEK lifecycle + KEK rotation | COMPLETE | encryption | 0 | — |
+| WD-04 | Compaction-driven migration | READY | encryption | 1 | — |
+| WD-05 | Runtime concerns (memory handling, key caching, zeroisation) | READY | encryption | 1 | — |
 
 ## Dependency Graph
 
