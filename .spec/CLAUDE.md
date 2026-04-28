@@ -28,6 +28,7 @@
 
 | Date | ID | Domain | Title |
 |------|-----|--------|-------|
+| 2026-04-27 | encryption.primitives-lifecycle | encryption | Encryption Lifecycle (v13 DRAFT — WD-03 advances: Pass 2 (34 findings) + Pass 3 (28 fix-consequence) + Pass 4 (28 fix-consequence-of-fix-consequence) applied; 194 R-numbered claims, 0.02 ambiguity score; remains DRAFT pending implement-f41-lifecycle obligation + Pass 6 confirmation of v9 amendments) |
 | 2026-04-26 | transport.multiplexed-framing | transport | Multiplexed Transport Framing (v3 APPROVED — Round 4 + Round 5 adversarial hardening: 16 Pass-2 findings + 11 Pass-3 fix-consequence findings applied; 69 requirements; ambiguity score 0.00) |
 | 2026-04-25 | engine.clustered-table-construction | engine | Clustered Table Construction Contract (v1 APPROVED — RELAX-2 names dispatch-time fail-fast for null `localEngine` local-owner case; amends engine.clustering R60) |
 | 2026-04-25 | sstable.footer-encryption-scope | sstable | SSTable Footer Encryption Scope Metadata (v8 APPROVED — RELAX-5 amendment adds R3g three-state ReadContext construction + R3h caller-site discipline; canonical constructor loud-fails on empty set, named factories carry State B / State C contracts) |

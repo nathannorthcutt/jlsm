@@ -31,6 +31,7 @@
 | Implement sstable.pool-aware-block-size | implement-sstable-enhancements--wd-02 | 2026-04-22 | refactor complete | Feature shipped + audit found 5 pre-existing bugs on ArenaBufferPool/Builder, all fixed; spec v4→v5 with R0b-R0e+R11b; 2 KB updates + 3 new KB entries |
 | Implement encryption key hierarchy (WD-01) | implement-encryption-lifecycle--wd-01 | 2026-04-21 | PR drafted | 581 tests (323 TDD + ~260 adversarial); /audit 52 fixes + spec v9 amendments + 3 KB patterns; jlsm-core + jlsm-table check green |
 | Implement transport.multiplexed-framing (WD-01) | implement-transport--wd-01 | 2026-04-26 | planning complete | spec v1 DRAFT → v3 APPROVED via Pass 2 + Pass 3 (27 findings); transport-module-placement ADR confirmed (Option A — jlsm-cluster single module); work-plan.md written with 5-WU decomposition; Pass 2/Pass 3 amendments mapped to required test files |
+| Implement DEK lifecycle + KEK rotation (WD-03) | implement-encryption-lifecycle--wd-03 | 2026-04-27 | refactor complete | 456 tests / 43 constructs / 8 WUs balanced; jlsm-core check + integration green |
 
 ## Completed / Archived
 

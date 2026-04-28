@@ -56,6 +56,25 @@ public final class TenantShardRegistry implements AutoCloseable {
     }
 
     /**
+     * Package-private accessor returning the underlying {@link ShardStorage}. Used by WD-03
+     * collaborators (rekey progress, liveness witness) that need to derive auxiliary file paths
+     * under the same registry root.
+     */
+    public ShardStorage storage() {
+        return storage;
+    }
+
+    /**
+     * Returns the registry-root path. Used by WD-03 collaborators ({@link RekeyProgress},
+     * {@link LivenessWitness}) that store auxiliary durable state under the same root as the tenant
+     * shard tree. Public so the {@code jlsm.encryption} facade can derive collaborator paths
+     * without elevating package-private accessors on {@link ShardStorage}.
+     */
+    public java.nio.file.Path registryRoot() {
+        return storage.registryRoot();
+    }
+
+    /**
      * Wait-free read of the latest snapshot for a tenant. Performs a lazy load from storage on
      * first access; subsequent calls read the cached volatile reference directly (R64).
      *
@@ -157,6 +176,61 @@ public final class TenantShardRegistry implements AutoCloseable {
             UPDATE_IN_PROGRESS.set(Boolean.FALSE);
             entry.writerLock.unlock();
         }
+    }
+
+    // --- WD-03 stubs ----------------------------------------------------
+    // The following operations support tier-1 streaming rotation by exposing the per-tenant
+    // shard set and per-shard lock primitives. The current registry is single-shard per
+    // tenant; the implementation pipeline introduces a multi-shard scheme keyed by
+    // {@code (tenantId, shardId)} so {@link TenantKekRotation} can iterate shards and rewrap
+    // them under bounded exclusive holds (R32a, R32c).
+
+    /**
+     * Iterate the shard keys for {@code tenantId}. Used by {@link TenantKekRotation} to drive
+     * per-shard rewrap. The current registry is single-shard per tenant — a multi-shard scheme
+     * keyed by {@code (tenantId, shardId)} is a follow-on. The single-shard view returns one tier-1
+     * key with shardId {@code "default"}.
+     *
+     * @spec encryption.primitives-lifecycle R32a
+     */
+    public java.util.Iterator<ShardLockRegistry.ShardKey> shardIterator(TenantId tenantId) {
+        Objects.requireNonNull(tenantId, "tenantId must not be null");
+        return java.util.List.of(ShardLockRegistry.ShardKey.tier1(tenantId, "default")).iterator();
+    }
+
+    /**
+     * Run {@code work} under the exclusive shard lock for {@code shardKey}, with the per-call
+     * max-hold-time bound enforced by {@link ShardLockRegistry} (R32c).
+     *
+     * @spec encryption.primitives-lifecycle R32c
+     */
+    public <T> T withExclusiveShardLock(ShardLockRegistry.ShardKey shardKey,
+            java.time.Duration maxHoldTime, java.util.concurrent.Callable<T> work)
+            throws Exception {
+        Objects.requireNonNull(shardKey, "shardKey must not be null");
+        Objects.requireNonNull(maxHoldTime, "maxHoldTime must not be null");
+        Objects.requireNonNull(work, "work must not be null");
+        // The registry doesn't own a ShardLockRegistry — callers wire one externally to coordinate
+        // with rotation orchestrators. Without an injected registry we surface this as an
+        // unsupported operation; callers requiring this primitive should construct a
+        // ShardLockRegistry directly.
+        throw new UnsupportedOperationException(
+                "withExclusiveShardLock requires a ShardLockRegistry — "
+                        + "use ShardLockRegistry.acquireExclusiveTimed directly");
+    }
+
+    /**
+     * Run {@code work} under the shared shard lock for {@code shardKey}.
+     *
+     * @spec encryption.primitives-lifecycle R34a
+     */
+    public <T> T withSharedShardLock(ShardLockRegistry.ShardKey shardKey,
+            java.util.concurrent.Callable<T> work) throws Exception {
+        Objects.requireNonNull(shardKey, "shardKey must not be null");
+        Objects.requireNonNull(work, "work must not be null");
+        // Same rationale as withExclusiveShardLock — see comment there.
+        throw new UnsupportedOperationException("withSharedShardLock requires a ShardLockRegistry "
+                + "— use ShardLockRegistry.acquireShared directly");
     }
 
     /**

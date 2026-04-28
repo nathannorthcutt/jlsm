@@ -23,6 +23,7 @@ module jlsm.core {
     exports jlsm.tree;
     exports jlsm.encryption;
     exports jlsm.encryption.local;
+    exports jlsm.encryption.spi;
     // Qualified export: jlsm.encryption.internal is not a public API, but jlsm.table
     // consumes OffHeapKeyMaterial during the WD-01 transition. Remove once
     // jlsm-table is migrated to the EncryptionKeyHolder facade (WD-02+).

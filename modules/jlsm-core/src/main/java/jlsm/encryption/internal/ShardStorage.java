@@ -87,7 +87,18 @@ public final class ShardStorage {
 
     /** 4-byte magic identifier: "KRSH" = Key Registry SHard. */
     private static final byte[] MAGIC = { 'K', 'R', 'S', 'H' };
-    private static final short FORMAT_VERSION = 1;
+    // WD-03: v2 wire format extension. FORMAT_VERSION is bumped 1 → 2; new sections appended:
+    // * retired-refs section : 4B count + (lp-string KekRef + 8B epochSeconds + 4B nanos) * count
+    // * rekey-complete marker : 1B present-flag + (lp-string KekRef + 8B epochSeconds + 4B nanos)
+    // * permanently-revoked DEKs : 4B count + (DekHandle: 4 lp-strings + 4B version) * count
+    // Loading a v1 shard synthesizes empty defaults for all three sections (transparent
+    // upgrade); rewriting promotes the on-disk format to v2.
+    private static final short FORMAT_VERSION = 2;
+    /** Pre-WD-03 format (read-only on the load path). */
+    private static final short FORMAT_VERSION_V1 = 1;
+    /** Target format after WD-03 (the canonical write target). */
+    @SuppressWarnings("unused")
+    private static final short FORMAT_VERSION_V2_TARGET = FORMAT_VERSION;
     /** 0xFFFFFFFF as signed int — null sentinel for optional length-prefixed strings. */
     private static final int NULL_SENTINEL = -1;
 
@@ -567,6 +578,45 @@ public final class ShardStorage {
             buf.putLong(d.createdAt().getEpochSecond());
             buf.putInt(d.createdAt().getNano());
         }
+        // V2 sections: retired-refs, rekey-complete marker, permanently-revoked DEKs.
+        final RetiredReferences retired = shard.retiredReferences();
+        // Sort retired entries by KekRef.value() for canonical byte form (R19b byte-fidelity).
+        final java.util.List<Map.Entry<KekRef, Instant>> sortedRetired = new java.util.ArrayList<>(
+                retired.entries().entrySet());
+        sortedRetired.sort(java.util.Comparator.comparing(e -> e.getKey().value()));
+        buf.putInt(sortedRetired.size());
+        for (Map.Entry<KekRef, Instant> e : sortedRetired) {
+            putLpString(buf, e.getKey().value());
+            buf.putLong(e.getValue().getEpochSecond());
+            buf.putInt(e.getValue().getNano());
+        }
+        // Rekey-complete marker: 1B present flag + optional payload.
+        final java.util.Optional<RekeyCompleteMarker> marker = shard.rekeyCompleteMarker();
+        if (marker.isPresent()) {
+            buf.put((byte) 1);
+            putLpString(buf, marker.get().completedKekRef().value());
+            buf.putLong(marker.get().timestamp().getEpochSecond());
+            buf.putInt(marker.get().timestamp().getNano());
+        } else {
+            buf.put((byte) 0);
+        }
+        // Permanently-revoked DEKs.
+        final PermanentlyRevokedDeksSet revoked = shard.permanentlyRevokedDeks();
+        buf.putInt(revoked.capacity());
+        // Sort by handle (tenant/domain/table/version) for canonical form.
+        final java.util.List<DekHandle> sortedRevoked = new java.util.ArrayList<>(
+                revoked.handles());
+        sortedRevoked.sort(java.util.Comparator
+                .<DekHandle, String>comparing(h -> h.tenantId().value())
+                .thenComparing(h -> h.domainId().value()).thenComparing(h -> h.tableId().value())
+                .thenComparingInt(h -> h.version().value()));
+        buf.putInt(sortedRevoked.size());
+        for (DekHandle h : sortedRevoked) {
+            putLpString(buf, h.tenantId().value());
+            putLpString(buf, h.domainId().value());
+            putLpString(buf, h.tableId().value());
+            buf.putInt(h.version().value());
+        }
         buf.flip();
         final byte[] out = new byte[buf.remaining()];
         buf.get(out);
@@ -602,6 +652,26 @@ public final class ShardStorage {
             size += 4; // domainKekVersion
             size += 4 + d.tenantKekRef().value().getBytes(StandardCharsets.UTF_8).length;
             size += 12; // createdAt: 8B epochSeconds + 4B nanosOfSecond (lossless Instant)
+        }
+        // V2 sections.
+        size += 4; // retired-refs count
+        for (Map.Entry<KekRef, Instant> e : shard.retiredReferences().entries().entrySet()) {
+            size += 4 + e.getKey().value().getBytes(StandardCharsets.UTF_8).length;
+            size += 12; // 8B epochSeconds + 4B nanos
+        }
+        size += 1; // rekey-complete present flag
+        if (shard.rekeyCompleteMarker().isPresent()) {
+            size += 4 + shard.rekeyCompleteMarker().get().completedKekRef().value()
+                    .getBytes(StandardCharsets.UTF_8).length;
+            size += 12;
+        }
+        size += 4; // revoked capacity
+        size += 4; // revoked count
+        for (DekHandle h : shard.permanentlyRevokedDeks().handles()) {
+            size += 4 + h.tenantId().value().getBytes(StandardCharsets.UTF_8).length;
+            size += 4 + h.domainId().value().getBytes(StandardCharsets.UTF_8).length;
+            size += 4 + h.tableId().value().getBytes(StandardCharsets.UTF_8).length;
+            size += 4; // dek version
         }
         size += 4; // CRC trailer
         // Add small slack to avoid resize corner cases.
@@ -659,7 +729,7 @@ public final class ShardStorage {
                 }
             }
             final short version = buf.getShort();
-            if (version != FORMAT_VERSION) {
+            if (version != FORMAT_VERSION && version != FORMAT_VERSION_V1) {
                 throw new IOException(
                         "unsupported shard format version " + version + " at " + path);
             }
@@ -737,8 +807,90 @@ public final class ShardStorage {
                 final DekHandle handle = new DekHandle(t, d, tbl, dv);
                 deks.put(handle, new WrappedDek(handle, wrapped, domainKekVersion, ref, createdAt));
             }
+            // V2 sections: retired-refs, rekey-complete marker, permanently-revoked DEKs.
+            // V1 shards have no such sections — synthesize empty defaults so backward-read works
+            // without exception.
+            final RetiredReferences retired;
+            final java.util.Optional<RekeyCompleteMarker> rekeyMarker;
+            final PermanentlyRevokedDeksSet revoked;
+            if (version == FORMAT_VERSION_V1) {
+                retired = RetiredReferences.empty();
+                rekeyMarker = java.util.Optional.empty();
+                revoked = PermanentlyRevokedDeksSet.empty();
+            } else {
+                // V2: read retired-refs section
+                final int retiredCount = buf.getInt();
+                if (retiredCount < 0) {
+                    throw new IOException(
+                            "invalid retired-refs count: " + retiredCount + " at " + path);
+                }
+                // Per-entry minimum: 4B lp-string-len + 1B (kekRef) + 8B + 4B = 17B.
+                if (retiredCount > buf.remaining() / 17) {
+                    throw new IOException("retired-refs count " + retiredCount
+                            + " exceeds available bytes (" + buf.remaining() + ") at " + path);
+                }
+                final java.util.HashMap<KekRef, Instant> retiredEntries = new java.util.HashMap<>(
+                        retiredCount);
+                for (int i = 0; i < retiredCount; i++) {
+                    final KekRef rRef = new KekRef(readLpString(buf, path));
+                    final long retSecs = buf.getLong();
+                    final int retNanos = buf.getInt();
+                    if (retNanos < 0 || retNanos > 999_999_999) {
+                        throw new IOException(
+                                "invalid retention nanosOfSecond: " + retNanos + " at " + path);
+                    }
+                    retiredEntries.put(rRef, Instant.ofEpochSecond(retSecs, retNanos));
+                }
+                retired = new RetiredReferences(retiredEntries);
+                // V2: read rekey-complete marker (1B present flag)
+                final byte rekeyFlag = buf.get();
+                if (rekeyFlag != 0 && rekeyFlag != 1) {
+                    throw new IOException(
+                            "invalid rekey-complete present-flag: " + rekeyFlag + " at " + path);
+                }
+                if (rekeyFlag == 1) {
+                    final KekRef cRef = new KekRef(readLpString(buf, path));
+                    final long cSecs = buf.getLong();
+                    final int cNanos = buf.getInt();
+                    if (cNanos < 0 || cNanos > 999_999_999) {
+                        throw new IOException(
+                                "invalid rekey-complete nanosOfSecond: " + cNanos + " at " + path);
+                    }
+                    rekeyMarker = java.util.Optional.of(
+                            new RekeyCompleteMarker(cRef, Instant.ofEpochSecond(cSecs, cNanos)));
+                } else {
+                    rekeyMarker = java.util.Optional.empty();
+                }
+                // V2: read permanently-revoked DEKs section.
+                // 4B capacity, 4B count, count × DekHandle (tenantId, domainId, tableId, version).
+                final int revokedCapacity = buf.getInt();
+                if (revokedCapacity <= 0) {
+                    throw new IOException("invalid permanently-revoked capacity: " + revokedCapacity
+                            + " at " + path);
+                }
+                final int revokedCount = buf.getInt();
+                if (revokedCount < 0) {
+                    throw new IOException(
+                            "invalid permanently-revoked count: " + revokedCount + " at " + path);
+                }
+                // Per-entry minimum: 4 × (4B lp-len + 1B) + 4B = 24B.
+                if (revokedCount > buf.remaining() / 24) {
+                    throw new IOException("permanently-revoked count " + revokedCount
+                            + " exceeds available bytes (" + buf.remaining() + ") at " + path);
+                }
+                final java.util.HashSet<DekHandle> revokedHandles = new java.util.HashSet<>(
+                        revokedCount);
+                for (int i = 0; i < revokedCount; i++) {
+                    final TenantId t2 = new TenantId(readLpString(buf, path));
+                    final DomainId d2 = new DomainId(readLpString(buf, path));
+                    final TableId tb2 = new TableId(readLpString(buf, path));
+                    final DekVersion dv2 = new DekVersion(buf.getInt());
+                    revokedHandles.add(new DekHandle(t2, d2, tb2, dv2));
+                }
+                revoked = new PermanentlyRevokedDeksSet(revokedHandles, revokedCapacity);
+            }
             return new KeyRegistryShard(new TenantId(tenantIdValue), deks, dKeks, activeRef,
-                    hkdfSalt);
+                    hkdfSalt, retired, rekeyMarker, revoked);
         } catch (java.nio.BufferUnderflowException | IllegalArgumentException
                 | NullPointerException e) {
             throw new IOException("malformed shard file at " + path + ": " + e.getMessage(), e);
@@ -814,7 +966,7 @@ public final class ShardStorage {
                         + ". Ensure the parent directory is ACL-restricted to the owning principal.");
     }
 
-    Path registryRoot() {
+    public Path registryRoot() {
         return registryRoot;
     }
 }

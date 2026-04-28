@@ -258,7 +258,7 @@
       "id": "encryption.primitives-lifecycle",
       "path": ".spec/domains/encryption/primitives-lifecycle.md",
       "state": "DRAFT",
-      "version": 10,
+      "version": 13,
       "domains": [
         "encryption"
       ],
@@ -287,6 +287,8 @@
         "systems/security/jvm-key-handling-patterns",
         "systems/security/client-side-encryption-patterns",
         "systems/security/three-level-key-hierarchy",
+        "systems/security/dek-revocation-vs-rotation",
+        "systems/security/dek-caching-policies-multi-tenant",
         "algorithms/encryption/index-access-pattern-leakage"
       ]
     },

@@ -15,7 +15,10 @@ import java.util.Objects;
  * <p>
  * Governed by: spec {@code encryption.primitives-lifecycle} R76.
  */
-public final class TenantKekUnavailableException extends Exception {
+// WD-03: implements {@link RetryDisposition.NonRetryable} so callers using the
+// retry-disposition marker pattern do not retry a tenant-KEK-unavailable condition.
+public final class TenantKekUnavailableException extends Exception
+        implements RetryDisposition.NonRetryable {
 
     private static final long serialVersionUID = 1L;
 

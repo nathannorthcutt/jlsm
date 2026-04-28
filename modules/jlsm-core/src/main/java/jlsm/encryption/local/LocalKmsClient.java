@@ -267,6 +267,76 @@ public final class LocalKmsClient implements KmsClient {
         }
     }
 
+    // --- WD-03 R71b-1 simulation (test-scope only) -----------------------
+    // The methods below simulate KMS revocation/restoration scenarios for WD-03 lifecycle
+    // tests. They are package-private to {@code jlsm.encryption.local} and guarded at runtime
+    // by a {@link StackWalker} test-scope check that throws {@link UnsupportedOperationException}
+    // if invoked from a non-test caller (the implementation pipeline pins the allowed
+    // caller-class prefixes; the stub form below rejects all callers).
+
+    /** R71b-1 revocation kind. */
+    enum RevocationKind {
+        /** Tenant- or domain-tier KEK is permanently revoked. */
+        PERMANENT,
+        /** KEK is transiently unavailable; restore is possible. */
+        TRANSIENT;
+    }
+
+    /**
+     * Simulate revocation of a tenant-tier {@link KekRef}. Subsequent wrap/unwrap calls against the
+     * ref produce the configured failure category.
+     *
+     * @spec encryption.primitives-lifecycle R71b-1
+     */
+    void simulateTenantKekRevocation(KekRef kekRef, RevocationKind kind) {
+        Objects.requireNonNull(kekRef, "kekRef must not be null");
+        Objects.requireNonNull(kind, "kind must not be null");
+        requireTestScope();
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /**
+     * Simulate revocation of a domain-tier KEK ref.
+     *
+     * @spec encryption.primitives-lifecycle R71b-1
+     */
+    void simulateDomainKekRevocation(KekRef kekRef, RevocationKind kind) {
+        Objects.requireNonNull(kekRef, "kekRef must not be null");
+        Objects.requireNonNull(kind, "kind must not be null");
+        requireTestScope();
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /** Restore a previously-simulated revoked ref to usable state. */
+    void restoreKek(KekRef kekRef) {
+        Objects.requireNonNull(kekRef, "kekRef must not be null");
+        requireTestScope();
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /**
+     * Simulate an unclassified-error path: subsequent wrap/unwrap calls against {@code kekRef}
+     * throw the supplied {@link RuntimeException}. Used by WU-4 escalator tests.
+     */
+    void simulateUnclassifiedException(KekRef kekRef, RuntimeException exception) {
+        Objects.requireNonNull(kekRef, "kekRef must not be null");
+        Objects.requireNonNull(exception, "exception must not be null");
+        requireTestScope();
+        throw new UnsupportedOperationException("not implemented");
+    }
+
+    /**
+     * Runtime test-scope check via {@link StackWalker}. The stub form rejects all callers; the
+     * implementation pipeline pins the allowed caller-class prefixes so production code cannot
+     * invoke a simulation method by mistake.
+     */
+    private static void requireTestScope() {
+        // WD-03 stub: reject unconditionally until the implementation pipeline pins the
+        // allowed caller-class prefixes.
+        throw new UnsupportedOperationException(
+                "simulation methods are test-scope only — not implemented");
+    }
+
     private static void rejectDekPurpose(EncryptionContext context) {
         // Purpose.DEK is not a valid KmsClient operation per R80a — DEKs are wrapped under
         // the domain KEK via AES-GCM, not via this SPI. DOMAIN_KEK, REKEY_SENTINEL, and

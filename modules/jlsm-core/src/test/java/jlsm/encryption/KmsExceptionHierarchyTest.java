@@ -51,8 +51,11 @@ class KmsExceptionHierarchyTest {
     }
 
     @Test
-    void permanent_isFinal() {
-        assertTrue(java.lang.reflect.Modifier.isFinal(KmsPermanentException.class.getModifiers()));
+    void permanent_isSealed() {
+        // WD-03: KmsPermanentException is sealed permits KekRevokedException — tighter than
+        // non-sealed; new permanent-class faults must extend KekRevokedException.
+        assertTrue(KmsPermanentException.class.isSealed(),
+                "KmsPermanentException must be sealed to constrain the permanent-class subtree");
     }
 
     @Test
