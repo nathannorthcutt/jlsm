@@ -1221,15 +1221,17 @@ if [[ -f ".spec/registry/manifest.json" ]] && command -v jq >/dev/null 2>&1; the
 
             # Case: no annotations at all — spec is entirely unannotated.
             # spec-trace emits "**No annotations found.**" in the markdown body.
-            if echo "$trace_out" | grep -q '\*\*No annotations found\.\*\*'; then
+            # Use here-strings so SIGPIPE under pipefail cannot flip results
+            # on long /spec-trace output (grep -q / -m1 close stdin early).
+            if grep -q '\*\*No annotations found\.\*\*' <<< "$trace_out"; then
                 echo "UNANNOTATED|$sid" >> "$TMPDIR_SCAN/spec-unannotated.txt"
                 continue
             fi
 
             # Extract "No implementation annotations:" and "No test annotations:" lines.
-            no_impl="$(echo "$trace_out" | grep -m1 '^\*\*No implementation annotations:\*\*' \
+            no_impl="$(grep -m1 '^\*\*No implementation annotations:\*\*' <<< "$trace_out" \
                 | sed 's/^\*\*No implementation annotations:\*\*[[:space:]]*//' || true)"
-            no_test="$(echo "$trace_out" | grep -m1 '^\*\*No test annotations:\*\*' \
+            no_test="$(grep -m1 '^\*\*No test annotations:\*\*' <<< "$trace_out" \
                 | sed 's/^\*\*No test annotations:\*\*[[:space:]]*//' || true)"
 
             if [[ -n "$no_impl" ]]; then
@@ -1330,6 +1332,146 @@ if [[ -d ".spec/domains" ]] && command -v jq >/dev/null 2>&1; then
         -o "$TMPDIR_SCAN/aging-obligations.txt" 2>/dev/null || true
     head -20 "$TMPDIR_SCAN/aging-obligations.txt" > "$TMPDIR_SCAN/aging-obligations.capped.txt" 2>/dev/null || true
     mv "$TMPDIR_SCAN/aging-obligations.capped.txt" "$TMPDIR_SCAN/aging-obligations.txt"
+fi
+
+# ── Analysis 20: Subdivision candidates (mature specs with multiple concerns) ─
+# Identify specs that have grown past one file's worth of behavior AND show
+# multiple distinct concerns. Heuristic signals:
+#
+#   1. Size: >= 50 R-numbered requirements OR >= 15K tokens (~60 KB) — early
+#      signal, well under the 25K Read cap. Specs below either threshold are
+#      not yet mature enough to need subdivision; flagging them would waste
+#      reviewer attention.
+#   2. Section structure: >= 2 distinct section headers (`## <Concern>` or
+#      `### <Concern>`) inside the machine section. A single section means
+#      one tightly-coupled concern — subdivision would fragment a coherent
+#      contract.
+#   3. Distribution: no single section holds >= 90% of the requirements.
+#      Heavy concentration in one section means the spec is mature but
+#      mostly about one thing; subdivision wouldn't meaningfully improve
+#      the structure.
+#   4. Not already a child: skip specs with `parent_spec` set — they are
+#      already part of a layered family (a sub-domain split is possible
+#      but should be requested explicitly, not auto-flagged).
+#
+# Output: SUBDIVISION_CANDIDATE|<spec_id>|<domain>|<reqs>|<tokens_k>|<sections>|<largest_section_count>|<score>
+# Score = reqs + (tokens_k × 2) + (sections × 5) — higher is more
+# candidate-worthy. Used to sort the report; not exposed to users directly.
+
+> "$TMPDIR_SCAN/spec-subdivision-candidates.txt"
+
+if [[ -d ".spec" && -f ".spec/registry/manifest.json" ]]; then
+    SUBDIV_MANIFEST=".spec/registry/manifest.json"
+
+    # Tunable thresholds (could be overridden via env later if needed).
+    SUBDIV_MIN_REQS=50
+    SUBDIV_MIN_TOKENS_K=15
+    SUBDIV_MIN_SECTIONS=2
+    SUBDIV_MAX_TOP_SHARE_PCT=90
+
+    while IFS= read -r fid; do
+        [[ -z "$fid" ]] && continue
+
+        spec_state=$(spec_manifest_state "$SUBDIV_MANIFEST" "$fid")
+        # INVALIDATED specs aren't candidates — they're historical reference.
+        [[ "$spec_state" == "INVALIDATED" ]] && continue
+
+        spec_file=$(spec_file_for_id "$SUBDIV_MANIFEST" "$fid")
+        [[ -z "$spec_file" || ! -f "$spec_file" ]] && continue
+
+        # Skip child specs (already in a layered family).
+        spec_parent=$(fm "$spec_file" '.parent_spec // ""')
+        [[ -n "$spec_parent" && "$spec_parent" != "null" ]] && continue
+
+        # Pull machine section once; do all measurements on it.
+        body=$(machine_section "$spec_file")
+        [[ -z "$body" ]] && continue
+
+        # Size in tokens (1 token ≈ 4 chars).
+        body_chars=${#body}
+        body_tokens_k=$(( body_chars / 4 / 1000 ))
+
+        # Count R-numbered requirements (RN, RNa form supported).
+        reqs_count=$(grep -cE '^R[0-9]+[a-z]?\.' <<< "$body" || true)
+
+        # Below either size threshold → not a candidate.
+        if (( reqs_count < SUBDIV_MIN_REQS )) && (( body_tokens_k < SUBDIV_MIN_TOKENS_K )); then
+            continue
+        fi
+
+        # Identify section headers within the machine section. Both `## ` and
+        # `### ` forms accepted — Pass 1 of /spec-author often nests at H3.
+        # If a header line contains "Notes" or "Narrative" it's not a concern
+        # boundary; skip those.
+        mapfile -t section_lines < <(
+            grep -nE '^#{2,3}[[:space:]]+[A-Za-z]' <<< "$body" \
+            | grep -viE 'notes|narrative|design|history|appendix' \
+            || true
+        )
+        section_count=${#section_lines[@]}
+
+        # Need at least N distinct sections to be a candidate.
+        if (( section_count < SUBDIV_MIN_SECTIONS )); then
+            continue
+        fi
+
+        # Compute per-section requirement counts. A requirement belongs to the
+        # most recent section header above it. Walk the body once.
+        declare -A section_req_count=()
+        current_section=""
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^#{2,3}[[:space:]]+([A-Za-z].*)$ ]]; then
+                hdr="${BASH_REMATCH[1]}"
+                # Skip non-concern headers we already filtered for the count.
+                if echo "$hdr" | grep -qiE 'notes|narrative|design|history|appendix'; then
+                    current_section=""
+                else
+                    current_section="$hdr"
+                    section_req_count["$current_section"]=${section_req_count["$current_section"]:-0}
+                fi
+            elif [[ -n "$current_section" ]] && [[ "$line" =~ ^R[0-9]+[a-z]?\. ]]; then
+                section_req_count["$current_section"]=$(( ${section_req_count["$current_section"]:-0} + 1 ))
+            fi
+        done <<< "$body"
+
+        # Find the largest section's requirement count.
+        largest_count=0
+        for count in "${section_req_count[@]}"; do
+            (( count > largest_count )) && largest_count=$count
+        done
+
+        # If one section holds ≥ MAX_TOP_SHARE_PCT of all reqs, the spec is
+        # really one concern with side notes — not a subdivision candidate.
+        if (( reqs_count > 0 )); then
+            top_share_pct=$(( largest_count * 100 / reqs_count ))
+            if (( top_share_pct >= SUBDIV_MAX_TOP_SHARE_PCT )); then
+                unset section_req_count
+                continue
+            fi
+        fi
+
+        # Score the candidate (used for ranking in the report).
+        score=$(( reqs_count + body_tokens_k * 2 + section_count * 5 ))
+
+        # Domains for display.
+        spec_domains=$(spec_manifest_domains_for "$SUBDIV_MANIFEST" "$fid" \
+                       | tr '\n' ',' | sed 's/,$//')
+
+        echo "SUBDIVISION_CANDIDATE|$fid|$spec_domains|$reqs_count|$body_tokens_k|$section_count|$largest_count|$score" \
+             >> "$TMPDIR_SCAN/spec-subdivision-candidates.txt"
+
+        unset section_req_count
+    done < <(spec_manifest_ids "$SUBDIV_MANIFEST")
+
+    # Sort by score descending (top candidates first); cap at 20.
+    if [[ -s "$TMPDIR_SCAN/spec-subdivision-candidates.txt" ]]; then
+        sort -t'|' -k8 -rn "$TMPDIR_SCAN/spec-subdivision-candidates.txt" \
+             -o "$TMPDIR_SCAN/spec-subdivision-candidates.txt"
+        head -20 "$TMPDIR_SCAN/spec-subdivision-candidates.txt" \
+             > "$TMPDIR_SCAN/spec-subdivision-candidates.capped.txt"
+        mv "$TMPDIR_SCAN/spec-subdivision-candidates.capped.txt" \
+           "$TMPDIR_SCAN/spec-subdivision-candidates.txt"
+    fi
 fi
 
 # ── Write summary file ──────────────────────────────────────────────────────
@@ -1752,6 +1894,23 @@ if [[ -s "$TMPDIR_SCAN/aging-obligations.txt" ]]; then
     echo "" >> "$SUMMARY_FILE"
 fi
 
+# Subdivision candidates (Analysis 20)
+if [[ -s "$TMPDIR_SCAN/spec-subdivision-candidates.txt" ]]; then
+    echo "## Subdivision Candidates" >> "$SUMMARY_FILE"
+    echo "Specs that have grown past one file's worth of behavior AND show multiple distinct concerns." >> "$SUMMARY_FILE"
+    echo "These are candidates for natural subdivision via \`/spec-split <id>\` — the parent stays a full" >> "$SUMMARY_FILE"
+    echo "spec retaining cross-cutting requirements; concern-specific reqs move to child specs." >> "$SUMMARY_FILE"
+    echo "Decline if the spec's concerns are interlocked rather than separable; subdivision fragments" >> "$SUMMARY_FILE"
+    echo "a coherent contract when forced." >> "$SUMMARY_FILE"
+    echo "" >> "$SUMMARY_FILE"
+    echo "| Spec | Domain | Reqs | ~Tokens (K) | Sections | Largest section | Suggested |" >> "$SUMMARY_FILE"
+    echo "|------|--------|------|-------------|----------|-----------------|-----------|" >> "$SUMMARY_FILE"
+    while IFS='|' read -r _ sid doms reqs tok_k sects largest _; do
+        echo "| $sid | $doms | $reqs | $tok_k | $sects | $largest reqs | \`/spec-split $sid\` |" >> "$SUMMARY_FILE"
+    done < "$TMPDIR_SCAN/spec-subdivision-candidates.txt"
+    echo "" >> "$SUMMARY_FILE"
+fi
+
 # ── Report ───────────────────────────────────────────────────────────────────
 
 echo "Scan complete: $COMMIT_COUNT commits analyzed"
@@ -1784,6 +1943,7 @@ echo "  Work artifact drift: $(wc -l < "$TMPDIR_SCAN/work-drift.txt" 2>/dev/null
 echo "  Spec annotation gaps: $(wc -l < "$TMPDIR_SCAN/spec-annotation-gaps.txt" 2>/dev/null || echo 0)"
 echo "  Unannotated APPROVED specs: $(wc -l < "$TMPDIR_SCAN/spec-unannotated.txt" 2>/dev/null || echo 0)"
 echo "  Aging obligations: $(wc -l < "$TMPDIR_SCAN/aging-obligations.txt" 2>/dev/null || echo 0)"
+echo "  Subdivision candidates: $(wc -l < "$TMPDIR_SCAN/spec-subdivision-candidates.txt" 2>/dev/null || echo 0)"
 
 # ── Update curation state ─────────────────────────────────────────────────
 

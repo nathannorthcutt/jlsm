@@ -227,7 +227,12 @@ Stage Completion table — implementation stages only:
 
 ### 4d — Update WD status
 
-Edit `.work/<group-slug>/WD-<nn>.md` — set `status: IMPLEMENTING`.
+Set the WD status with `sed` so the file does not need to be Read first
+(matches the pattern used in `scripts/work-finalize.sh`):
+
+```bash
+sed -i "s/^status:.*$/status: IMPLEMENTING/" .work/<group-slug>/WD-<nn>.md
+```
 
 The manifest table is automatically synced by `work-resolve.sh` — do not
 update it manually.

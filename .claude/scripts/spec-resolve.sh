@@ -6,6 +6,10 @@
 # Optional env: NEW_SPEC_FILES="path1:path2" — draft specs to check for displacement
 # Optional env: INCLUDE_INVALIDATED=true — include INVALIDATED specs in separate section
 # Optional env: FILTER_KIND="interface-contract" — only include specs with this kind field
+# Optional env: INCLUDE_SIBLINGS=true — when a child spec lands in candidates,
+#                also include its siblings (other children of the same parent).
+#                Used by adversarial paths (/spec-author Pass 2/3) that need
+#                cross-sibling contradiction detection. Default off.
 # Output: markdown bundle on stdout | diagnostics on stderr
 
 set -euo pipefail
@@ -206,7 +210,7 @@ else
     SORTED_FILES=()
 fi
 
-# ── Step 4: Expand transitive requires[], deduplicate ────────────────────────
+# ── Step 4: Expand transitive requires[], parent chain, optional siblings ───
 declare -A SEEN_FILES
 ALL_FILES=()
 
@@ -217,8 +221,51 @@ add_file() {
   ALL_FILES+=("$f")
 }
 
+# Helper: given a spec ID, walk parents and add each to the bundle. Cross-cutting
+# requirements at a parent are part of every child's contract, so when a child
+# lands in candidates, the parent chain MUST be loaded too.
+add_parent_chain() {
+  local fid="$1"
+  while IFS= read -r ancestor_id; do
+    [[ -z "$ancestor_id" ]] && continue
+    ancestor_file=$(spec_file_for_id "$MANIFEST" "$ancestor_id")
+    if [[ -n "$ancestor_file" && -f "$ancestor_file" ]]; then
+      spec_check_crlf "$ancestor_file" 2>/dev/null && add_file "$ancestor_file"
+    else
+      echo "[resolve] Warning: parent_spec $ancestor_id has no resolvable file" >&2
+    fi
+  done < <(spec_walk_parent_chain "$MANIFEST" "$fid")
+}
+
+# Helper: given a parent ID, add its children. Used by INCLUDE_SIBLINGS path.
+add_siblings_via_parent() {
+  local pid="$1"
+  while IFS= read -r child_id; do
+    [[ -z "$child_id" ]] && continue
+    child_file=$(spec_file_for_id "$MANIFEST" "$child_id")
+    if [[ -n "$child_file" && -f "$child_file" ]]; then
+      spec_check_crlf "$child_file" 2>/dev/null && add_file "$child_file"
+    fi
+  done < <(spec_children_for "$MANIFEST" "$pid")
+}
+
 for f in "${SORTED_FILES[@]+"${SORTED_FILES[@]}"}"; do
   add_file "$f"
+  this_id=$(fm "$f" '.id')
+  this_parent=$(fm "$f" '.parent_spec // ""')
+
+  # Parent chain: always include ancestors when a child is selected.
+  if [[ -n "$this_id" ]]; then
+    add_parent_chain "$this_id"
+  fi
+
+  # Siblings: opt-in via INCLUDE_SIBLINGS. When set, every child whose parent
+  # is `this_parent` is added (we do this once per parent — dedup is via
+  # add_file's SEEN_FILES guard).
+  if [[ "${INCLUDE_SIBLINGS:-false}" == "true" && -n "$this_parent" && "$this_parent" != "null" ]]; then
+    add_siblings_via_parent "$this_parent"
+  fi
+
   while IFS= read -r req_id; do
     [[ -z "$req_id" ]] && continue
     req_file=$(spec_file_for_id "$MANIFEST" "$req_id")

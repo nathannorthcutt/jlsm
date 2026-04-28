@@ -219,7 +219,12 @@ Stage Completion table — specification mode only:
 
 ### 4c — Update WD status
 
-Edit `.work/<group-slug>/WD-<nn>.md` — set `status: SPECIFYING`.
+Set the WD status with `sed` so the file does not need to be Read first
+(matches the pattern used in `scripts/work-finalize.sh`):
+
+```bash
+sed -i "s/^status:.*$/status: SPECIFYING/" .work/<group-slug>/WD-<nn>.md
+```
 
 The manifest table is automatically synced by `work-resolve.sh` — do not
 update it manually.
@@ -304,9 +309,12 @@ Run /spec-author "<feature-id>" "<title>" to complete adversarial review.
 ```
 Stop and wait for the user to resolve.
 
-**If all specs are APPROVED:** update the WD:
+**If all specs are APPROVED:** update the WD with `sed` (no Read required;
+matches the pattern used in `scripts/work-finalize.sh`):
 
-1. Edit `.work/<group-slug>/WD-<nn>.md` — set `status: SPECIFIED`
+```bash
+sed -i "s/^status:.*$/status: SPECIFIED/" .work/<group-slug>/WD-<nn>.md
+```
 
 The manifest table is automatically synced by `work-resolve.sh` — do not
 update it manually.

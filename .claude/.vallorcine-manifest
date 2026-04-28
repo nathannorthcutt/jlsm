@@ -36,6 +36,7 @@
 .claude/skills/spec-verify/SKILL.md
 .claude/skills/spec-author/SKILL.md
 .claude/skills/spec-author/extraction-mode.md
+.claude/skills/spec-split/SKILL.md
 .claude/skills/spec/SKILL.md
 .claude/skills/work/SKILL.md
 .claude/skills/work-decompose/SKILL.md
@@ -121,6 +122,7 @@
 .claude/scripts/spec-resolve.sh
 .claude/scripts/spec-obligations-gc.sh
 .claude/scripts/spec-trace.sh
+.claude/scripts/spec-split.sh
 .claude/scripts/work-lib.sh
 .claude/scripts/work-resolve.sh
 .claude/scripts/work-validate.sh

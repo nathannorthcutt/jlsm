@@ -82,6 +82,17 @@ count_tokens() {
 # Supports both manifest schema versions:
 #   v1 (legacy): {"features": {"F01": {"latest_file": "...", ...}}}
 #   v2 (post-migration): {"schema_version": 2, "specs": [{"id": "...", "path": "..."}]}
+#
+# Resolution order:
+#   1. Manifest lookup (exact ID match) — source of truth for any spec the
+#      project has explicitly registered. Most specs are registered.
+#   2. ID-computed path fallback — for nested specs whose parent is registered
+#      but whose entry has not been added to the manifest yet (e.g. during a
+#      /spec-split pilot). The path is deterministic from the ID:
+#          a.b.c.d  →  domains/a/b/c/d.md
+#      First component is the top-level domain dir; intermediate components
+#      become subdirectories; last component is the filename.
+#
 # Returns absolute path or empty string.
 spec_file_for_id() {
   local manifest="$1"
@@ -97,15 +108,87 @@ spec_file_for_id() {
       (.features[$id].latest_file // "")
     end
   ' "$manifest")
-  [[ -z "$rel" ]] && echo "" && return 0
-  # v2 manifest stores paths relative to the repo root (e.g., ".spec/domains/...").
-  # v1 stores paths relative to the .spec/ directory. Detect which form by checking
-  # if the path already starts with ".spec/" — if so, resolve against repo root.
-  if [[ "$rel" == .spec/* ]]; then
-    echo "$spec_dir/${rel#.spec/}"
-  else
-    echo "$spec_dir/$rel"
+  if [[ -n "$rel" ]]; then
+    # v2 manifest stores paths relative to the repo root (e.g., ".spec/domains/...").
+    # v1 stores paths relative to the .spec/ directory. Detect which form by checking
+    # if the path already starts with ".spec/" — if so, resolve against repo root.
+    if [[ "$rel" == .spec/* ]]; then
+      echo "$spec_dir/${rel#.spec/}"
+    else
+      echo "$spec_dir/$rel"
+    fi
+    return 0
   fi
+  # ── Fallback: compute path from a hierarchical ID (a.b[.c[.d...]] → file).
+  # Only applies to domain.slug-shaped IDs with at least one dot. Legacy FXX
+  # IDs and bare names without dots cannot be resolved this way and return
+  # empty (preserves existing behavior on misses).
+  if [[ "$fid" == *.* && "$fid" != F[0-9]* ]]; then
+    local computed
+    # First component is the top-level domain (under domains/).
+    # Remaining components map dots to slashes; last component gets `.md`.
+    local top="${fid%%.*}"
+    local rest="${fid#*.}"
+    rest="${rest//./\/}"
+    computed="$spec_dir/domains/$top/${rest}.md"
+    if [[ -f "$computed" ]]; then
+      echo "$computed"
+      return 0
+    fi
+  fi
+  echo ""
+}
+
+# ── Walk the parent_spec chain for a spec, emit each ancestor ID ─────────────
+# Reads parent_spec from each spec's frontmatter (single string or null).
+# Emits IDs from immediate parent up to the root. Stops at:
+#   - empty/null parent_spec (root reached)
+#   - cycle detection (an ID seen twice — emits a single error to stderr,
+#     stops emitting further IDs but does NOT exit; callers can ignore or
+#     surface as they wish)
+#
+# Args: <manifest> <spec-id>
+# Output: parent IDs on stdout, one per line (closest first)
+spec_walk_parent_chain() {
+  local manifest="$1"
+  local fid="$2"
+  local seen=":$fid:"  # ":id1:id2:" — colon-bookended for safe substring match
+  local depth=0
+  while (( depth < 32 )); do  # hard depth cap as cycle backstop
+    local file parent
+    file=$(spec_file_for_id "$manifest" "$fid")
+    [[ -z "$file" || ! -f "$file" ]] && return 0
+    parent=$(fm "$file" '.parent_spec // ""')
+    [[ -z "$parent" || "$parent" == "null" ]] && return 0
+    # Cycle detection
+    if [[ "$seen" == *":$parent:"* ]]; then
+      echo "[spec-lib] ERROR: parent_spec cycle detected at $parent (chain: $seen)" >&2
+      return 0
+    fi
+    echo "$parent"
+    seen="$seen$parent:"
+    fid="$parent"
+    depth=$((depth + 1))
+  done
+  echo "[spec-lib] ERROR: parent_spec chain exceeded depth 32 (chain: $seen)" >&2
+}
+
+# ── List children of a spec by scanning the manifest ────────────────────────
+# Computed at scan time (we don't store children_specs to avoid bidirectional
+# sync bugs — see decisions-scan.sh:43-50 for the same precedent).
+#
+# Args: <manifest> <parent-id>
+# Output: child IDs on stdout, one per line
+spec_children_for() {
+  local manifest="$1"
+  local pid="$2"
+  jq -r --arg pid "$pid" '
+    if .specs then
+      ((.specs[] | select(.parent_spec == $pid) | .id))
+    else
+      empty
+    end
+  ' "$manifest" 2>/dev/null
 }
 
 # ── Manifest query helpers (v1/v2 schema-agnostic) ───────────────────────────
