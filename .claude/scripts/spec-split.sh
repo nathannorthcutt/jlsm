@@ -275,7 +275,7 @@ fi
 # ── Dry-run exit ─────────────────────────────────────────────────────────────
 
 if [[ "$DRY_RUN" == "true" ]]; then
-  echo "[split] DRY RUN — plan validates. ${#CHILD_COUNT[@]:-} children, ${#CROSS_CUTTING[@]} cross-cutting reqs." >&2
+  echo "[split] DRY RUN — plan validates. ${CHILD_COUNT} children, ${#CROSS_CUTTING[@]} cross-cutting reqs." >&2
   exit 0
 fi
 
@@ -285,8 +285,12 @@ mkdir -p "$SPLIT_LOG_DIR"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ROLLBACK_LOG="$SPLIT_LOG_DIR/${PARENT_ID//./-}-${TIMESTAMP}.json"
 
-PARENT_SNAPSHOT="$(cat "$PARENT_FILE")"
-MANIFEST_SNAPSHOT="$(cat "$MANIFEST")"
+SNAPSHOT_TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$SNAPSHOT_TMPDIR"' EXIT
+PARENT_SNAPSHOT_FILE="$SNAPSHOT_TMPDIR/parent.snapshot"
+MANIFEST_SNAPSHOT_FILE="$SNAPSHOT_TMPDIR/manifest.snapshot"
+cp "$PARENT_FILE" "$PARENT_SNAPSHOT_FILE"
+cp "$MANIFEST" "$MANIFEST_SNAPSHOT_FILE"
 
 # Track files we'll create (for rollback delete) and annotation rewrites.
 CHILDREN_CREATED=()
@@ -300,9 +304,9 @@ emit_rollback_log() {
   jq -n \
     --arg parent_id "$PARENT_ID" \
     --arg parent_path "$PARENT_FILE" \
-    --arg parent_snapshot "$PARENT_SNAPSHOT" \
+    --rawfile parent_snapshot "$PARENT_SNAPSHOT_FILE" \
     --arg manifest_path "$MANIFEST" \
-    --arg manifest_snapshot "$MANIFEST_SNAPSHOT" \
+    --rawfile manifest_snapshot "$MANIFEST_SNAPSHOT_FILE" \
     --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson children_created "$(printf '%s\n' "${CHILDREN_CREATED[@]+"${CHILDREN_CREATED[@]}"}" | jq -R . | jq -s .)" \
     --argjson rewrites "$(

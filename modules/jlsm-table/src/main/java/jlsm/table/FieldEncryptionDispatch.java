@@ -404,7 +404,7 @@ public final class FieldEncryptionDispatch {
      * @spec sstable.footer-encryption-scope.R3f
      * @spec encryption.ciphertext-envelope.R2
      * @spec encryption.ciphertext-envelope.R2b
-     * @spec encryption.primitives-lifecycle.R24
+     * @spec encryption.primitives-lifecycle.ciphertext-format.R24
      */
     public byte[] decryptWithContext(int fieldIndex, byte[] envelope, ReadContext ctx) {
         Objects.requireNonNull(envelope, "envelope must not be null");

@@ -19,6 +19,52 @@
 
 | Problem | Slug | Accepted | Recommendation |
 |---------|------|----------|----------------|
+| dek-scoping-granularity | dek-scoping-granularity | 2026-04-21 | **DEK identity: `(tenantId, domainId, tableId, dekVersion)` |
+| catalog-replication | catalog-replication | 2026-04-15 | **Dedicated Raft catalog group** — the catalog is replica... |
+| piggybacked-state-exchange | piggybacked-state-exchange | 2026-04-13 | Fixed-Field Heartbeat Metadata with Version Byte |
+| bounded-string-field-type | bounded-string-field-type | 2026-03-19 | BoundedString record as a new sealed permit with STRING-d... |
+| concurrent-wal-replay-throttling | concurrent-wal-replay-throttling | 2026-04-15 | **Three-gate resource bounding** — concurrency limit, I/O... |
+| un-walled-memtable-data-loss | un-walled-memtable-data-loss | 2026-04-15 | **Documented data loss window (single-node) eliminated by... |
+| max-compressed-length | max-compressed-length | 2026-04-10 | **Add `int maxCompressedLength(int inputLength)` to `Comp... |
+| sstable-end-to-end-integrity | sstable-end-to-end-integrity | 2026-04-14 | **Three-layer end-to-end integrity: fsync discipline + Va... |
+| partition-takeover-priority | partition-takeover-priority | 2026-04-15 | **Pluggable TakeoverPrioritizer with smallest-first defau... |
+| automatic-backend-detection | automatic-backend-detection | 2026-04-14 | **Pool-aware block size configuration — derive block size... |
+| index-definition-api-simplification | index-definition-api-simplification | 2026-03-17 | Derive from Schema |
+| encryption-key-rotation | encryption-key-rotation | 2026-04-14 | Envelope Encryption with Compaction-Driven Re-Encryption |
+| per-field-pre-encryption | per-field-pre-encryption | 2026-04-14 | Bitset Flag** — replace `boolean preEncrypted` with `long... |
+| stripe-hash-function | stripe-hash-function | 2026-03-17 | Stafford variant 13 (splitmix64 finalizer) |
+| membership-view-stall-recovery | membership-view-stall-recovery | 2026-04-13 | [Tiered Escalation](../../.kb/distributed-systems/cluster... |
+| vector-query-partition-pruning | vector-query-partition-pruning | 2026-04-15 | **Pluggable PartitionPruner SPI with centroid-based and m... |
+| compression-codec-api-design | compression-codec-api-design | 2026-03-17 | Open interface + explicit codec list |
+| rebalancing-grace-period-strategy | rebalancing-grace-period-strategy | 2026-03-20 | Eager Reassignment with Deferred Cleanup |
+| sparse-vector-support | sparse-vector-support | 2026-04-13 | SparseVectorType sealed permit + inverted index storage |
+| in-flight-write-protection | in-flight-write-protection | 2026-04-15 | **Drain-and-reject with in-flight completion guarantee** ... |
+| encrypted-fuzzy-matching | encrypted-fuzzy-matching | 2026-04-15 | **LSH + Bloom filter with AES-GCM encryption** -- the `En... |
+| wal-entry-encryption | wal-entry-encryption | 2026-04-14 | Per-Record AES-GCM-256 with Sequence-Number Nonce |
+| backend-optimal-block-size | backend-optimal-block-size | 2026-04-10 | **Parameterize block size as a builder option on `TrieSST... |
+| sstable-block-compression-format | sstable-block-compression-format | 2026-03-17 | Compression Offset Map |
+| scatter-gather-query-execution | scatter-gather-query-execution | 2026-03-20 | Partition-Aware Proxy Table |
+| scan-snapshot-binding | scan-snapshot-binding | 2026-04-15 | **Sequence-number binding with degraded fallback** — cont... |
+| partition-aware-compaction | partition-aware-compaction | 2026-04-15 | **Scheduler-based compaction coordination** — a `Compacti... |
+| continuous-rediscovery | continuous-rediscovery | 2026-04-13 | Periodic Rediscovery + Optional Reactive Watch (composite) |
+| corruption-repair-recovery | corruption-repair-recovery | 2026-04-15 | **Layered repair strategies — quarantine + compaction (si... |
+| table-migration-protocol | table-migration-protocol | 2026-04-15 | **Raft-based learner replica with phased state machine** ... |
+| vector-type-serialization-encoding | vector-type-serialization-encoding | 2026-03-17 | [Flat Vector Encoding](../../.kb/algorithms/vector-encodi... |
+| field-encryption-api-design | field-encryption-api-design | 2026-03-18 | Schema Annotation (FieldDefinition carries EncryptionSpec) |
+| unencrypted-to-encrypted-migration | unencrypted-to-encrypted-migration | 2026-04-14 | Compaction-Driven Migration** — same mechanism as key rot... |
+| encrypted-prefix-wildcard-queries | encrypted-prefix-wildcard-queries | 2026-04-15 | **Prefix tokenization + DET encryption** -- the `Encrypte... |
+| cluster-membership-protocol | cluster-membership-protocol | 2026-03-20 | Rapid + Phi Accrual Composite |
+| per-block-checksums | per-block-checksums | 2026-04-10 | **Add a CRC32C checksum per block in the `CompressionMap`. |
+| per-field-key-binding | per-field-key-binding | 2026-04-14 | HKDF Derivation from Master Key |
+| power-of-two-stripe-optimization | power-of-two-stripe-optimization | 2026-04-10 | **Use power-of-2 stripe counts with bitmask exclusively. ... |
+| pre-encrypted-document-signaling | pre-encrypted-document-signaling | 2026-03-19 | Factory method with boolean field** — `JlsmDocument.preEn... |
+| slow-node-detection | slow-node-detection | 2026-04-13 | [Composite Detection](../../.kb/distributed-systems/clust... |
+| codec-thread-safety | codec-thread-safety | 2026-04-10 | **Codecs MUST be stateless and thread-safe.** Per-call na... |
+| block-cache-block-size-interaction | block-cache-block-size-interaction | 2026-04-14 | **Per-entry byte-budget eviction — track total cached byt... |
+| sequential-insert-hotspot | sequential-insert-hotspot | 2026-04-15 | Adopt a `WriteDistributor` interface with pluggable imple... |
+| scan-lease-gc-watermark | scan-lease-gc-watermark | 2026-04-15 | **Lease-based watermark hold with bounded duration** — a ... |
+| index-access-pattern-leakage | index-access-pattern-leakage | 2026-04-14 | Low-Cost Mitigation Bundle** — per-field HKDF keys + powe... |
+| three-tier-key-hierarchy | three-tier-key-hierarchy | 2026-04-21 | **Three-tier envelope key hierarchy** with per-tenant KMS... |
 | Transport Module Placement | transport-module-placement | 2026-04-26 | New `jlsm-cluster` Gradle subproject below jlsm-engine in the DAG; public `jlsm.cluster` package + non-exported `jlsm.cluster.internal`; migrate `ClusterTransport` SPI + `Message`/`MessageType`/`MessageHandler`/`NodeAddress`/`InJvmTransport` from jlsm-engine; amend `connection-pooling` and `transport-abstraction-design` ADR `files:` fields |
 | Module-DAG Sealed-Type Public-Factory Carve-Out | module-dag-sealed-type-public-factory-carve-out | 2026-04-25 | Public static factory + non-exported package + package-private ctor; `module-info.java` exports boundary is the load-bearing trust mechanism; factory is 1:1 delegation to ctor; spec authors use module-graph-aware phrasing instead of literal "non-public constructor" |
 | Pre-GA Format-Version Deprecation Policy | pre-ga-format-deprecation-policy | 2026-04-24 | Full mechanism set — Prefer-current-version rule + bounded low-priority sweep + format inventory + per-collection watermark + operator-triggered targeted upgrade; pre-GA window=zero; post-GA ≥1 major; writable past-window=inline rewrite, read-only past-window=hard error; first exercise SSTable v1–v4 collapse |

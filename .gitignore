@@ -47,4 +47,7 @@ perf-output/**/gc.log
 .claude/.statusline-baseline
 .claude/.token-state
 .claude/.token-checkpoint
+.claude/scheduled_tasks.lock
 .curate/
+.spec/.split-log/
+.spec/.split-plan.json

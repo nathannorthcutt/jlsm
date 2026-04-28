@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-04-25T00:00:00Z",
-  "spec_count": 78,
+  "generated_at": "2026-04-28T03:29:16Z",
+  "spec_count": 90,
   "specs": [
     {
       "id": "compression.codec-contract",
@@ -1579,6 +1579,174 @@
       "domains": [
         "engine"
       ]
+    },
+    {
+      "id": "encryption.primitives-lifecycle.key-hierarchy",
+      "path": ".spec/domains/encryption/primitives-lifecycle/key-hierarchy.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "parent_spec": "encryption.primitives-lifecycle",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "encryption.primitives-lifecycle.ciphertext-format",
+      "path": ".spec/domains/encryption/primitives-lifecycle/ciphertext-format.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "parent_spec": "encryption.primitives-lifecycle",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "encryption.primitives-lifecycle.rotation-lifecycle",
+      "path": ".spec/domains/encryption/primitives-lifecycle/rotation-lifecycle.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "parent_spec": "encryption.primitives-lifecycle",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "encryption.primitives-lifecycle.migration",
+      "path": ".spec/domains/encryption/primitives-lifecycle/migration.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "parent_spec": "encryption.primitives-lifecycle",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "encryption.primitives-lifecycle.runtime",
+      "path": ".spec/domains/encryption/primitives-lifecycle/runtime.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "encryption"
+      ],
+      "parent_spec": "encryption.primitives-lifecycle",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "engine.handle-lifecycle.state-machine",
+      "path": ".spec/domains/engine/handle-lifecycle/state-machine.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "engine"
+      ],
+      "parent_spec": "engine.handle-lifecycle",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "engine.handle-lifecycle.lifetime-policy",
+      "path": ".spec/domains/engine/handle-lifecycle/lifetime-policy.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "engine"
+      ],
+      "parent_spec": "engine.handle-lifecycle",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "engine.handle-lifecycle.resource-management",
+      "path": ".spec/domains/engine/handle-lifecycle/resource-management.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "engine"
+      ],
+      "parent_spec": "engine.handle-lifecycle",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "engine.catalog-operations.ddl-operations",
+      "path": ".spec/domains/engine/catalog-operations/ddl-operations.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "engine"
+      ],
+      "parent_spec": "engine.catalog-operations",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "engine.catalog-operations.raft-consensus",
+      "path": ".spec/domains/engine/catalog-operations/raft-consensus.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "engine"
+      ],
+      "parent_spec": "engine.catalog-operations",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "engine.catalog-operations.cache-and-propagation",
+      "path": ".spec/domains/engine/catalog-operations/cache-and-propagation.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "engine"
+      ],
+      "parent_spec": "engine.catalog-operations",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
+    },
+    {
+      "id": "engine.catalog-operations.integrations",
+      "path": ".spec/domains/engine/catalog-operations/integrations.md",
+      "state": "DRAFT",
+      "version": 1,
+      "domains": [
+        "engine"
+      ],
+      "parent_spec": "engine.catalog-operations",
+      "requires": [],
+      "invalidates": [],
+      "decision_refs": [],
+      "kb_refs": []
     }
   ]
 }
